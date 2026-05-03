@@ -1,0 +1,5 @@
+.env
+data/players.json
+__pycache__/
+*.py[cod]
+*.tmp

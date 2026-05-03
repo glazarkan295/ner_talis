@@ -1,0 +1,6 @@
+.env
+__pycache__/
+*.py[cod]
+*.tmp
+data/players.json
+ner_talis_game_project/data/players.json
