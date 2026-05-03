@@ -3,11 +3,9 @@ import os
 import threading
 import traceback
 
-from dotenv import load_dotenv
-
 from handlers.vk_registration import VkRegistrationBot
 from main_telegram import build_application, run_application
-from project_paths import project_path, resolve_project_path
+from project_paths import load_project_env, resolve_project_path
 
 
 logging.basicConfig(
@@ -73,7 +71,7 @@ def run_bots() -> None:
 
 
 def main() -> None:
-    load_dotenv(project_path(".env"))
+    load_project_env()
 
     # Проверяем все ключевые переменные заранее, чтобы запуск не был частичным.
     require_env("TELEGRAM_BOT_TOKEN")

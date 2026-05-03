@@ -28,6 +28,8 @@
 
 ## Быстрый запуск
 
+Команды ниже выполняются из корня репозитория.
+
 ```bash
 python -m venv .venv
 ```
@@ -47,7 +49,7 @@ source .venv/bin/activate
 Установка зависимостей:
 
 ```bash
-pip install -r requirements.txt
+pip install -r ner_talis_game_project/requirements.txt
 ```
 
 Создай `.env`:
@@ -56,12 +58,14 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Заполни токены Telegram и VK. Если запускаешь `python main.py`, нужны оба токена и ID сообщества VK.
+Код также подхватит `ner_talis_game_project/.env`, если такой файл уже используется локально.
+
+Заполни токены Telegram и VK. Если запускаешь общий entrypoint, нужны оба токена и ID сообщества VK.
 
 ## Запуск обоих ботов одновременно
 
 ```bash
-python main.py
+python ner_talis_game_project/main.py
 ```
 
 `main.py` запускает VK-бота в отдельном потоке, а Telegram-бота — в основном потоке. Для этого в `.env` должны быть заполнены все три значения: `TELEGRAM_BOT_TOKEN`, `VK_GROUP_TOKEN`, `VK_GROUP_ID`.
@@ -69,13 +73,13 @@ python main.py
 ## Запуск только Telegram
 
 ```bash
-python main_telegram.py
+python ner_talis_game_project/main_telegram.py
 ```
 
 ## Запуск только VK
 
 ```bash
-python main_vk.py
+python ner_talis_game_project/main_vk.py
 ```
 
 Для VK нужно включить сообщения сообщества и Long Poll API в настройках сообщества.
@@ -160,13 +164,13 @@ data/import_seed.json
 Импортировать стартовые данные:
 
 ```bash
-python tools/import_seed.py
+python ner_talis_game_project/tools/import_seed.py
 ```
 
 Перезаписать `players.json` пустой схемой:
 
 ```bash
-python tools/import_seed.py --overwrite-players
+python ner_talis_game_project/tools/import_seed.py --overwrite-players
 ```
 
 ## Документация
@@ -181,7 +185,7 @@ docs/IMPORT_GUIDE.md
 
 ```bash
 python -m compileall -q .
-python tests/smoke_test.py
+python -m unittest discover -s ner_talis_game_project/tests
 ```
 
 Smoke-test проверяет создание персонажа, уникальность имени, привязку Telegram/VK к одному `game_id`, вход в город Селдар и то, что общий запуск вызывает оба бота.

@@ -21,47 +21,33 @@ data/players.json
 ## Папки
 
 ```text
-ner_talis_game_project/
-├── main.py                         # Общий запуск Telegram + VK
-├── main_telegram.py                # Запуск только Telegram-бота
-├── main_vk.py                      # Запуск только VK-бота
-├── requirements.txt                # Python-зависимости
+ner_talis/
+├── Dockerfile                      # Контейнер для Timeweb App Platform
+├── timeweb_start.py                # Health endpoint + запуск ботов
 ├── .env.example                    # Пример переменных окружения
-│
 ├── data/
 │   ├── races.json                  # Расы и стартовые характеристики
 │   ├── seldar_city.json            # Техническая карта города Селдар
 │   ├── import_seed.json            # Единый файл импорта стартовых данных
 │   └── players.empty.json          # Пустой шаблон хранилища игроков
 │
-├── handlers/
-│   ├── registration.py             # Telegram-регистрация и команды профиля/связки
-│   ├── vk_registration.py          # VK-регистрация, команды и городские действия
-│   └── city.py                     # Telegram-городские действия
-│
-├── keyboards/
-│   ├── reply_keyboards.py          # Reply-клавиатуры Telegram
-│   └── vk_keyboards.py             # Клавиатуры VK
-│
-├── services/
-│   ├── registration_service.py     # Общая логика имени, рас и создания персонажа
-│   └── city_service.py             # Общая логика города Селдар
-│
-├── storage/
-│   └── json_storage.py             # JSON-хранилище, game_id, /link, /connect, site-сессии
-│
-├── texts/
-│   └── registration_texts.py       # Тексты регистрации и вступления
-│
-├── tools/
-│   └── import_seed.py              # Импорт стартовых данных из import_seed.json
-│
-├── tests/
-│   └── smoke_test.py               # Проверка регистрации, связки платформ, города и общего запуска
-│
-└── docs/
-    ├── PROJECT_STRUCTURE.md        # Этот файл
-    └── IMPORT_GUIDE.md             # Как пользоваться файлом импорта
+└── ner_talis_game_project/
+    ├── main.py                     # Общий запуск Telegram + VK
+    ├── main_telegram.py            # Запуск только Telegram-бота
+    ├── main_vk.py                  # Запуск только VK-бота
+    ├── requirements.txt            # Python-зависимости
+    ├── handlers/
+    ├── keyboards/
+    ├── services/
+    ├── storage/
+    ├── texts/
+    ├── tools/
+    │   └── import_seed.py          # Импорт стартовых данных из import_seed.json
+    ├── tests/
+    │   └── test_smoke.py           # Проверка регистрации, связки платформ, города и общего запуска
+    └── docs/
+        ├── PROJECT_STRUCTURE.md    # Этот файл
+        └── IMPORT_GUIDE.md         # Как пользоваться файлом импорта
 ```
 
 ## Основной игровой путь
