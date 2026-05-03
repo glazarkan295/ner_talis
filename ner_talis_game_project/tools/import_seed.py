@@ -4,7 +4,7 @@
 проекта. Сейчас он импортирует расы, город Селдар и пустую схему игроков.
 
 Запуск:
-    python tools/import_seed.py
+    python ner_talis_game_project/tools/import_seed.py
 
 По умолчанию существующий data/players.json не перезаписывается.
 """
@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "data"
-DEFAULT_IMPORT_FILE = DATA_DIR / "import_seed.json"
+PROJECT_DATA_DIR = PROJECT_ROOT / "data"
+DEFAULT_IMPORT_FILE = PROJECT_DATA_DIR / "import_seed.json"
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -45,16 +45,16 @@ def import_seed(import_file: Path, overwrite_players: bool = False) -> None:
     if not isinstance(storage_schema, dict):
         raise ValueError("В файле импорта отсутствует storage_schema.")
 
-    write_json(DATA_DIR / "races.json", races)
-    write_json(DATA_DIR / "seldar_city.json", seldar)
+    write_json(PROJECT_DATA_DIR / "races.json", races)
+    write_json(PROJECT_DATA_DIR / "seldar_city.json", seldar)
 
-    players_path = DATA_DIR / "players.json"
+    players_path = PROJECT_DATA_DIR / "players.json"
     if overwrite_players or not players_path.exists():
         write_json(players_path, storage_schema)
 
     print("Импорт завершён:")
-    print(f"- {DATA_DIR / 'races.json'}")
-    print(f"- {DATA_DIR / 'seldar_city.json'}")
+    print(f"- {PROJECT_DATA_DIR / 'races.json'}")
+    print(f"- {PROJECT_DATA_DIR / 'seldar_city.json'}")
     if overwrite_players:
         print(f"- {players_path} перезаписан")
     else:

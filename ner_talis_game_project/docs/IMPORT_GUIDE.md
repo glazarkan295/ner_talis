@@ -21,7 +21,7 @@ data/import_seed.json
 ## Быстрый импорт
 
 ```bash
-python tools/import_seed.py
+python ner_talis_game_project/tools/import_seed.py
 ```
 
 Скрипт обновит:
@@ -38,13 +38,13 @@ data/seldar_city.json
 Только для тестов или нового проекта:
 
 ```bash
-python tools/import_seed.py --overwrite-players
+python ner_talis_game_project/tools/import_seed.py --overwrite-players
 ```
 
 ## Импорт из другого файла
 
 ```bash
-python tools/import_seed.py --file путь/к/файлу.json
+python ner_talis_game_project/tools/import_seed.py --file путь/к/файлу.json
 ```
 
 ## Отдельный файл для передачи

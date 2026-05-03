@@ -1,10 +1,8 @@
 import logging
 import os
 
-from dotenv import load_dotenv
-
 from handlers.vk_registration import VkRegistrationBot
-from project_paths import project_path, resolve_project_path
+from project_paths import load_project_env, resolve_project_path
 
 
 logging.basicConfig(
@@ -14,7 +12,7 @@ logging.basicConfig(
 
 
 def main() -> None:
-    load_dotenv(project_path(".env"))
+    load_project_env()
 
     token = os.getenv("VK_GROUP_TOKEN")
     group_id = os.getenv("VK_GROUP_ID")

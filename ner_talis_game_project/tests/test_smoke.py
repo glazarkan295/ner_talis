@@ -33,7 +33,7 @@ class FakeVkBot:
         self.events.append("vk_run")
 
 
-class RegistrationSmokeTest(unittest.TestCase):
+class GameSmokeTest(unittest.TestCase):
     def test_name_validation(self):
         ok, name = validate_name("  Арден   Тир  ")
         self.assertTrue(ok)

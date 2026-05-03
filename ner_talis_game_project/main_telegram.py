@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 
-from dotenv import load_dotenv
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -31,7 +30,7 @@ from handlers.registration import (
     show_world_short,
     start_command,
 )
-from project_paths import project_path, resolve_project_path
+from project_paths import load_project_env, resolve_project_path
 from storage.json_storage import JsonStorage
 
 
@@ -42,7 +41,7 @@ logging.basicConfig(
 
 
 def build_application() -> Application:
-    load_dotenv(project_path(".env"))
+    load_project_env()
     token = os.getenv("TELEGRAM_BOT_TOKEN")
 
     if not token:
