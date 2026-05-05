@@ -95,16 +95,43 @@ class GameSmokeTest(unittest.TestCase):
             "TELEGRAM_BOT_TOKEN": "telegram-test-token",
             "VK_GROUP_TOKEN": "vk-test-token",
             "VK_GROUP_ID": "123456",
+            "BOT_MODE": "both",
             "PLAYERS_STORAGE_PATH": "data/players.json",
         }
 
         with patch.dict(os.environ, env, clear=False), \
+             patch.object(combined_main, "load_project_env", lambda: None), \
              patch.object(combined_main, "build_application", fake_build_application), \
              patch.object(combined_main, "VkRegistrationBot", fake_vk_constructor):
             combined_main.main()
 
         self.assertIn("vk_run", events)
         self.assertIn("telegram_run_polling", events)
+
+    def test_main_can_start_only_telegram(self):
+        import main as combined_main
+
+        events: list[str] = []
+
+        def fake_build_application():
+            return FakeTelegramApplication(events)
+
+        def fail_if_vk_thread_starts():
+            raise AssertionError("VK thread should not start in telegram mode")
+
+        env = {
+            "TELEGRAM_BOT_TOKEN": "telegram-test-token",
+            "BOT_MODE": "telegram",
+            "PLAYERS_STORAGE_PATH": "data/players.json",
+        }
+
+        with patch.dict(os.environ, env, clear=True), \
+             patch.object(combined_main, "load_project_env", lambda: None), \
+             patch.object(combined_main, "build_application", fake_build_application), \
+             patch.object(combined_main, "start_vk_thread", fail_if_vk_thread_starts):
+            combined_main.main()
+
+        self.assertEqual(events, ["telegram_run_polling"])
 
 
 if __name__ == "__main__":

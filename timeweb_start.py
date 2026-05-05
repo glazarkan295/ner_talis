@@ -70,11 +70,35 @@ def load_env_file_if_possible() -> None:
             load_dotenv(env_path, override=False)
 
 
-def start_health_server() -> None:
-    port = int(os.getenv("PORT", "8080"))
-    server = ThreadingHTTPServer(("0.0.0.0", port), HealthHandler)
-    logger.info("Health server started on 0.0.0.0:%s", port)
+def get_port() -> int:
+    raw_port = os.getenv("PORT", "8080")
+    try:
+        return int(raw_port)
+    except ValueError as exc:
+        raise RuntimeError(f"PORT должен быть целым числом, получено: {raw_port!r}") from exc
+
+
+def build_health_server() -> ThreadingHTTPServer:
+    port = get_port()
+    return ThreadingHTTPServer(("0.0.0.0", port), HealthHandler)
+
+
+def serve_health(server: ThreadingHTTPServer) -> None:
+    host, port = server.server_address
+    logger.info("Health server started on %s:%s", host, port)
     server.serve_forever()
+
+
+def start_health_server() -> ThreadingHTTPServer:
+    server = build_health_server()
+    health_thread = threading.Thread(
+        target=serve_health,
+        args=(server,),
+        name="NerTalisHealthServer",
+        daemon=True,
+    )
+    health_thread.start()
+    return server
 
 
 def run_existing_main() -> None:
@@ -98,9 +122,7 @@ def run_existing_main() -> None:
 def main() -> None:
     ensure_import_paths()
     load_env_file_if_possible()
-
-    health_thread = threading.Thread(target=start_health_server, daemon=True)
-    health_thread.start()
+    start_health_server()
 
     run_existing_main()
 

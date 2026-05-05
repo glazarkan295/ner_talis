@@ -90,10 +90,13 @@ python ner_talis_game_project/main_vk.py
 TELEGRAM_BOT_TOKEN=...
 VK_GROUP_TOKEN=...
 VK_GROUP_ID=...
+BOT_MODE=both
 SITE_PROFILE_BASE_URL=https://example.com/profile
 SITE_PAVILION_URL=https://example.com/pavilion
 PLAYERS_STORAGE_PATH=data/players.json
 ```
+
+`BOT_MODE` поддерживает значения `both`, `telegram`, `vk`. По умолчанию запускаются оба бота.
 
 ## Единый ID
 
