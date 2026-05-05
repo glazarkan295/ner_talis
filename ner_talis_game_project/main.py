@@ -78,7 +78,7 @@ def run_vk_bot() -> None:
         build_vk_bot().run()
     except Exception:
         logger.error("VK bot stopped because of an error:\n%s", traceback.format_exc())
-        os._exit(1)
+        raise
 
 
 def start_vk_thread() -> threading.Thread:

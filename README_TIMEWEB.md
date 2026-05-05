@@ -29,6 +29,7 @@ ner_talis/
 - `Dockerfile` собирает Python 3.12 контейнер.
 - `Dockerfile` содержит `HEALTHCHECK`, который проверяет `/health` через Python без `curl`.
 - `timeweb_start.py` поднимает маленький HTTP-сервер на `PORT=8080` для проверки контейнера и запускает `ner_talis_game_project/main.py`.
+- `/health` всегда проверяет, что контейнер жив и слушает порт. `/ready` показывает состояние ботов и вернёт `503`, если бот упал из-за токена или другой ошибки.
 - `.dockerignore` не отправляет в Docker лишние файлы, `.env`, кэш Python и локальную базу игроков.
 - `.env.example` хранит шаблон переменных без реальных токенов.
 
@@ -67,6 +68,7 @@ docker run --rm -p 8080:8080 --env-file ner_talis_game_project/.env ner-talis-bo
 
 ```bash
 curl http://localhost:8080/health
+curl http://localhost:8080/ready
 ```
 
 Должен вернуться ответ:
