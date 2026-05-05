@@ -1,7 +1,9 @@
+import logging
 import os
 import sys
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -132,6 +134,66 @@ class GameSmokeTest(unittest.TestCase):
             combined_main.main()
 
         self.assertEqual(events, ["telegram_run_polling"])
+
+    def test_env_values_with_names_are_normalized(self):
+        import main as combined_main
+
+        env = {
+            "TELEGRAM_BOT_TOKEN": "TELEGRAM_BOT_TOKEN=telegram-test-token",
+            "VK_GROUP_ID": "VK_GROUP_ID=123456",
+        }
+
+        with patch.dict(os.environ, env, clear=True):
+            self.assertEqual(
+                combined_main.require_env("TELEGRAM_BOT_TOKEN"),
+                "telegram-test-token",
+            )
+            self.assertEqual(combined_main.require_int_env("VK_GROUP_ID"), 123456)
+
+    def test_sensitive_values_are_redacted(self):
+        import main as combined_main
+
+        env = {
+            "TELEGRAM_BOT_TOKEN": "123456:secret-token-value",
+        }
+        text = (
+            "telegram.error.InvalidToken: "
+            "The token `TELEGRAM_BOT_TOKEN=123456:secret-token-value` was rejected. "
+            "POST https://api.telegram.org/bot123456:secret-token-value/getUpdates"
+        )
+
+        with patch.dict(os.environ, env, clear=True):
+            redacted = combined_main.redact_sensitive_text(text)
+
+        self.assertNotIn("secret-token-value", redacted)
+        self.assertIn("<REDACTED>", redacted)
+
+    def test_sensitive_values_are_redacted_from_exception_logs(self):
+        import main as combined_main
+
+        log_stream = StringIO()
+        handler = logging.StreamHandler(log_stream)
+        handler.setFormatter(combined_main.RedactingFormatter("%(message)s"))
+
+        test_logger = logging.getLogger("ner_talis_redaction_test")
+        original_handlers = list(test_logger.handlers)
+        original_propagate = test_logger.propagate
+        test_logger.handlers = [handler]
+        test_logger.propagate = False
+
+        try:
+            with patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "123456:secret-token-value"}, clear=True):
+                try:
+                    raise RuntimeError("The token `123456:secret-token-value` was rejected")
+                except RuntimeError:
+                    test_logger.exception("Application crashed")
+
+            logs = log_stream.getvalue()
+            self.assertNotIn("secret-token-value", logs)
+            self.assertIn("<REDACTED>", logs)
+        finally:
+            test_logger.handlers = original_handlers
+            test_logger.propagate = original_propagate
 
 
 if __name__ == "__main__":

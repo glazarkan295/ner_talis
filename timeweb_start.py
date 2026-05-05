@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import runpy
 import sys
 import threading
@@ -17,11 +18,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 
+LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    format=LOG_FORMAT,
 )
 logger = logging.getLogger("timeweb_start")
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 BASE_DIR = Path(__file__).resolve().parent
 PACKAGE_DIR = BASE_DIR / "ner_talis_game_project"
@@ -29,6 +34,45 @@ APP_STATE = {
     "status": "starting",
     "error": "",
 }
+SENSITIVE_ENV_NAMES = ("TELEGRAM_BOT_TOKEN", "VK_GROUP_TOKEN")
+
+
+def redact_sensitive_text(text: str) -> str:
+    redacted = re.sub(r"bot\d+:[A-Za-z0-9_-]+", "bot<REDACTED>", text)
+    redacted = re.sub(
+        r"(TELEGRAM_BOT_TOKEN|VK_GROUP_TOKEN)=[^\s`'\"]+",
+        r"\1=<REDACTED>",
+        redacted,
+    )
+
+    for name in SENSITIVE_ENV_NAMES:
+        value = os.getenv(name, "").strip()
+        if value.startswith(f"{name}="):
+            value = value.split("=", 1)[1].strip()
+        if len(value) >= 8:
+            redacted = redacted.replace(value, "<REDACTED>")
+
+    return redacted
+
+
+class RedactingFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        return redact_sensitive_text(super().format(record))
+
+
+def configure_safe_logging() -> None:
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers:
+        formatter = handler.formatter
+        if getattr(formatter, "_redacts_sensitive_text", False):
+            continue
+
+        safe_formatter = RedactingFormatter(
+            fmt=getattr(formatter, "_fmt", LOG_FORMAT),
+            datefmt=getattr(formatter, "datefmt", None),
+        )
+        safe_formatter._redacts_sensitive_text = True
+        handler.setFormatter(safe_formatter)
 
 
 def get_app_dir() -> Path:
@@ -140,13 +184,14 @@ def run_existing_main() -> None:
         APP_STATE["status"] = "stopped"
     except Exception:
         APP_STATE["status"] = "error"
-        APP_STATE["error"] = traceback.format_exc()
-        logger.exception("Application crashed")
+        APP_STATE["error"] = redact_sensitive_text(traceback.format_exc())
+        logger.error("Application crashed\n%s", APP_STATE["error"])
 
 
 def main() -> None:
     ensure_import_paths()
     load_env_file_if_possible()
+    configure_safe_logging()
     start_health_server()
 
     run_existing_main()
