@@ -98,10 +98,7 @@ def build_application() -> Application:
 
 def ensure_event_loop() -> asyncio.AbstractEventLoop:
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            raise RuntimeError
-        return loop
+        return asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -109,8 +106,13 @@ def ensure_event_loop() -> asyncio.AbstractEventLoop:
 
 
 def run_application(application: Application) -> None:
-    ensure_event_loop()
-    application.run_polling(allowed_updates=None)
+    loop = ensure_event_loop()
+    try:
+        application.run_polling(allowed_updates=None)
+    finally:
+        if not loop.is_running() and not loop.is_closed():
+            loop.close()
+            asyncio.set_event_loop(None)
 
 
 def main() -> None:
