@@ -56,6 +56,8 @@ SITE_PAVILION_URL=https://your-domain.ru/pavilion
 
 Раздельных режимов запуска больше нет: `main.py` всегда запускает Telegram и VK вместе, поэтому нужны все три переменные `TELEGRAM_BOT_TOKEN`, `VK_GROUP_TOKEN`, `VK_GROUP_ID`.
 
+Если Timeweb нестабильно достучаться до Telegram API, можно оставить стандартные значения таймаутов из `.env.example`: `TELEGRAM_GET_UPDATES_READ_TIMEOUT=60`, `TELEGRAM_POLL_TIMEOUT=30`, `TELEGRAM_BOOTSTRAP_RETRIES=-1`.
+
 Если токен попал в логи, перевыпусти его через BotFather и обнови переменную окружения в Timeweb.
 
 По умолчанию используется SQLite-хранилище `data/players.sqlite3`. Старый `data/players.json` автоматически переносится в SQLite при первом запуске.

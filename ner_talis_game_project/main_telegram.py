@@ -2,9 +2,11 @@ import asyncio
 import logging
 import os
 
+from telegram.error import TimedOut
 from telegram.ext import (
     Application,
     CommandHandler,
+    ContextTypes,
     ConversationHandler,
     MessageHandler,
     filters,
@@ -38,6 +40,45 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
+logger = logging.getLogger(__name__)
+
+
+def get_float_env(name: str, default: float) -> float:
+    raw_value = os.getenv(name)
+    if not raw_value:
+        return default
+
+    value = raw_value.strip()
+    prefix = f"{name}="
+    if value.startswith(prefix):
+        value = value[len(prefix):].strip()
+
+    try:
+        return float(value)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Переменная окружения {name} должна быть числом, получено: {raw_value!r}"
+        ) from exc
+
+
+def get_int_env(name: str, default: int) -> int:
+    return int(get_float_env(name, float(default)))
+
+
+async def log_telegram_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    error = context.error
+    if isinstance(error, TimedOut):
+        logger.warning("Telegram API request timed out: %s", error)
+        return
+
+    if error is None:
+        logger.error("Unhandled Telegram error without exception context")
+        return
+
+    logger.error(
+        "Unhandled Telegram error",
+        exc_info=(type(error), error, error.__traceback__),
+    )
 
 
 def build_application() -> Application:
@@ -47,10 +88,31 @@ def build_application() -> Application:
     if not token:
         raise RuntimeError("Не указан TELEGRAM_BOT_TOKEN в .env")
 
-    application = Application.builder().token(token).build()
+    application = (
+        Application.builder()
+        .token(token)
+        .connect_timeout(get_float_env("TELEGRAM_CONNECT_TIMEOUT", 30.0))
+        .read_timeout(get_float_env("TELEGRAM_READ_TIMEOUT", 30.0))
+        .write_timeout(get_float_env("TELEGRAM_WRITE_TIMEOUT", 30.0))
+        .pool_timeout(get_float_env("TELEGRAM_POOL_TIMEOUT", 30.0))
+        .get_updates_connect_timeout(
+            get_float_env("TELEGRAM_GET_UPDATES_CONNECT_TIMEOUT", 30.0)
+        )
+        .get_updates_read_timeout(
+            get_float_env("TELEGRAM_GET_UPDATES_READ_TIMEOUT", 60.0)
+        )
+        .get_updates_write_timeout(
+            get_float_env("TELEGRAM_GET_UPDATES_WRITE_TIMEOUT", 30.0)
+        )
+        .get_updates_pool_timeout(
+            get_float_env("TELEGRAM_GET_UPDATES_POOL_TIMEOUT", 30.0)
+        )
+        .build()
+    )
     application.bot_data["storage"] = create_storage(
         resolve_project_path(os.getenv("PLAYERS_STORAGE_PATH", "data/players.json"))
     )
+    application.add_error_handler(log_telegram_error)
 
     registration_conversation = ConversationHandler(
         entry_points=[CommandHandler("start", start_command)],
@@ -108,7 +170,15 @@ def ensure_event_loop() -> asyncio.AbstractEventLoop:
 def run_application(application: Application) -> None:
     loop = ensure_event_loop()
     try:
-        application.run_polling(allowed_updates=None)
+        application.run_polling(
+            allowed_updates=None,
+            bootstrap_retries=get_int_env("TELEGRAM_BOOTSTRAP_RETRIES", -1),
+            timeout=get_int_env("TELEGRAM_POLL_TIMEOUT", 30),
+            connect_timeout=get_float_env("TELEGRAM_GET_UPDATES_CONNECT_TIMEOUT", 30.0),
+            read_timeout=get_float_env("TELEGRAM_GET_UPDATES_READ_TIMEOUT", 60.0),
+            write_timeout=get_float_env("TELEGRAM_GET_UPDATES_WRITE_TIMEOUT", 30.0),
+            pool_timeout=get_float_env("TELEGRAM_GET_UPDATES_POOL_TIMEOUT", 30.0),
+        )
     finally:
         if not loop.is_running() and not loop.is_closed():
             loop.close()
