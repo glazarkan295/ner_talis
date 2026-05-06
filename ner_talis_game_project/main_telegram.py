@@ -31,7 +31,7 @@ from handlers.registration import (
     start_command,
 )
 from project_paths import load_project_env, resolve_project_path
-from storage.json_storage import JsonStorage
+from storage.storage_factory import create_storage
 
 
 logging.basicConfig(
@@ -48,8 +48,8 @@ def build_application() -> Application:
         raise RuntimeError("Не указан TELEGRAM_BOT_TOKEN в .env")
 
     application = Application.builder().token(token).build()
-    application.bot_data["storage"] = JsonStorage(
-        str(resolve_project_path(os.getenv("PLAYERS_STORAGE_PATH", "data/players.json")))
+    application.bot_data["storage"] = create_storage(
+        resolve_project_path(os.getenv("PLAYERS_STORAGE_PATH", "data/players.json"))
     )
 
     registration_conversation = ConversationHandler(
@@ -115,10 +115,5 @@ def run_application(application: Application) -> None:
             asyncio.set_event_loop(None)
 
 
-def main() -> None:
-    application = build_application()
-    run_application(application)
-
-
-if __name__ == "__main__":
-    main()
+# Этот модуль используется только как внутренний сборщик Telegram-приложения.
+# Единая точка запуска проекта: ner_talis_game_project/main.py

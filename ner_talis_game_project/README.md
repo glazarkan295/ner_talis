@@ -25,6 +25,8 @@
 - переходы по кварталам Селдара
 - торговый павильон через временную ссылку на сайт
 - файл импорта стартовых данных
+- постоянное SQLite-хранилище игроков
+- автоматический перенос старого JSON-хранилища в SQLite
 
 ## Быстрый запуск
 
@@ -62,25 +64,13 @@ cp .env.example .env
 
 Заполни токены Telegram и VK. Если запускаешь общий entrypoint, нужны оба токена и ID сообщества VK.
 
-## Запуск обоих ботов одновременно
+## Единый запуск ботов
 
 ```bash
 python ner_talis_game_project/main.py
 ```
 
 `main.py` запускает VK-бота в отдельном потоке, а Telegram-бота — в основном потоке. Для этого в `.env` должны быть заполнены все три значения: `TELEGRAM_BOT_TOKEN`, `VK_GROUP_TOKEN`, `VK_GROUP_ID`.
-
-## Запуск только Telegram
-
-```bash
-python ner_talis_game_project/main_telegram.py
-```
-
-## Запуск только VK
-
-```bash
-python ner_talis_game_project/main_vk.py
-```
 
 Для VK нужно включить сообщения сообщества и Long Poll API в настройках сообщества.
 
@@ -90,13 +80,16 @@ python ner_talis_game_project/main_vk.py
 TELEGRAM_BOT_TOKEN=...
 VK_GROUP_TOKEN=...
 VK_GROUP_ID=...
-BOT_MODE=both
 SITE_PROFILE_BASE_URL=https://example.com/profile
 SITE_PAVILION_URL=https://example.com/pavilion
+STORAGE_BACKEND=sqlite
+SQLITE_STORAGE_PATH=data/players.sqlite3
 PLAYERS_STORAGE_PATH=data/players.json
 ```
 
-`BOT_MODE` поддерживает значения `both`, `telegram`, `vk`. По умолчанию запускаются оба бота.
+Раздельных режимов больше нет: `main.py` всегда запускает Telegram и VK вместе.
+
+`STORAGE_BACKEND=sqlite` включает постоянное SQLite-хранилище. `PLAYERS_STORAGE_PATH` оставлен для совместимости и автопереноса старых игроков из JSON.
 
 ## Единый ID
 
@@ -170,7 +163,7 @@ data/import_seed.json
 python ner_talis_game_project/tools/import_seed.py
 ```
 
-Перезаписать `players.json` пустой схемой:
+Перезаписать совместимое JSON-хранилище пустой схемой:
 
 ```bash
 python ner_talis_game_project/tools/import_seed.py --overwrite-players
@@ -191,4 +184,4 @@ python -m compileall -q .
 python -m unittest discover -s ner_talis_game_project/tests
 ```
 
-Smoke-test проверяет создание персонажа, уникальность имени, привязку Telegram/VK к одному `game_id`, вход в город Селдар и то, что общий запуск вызывает оба бота.
+Smoke-test проверяет создание персонажа, уникальность имени, привязку Telegram/VK к одному `game_id`, сохранение в SQLite между перезапусками, вход в город Селдар и то, что общий запуск вызывает оба бота.

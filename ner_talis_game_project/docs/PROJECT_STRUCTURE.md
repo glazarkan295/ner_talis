@@ -11,9 +11,9 @@ handlers платформы
     ↓
 services общего ядра
     ↓
-storage/json_storage.py
+storage/storage_factory.py
     ↓
-data/players.json
+SQLite по умолчанию или JSON для совместимости
 ```
 
 Главный идентификатор игрока — `game_id`. Telegram ID и VK ID являются только привязками к одному персонажу.
@@ -33,13 +33,16 @@ ner_talis/
 │
 └── ner_talis_game_project/
     ├── main.py                     # Общий запуск Telegram + VK
-    ├── main_telegram.py            # Запуск только Telegram-бота
-    ├── main_vk.py                  # Запуск только VK-бота
+    ├── main_telegram.py            # Внутренний сборщик Telegram-приложения
     ├── requirements.txt            # Python-зависимости
     ├── handlers/
     ├── keyboards/
     ├── services/
     ├── storage/
+    │   ├── base.py                 # Общий интерфейс хранилища
+    │   ├── storage_factory.py      # Выбор SQLite/JSON по env
+    │   ├── sqlite_storage.py       # Основное хранилище игроков
+    │   └── json_storage.py         # Совместимость и миграция старых данных
     ├── texts/
     ├── tools/
     │   └── import_seed.py          # Импорт стартовых данных из import_seed.json

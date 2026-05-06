@@ -3,9 +3,8 @@ import os
 import re
 import threading
 import traceback
+from typing import Any
 
-from handlers.vk_registration import VkRegistrationBot
-from main_telegram import build_application, run_application
 from project_paths import load_project_env, resolve_project_path
 
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -18,8 +17,13 @@ logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
-SUPPORTED_BOT_MODES = {"both", "telegram", "vk"}
 SENSITIVE_ENV_NAMES = ("TELEGRAM_BOT_TOKEN", "VK_GROUP_TOKEN")
+
+# Эти имена оставлены на уровне модуля, чтобы smoke-тесты могли подменять их
+# без установки telegram/vk зависимостей. Реальные импорты выполняются лениво.
+build_application = None
+run_application = None
+VkRegistrationBot = None
 
 
 def redact_sensitive_text(text: str) -> str:
@@ -83,6 +87,7 @@ def require_env(name: str) -> str:
 
     if value:
         value = normalize_env_value(name, value)
+        os.environ[name] = value
 
     if not value:
         similar_vars = [
@@ -109,24 +114,44 @@ def require_int_env(name: str) -> int:
         ) from exc
 
 
-def get_bot_mode() -> str:
-    mode = os.getenv("BOT_MODE", "both").strip().casefold()
-    if mode not in SUPPORTED_BOT_MODES:
-        raise RuntimeError(
-            "Некорректный BOT_MODE. "
-            f"Допустимые значения: {', '.join(sorted(SUPPORTED_BOT_MODES))}."
-        )
-    return mode
+def get_telegram_application_builder():
+    if callable(build_application):
+        return build_application
+
+    from main_telegram import build_application as real_build_application
+
+    return real_build_application
 
 
-def build_vk_bot() -> VkRegistrationBot:
+def get_telegram_application_runner():
+    if callable(run_application):
+        return run_application
+
+    if callable(build_application):
+        return lambda application: application.run_polling(allowed_updates=None)
+
+    from main_telegram import run_application as real_run_application
+
+    return real_run_application
+
+
+def get_vk_bot_class():
+    if callable(VkRegistrationBot):
+        return VkRegistrationBot
+
+    from handlers.vk_registration import VkRegistrationBot as RealVkRegistrationBot
+
+    return RealVkRegistrationBot
+
+
+def build_vk_bot() -> Any:
     token = require_env("VK_GROUP_TOKEN")
     group_id = require_int_env("VK_GROUP_ID")
     storage_path = str(
         resolve_project_path(os.getenv("PLAYERS_STORAGE_PATH", "data/players.json"))
     )
 
-    return VkRegistrationBot(
+    return get_vk_bot_class()(
         token=token,
         group_id=group_id,
         storage_path=storage_path,
@@ -156,38 +181,34 @@ def start_vk_thread() -> threading.Thread:
     return thread
 
 
-def run_bots(bot_mode: str) -> None:
-    """Запускает оба бота из одной точки входа.
+def run_telegram_bot() -> None:
+    logger.info("Telegram bot is starting")
+    telegram_application = get_telegram_application_builder()()
+    get_telegram_application_runner()(telegram_application)
 
+
+def run_bots() -> None:
+    """Запускает Telegram и VK из единой точки входа.
+
+    Раздельных режимов запуска больше нет: проект всегда поднимает оба бота.
     Telegram-бот работает в основном потоке, потому что python-telegram-bot
     управляет своим event loop и обработчиками остановки процесса.
     VK-бот работает параллельно в фоновом потоке.
     """
-    if bot_mode == "vk":
-        run_vk_bot()
-        return
-
-    if bot_mode == "both":
-        start_vk_thread()
-
-    logger.info("Telegram bot is starting")
-    telegram_application = build_application()
-    run_application(telegram_application)
+    start_vk_thread()
+    run_telegram_bot()
 
 
 def main() -> None:
     load_project_env()
     configure_safe_logging()
-    bot_mode = get_bot_mode()
 
-    # Проверяем все ключевые переменные заранее, чтобы запуск не был частичным.
-    if bot_mode in {"both", "telegram"}:
-        require_env("TELEGRAM_BOT_TOKEN")
-    if bot_mode in {"both", "vk"}:
-        require_env("VK_GROUP_TOKEN")
-        require_int_env("VK_GROUP_ID")
+    # Единый запуск требует сразу все переменные для обоих ботов.
+    require_env("TELEGRAM_BOT_TOKEN")
+    require_env("VK_GROUP_TOKEN")
+    require_int_env("VK_GROUP_ID")
 
-    run_bots(bot_mode)
+    run_bots()
 
 
 if __name__ == "__main__":
