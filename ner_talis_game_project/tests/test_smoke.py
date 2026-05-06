@@ -179,6 +179,25 @@ class GameSmokeTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             normalize_backend("postgres")
 
+    def test_telegram_timeout_env_values_are_normalized(self):
+        import main_telegram
+
+        env = {
+            "TELEGRAM_GET_UPDATES_READ_TIMEOUT": "TELEGRAM_GET_UPDATES_READ_TIMEOUT=75",
+            "TELEGRAM_BOOTSTRAP_RETRIES": "-1",
+        }
+
+        with patch.dict(os.environ, env, clear=True):
+            self.assertEqual(
+                main_telegram.get_float_env("TELEGRAM_GET_UPDATES_READ_TIMEOUT", 60.0),
+                75.0,
+            )
+            self.assertEqual(main_telegram.get_int_env("TELEGRAM_BOOTSTRAP_RETRIES", 0), -1)
+
+        with patch.dict(os.environ, {"TELEGRAM_POLL_TIMEOUT": "bad"}, clear=True):
+            with self.assertRaises(RuntimeError):
+                main_telegram.get_int_env("TELEGRAM_POLL_TIMEOUT", 30)
+
     def test_sensitive_values_are_redacted(self):
         import main as combined_main
 
