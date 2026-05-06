@@ -26,7 +26,8 @@ from services.registration_service import (
     load_races,
     validate_name,
 )
-from storage.json_storage import JsonStorage
+from storage.base import PlayerStorage
+from storage.storage_factory import create_storage
 from texts.registration_texts import (
     ASK_NAME_TEXT,
     ASK_RACE_TEXT,
@@ -50,11 +51,17 @@ class VkRegistrationSession:
 
 
 class VkRegistrationBot:
-    def __init__(self, token: str, group_id: int, storage_path: str):
+    def __init__(
+        self,
+        token: str,
+        group_id: int,
+        storage_path: str | None = None,
+        storage: PlayerStorage | None = None,
+    ):
         self.vk_session = vk_api.VkApi(token=token)
         self.vk = self.vk_session.get_api()
         self.longpoll = VkBotLongPoll(self.vk_session, group_id)
-        self.storage = JsonStorage(storage_path)
+        self.storage = storage or create_storage(storage_path or "data/players.json")
         self.sessions: dict[str, VkRegistrationSession] = {}
 
     def run(self) -> None:

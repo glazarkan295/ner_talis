@@ -16,7 +16,7 @@ from services.registration_service import (
     load_races,
     validate_name,
 )
-from storage.json_storage import JsonStorage
+from storage.base import PlayerStorage
 from texts.registration_texts import (
     ASK_NAME_TEXT,
     ASK_RACE_TEXT,
@@ -28,7 +28,7 @@ START_MENU, AWAITING_NAME, AWAITING_RACE, RACE_CARD, RACE_CONFIRM = range(5)
 TELEGRAM_PLATFORM = "telegram"
 
 
-def get_storage(context: ContextTypes.DEFAULT_TYPE) -> JsonStorage:
+def get_storage(context: ContextTypes.DEFAULT_TYPE) -> PlayerStorage:
     return context.bot_data["storage"]
 
 

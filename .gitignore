@@ -15,3 +15,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 data/players.json
+
+data/players.sqlite3
+data/players.sqlite3-*

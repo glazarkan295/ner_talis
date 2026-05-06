@@ -15,11 +15,10 @@ ner_talis/
 └─ ner_talis_game_project/
    ├─ requirements.txt
    ├─ main.py
-   ├─ main_telegram.py
-   ├─ main_vk.py
+   ├─ main_telegram.py        # внутренний модуль Telegram-приложения
    ├─ handlers/
    ├─ services/
-   ├─ storage/
+   ├─ storage/                # SQLite/JSON хранилище игроков
    ├─ keyboards/
    └─ texts/
 ```
@@ -46,19 +45,22 @@ TELEGRAM_BOT_TOKEN=...
 VK_GROUP_TOKEN=...
 VK_GROUP_ID=...
 APP_ENV=production
-BOT_MODE=both
 LOG_LEVEL=INFO
 PORT=8080
+STORAGE_BACKEND=sqlite
+SQLITE_STORAGE_PATH=data/players.sqlite3
 PLAYERS_STORAGE_PATH=data/players.json
 SITE_PROFILE_BASE_URL=https://your-domain.ru/profile
 SITE_PAVILION_URL=https://your-domain.ru/pavilion
 ```
 
-`BOT_MODE` может быть `both`, `telegram` или `vk`. Если запускаешь только Telegram-бота, выставь `BOT_MODE=telegram` и можно не задавать VK-переменные. Для `both` нужны все три токен-переменные.
+Раздельных режимов запуска больше нет: `main.py` всегда запускает Telegram и VK вместе, поэтому нужны все три переменные `TELEGRAM_BOT_TOKEN`, `VK_GROUP_TOKEN`, `VK_GROUP_ID`.
 
 Если токен попал в логи, перевыпусти его через BotFather и обнови переменную окружения в Timeweb.
 
-Важно: JSON-хранилище игроков внутри контейнера подходит для прототипа. При пересоздании контейнера App Platform локальный файл может потеряться. Для продакшена лучше вынести игроков в управляемую БД или другое постоянное хранилище.
+По умолчанию используется SQLite-хранилище `data/players.sqlite3`. Старый `data/players.json` автоматически переносится в SQLite при первом запуске.
+
+Важно: если App Platform пересоздаёт контейнер без постоянного диска, локальный SQLite-файл тоже может потеряться. Для долгого продакшена лучше указать `SQLITE_STORAGE_PATH` на постоянный том или вынести игроков в управляемую БД.
 
 ## Локальная проверка Docker
 

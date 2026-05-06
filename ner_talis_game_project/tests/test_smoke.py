@@ -14,6 +14,8 @@ from unittest.mock import patch
 from services.city_service import apply_city_transition, get_city_response
 from services.registration_service import create_player, load_races, validate_name
 from storage.json_storage import JsonStorage
+from storage.sqlite_storage import SQLiteStorage
+from storage.storage_factory import normalize_backend, normalize_env_value
 
 
 class FakeTelegramApplication:
@@ -82,6 +84,30 @@ class GameSmokeTest(unittest.TestCase):
             self.assertEqual(updated["current_zone"], "seldar_central_square")
             self.assertEqual(updated["energy"], 100)
 
+    def test_sqlite_storage_persists_player_between_instances(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "players.sqlite3"
+            races = load_races("data/races.json")
+
+            storage = SQLiteStorage(str(db_path))
+            game_id = storage.generate_game_id()
+            player = create_player(
+                game_id=game_id,
+                platform="telegram",
+                external_user_id="111",
+                name="Селдарец",
+                race_id="human",
+                races=races,
+            )
+            storage.save_new_player(player, "telegram", "111")
+
+            reopened_storage = SQLiteStorage(str(db_path))
+            loaded = reopened_storage.get_player_by_platform("telegram", "111")
+
+            self.assertIsNotNone(loaded)
+            self.assertEqual(loaded["game_id"], game_id)
+            self.assertEqual(loaded["name"], "Селдарец")
+
     def test_main_starts_both_bots(self):
         import main as combined_main
 
@@ -97,7 +123,6 @@ class GameSmokeTest(unittest.TestCase):
             "TELEGRAM_BOT_TOKEN": "telegram-test-token",
             "VK_GROUP_TOKEN": "vk-test-token",
             "VK_GROUP_ID": "123456",
-            "BOT_MODE": "both",
             "PLAYERS_STORAGE_PATH": "data/players.json",
         }
 
@@ -110,30 +135,20 @@ class GameSmokeTest(unittest.TestCase):
         self.assertIn("vk_run", events)
         self.assertIn("telegram_run_polling", events)
 
-    def test_main_can_start_only_telegram(self):
+    def test_main_requires_vk_settings_for_unified_start(self):
         import main as combined_main
-
-        events: list[str] = []
-
-        def fake_build_application():
-            return FakeTelegramApplication(events)
-
-        def fail_if_vk_thread_starts():
-            raise AssertionError("VK thread should not start in telegram mode")
 
         env = {
             "TELEGRAM_BOT_TOKEN": "telegram-test-token",
-            "BOT_MODE": "telegram",
             "PLAYERS_STORAGE_PATH": "data/players.json",
         }
 
         with patch.dict(os.environ, env, clear=True), \
-             patch.object(combined_main, "load_project_env", lambda: None), \
-             patch.object(combined_main, "build_application", fake_build_application), \
-             patch.object(combined_main, "start_vk_thread", fail_if_vk_thread_starts):
-            combined_main.main()
+             patch.object(combined_main, "load_project_env", lambda: None):
+            with self.assertRaises(RuntimeError) as context:
+                combined_main.main()
 
-        self.assertEqual(events, ["telegram_run_polling"])
+        self.assertIn("VK_GROUP_TOKEN", str(context.exception))
 
     def test_env_values_with_names_are_normalized(self):
         import main as combined_main
@@ -149,6 +164,20 @@ class GameSmokeTest(unittest.TestCase):
                 "telegram-test-token",
             )
             self.assertEqual(combined_main.require_int_env("VK_GROUP_ID"), 123456)
+            self.assertEqual(os.environ["TELEGRAM_BOT_TOKEN"], "telegram-test-token")
+            self.assertEqual(os.environ["VK_GROUP_ID"], "123456")
+
+    def test_storage_backend_is_normalized(self):
+        self.assertEqual(normalize_backend(None), "sqlite")
+        self.assertEqual(normalize_backend(" 'JSON' "), "json")
+        self.assertEqual(normalize_backend("STORAGE_BACKEND=sqlite"), "sqlite")
+        self.assertEqual(
+            normalize_env_value("SQLITE_STORAGE_PATH", "SQLITE_STORAGE_PATH=data/db.sqlite3"),
+            "data/db.sqlite3",
+        )
+
+        with self.assertRaises(RuntimeError):
+            normalize_backend("postgres")
 
     def test_sensitive_values_are_redacted(self):
         import main as combined_main

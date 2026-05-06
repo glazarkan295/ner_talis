@@ -10,7 +10,7 @@ from services.city_service import (
     build_response_text,
     get_city_response,
 )
-from storage.json_storage import JsonStorage
+from storage.base import PlayerStorage
 
 TELEGRAM_PLATFORM = "telegram"
 CITY_BUTTON_PATTERN = "^(" + "|".join(re.escape(button) for button in CITY_BUTTONS) + ")$"
@@ -33,7 +33,7 @@ async def send_city_response(
     context: ContextTypes.DEFAULT_TYPE,
     action: str,
 ) -> None:
-    storage: JsonStorage = context.bot_data["storage"]
+    storage: PlayerStorage = context.bot_data["storage"]
     external_user_id = get_external_user_id(update)
     player = storage.get_player_by_platform(TELEGRAM_PLATFORM, external_user_id)
 
