@@ -181,10 +181,17 @@ def start_vk_thread() -> threading.Thread:
     return thread
 
 
-def run_telegram_bot() -> None:
+def build_telegram_bot_application() -> Any:
     logger.info("Telegram bot is starting")
-    telegram_application = get_telegram_application_builder()()
+    return get_telegram_application_builder()()
+
+
+def run_telegram_application(telegram_application: Any) -> None:
     get_telegram_application_runner()(telegram_application)
+
+
+def run_telegram_bot() -> None:
+    run_telegram_application(build_telegram_bot_application())
 
 
 def run_bots() -> None:
@@ -195,8 +202,9 @@ def run_bots() -> None:
     управляет своим event loop и обработчиками остановки процесса.
     VK-бот работает параллельно в фоновом потоке.
     """
+    telegram_application = build_telegram_bot_application()
     start_vk_thread()
-    run_telegram_bot()
+    run_telegram_application(telegram_application)
 
 
 def main() -> None:

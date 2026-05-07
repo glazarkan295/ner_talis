@@ -119,6 +119,10 @@ class GameSmokeTest(unittest.TestCase):
         def fake_vk_constructor(token: str, group_id: int, storage_path: str):
             return FakeVkBot(token, group_id, storage_path, events)
 
+        def fake_start_vk_thread():
+            combined_main.run_vk_bot()
+            return None
+
         env = {
             "TELEGRAM_BOT_TOKEN": "telegram-test-token",
             "VK_GROUP_TOKEN": "vk-test-token",
@@ -129,6 +133,7 @@ class GameSmokeTest(unittest.TestCase):
         with patch.dict(os.environ, env, clear=False), \
              patch.object(combined_main, "load_project_env", lambda: None), \
              patch.object(combined_main, "build_application", fake_build_application), \
+             patch.object(combined_main, "start_vk_thread", fake_start_vk_thread), \
              patch.object(combined_main, "VkRegistrationBot", fake_vk_constructor):
             combined_main.main()
 
@@ -149,6 +154,31 @@ class GameSmokeTest(unittest.TestCase):
                 combined_main.main()
 
         self.assertIn("VK_GROUP_TOKEN", str(context.exception))
+
+    def test_vk_thread_does_not_start_if_telegram_build_fails(self):
+        import main as combined_main
+
+        env = {
+            "TELEGRAM_BOT_TOKEN": "telegram-test-token",
+            "VK_GROUP_TOKEN": "vk-test-token",
+            "VK_GROUP_ID": "123456",
+            "PLAYERS_STORAGE_PATH": "data/players.json",
+        }
+
+        def fail_build_application():
+            raise RuntimeError("telegram build failed")
+
+        def fail_if_vk_thread_starts():
+            raise AssertionError("VK thread should not start before Telegram is built")
+
+        with patch.dict(os.environ, env, clear=False), \
+             patch.object(combined_main, "load_project_env", lambda: None), \
+             patch.object(combined_main, "build_application", fail_build_application), \
+             patch.object(combined_main, "start_vk_thread", fail_if_vk_thread_starts):
+            with self.assertRaises(RuntimeError) as context:
+                combined_main.main()
+
+        self.assertIn("telegram build failed", str(context.exception))
 
     def test_env_values_with_names_are_normalized(self):
         import main as combined_main
