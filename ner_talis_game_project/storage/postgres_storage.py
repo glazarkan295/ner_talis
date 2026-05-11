@@ -1,9 +1,4 @@
-"""PostgreSQL storage for Ner-Talis players and web sessions.
-
-This class keeps the public interface close to JsonStorage/SQLiteStorage while
-using PostgreSQL tables for persistent players, platform links, link codes and
-short-lived website sessions.
-"""
+"""PostgreSQL storage for Ner-Talis players, platform links and web sessions."""
 
 from __future__ import annotations
 
@@ -37,21 +32,14 @@ class PostgresStorage:
         if not database_url:
             raise RuntimeError("Не указана переменная DATABASE_URL для PostgreSQL.")
         if database_url.startswith("postgres://"):
-            database_url = "postgresql+psycopg://" + database_url[len("postgres://"):]
-        elif database_url.startswith("postgresql://") and "+" not in database_url.split("://", 1)[0]:
-            database_url = "postgresql+psycopg://" + database_url[len("postgresql://"):]
+            return "postgresql+psycopg://" + database_url[len("postgres://"):]
+        if database_url.startswith("postgresql://") and "+" not in database_url.split("://", 1)[0]:
+            return "postgresql+psycopg://" + database_url[len("postgresql://"):]
         return database_url
 
     @staticmethod
     def empty_schema() -> dict[str, Any]:
-        return {
-            "players": {},
-            "platform_links": {},
-            "names": {},
-            "link_codes": {},
-            "web_sessions": {},
-            "site_sessions": {},
-        }
+        return {"players": {}, "platform_links": {}, "names": {}, "link_codes": {}, "web_sessions": {}, "site_sessions": {}}
 
     @staticmethod
     def make_platform_key(platform: str, external_user_id: str | int) -> str:
@@ -83,9 +71,7 @@ class PostgresStorage:
             try:
                 from sqlalchemy import create_engine
             except ModuleNotFoundError as exc:
-                raise RuntimeError(
-                    "Для STORAGE_BACKEND=postgres нужны зависимости SQLAlchemy и psycopg[binary]."
-                ) from exc
+                raise RuntimeError("Для STORAGE_BACKEND=postgres нужны SQLAlchemy и psycopg[binary].") from exc
             self._engine = create_engine(self.database_url, future=True, pool_pre_ping=True)
         return self._engine
 
@@ -183,8 +169,7 @@ class PostgresStorage:
     def _row_to_player(self, row: Any) -> dict[str, Any] | None:
         if not row:
             return None
-        data = self._deserialize(row["data"])
-        player = self._normalize_player(row["game_id"], data)
+        player = self._normalize_player(row["game_id"], self._deserialize(row["data"]))
         links = self._get_links(row["game_id"])
         player["linked_accounts"] = links
         if links.get("telegram"):
@@ -271,8 +256,7 @@ class PostgresStorage:
 
     def generate_game_id(self) -> str:
         with self._connect() as connection:
-            rows = connection.execute(self._text("SELECT game_id FROM players")).scalars().all()
-        existing = set(rows)
+            existing = set(connection.execute(self._text("SELECT game_id FROM players")).scalars().all())
         while True:
             game_id = f"NT-{uuid.uuid4().hex[:10].upper()}"
             if game_id not in existing:
@@ -294,9 +278,7 @@ class PostgresStorage:
 
     def get_player(self, platform_user_id: str) -> dict[str, Any] | None:
         platform, external_user_id = self.parse_old_platform_user_id(platform_user_id)
-        if platform and external_user_id:
-            return self.get_player_by_platform(platform, external_user_id)
-        return None
+        return self.get_player_by_platform(platform, external_user_id) if platform and external_user_id else None
 
     def save_new_player(self, player: dict[str, Any], platform: str, external_user_id: str | int) -> None:
         with self._lock:
@@ -338,6 +320,7 @@ class PostgresStorage:
         return row is not None
 
     def create_link_code(self, game_id: str) -> str:
+        self.clear_expired_link_codes()
         code = secrets.token_hex(3).upper()
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=self.LINK_CODE_LIFETIME_MINUTES)
         with self._connect() as connection:
@@ -352,21 +335,31 @@ class PostgresStorage:
         with self._connect() as connection:
             connection.execute(self._text("DELETE FROM link_codes WHERE expires_at <= NOW()"))
 
-    def connect_platform_by_code(self, code: str, platform: str, external_user_id: str | int) -> dict[str, Any] | None:
+    def connect_platform_by_code(self, code: str, platform: str, external_user_id: str | int) -> tuple[bool, str, dict[str, Any] | None]:
+        normalized_code = code.strip().upper().replace(" ", "")
         self.clear_expired_link_codes()
-        with self._connect() as connection:
-            row = connection.execute(self._text("SELECT * FROM link_codes WHERE code = :code"), {"code": code.strip().upper()}).mappings().first()
-            if not row:
-                return None
-            game_id = row["game_id"]
-            connection.execute(self._text("DELETE FROM link_codes WHERE code = :code"), {"code": code.strip().upper()})
-        player = self.get_player_by_game_id(game_id)
-        if not player:
-            return None
-        player.setdefault("linked_accounts", {})[platform] = str(external_user_id)
-        self.update_player(player)
-        self._link_platform(game_id, platform, external_user_id)
-        return self.get_player_by_game_id(game_id)
+        with self._lock, self._connect() as connection:
+            link_row = connection.execute(self._text(
+                "SELECT game_id FROM link_codes WHERE code = :code"
+            ), {"code": normalized_code}).mappings().first()
+            if not link_row:
+                return False, "Код привязки не найден или уже истёк.", None
+            game_id = link_row["game_id"]
+            player = self.get_player_by_game_id(game_id)
+            if not player:
+                connection.execute(self._text("DELETE FROM link_codes WHERE code = :code"), {"code": normalized_code})
+                return False, "Персонаж для этого кода не найден.", None
+            linked_player = self.get_player_by_platform(platform, external_user_id)
+            if linked_player and linked_player.get("game_id") == game_id:
+                connection.execute(self._text("DELETE FROM link_codes WHERE code = :code"), {"code": normalized_code})
+                return True, "Эта платформа уже была привязана к этому персонажу.", player
+            if linked_player and linked_player.get("game_id") != game_id:
+                return False, "Эта платформа уже привязана к другому персонажу. Автоматически объединять разных персонажей нельзя.", None
+            player.setdefault("linked_accounts", {})[platform] = str(external_user_id)
+            self._upsert_player(player)
+            self._link_platform(game_id, platform, external_user_id)
+            connection.execute(self._text("DELETE FROM link_codes WHERE code = :code"), {"code": normalized_code})
+            return True, "Платформа успешно привязана к персонажу.", self.get_player_by_game_id(game_id)
 
     def create_web_session(
         self,
@@ -377,6 +370,8 @@ class PostgresStorage:
         ttl_minutes: int | None = None,
     ) -> str:
         minutes = ttl_minutes if ttl_minutes is not None else lifetime_minutes
+        if not self.get_player_by_game_id(game_id):
+            raise ValueError("Игрок не найден.")
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=max(1, int(minutes)))
         with self._connect() as connection:
