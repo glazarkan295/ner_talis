@@ -49,20 +49,32 @@ def build_pavilion_site_url(token: str) -> str:
 
 def create_web_session_token(storage: Any, game_id: str, scope: str, platform: str) -> str:
     ttl = get_web_session_ttl_minutes()
-    try:
-        return storage.create_web_session(
+
+    if hasattr(storage, "create_web_session"):
+        try:
+            return storage.create_web_session(
+                game_id=game_id,
+                scope=scope,
+                platform=platform,
+                lifetime_minutes=ttl,
+            )
+        except TypeError:
+            return storage.create_web_session(
+                game_id=game_id,
+                scope=scope,
+                platform=platform,
+                ttl_minutes=ttl,
+            )
+
+    if hasattr(storage, "create_site_session"):
+        return storage.create_site_session(
             game_id=game_id,
             scope=scope,
             platform=platform,
             lifetime_minutes=ttl,
         )
-    except TypeError:
-        return storage.create_web_session(
-            game_id=game_id,
-            scope=scope,
-            platform=platform,
-            ttl_minutes=ttl,
-        )
+
+    raise RuntimeError("Хранилище не поддерживает web-сессии.")
 
 
 def create_profile_site_link(storage: Any, player: dict[str, Any], platform: str) -> str:
