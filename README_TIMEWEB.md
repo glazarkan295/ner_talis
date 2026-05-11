@@ -1,81 +1,102 @@
-# Обновление для Timeweb App Platform Dockerfile
+# Timeweb App Platform — Нер-Талис
 
-Файлы Timeweb/Docker лежат в корне репозитория. Сам код ботов находится в `ner_talis_game_project/`, а игровые JSON-данные — в `data/`.
+Проект запускается одной командой через Dockerfile:
 
-Итоговая структура должна быть такой:
-
-```text
-ner_talis/
-├─ Dockerfile
-├─ .dockerignore
-├─ .gitignore
-├─ .env.example
-├─ timeweb_start.py
-├─ data/
-└─ ner_talis_game_project/
-   ├─ requirements.txt
-   ├─ main.py
-   ├─ main_telegram.py        # внутренний модуль Telegram-приложения
-   ├─ handlers/
-   ├─ services/
-   ├─ storage/                # SQLite/JSON хранилище игроков
-   ├─ keyboards/
-   └─ texts/
+```bash
+python timeweb_start.py
 ```
 
-## Что делает обновление
+`timeweb_start.py` поднимает сразу три части:
 
-- `Dockerfile` собирает Python 3.12 контейнер.
-- `Dockerfile` содержит `HEALTHCHECK`, который проверяет `/health` через Python без `curl`.
-- `timeweb_start.py` поднимает маленький HTTP-сервер на `PORT=8080` для проверки контейнера и запускает `ner_talis_game_project/main.py`.
-- `/health` всегда проверяет, что контейнер жив и слушает порт. `/ready` показывает состояние ботов и вернёт `503`, если бот упал из-за токена или другой ошибки.
-- `.dockerignore` не отправляет в Docker лишние файлы, `.env`, кэш Python и локальную базу игроков.
-- `.env.example` хранит шаблон переменных без реальных токенов.
+1. FastAPI-сайт на `APP_HOST:APP_PORT`.
+2. VK-бот в отдельном потоке.
+3. Telegram-бот через общий `main.py`.
 
-## Важно
+Раздельных режимов запуска нет.
 
-Настоящий `.env` не загружай в GitHub.
-Токены Telegram/VK вставляй в панели Timeweb в переменные окружения.
-В панели Timeweb имя и значение вводятся отдельно: в поле имени `TELEGRAM_BOT_TOKEN`, в поле значения только сам токен без `TELEGRAM_BOT_TOKEN=`.
+## Что нужно создать в Timeweb
 
-Минимальные переменные:
+1. App Platform приложение из репозитория с Dockerfile.
+2. Управляемую базу PostgreSQL.
+3. Домен для сайта.
+4. Переменные окружения в настройках приложения.
+
+## Минимальные переменные окружения
 
 ```env
 TELEGRAM_BOT_TOKEN=...
 VK_GROUP_TOKEN=...
 VK_GROUP_ID=...
-APP_ENV=production
-LOG_LEVEL=INFO
+
+STORAGE_BACKEND=postgres
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DB_NAME
+
+SITE_BASE_URL=https://your-domain.ru
+WEB_SESSION_SECRET=long_random_secret
+WEB_SESSION_TTL_MINUTES=15
+
+APP_HOST=0.0.0.0
+APP_PORT=8080
 PORT=8080
-STORAGE_BACKEND=sqlite
-SQLITE_STORAGE_PATH=data/players.sqlite3
-PLAYERS_STORAGE_PATH=data/players.json
-SITE_PROFILE_BASE_URL=https://your-domain.ru/profile
-SITE_PAVILION_URL=https://your-domain.ru/pavilion
+LOG_LEVEL=INFO
+LOG_FILE_PATH=logs/ner_talis.log
 ```
 
-Раздельных режимов запуска больше нет: `main.py` всегда запускает Telegram и VK вместе, поэтому нужны все три переменные `TELEGRAM_BOT_TOKEN`, `VK_GROUP_TOKEN`, `VK_GROUP_ID`.
+В Timeweb имя и значение переменной вводятся отдельно. В значение токена не вставляй `TELEGRAM_BOT_TOKEN=` — только сам токен.
 
-Если Timeweb нестабильно достучаться до Telegram API, можно оставить стандартные значения таймаутов из `.env.example`: `TELEGRAM_GET_UPDATES_READ_TIMEOUT=60`, `TELEGRAM_POLL_TIMEOUT=30`, `TELEGRAM_BOOTSTRAP_RETRIES=-1`.
+## Важные URL
 
-Если токен попал в логи, перевыпусти его через BotFather и обнови переменную окружения в Timeweb.
+```text
+/health
+/profile?token=...
+/profile/<token>              # поддерживается для уже созданных старых ссылок
+/api/player/profile?token=...
+/api/player/profile/<token>   # поддерживается для старых ссылок/API
+/pavilion?token=...
+/pavilion/<token>             # поддерживается для старых ссылок
+```
 
-По умолчанию используется SQLite-хранилище `data/players.sqlite3`. Старый `data/players.json` автоматически переносится в SQLite при первом запуске.
+Кнопка в боте **«Профиль на сайте»** создаёт токен в `web_sessions` и отправляет ссылку:
 
-Важно: если App Platform пересоздаёт контейнер без постоянного диска, локальный SQLite-файл тоже может потеряться. Для долгого продакшена лучше указать `SQLITE_STORAGE_PATH` на постоянный том или вынести игроков в управляемую БД.
+```text
+https://your-domain.ru/profile?token=...
+```
 
-## Локальная проверка Docker
+Старый вариант тоже будет работать:
+
+```text
+https://your-domain.ru/profile/<token>
+```
+
+## PostgreSQL
+
+При первом запуске автоматически создаются таблицы:
+
+- `players` — профили игроков;
+- `platform_links` — связка Telegram/VK с единым `game_id`;
+- `link_codes` — временные коды привязки платформ;
+- `web_sessions` — временные токены входа на сайт.
+
+Для локальной разработки можно временно использовать SQLite:
+
+```env
+STORAGE_BACKEND=sqlite
+SQLITE_STORAGE_PATH=data/players.sqlite3
+```
+
+Для Timeweb лучше использовать PostgreSQL, чтобы данные игроков не терялись при пересоздании контейнера.
+
+## Проверка Docker
 
 ```bash
 docker build -t ner-talis-bot .
-docker run --rm -p 8080:8080 --env-file ner_talis_game_project/.env ner-talis-bot
+docker run --rm -p 8080:8080 --env-file .env ner-talis-bot
 ```
 
-Проверка health endpoint:
+Проверка сайта:
 
 ```bash
 curl http://localhost:8080/health
-curl http://localhost:8080/ready
 ```
 
 Должен вернуться ответ:
@@ -83,3 +104,9 @@ curl http://localhost:8080/ready
 ```text
 OK
 ```
+
+## Безопасность
+
+Настоящий `.env` не загружай в GitHub. В репозитории должен быть только `.env.example`.
+
+Если токен попал в логи или GitHub, перевыпусти его через BotFather/VK и обнови переменную окружения в Timeweb.
