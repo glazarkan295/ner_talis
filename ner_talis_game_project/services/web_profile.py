@@ -47,21 +47,29 @@ def build_pavilion_site_url(token: str) -> str:
     return build_site_url("/pavilion", token)
 
 
+def create_web_session_token(storage: Any, game_id: str, scope: str, platform: str) -> str:
+    ttl = get_web_session_ttl_minutes()
+    try:
+        return storage.create_web_session(
+            game_id=game_id,
+            scope=scope,
+            platform=platform,
+            lifetime_minutes=ttl,
+        )
+    except TypeError:
+        return storage.create_web_session(
+            game_id=game_id,
+            scope=scope,
+            platform=platform,
+            ttl_minutes=ttl,
+        )
+
+
 def create_profile_site_link(storage: Any, player: dict[str, Any], platform: str) -> str:
-    token = storage.create_web_session(
-        game_id=player["game_id"],
-        scope=PROFILE_SCOPE,
-        platform=platform,
-        lifetime_minutes=get_web_session_ttl_minutes(),
-    )
+    token = create_web_session_token(storage, player["game_id"], PROFILE_SCOPE, platform)
     return build_profile_site_url(token)
 
 
 def create_pavilion_site_link(storage: Any, player: dict[str, Any], platform: str) -> str:
-    token = storage.create_web_session(
-        game_id=player["game_id"],
-        scope=PAVILION_SCOPE,
-        platform=platform,
-        lifetime_minutes=get_web_session_ttl_minutes(),
-    )
+    token = create_web_session_token(storage, player["game_id"], PAVILION_SCOPE, platform)
     return build_pavilion_site_url(token)
