@@ -1,44 +1,29 @@
 import os
 from pathlib import Path
+from typing import Any
 
 from project_paths import resolve_project_path
-from storage.base import PlayerStorage
 from storage.json_storage import JsonStorage
 from storage.sqlite_storage import SQLiteStorage
 
-SUPPORTED_STORAGE_BACKENDS = {"json", "sqlite"}
+
+def _normalize(value: str | Path) -> str:
+    return str(value).strip().strip("'\"")
 
 
-def normalize_env_value(name: str, value: str | Path) -> str:
-    normalized = str(value).strip().strip("'\"")
-    prefix = f"{name}="
-    if normalized.startswith(prefix):
-        normalized = normalized[len(prefix):].strip()
-    return normalized
-
-
-def normalize_backend(raw_backend: str | None) -> str:
-    backend = normalize_env_value("STORAGE_BACKEND", raw_backend or "sqlite").casefold()
-    if backend not in SUPPORTED_STORAGE_BACKENDS:
-        raise RuntimeError(
-            "Некорректный STORAGE_BACKEND. Допустимые значения: json, sqlite."
-        )
-    return backend
-
-
-def create_storage(default_json_path: str | Path | None = None) -> PlayerStorage:
+def create_storage(default_json_path: str | Path | None = None) -> Any:
     """Создаёт хранилище профилей игроков.
 
-    По умолчанию используется SQLite, потому что он безопаснее JSON при
-    одновременной работе Telegram и VK. Для локальной отладки можно вернуть
-    старое JSON-хранилище: STORAGE_BACKEND=json.
+    Для Timeweb/продакшена рекомендуется PostgreSQL:
+        STORAGE_BACKEND=postgres
+        DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DB_NAME
+
+    Для локальной разработки доступны SQLite и JSON.
     """
-    backend = normalize_backend(os.getenv("STORAGE_BACKEND"))
+    backend = _normalize(os.getenv("STORAGE_BACKEND", "sqlite")).casefold()
+
     legacy_json_path = resolve_project_path(
-        normalize_env_value(
-            "PLAYERS_STORAGE_PATH",
-            os.getenv("PLAYERS_STORAGE_PATH", str(default_json_path or "data/players.json")),
-        )
+        _normalize(os.getenv("PLAYERS_STORAGE_PATH", str(default_json_path or "data/players.json")))
     )
 
     if backend == "json":
@@ -46,11 +31,15 @@ def create_storage(default_json_path: str | Path | None = None) -> PlayerStorage
 
     if backend == "sqlite":
         sqlite_path = resolve_project_path(
-            normalize_env_value(
-                "SQLITE_STORAGE_PATH",
-                os.getenv("SQLITE_STORAGE_PATH", "data/players.sqlite3"),
-            )
+            _normalize(os.getenv("SQLITE_STORAGE_PATH", "data/players.sqlite3"))
         )
         return SQLiteStorage(str(sqlite_path), legacy_json_path=str(legacy_json_path))
 
-    raise AssertionError(f"Unsupported storage backend after validation: {backend}")
+    if backend in {"postgres", "postgresql"}:
+        from storage.postgres_storage import PostgresStorage
+
+        return PostgresStorage(legacy_json_path=str(legacy_json_path))
+
+    raise RuntimeError(
+        "Некорректный STORAGE_BACKEND. Допустимые значения: postgres, sqlite, json."
+    )
