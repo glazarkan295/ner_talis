@@ -32,6 +32,7 @@ from handlers.registration import (
     show_world_short,
     start_command,
 )
+from handlers.site_profile import profile_site_button, profile_site_command
 from project_paths import load_project_env, resolve_project_path
 from storage.storage_factory import create_storage
 
@@ -140,6 +141,7 @@ def build_application() -> Application:
         fallbacks=[
             CommandHandler("cancel", cancel),
             CommandHandler("profile", profile_command),
+            CommandHandler("site_profile", profile_site_command),
             CommandHandler("link", link_command),
             CommandHandler("connect", connect_command),
             CommandHandler("start", start_command),
@@ -149,10 +151,12 @@ def build_application() -> Application:
 
     application.add_handler(registration_conversation)
     application.add_handler(CommandHandler("profile", profile_command))
+    application.add_handler(CommandHandler("site_profile", profile_site_command))
     application.add_handler(CommandHandler("link", link_command))
     application.add_handler(CommandHandler("connect", connect_command))
     application.add_handler(CommandHandler("city", city_command))
     application.add_handler(MessageHandler(filters.Regex("^Профиль$"), profile_button))
+    application.add_handler(MessageHandler(filters.Regex("^Профиль на сайте$"), profile_site_button))
     application.add_handler(MessageHandler(filters.Regex(CITY_BUTTON_PATTERN), city_message))
 
     return application
