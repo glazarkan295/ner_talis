@@ -121,3 +121,41 @@ postgresql://user:password@host:5432/default_db'
 ```
 
 Если в логах есть `database "default_db'" does not exist`, значит в конце имени базы попала лишняя кавычка или указано неверное имя базы.
+
+## Исправление чёрного экрана / unhealthy
+
+В этой версии исправлена ошибка запуска FastAPI, из-за которой контейнер мог уходить в `unhealthy`: у маршрута `/` убрана проблемная аннотация `HTMLResponse | FileResponse`, а маршруты сайта помечены `response_model=None`.
+
+Проверки после деплоя:
+
+```text
+https://ner-talis-game.ru/health
+```
+
+Должно вернуть:
+
+```text
+OK
+```
+
+```text
+https://ner-talis-game.ru/ready
+```
+
+Должно вернуть `{"status":"ready"}`. Если там `storage_error`, сайт живой, но проблема в `DATABASE_URL` или `STORAGE_BACKEND`.
+
+Если открывается просто чёрный экран:
+
+1. Открой `/health`. Если нет `OK`, значит FastAPI не поднялся.
+2. Открой `/ready`. Если `storage_error`, исправь `DATABASE_URL`.
+3. Открой новую ссылку через кнопку бота «Профиль на сайте» — старые ссылки могут истечь.
+4. Убедись, что в Timeweb нет второго контейнера/приложения с тем же Telegram token, иначе будет `Conflict: terminated by other getUpdates request`.
+
+Для Timeweb оставь порт:
+
+```env
+APP_HOST=0.0.0.0
+APP_PORT=8080
+PORT=8080
+```
+

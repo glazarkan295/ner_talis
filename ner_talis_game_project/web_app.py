@@ -210,14 +210,14 @@ def create_app() -> FastAPI:
             logger.exception("Readiness check failed")
             return JSONResponse({"status": "error", "detail": str(exc)}, status_code=503)
 
-    @app.get("/", response_class=HTMLResponse)
-    def index() -> HTMLResponse | FileResponse:
+    @app.get("/", response_class=HTMLResponse, response_model=None)
+    def index():
         react = _react_index_or_none()
         if react:
             return react
         return HTMLResponse("<h1>Нер-Талис</h1><p>Откройте профиль по ссылке из бота.</p>")
 
-    @app.get("/profile", response_class=HTMLResponse)
+    @app.get("/profile", response_class=HTMLResponse, response_model=None)
     def profile_page(token: str | None = Query(default=None)):
         react = _react_index_or_none()
         if react:
@@ -226,7 +226,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="В ссылке нет token.")
         return HTMLResponse(render_profile_by_token(token))
 
-    @app.get("/profile/{identifier}", response_class=HTMLResponse)
+    @app.get("/profile/{identifier}", response_class=HTMLResponse, response_model=None)
     def profile_page_path(identifier: str):
         react = _react_index_or_none()
         if react:
@@ -235,15 +235,15 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="Некорректная ссылка профиля.")
         return HTMLResponse(render_profile_by_identifier(identifier))
 
-    @app.get("/api/player/profile")
-    def profile_api(token: str = Query(..., min_length=16)) -> JSONResponse:
+    @app.get("/api/player/profile", response_model=None)
+    def profile_api(token: str = Query(..., min_length=16)):
         player, session = get_session_and_player(token, PROFILE_SCOPE)
         if player is None or session is None:
             raise HTTPException(status_code=401, detail="Недействительная или истёкшая ссылка.")
         return JSONResponse({"player": _public_player(player), "profile": frontend_profile(player), "session": session})
 
-    @app.get("/api/player/profile/{identifier}")
-    def profile_api_path(identifier: str) -> JSONResponse:
+    @app.get("/api/player/profile/{identifier}", response_model=None)
+    def profile_api_path(identifier: str):
         player, session = get_session_and_player(identifier, PROFILE_SCOPE)
         if player is None:
             player = get_player_by_public_id(storage(), identifier)
@@ -257,12 +257,12 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=401, detail="Недействительная или истёкшая ссылка павильона.")
         return "<h1>Торговый павильон</h1>" f"<p>Вход подтверждён для игрока: {_safe_text(player.get('name'))}</p>" "<p>Полный интерфейс павильона будет подключён отдельным модулем сайта.</p>"
 
-    @app.get("/pavilion", response_class=HTMLResponse)
-    def pavilion_page(token: str = Query(..., min_length=16)) -> str:
+    @app.get("/pavilion", response_class=HTMLResponse, response_model=None)
+    def pavilion_page(token: str = Query(..., min_length=16)):
         return render_pavilion_by_token(token)
 
-    @app.get("/pavilion/{token}", response_class=HTMLResponse)
-    def pavilion_page_path_token(token: str) -> str:
+    @app.get("/pavilion/{token}", response_class=HTMLResponse, response_model=None)
+    def pavilion_page_path_token(token: str):
         if len(token) < 16:
             raise HTTPException(status_code=400, detail="Некорректный token павильона.")
         return render_pavilion_by_token(token)
@@ -271,3 +271,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
