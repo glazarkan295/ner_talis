@@ -13,7 +13,6 @@ from __future__ import annotations
 import html
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -22,7 +21,11 @@ from fastapi.staticfiles import StaticFiles
 
 from project_paths import resolve_project_path
 from services.web_profile import PAVILION_SCOPE, PROFILE_SCOPE
-from site_api import create_profile_api_router, frontend_profile, get_player_by_public_id, get_session_and_player_by_token
+from site_api import (
+    create_profile_api_router,
+    frontend_profile,
+    get_player_by_public_id,
+)
 from storage.storage_factory import create_storage
 
 logger = logging.getLogger(__name__)
@@ -116,15 +119,26 @@ def _react_index_or_none() -> FileResponse | None:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Ner-Talis", version="0.4.0")
-
-    @app.on_event("startup")
-    def startup() -> None:
-        app.state.storage = create_storage()
+    app = FastAPI(title="Ner-Talis", version="0.4.1")
+    app.state.storage = None
+    app.state.storage_error = None
 
     def storage():
-        if not hasattr(app.state, "storage"):
-            app.state.storage = create_storage()
+        if getattr(app.state, "storage", None) is None:
+            try:
+                app.state.storage = create_storage()
+                app.state.storage_error = None
+            except Exception as exc:
+                app.state.storage = None
+                app.state.storage_error = str(exc)
+                logger.exception("Storage is not ready")
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Хранилище игроков недоступно. Проверьте DATABASE_URL/STORAGE_BACKEND "
+                        "в переменных окружения Timeweb."
+                    ),
+                ) from exc
         return app.state.storage
 
     app.include_router(create_profile_api_router(storage))
@@ -174,7 +188,7 @@ def create_app() -> FastAPI:
         logger.exception("Unhandled web error on %s", request.url.path)
         return _error_html(
             "Внутренняя ошибка сайта",
-            "Сайт открылся, но обработчик профиля получил ошибку. Подробности записаны в logs/ner_talis.log.",
+            "Сайт открылся, но обработчик получил ошибку. Проверьте DATABASE_URL, STORAGE_BACKEND и logs/ner_talis.log.",
             status_code=500,
         )
 
@@ -183,14 +197,27 @@ def create_app() -> FastAPI:
     def health() -> str:
         return "OK"
 
-    @app.get("/", response_class=HTMLResponse)
-    def index() -> HTMLResponse:
+    @app.get("/ready")
+    def ready() -> JSONResponse:
+        try:
+            st = storage()
+            if hasattr(st, "check_connection"):
+                st.check_connection()
+            return JSONResponse({"status": "ready"})
+        except HTTPException as exc:
+            return JSONResponse({"status": "storage_error", "detail": exc.detail}, status_code=503)
+        except Exception as exc:
+            logger.exception("Readiness check failed")
+            return JSONResponse({"status": "error", "detail": str(exc)}, status_code=503)
+
+    @app.get("/", response_class=HTMLResponse, response_model=None)
+    def index():
         react = _react_index_or_none()
         if react:
             return react
         return HTMLResponse("<h1>Нер-Талис</h1><p>Откройте профиль по ссылке из бота.</p>")
 
-    @app.get("/profile", response_class=HTMLResponse)
+    @app.get("/profile", response_class=HTMLResponse, response_model=None)
     def profile_page(token: str | None = Query(default=None)):
         react = _react_index_or_none()
         if react:
@@ -199,7 +226,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="В ссылке нет token.")
         return HTMLResponse(render_profile_by_token(token))
 
-    @app.get("/profile/{identifier}", response_class=HTMLResponse)
+    @app.get("/profile/{identifier}", response_class=HTMLResponse, response_model=None)
     def profile_page_path(identifier: str):
         react = _react_index_or_none()
         if react:
@@ -208,15 +235,15 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="Некорректная ссылка профиля.")
         return HTMLResponse(render_profile_by_identifier(identifier))
 
-    @app.get("/api/player/profile")
-    def profile_api(token: str = Query(..., min_length=16)) -> JSONResponse:
+    @app.get("/api/player/profile", response_model=None)
+    def profile_api(token: str = Query(..., min_length=16)):
         player, session = get_session_and_player(token, PROFILE_SCOPE)
         if player is None or session is None:
             raise HTTPException(status_code=401, detail="Недействительная или истёкшая ссылка.")
         return JSONResponse({"player": _public_player(player), "profile": frontend_profile(player), "session": session})
 
-    @app.get("/api/player/profile/{identifier}")
-    def profile_api_path(identifier: str) -> JSONResponse:
+    @app.get("/api/player/profile/{identifier}", response_model=None)
+    def profile_api_path(identifier: str):
         player, session = get_session_and_player(identifier, PROFILE_SCOPE)
         if player is None:
             player = get_player_by_public_id(storage(), identifier)
@@ -230,20 +257,17 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=401, detail="Недействительная или истёкшая ссылка павильона.")
         return "<h1>Торговый павильон</h1>" f"<p>Вход подтверждён для игрока: {_safe_text(player.get('name'))}</p>" "<p>Полный интерфейс павильона будет подключён отдельным модулем сайта.</p>"
 
-    @app.get("/pavilion", response_class=HTMLResponse)
-    def pavilion_page(token: str = Query(..., min_length=16)) -> str:
+    @app.get("/pavilion", response_class=HTMLResponse, response_model=None)
+    def pavilion_page(token: str = Query(..., min_length=16)):
         return render_pavilion_by_token(token)
 
-    @app.get("/pavilion/{token}", response_class=HTMLResponse)
-    def pavilion_page_path_token(token: str) -> str:
+    @app.get("/pavilion/{token}", response_class=HTMLResponse, response_model=None)
+    def pavilion_page_path_token(token: str):
         if len(token) < 16:
             raise HTTPException(status_code=400, detail="Некорректный token павильона.")
         return render_pavilion_by_token(token)
 
     return app
-
-
-app = create_app()
 
 
 app = create_app()
