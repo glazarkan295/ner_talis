@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import threading
+import time
 import traceback
 from pathlib import Path
 
@@ -176,9 +177,27 @@ def main() -> None:
     ensure_import_paths()
     load_env_file_if_possible()
     configure_safe_logging()
-    init_storage()
+
+    # Timeweb проверяет HTTP-порт. Поэтому сайт стартует первым: /health
+    # должен отвечать даже если PostgreSQL временно недоступен или неверно задан.
     start_fastapi_site()
-    run_bots()
+
+    retry_seconds = max(5, int(os.getenv("APP_RESTART_RETRY_SECONDS", "30")))
+    while True:
+        try:
+            init_storage()
+            run_bots()
+        except KeyboardInterrupt:
+            raise
+        except Exception:
+            APP_STATE["status"] = "error"
+            APP_STATE["error"] = redact_sensitive_text(traceback.format_exc())
+            logger.error(
+                "Background services are not ready. Retrying in %s seconds.\n%s",
+                retry_seconds,
+                APP_STATE["error"],
+            )
+            time.sleep(retry_seconds)
 
 
 if __name__ == "__main__":
