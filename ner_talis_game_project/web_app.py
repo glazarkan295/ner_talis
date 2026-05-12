@@ -13,7 +13,6 @@ from __future__ import annotations
 import html
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -22,7 +21,11 @@ from fastapi.staticfiles import StaticFiles
 
 from project_paths import resolve_project_path
 from services.web_profile import PAVILION_SCOPE, PROFILE_SCOPE
-from site_api import create_profile_api_router, frontend_profile, get_player_by_public_id, get_session_and_player_by_token
+from site_api import (
+    create_profile_api_router,
+    frontend_profile,
+    get_player_by_public_id,
+)
 from storage.storage_factory import create_storage
 
 logger = logging.getLogger(__name__)
@@ -116,15 +119,26 @@ def _react_index_or_none() -> FileResponse | None:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Ner-Talis", version="0.4.0")
-
-    @app.on_event("startup")
-    def startup() -> None:
-        app.state.storage = create_storage()
+    app = FastAPI(title="Ner-Talis", version="0.4.1")
+    app.state.storage = None
+    app.state.storage_error = None
 
     def storage():
-        if not hasattr(app.state, "storage"):
-            app.state.storage = create_storage()
+        if getattr(app.state, "storage", None) is None:
+            try:
+                app.state.storage = create_storage()
+                app.state.storage_error = None
+            except Exception as exc:
+                app.state.storage = None
+                app.state.storage_error = str(exc)
+                logger.exception("Storage is not ready")
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Хранилище игроков недоступно. Проверьте DATABASE_URL/STORAGE_BACKEND "
+                        "в переменных окружения Timeweb."
+                    ),
+                ) from exc
         return app.state.storage
 
     app.include_router(create_profile_api_router(storage))
@@ -174,7 +188,7 @@ def create_app() -> FastAPI:
         logger.exception("Unhandled web error on %s", request.url.path)
         return _error_html(
             "Внутренняя ошибка сайта",
-            "Сайт открылся, но обработчик профиля получил ошибку. Подробности записаны в logs/ner_talis.log.",
+            "Сайт открылся, но обработчик получил ошибку. Проверьте DATABASE_URL, STORAGE_BACKEND и logs/ner_talis.log.",
             status_code=500,
         )
 
@@ -183,8 +197,21 @@ def create_app() -> FastAPI:
     def health() -> str:
         return "OK"
 
+    @app.get("/ready")
+    def ready() -> JSONResponse:
+        try:
+            st = storage()
+            if hasattr(st, "check_connection"):
+                st.check_connection()
+            return JSONResponse({"status": "ready"})
+        except HTTPException as exc:
+            return JSONResponse({"status": "storage_error", "detail": exc.detail}, status_code=503)
+        except Exception as exc:
+            logger.exception("Readiness check failed")
+            return JSONResponse({"status": "error", "detail": str(exc)}, status_code=503)
+
     @app.get("/", response_class=HTMLResponse)
-    def index() -> HTMLResponse:
+    def index() -> HTMLResponse | FileResponse:
         react = _react_index_or_none()
         if react:
             return react
@@ -241,9 +268,6 @@ def create_app() -> FastAPI:
         return render_pavilion_by_token(token)
 
     return app
-
-
-app = create_app()
 
 
 app = create_app()
