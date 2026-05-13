@@ -60,6 +60,57 @@ def _base_stats_for_player(player: dict[str, Any]) -> dict[str, int]:
     return {key: int(existing_stats.get(key, 0)) for key in STAT_KEYS}
 
 
+def _fallback_hard_delete_player_by_game_id(storage: Any, game_id: str) -> bool:
+    """Hard-delete through generic load/save for storages without a native method."""
+    if not hasattr(storage, "load") or not hasattr(storage, "save"):
+        return False
+
+    data = storage.load()
+    players = data.setdefault("players", {})
+    normalized_game_id = normalize_game_id(game_id)
+    real_key = normalized_game_id if normalized_game_id in players else None
+
+    if real_key is None:
+        for key, player in players.items():
+            if not isinstance(player, dict):
+                continue
+            if normalize_game_id(player.get("game_id") or player.get("id") or "") == normalized_game_id:
+                real_key = key
+                break
+
+    if real_key is None:
+        return False
+
+    player = players.pop(real_key, None) or {}
+    target_ids = {str(real_key), normalized_game_id}
+    if isinstance(player, dict):
+        target_ids.add(str(player.get("game_id") or ""))
+        target_ids.add(str(player.get("id") or ""))
+
+    for index_name in ("platform_links", "names"):
+        data[index_name] = {
+            key: value
+            for key, value in data.get(index_name, {}).items()
+            if str(value) not in target_ids
+        }
+
+    data["link_codes"] = {
+        key: value
+        for key, value in data.get("link_codes", {}).items()
+        if not isinstance(value, dict) or str(value.get("game_id") or "") not in target_ids
+    }
+
+    for sessions_key in ("site_sessions", "web_sessions"):
+        data[sessions_key] = {
+            token: session
+            for token, session in data.get(sessions_key, {}).items()
+            if not isinstance(session, dict) or str(session.get("game_id") or "") not in target_ids
+        }
+
+    storage.save(data)
+    return True
+
+
 def delete_player_profile(storage: Any, identifier: str) -> tuple[bool, str, dict[str, Any] | None]:
     """Безоговорочно удаляет профиль игрока по game_id NT-XXXXXXXXXX.
 
@@ -83,11 +134,12 @@ def delete_player_profile(storage: Any, identifier: str) -> tuple[bool, str, dic
     if player is None:
         return False, f"Игрок {game_id} не найден. Проверь игровой ID в профиле игрока.", None
 
-    delete_method = getattr(storage, "hard_delete_player_by_game_id", None) or getattr(storage, "delete_player", None)
-    if delete_method is None:
-        return False, "Хранилище не поддерживает жёсткое удаление игроков. Обнови проект до этой версии.", player
+    delete_method = getattr(storage, "hard_delete_player_by_game_id", None)
+    if callable(delete_method):
+        deleted = bool(delete_method(game_id))
+    else:
+        deleted = _fallback_hard_delete_player_by_game_id(storage, game_id)
 
-    deleted = bool(delete_method(game_id))
     if not deleted:
         return False, f"Игрок {game_id} не найден или уже удалён.", player
 
