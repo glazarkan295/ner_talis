@@ -49,16 +49,16 @@ def _id_in_config(value: str | int | None, config_name: str) -> bool:
 def check_telegram_admin(chat_id: str | int | None, user_id: str | int | None) -> AdminAccessResult:
     """Проверяет доступ Telegram-админа."""
 
-    if not _parse_id_set("ADMIN_TELEGRAM_CHAT_IDS"):
-        return AdminAccessResult(False, "Не настроена переменная ADMIN_TELEGRAM_CHAT_IDS.")
+    if not _parse_id_set("TELEGRAM_ADMIN_CHAT_IDS"):
+        return AdminAccessResult(False, "Не настроена переменная TELEGRAM_ADMIN_CHAT_IDS.")
 
-    if not _parse_id_set("ADMIN_TELEGRAM_USER_IDS"):
-        return AdminAccessResult(False, "Не настроена переменная ADMIN_TELEGRAM_USER_IDS.")
+    if not _parse_id_set("TELEGRAM_ADMIN_USER_IDS"):
+        return AdminAccessResult(False, "Не настроена переменная TELEGRAM_ADMIN_USER_IDS.")
 
-    if not _id_in_config(chat_id, "ADMIN_TELEGRAM_CHAT_IDS"):
+    if not _id_in_config(chat_id, "TELEGRAM_ADMIN_CHAT_IDS"):
         return AdminAccessResult(False, "Команда доступна только в разрешённом Telegram админ-чате.")
 
-    if not _id_in_config(user_id, "ADMIN_TELEGRAM_USER_IDS"):
+    if not _id_in_config(user_id, "TELEGRAM_ADMIN_USER_IDS"):
         return AdminAccessResult(False, "Пользователь не входит в список Telegram админов.")
 
     return AdminAccessResult(True)
@@ -67,16 +67,16 @@ def check_telegram_admin(chat_id: str | int | None, user_id: str | int | None) -
 def check_vk_admin(peer_id: str | int | None, user_id: str | int | None) -> AdminAccessResult:
     """Проверяет доступ VK-админа."""
 
-    if not _parse_id_set("ADMIN_VK_PEER_IDS"):
-        return AdminAccessResult(False, "Не настроена переменная ADMIN_VK_PEER_IDS.")
+    if not _parse_id_set("VK_ADMIN_PEER_IDS"):
+        return AdminAccessResult(False, "Не настроена переменная VK_ADMIN_PEER_IDS.")
 
-    if not _parse_id_set("ADMIN_VK_USER_IDS"):
-        return AdminAccessResult(False, "Не настроена переменная ADMIN_VK_USER_IDS.")
+    if not _parse_id_set("VK_ADMIN_USER_IDS"):
+        return AdminAccessResult(False, "Не настроена переменная VK_ADMIN_USER_IDS.")
 
-    if not _id_in_config(peer_id, "ADMIN_VK_PEER_IDS"):
+    if not _id_in_config(peer_id, "VK_ADMIN_PEER_IDS"):
         return AdminAccessResult(False, "Команда доступна только в разрешённой VK админ-беседе.")
 
-    if not _id_in_config(user_id, "ADMIN_VK_USER_IDS"):
+    if not _id_in_config(user_id, "VK_ADMIN_USER_IDS"):
         return AdminAccessResult(False, "Пользователь не входит в список VK админов.")
 
     return AdminAccessResult(True)
