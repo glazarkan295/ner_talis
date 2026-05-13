@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from game_data.starter_items import get_starter_equipment
+from game_data.starter_skills import get_starter_skills
 from project_paths import project_path, resolve_project_path
 
 NAME_PATTERN = re.compile(r"^[A-Za-zА-Яа-яЁё0-9 -]+$")
@@ -148,16 +150,32 @@ def create_player(
         },
         "free_stat_points": 0,
         "free_skill_points": 0,
+        "hp": None,
+        "spirit": None,
+        "mana": None,
+        "concentration": None,
+        "branch": "Ветвь не выбрана",
         "inventory": [],
         "storage": [],
-        "equipment": {},
-        "skills": {},
+        "equipment": get_starter_equipment(),
+        "skills": get_starter_skills(),
         "active_effects": [],
+        "active_sets": [],
         "known_recipes": [],
+        "alchemy_level": 1,
+        "alchemy_experience": 0,
+        "unlocked_alchemy_recipes": [],
+        "alchemy_known_failures": [],
+        "owned_special_recipes": [],
         "crafting_levels": deepcopy(DEFAULT_CRAFTING_LEVELS),
         "housing": {
             "plot_type": None,
             "buildings": [],
         },
+        "achievements": [],
+        "rating": {"globalPlace": "—", "pvePlace": "—", "pvpPlace": "—", "craftPlace": "—"},
+        "pve_kills": 0,
+        "pvp_kills": 0,
+        "soul_particles_absorbed": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
