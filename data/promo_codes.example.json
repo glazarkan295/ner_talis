@@ -1,0 +1,24 @@
+{
+  "codes": {
+    "START100": {
+      "code": "START100",
+      "active": true,
+      "uses_left": 100,
+      "reward": {
+        "money": 1000,
+        "energy": 20,
+        "items": [
+          {
+            "item_id": "small_potion",
+            "name": "Малое зелье лечения",
+            "amount": 3
+          }
+        ]
+      },
+      "expires_at": null,
+      "one_use_per_player": true,
+      "used_by": [],
+      "note": "Пример стартового промокода"
+    }
+  }
+}
