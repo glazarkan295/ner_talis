@@ -56,7 +56,7 @@ class AdminDeletePlayerTest(unittest.TestCase):
             self.assertTrue(result.handled)
             self.assertIn("пример", result.text)
 
-    def test_can_use_raw_unique_platform_id(self):
+    def test_rejects_platform_id_and_requires_game_id(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             storage = SQLiteStorage(str(Path(tmp_dir) / "players.sqlite3"))
             races = load_races("data/races.json")
@@ -65,7 +65,7 @@ class AdminDeletePlayerTest(unittest.TestCase):
                 game_id=game_id,
                 platform="telegram",
                 external_user_id="555",
-                name="Стереть",
+                name="НеСтеретьПоПлатформе",
                 race_id="human",
                 races=races,
             )
@@ -79,9 +79,42 @@ class AdminDeletePlayerTest(unittest.TestCase):
             )
 
             self.assertTrue(result.handled)
-            self.assertIn("удалён", result.text)
+            self.assertIn("NT-", result.text)
+            self.assertIsNotNone(storage.get_player_by_game_id(game_id))
+            self.assertIsNotNone(storage.get_player_by_platform("telegram", "555"))
+
+    def test_hard_delete_sqlite_removes_all_registration_traces(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = SQLiteStorage(str(Path(tmp_dir) / "players.sqlite3"))
+            races = load_races("data/races.json")
+            game_id = storage.generate_game_id()
+            player = create_player(
+                game_id=game_id,
+                platform="vk",
+                external_user_id="777",
+                name="ПолныйНоль",
+                race_id="human",
+                races=races,
+            )
+            storage.save_new_player(player, "vk", "777")
+            token = storage.create_site_session(game_id, "profile", "vk")
+            code = storage.create_link_code(game_id)
+
+            result = execute_admin_command(
+                text=f"/admin_delete_player {game_id.lower()} CONFIRM_DELETE",
+                storage=storage,
+                platform="telegram",
+                admin_user_id="999",
+            )
+
+            self.assertTrue(result.handled)
+            self.assertIn("полностью удалён", result.text)
             self.assertIsNone(storage.get_player_by_game_id(game_id))
-            self.assertIsNone(storage.get_player_by_platform("telegram", "555"))
+            self.assertIsNone(storage.get_player_by_platform("vk", "777"))
+            self.assertFalse(storage.is_name_taken("ПолныйНоль"))
+            data = storage.load()
+            self.assertNotIn(token, data.get("site_sessions", {}))
+            self.assertNotIn(code, data.get("link_codes", {}))
 
 
 if __name__ == "__main__":

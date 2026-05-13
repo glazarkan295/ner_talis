@@ -32,6 +32,9 @@ class PlayerStorage(Protocol):
     def update_player(self, player: dict[str, Any]) -> None:
         ...
 
+    def hard_delete_player_by_game_id(self, game_id: str) -> bool:
+        ...
+
     def delete_player(self, game_id: str) -> bool:
         ...
 
