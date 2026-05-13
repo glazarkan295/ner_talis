@@ -112,6 +112,7 @@ def _import_telegram_runtime():
         start_command,
     )
     from handlers.site_profile import profile_site_button, profile_site_command
+    from handlers.telegram_admin import register_telegram_admin_handlers
 
     return {
         "Application": Application,
@@ -141,6 +142,7 @@ def _import_telegram_runtime():
         "start_command": start_command,
         "profile_site_button": profile_site_button,
         "profile_site_command": profile_site_command,
+        "register_telegram_admin_handlers": register_telegram_admin_handlers,
     }
 
 
@@ -175,6 +177,8 @@ def build_application():
         resolve_project_path(os.getenv("PLAYERS_STORAGE_PATH", "data/players.json"))
     )
     application.add_error_handler(log_telegram_error)
+
+    runtime["register_telegram_admin_handlers"](application, CommandHandler)
 
     registration_conversation = ConversationHandler(
         entry_points=[CommandHandler("start", runtime["start_command"])],
