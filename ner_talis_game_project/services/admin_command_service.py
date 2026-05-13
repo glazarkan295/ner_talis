@@ -46,21 +46,29 @@ def admin_help_text() -> str:
     )
 
 
+def _normalize_command_token(command: str) -> str:
+    normalized = str(command or "").strip()
+    if "@" in normalized:
+        normalized = normalized.split("@", 1)[0]
+    return normalized
+
+
+def _looks_like_placeholder(identifier: str) -> bool:
+    return str(identifier or "").strip().upper() in {
+        "ID",
+        "GAME_ID",
+        "PLAYER_ID",
+        "PUBLIC_ID",
+        "TG_ID",
+        "VK_ID",
+    }
+
+
 def _parse_parts(text: str) -> list[str]:
     try:
         return shlex.split(text)
     except ValueError:
         return str(text).strip().split()
-
-
-def _split_command_and_payload(text: str) -> tuple[list[str], str]:
-    stripped = str(text or "").strip()
-    parts = _parse_parts(stripped)
-    if not parts:
-        return [], ""
-    command = parts[0]
-    payload = stripped[len(command):].strip()
-    return parts, payload
 
 
 def _json_after_tokens(text: str, token_count: int) -> str:
@@ -75,11 +83,11 @@ def _json_after_tokens(text: str, token_count: int) -> str:
 
 
 def execute_admin_command(*, text: str, storage: Any, platform: str, admin_user_id: str | int) -> AdminCommandResult:
-    parts, _payload = _split_command_and_payload(text)
+    parts = _parse_parts(text)
     if not parts:
         return AdminCommandResult(False, "")
 
-    command = parts[0]
+    command = _normalize_command_token(parts[0])
 
     if command == "/admin_help":
         return AdminCommandResult(True, admin_help_text())
@@ -134,6 +142,8 @@ def execute_admin_command(*, text: str, storage: Any, platform: str, admin_user_
         if len(parts) < 3:
             return AdminCommandResult(True, "Формат: /admin_reset_player GAME_ID CONFIRM")
         game_id, confirm = parts[1], parts[2]
+        if _looks_like_placeholder(game_id):
+            return AdminCommandResult(True, "GAME_ID — это пример. Укажи настоящий ID игрока, например NT-XXXXXXXXXX, tg_123456 или vk_123456.")
         if confirm != "CONFIRM":
             return AdminCommandResult(True, "Для сброса нужно явно написать CONFIRM третьим аргументом.")
         ok, message, _player = reset_player_progress(storage, game_id)
@@ -145,6 +155,8 @@ def execute_admin_command(*, text: str, storage: Any, platform: str, admin_user_
         if len(parts) < 3:
             return AdminCommandResult(True, "Формат: /admin_delete_player ID CONFIRM_DELETE")
         identifier, confirm = parts[1], parts[2]
+        if _looks_like_placeholder(identifier):
+            return AdminCommandResult(True, "ID — это пример. Укажи настоящий ID игрока: NT-XXXXXXXXXX, public_id, tg_123456, vk_123456, telegram:123456 или vk:123456.")
         if confirm != "CONFIRM_DELETE":
             return AdminCommandResult(True, "Для удаления нужно явно написать CONFIRM_DELETE третьим аргументом.")
         ok, message, player = delete_player_profile(storage, identifier)
@@ -162,6 +174,8 @@ def execute_admin_command(*, text: str, storage: Any, platform: str, admin_user_
         if len(parts) < 5:
             return AdminCommandResult(True, "Формат: /admin_add_item GAME_ID ITEM_ID AMOUNT QUALITY")
         game_id, item_id = parts[1], parts[2]
+        if _looks_like_placeholder(game_id):
+            return AdminCommandResult(True, "GAME_ID — это пример. Укажи настоящий ID игрока.")
         try:
             amount = int(parts[3])
         except ValueError:
