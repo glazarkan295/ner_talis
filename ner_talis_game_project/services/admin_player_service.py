@@ -54,20 +54,22 @@ def _resolve_player_by_identifier(storage: Any, identifier: str) -> dict[str, An
     if not raw:
         return None
 
+    normalized = raw.strip().strip("\"'")
+
     if hasattr(storage, "get_player_by_game_id"):
-        player = storage.get_player_by_game_id(raw)
+        player = storage.get_player_by_game_id(normalized)
         if player is not None:
             return player
 
-    lowered = raw.casefold()
+    lowered = normalized.casefold()
     platform: str | None = None
     external_id: str | None = None
     if lowered.startswith("tg_"):
-        platform, external_id = "telegram", raw[3:]
+        platform, external_id = "telegram", normalized[3:]
     elif lowered.startswith("vk_"):
-        platform, external_id = "vk", raw[3:]
-    elif ":" in raw:
-        left, right = raw.split(":", 1)
+        platform, external_id = "vk", normalized[3:]
+    elif ":" in normalized:
+        left, right = normalized.split(":", 1)
         if left.casefold() in {"telegram", "tg"}:
             platform, external_id = "telegram", right
         elif left.casefold() == "vk":
@@ -79,21 +81,41 @@ def _resolve_player_by_identifier(storage: Any, identifier: str) -> dict[str, An
             return player
 
     if hasattr(storage, "get_player_by_public_id"):
-        player = storage.get_player_by_public_id(raw)
+        try:
+            player = storage.get_player_by_public_id(normalized)
+        except Exception:
+            player = None
         if player is not None:
             return player
 
-    # Fallback for JSON-like storages.
+    # Fallback for all storages: scan loaded players. This also supports raw
+    # numeric platform IDs when the value uniquely matches telegram_id/vk_id.
+    matches: list[dict[str, Any]] = []
     if hasattr(storage, "load"):
         data = storage.load()
         for player in (data.get("players") or {}).values():
             if not isinstance(player, dict):
                 continue
-            if str(player.get("public_id")) == raw:
-                return player
+            values = {
+                str(player.get("game_id") or ""),
+                str(player.get("id") or ""),
+                str(player.get("public_id") or ""),
+                str(player.get("telegram_id") or ""),
+                str(player.get("vk_id") or ""),
+            }
             for platform_name, platform_id in (player.get("linked_accounts") or {}).items():
-                if f"{platform_name}:{platform_id}" == raw or str(platform_id) == raw:
-                    return player
+                if platform_id:
+                    values.add(str(platform_id))
+                    values.add(f"{platform_name}:{platform_id}")
+                    if platform_name == "telegram":
+                        values.add(f"tg_{platform_id}")
+                    if platform_name == "vk":
+                        values.add(f"vk_{platform_id}")
+            if normalized in values:
+                matches.append(player)
+
+    if len(matches) == 1:
+        return matches[0]
     return None
 
 
@@ -101,7 +123,7 @@ def delete_player_profile(storage: Any, identifier: str) -> tuple[bool, str, dic
     """Delete a player profile so linked users return to registration on /start."""
     player = _resolve_player_by_identifier(storage, identifier)
     if player is None:
-        return False, f"Игрок {identifier} не найден.", None
+        return False, f"Игрок {identifier} не найден. Используй настоящий game_id вида NT-..., public_id, tg_123456, vk_123456, telegram:123456 или vk:123456.", None
 
     game_id = str(player.get("game_id") or player.get("id"))
     backup_player(player, "before_delete")
