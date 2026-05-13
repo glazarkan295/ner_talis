@@ -139,9 +139,10 @@ def get_vk_bot_class():
     if callable(VkRegistrationBot):
         return VkRegistrationBot
 
+    from handlers.vk_admin_runtime import patch_vk_registration_bot
     from handlers.vk_registration import VkRegistrationBot as RealVkRegistrationBot
 
-    return RealVkRegistrationBot
+    return patch_vk_registration_bot(RealVkRegistrationBot)
 
 
 def build_vk_bot() -> Any:
