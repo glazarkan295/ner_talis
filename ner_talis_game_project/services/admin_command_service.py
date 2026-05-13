@@ -38,11 +38,11 @@ def admin_help_text() -> str:
         "/admin_promo_list — показать последние промокоды.\n\n"
         "Игроки:\n"
         "/admin_reset_player GAME_ID CONFIRM — обнулить прогресс игрока.\n"
-        "/admin_delete_player ID CONFIRM_DELETE — удалить профиль игрока и вернуть его на регистрацию.\n"
-        "ID для удаления: GAME_ID, public_id, tg_123, vk_123 или telegram:123.\n"
+        "/admin_delete_player NT-XXXXXXXXXX CONFIRM_DELETE — полностью удалить профиль игрока и вернуть его на регистрацию.\n"
+        "Удаление работает только по игровому ID вида NT-XXXXXXXXXX.\n"
         "/admin_add_item GAME_ID ITEM_ID AMOUNT QUALITY — добавить простой предмет.\n"
         "/admin_add_item_json GAME_ID ITEM_JSON — добавить предмет с полными полями.\n\n"
-        "Все опасные действия пишутся в audit log и делают backup профиля игрока."
+        "Все опасные действия пишутся в audit log. Сброс делает backup, а удаление профиля выполняется без backup старого персонажа."
     )
 
 
@@ -153,10 +153,10 @@ def execute_admin_command(*, text: str, storage: Any, platform: str, admin_user_
 
     if command == "/admin_delete_player":
         if len(parts) < 3:
-            return AdminCommandResult(True, "Формат: /admin_delete_player ID CONFIRM_DELETE")
+            return AdminCommandResult(True, "Формат: /admin_delete_player NT-XXXXXXXXXX CONFIRM_DELETE")
         identifier, confirm = parts[1], parts[2]
         if _looks_like_placeholder(identifier):
-            return AdminCommandResult(True, "ID — это пример. Укажи настоящий ID игрока: NT-XXXXXXXXXX, public_id, tg_123456, vk_123456, telegram:123456 или vk:123456.")
+            return AdminCommandResult(True, "GAME_ID — это пример. Укажи настоящий игровой ID игрока вида NT-XXXXXXXXXX.")
         if confirm != "CONFIRM_DELETE":
             return AdminCommandResult(True, "Для удаления нужно явно написать CONFIRM_DELETE третьим аргументом.")
         ok, message, player = delete_player_profile(storage, identifier)
@@ -165,8 +165,8 @@ def execute_admin_command(*, text: str, storage: Any, platform: str, admin_user_
                 platform=platform,
                 admin_user_id=admin_user_id,
                 command=text,
-                action="delete_player",
-                details={"identifier": identifier, "game_id": player.get("game_id") if player else None},
+                action="delete_player_hard",
+                details={"game_id": player.get("game_id") if player else identifier},
             )
         return AdminCommandResult(True, message)
 

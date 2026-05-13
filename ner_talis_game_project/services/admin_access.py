@@ -57,36 +57,47 @@ def _id_in_config(value: str | int | None, config_name: str) -> bool:
 
 
 def check_telegram_admin(chat_id: str | int | None, user_id: str | int | None) -> AdminAccessResult:
-    """Проверяет доступ Telegram-админа."""
+    """Проверяет доступ Telegram-админа.
 
-    if not _parse_id_set("TELEGRAM_ADMIN_CHAT_IDS"):
-        return AdminAccessResult(False, "Не настроена переменная TELEGRAM_ADMIN_CHAT_IDS или ADMIN_TELEGRAM_CHAT_IDS.")
+    Обязательный минимум — TELEGRAM_ADMIN_USER_IDS.
+    TELEGRAM_ADMIN_CHAT_IDS необязателен: если он указан, команда дополнительно
+    ограничивается конкретными админ-чатами. Это позволяет выполнять опасные
+    команды и в личке с ботом, и в выделенном админ-чате.
+    """
 
-    if not _parse_id_set("TELEGRAM_ADMIN_USER_IDS"):
+    admin_users = _parse_id_set("TELEGRAM_ADMIN_USER_IDS")
+    allowed_chats = _parse_id_set("TELEGRAM_ADMIN_CHAT_IDS")
+
+    if not admin_users:
         return AdminAccessResult(False, "Не настроена переменная TELEGRAM_ADMIN_USER_IDS или ADMIN_TELEGRAM_USER_IDS.")
-
-    if not _id_in_config(chat_id, "TELEGRAM_ADMIN_CHAT_IDS"):
-        return AdminAccessResult(False, "Команда доступна только в разрешённом Telegram админ-чате.")
 
     if not _id_in_config(user_id, "TELEGRAM_ADMIN_USER_IDS"):
         return AdminAccessResult(False, "Пользователь не входит в список Telegram админов.")
+
+    if allowed_chats and not _id_in_config(chat_id, "TELEGRAM_ADMIN_CHAT_IDS"):
+        return AdminAccessResult(False, "Команда доступна только в разрешённом Telegram админ-чате.")
 
     return AdminAccessResult(True)
 
 
 def check_vk_admin(peer_id: str | int | None, user_id: str | int | None) -> AdminAccessResult:
-    """Проверяет доступ VK-админа."""
+    """Проверяет доступ VK-админа.
 
-    if not _parse_id_set("VK_ADMIN_PEER_IDS"):
-        return AdminAccessResult(False, "Не настроена переменная VK_ADMIN_PEER_IDS или ADMIN_VK_PEER_IDS.")
+    Обязательный минимум — VK_ADMIN_USER_IDS.
+    VK_ADMIN_PEER_IDS необязателен: если он указан, команда дополнительно
+    ограничивается конкретными VK-беседами.
+    """
 
-    if not _parse_id_set("VK_ADMIN_USER_IDS"):
+    admin_users = _parse_id_set("VK_ADMIN_USER_IDS")
+    allowed_peers = _parse_id_set("VK_ADMIN_PEER_IDS")
+
+    if not admin_users:
         return AdminAccessResult(False, "Не настроена переменная VK_ADMIN_USER_IDS или ADMIN_VK_USER_IDS.")
-
-    if not _id_in_config(peer_id, "VK_ADMIN_PEER_IDS"):
-        return AdminAccessResult(False, "Команда доступна только в разрешённой VK админ-беседе.")
 
     if not _id_in_config(user_id, "VK_ADMIN_USER_IDS"):
         return AdminAccessResult(False, "Пользователь не входит в список VK админов.")
+
+    if allowed_peers and not _id_in_config(peer_id, "VK_ADMIN_PEER_IDS"):
+        return AdminAccessResult(False, "Команда доступна только в разрешённой VK админ-беседе.")
 
     return AdminAccessResult(True)

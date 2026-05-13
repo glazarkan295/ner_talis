@@ -9,21 +9,31 @@
 - отключать промокод;
 - смотреть последние промокоды;
 - обнулять прогресс игрока по `game_id`;
-- удалять профиль игрока и возвращать его на регистрацию;
+- полностью удалять профиль игрока по игровому ID и возвращать его на регистрацию;
 - добавлять предмет игроку;
 - добавлять предмет с полными JSON-полями;
 - писать audit log;
-- делать backup профиля игрока перед опасными действиями.
+- делать backup профиля игрока перед сбросом и добавлением предметов.
 
 ## Переменные окружения
 
-Добавить в Timeweb Cloud:
+Минимально для доступа достаточно указать ID админов:
+
+```env
+TELEGRAM_ADMIN_USER_IDS=111111111,222222222
+VK_ADMIN_USER_IDS=111111111,222222222
+```
+
+Дополнительно можно ограничить команды конкретным Telegram-чатом или VK-беседой:
 
 ```env
 TELEGRAM_ADMIN_CHAT_IDS=-1001234567890
-TELEGRAM_ADMIN_USER_IDS=111111111,222222222
 VK_ADMIN_PEER_IDS=2000000001
-VK_ADMIN_USER_IDS=111111111,222222222
+```
+
+Служебные пути:
+
+```env
 PROMO_CODES_PATH=data/promo_codes.json
 ADMIN_AUDIT_LOG_PATH=data/admin_audit.log
 ADMIN_BACKUP_DIR=data/admin_backups
@@ -86,28 +96,32 @@ ADMIN_BACKUP_DIR=data/admin_backups
 ```
 
 `CONFIRM` обязателен, чтобы случайно не стереть прогресс игрока.
+Сброс делает backup старого состояния и возвращает игроку стартовые предметы/навыки.
 
-### Удалить профиль игрока
+### Полностью удалить профиль игрока
 
 ```text
-/admin_delete_player ID CONFIRM_DELETE
+/admin_delete_player NT-XXXXXXXXXX CONFIRM_DELETE
 ```
 
 `CONFIRM_DELETE` обязателен, чтобы случайно не удалить профиль.
-После удаления игрок при следующем `/start` снова попадает на регистрацию персонажа.
+Удаление работает только по игровому ID вида `NT-XXXXXXXXXX`.
 
-Поддерживаемые варианты `ID`:
+Пример:
 
 ```text
-/admin_delete_player NT-ABC1234567 CONFIRM_DELETE
-/admin_delete_player tg_123456 CONFIRM_DELETE
-/admin_delete_player telegram:123456 CONFIRM_DELETE
-/admin_delete_player vk_123456 CONFIRM_DELETE
-/admin_delete_player vk:123456 CONFIRM_DELETE
-/admin_delete_player PUBLIC_ID CONFIRM_DELETE
+/admin_delete_player NT-1A2B3C4D5E CONFIRM_DELETE
 ```
 
-В Telegram-группе команда также работает в виде `/admin_delete_player@BotName ...`.
+После удаления очищаются:
+
+- профиль игрока;
+- Telegram/VK-привязки;
+- занятое имя;
+- коды привязки;
+- web/site-сессии.
+
+Удаление профиля выполняется без backup старого персонажа. После этого игрок при любой следующей команде будет отправлен на начало регистрации и начнёт полностью с нуля.
 
 ### Добавить простой предмет
 
@@ -135,10 +149,9 @@ ADMIN_BACKUP_DIR=data/admin_backups
 
 ## Безопасность
 
-Команды выполняются только если одновременно совпали:
+Команды выполняются только если user id администратора находится в списке `TELEGRAM_ADMIN_USER_IDS` или `VK_ADMIN_USER_IDS`.
+Если заданы `TELEGRAM_ADMIN_CHAT_IDS` или `VK_ADMIN_PEER_IDS`, команда дополнительно должна прийти из разрешённого чата/беседы.
 
-- разрешённый чат или беседа;
-- разрешённый user id администратора.
-
-Перед сбросом, удалением игрока и добавлением предметов создаётся backup профиля в `ADMIN_BACKUP_DIR`.
+Перед сбросом и добавлением предметов создаётся backup профиля в `ADMIN_BACKUP_DIR`.
+Полное удаление игрока backup не создаёт и удаляет профиль безоговорочно.
 Все действия пишутся в `ADMIN_AUDIT_LOG_PATH`.
