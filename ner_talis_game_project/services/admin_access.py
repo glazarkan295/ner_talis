@@ -28,16 +28,26 @@ def _clean_env_value(name: str, value: str | None) -> str:
     return cleaned
 
 
-def _parse_id_set(name: str) -> set[str]:
-    raw = _clean_env_value(name, os.getenv(name))
-    if not raw:
-        return set()
+ENV_ALIASES = {
+    "TELEGRAM_ADMIN_CHAT_IDS": ("TELEGRAM_ADMIN_CHAT_IDS", "ADMIN_TELEGRAM_CHAT_IDS"),
+    "TELEGRAM_ADMIN_USER_IDS": ("TELEGRAM_ADMIN_USER_IDS", "ADMIN_TELEGRAM_USER_IDS"),
+    "VK_ADMIN_PEER_IDS": ("VK_ADMIN_PEER_IDS", "ADMIN_VK_PEER_IDS"),
+    "VK_ADMIN_USER_IDS": ("VK_ADMIN_USER_IDS", "ADMIN_VK_USER_IDS"),
+}
 
-    return {
-        chunk.strip()
-        for chunk in re.split(r"[,;\s]+", raw)
-        if chunk.strip()
-    }
+
+def _parse_id_set(name: str) -> set[str]:
+    values: set[str] = set()
+    for env_name in ENV_ALIASES.get(name, (name,)):
+        raw = _clean_env_value(env_name, os.getenv(env_name))
+        if not raw:
+            continue
+        values.update(
+            chunk.strip()
+            for chunk in re.split(r"[,;\s]+", raw)
+            if chunk.strip()
+        )
+    return values
 
 
 def _id_in_config(value: str | int | None, config_name: str) -> bool:
@@ -50,10 +60,10 @@ def check_telegram_admin(chat_id: str | int | None, user_id: str | int | None) -
     """Проверяет доступ Telegram-админа."""
 
     if not _parse_id_set("TELEGRAM_ADMIN_CHAT_IDS"):
-        return AdminAccessResult(False, "Не настроена переменная TELEGRAM_ADMIN_CHAT_IDS.")
+        return AdminAccessResult(False, "Не настроена переменная TELEGRAM_ADMIN_CHAT_IDS или ADMIN_TELEGRAM_CHAT_IDS.")
 
     if not _parse_id_set("TELEGRAM_ADMIN_USER_IDS"):
-        return AdminAccessResult(False, "Не настроена переменная TELEGRAM_ADMIN_USER_IDS.")
+        return AdminAccessResult(False, "Не настроена переменная TELEGRAM_ADMIN_USER_IDS или ADMIN_TELEGRAM_USER_IDS.")
 
     if not _id_in_config(chat_id, "TELEGRAM_ADMIN_CHAT_IDS"):
         return AdminAccessResult(False, "Команда доступна только в разрешённом Telegram админ-чате.")
@@ -68,10 +78,10 @@ def check_vk_admin(peer_id: str | int | None, user_id: str | int | None) -> Admi
     """Проверяет доступ VK-админа."""
 
     if not _parse_id_set("VK_ADMIN_PEER_IDS"):
-        return AdminAccessResult(False, "Не настроена переменная VK_ADMIN_PEER_IDS.")
+        return AdminAccessResult(False, "Не настроена переменная VK_ADMIN_PEER_IDS или ADMIN_VK_PEER_IDS.")
 
     if not _parse_id_set("VK_ADMIN_USER_IDS"):
-        return AdminAccessResult(False, "Не настроена переменная VK_ADMIN_USER_IDS.")
+        return AdminAccessResult(False, "Не настроена переменная VK_ADMIN_USER_IDS или ADMIN_VK_USER_IDS.")
 
     if not _id_in_config(peer_id, "VK_ADMIN_PEER_IDS"):
         return AdminAccessResult(False, "Команда доступна только в разрешённой VK админ-беседе.")
