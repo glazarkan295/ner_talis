@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -16,6 +17,16 @@ from project_paths import resolve_project_path
 from services.registration_service import DEFAULT_CRAFTING_LEVELS, load_races
 
 STAT_KEYS = ("strength", "dexterity", "endurance", "intelligence", "wisdom", "perception")
+GAME_ID_PATTERN = re.compile(r"^NT-[A-Z0-9]{10}$", re.IGNORECASE)
+
+
+def normalize_game_id(identifier: str) -> str:
+    """Возвращает game_id в каноническом виде NT-XXXXXXXXXX."""
+    return str(identifier or "").strip().strip("\"'").upper()
+
+
+def is_valid_game_id(identifier: str) -> bool:
+    return bool(GAME_ID_PATTERN.fullmatch(normalize_game_id(identifier)))
 
 
 def _backup_dir() -> Path:
@@ -49,119 +60,40 @@ def _base_stats_for_player(player: dict[str, Any]) -> dict[str, int]:
     return {key: int(existing_stats.get(key, 0)) for key in STAT_KEYS}
 
 
-def _resolve_player_by_identifier(storage: Any, identifier: str) -> dict[str, Any] | None:
-    raw = str(identifier or "").strip()
-    if not raw:
-        return None
-
-    normalized = raw.strip().strip("\"'")
-
-    if hasattr(storage, "get_player_by_game_id"):
-        player = storage.get_player_by_game_id(normalized)
-        if player is not None:
-            return player
-
-    lowered = normalized.casefold()
-    platform: str | None = None
-    external_id: str | None = None
-    if lowered.startswith("tg_"):
-        platform, external_id = "telegram", normalized[3:]
-    elif lowered.startswith("vk_"):
-        platform, external_id = "vk", normalized[3:]
-    elif ":" in normalized:
-        left, right = normalized.split(":", 1)
-        if left.casefold() in {"telegram", "tg"}:
-            platform, external_id = "telegram", right
-        elif left.casefold() == "vk":
-            platform, external_id = "vk", right
-
-    if platform and external_id and hasattr(storage, "get_player_by_platform"):
-        player = storage.get_player_by_platform(platform, external_id)
-        if player is not None:
-            return player
-
-    if hasattr(storage, "get_player_by_public_id"):
-        try:
-            player = storage.get_player_by_public_id(normalized)
-        except Exception:
-            player = None
-        if player is not None:
-            return player
-
-    # Fallback for all storages: scan loaded players. This also supports raw
-    # numeric platform IDs when the value uniquely matches telegram_id/vk_id.
-    matches: list[dict[str, Any]] = []
-    if hasattr(storage, "load"):
-        data = storage.load()
-        for player in (data.get("players") or {}).values():
-            if not isinstance(player, dict):
-                continue
-            values = {
-                str(player.get("game_id") or ""),
-                str(player.get("id") or ""),
-                str(player.get("public_id") or ""),
-                str(player.get("telegram_id") or ""),
-                str(player.get("vk_id") or ""),
-            }
-            for platform_name, platform_id in (player.get("linked_accounts") or {}).items():
-                if platform_id:
-                    values.add(str(platform_id))
-                    values.add(f"{platform_name}:{platform_id}")
-                    if platform_name == "telegram":
-                        values.add(f"tg_{platform_id}")
-                    if platform_name == "vk":
-                        values.add(f"vk_{platform_id}")
-            if normalized in values:
-                matches.append(player)
-
-    if len(matches) == 1:
-        return matches[0]
-    return None
-
-
 def delete_player_profile(storage: Any, identifier: str) -> tuple[bool, str, dict[str, Any] | None]:
-    """Delete a player profile so linked users return to registration on /start."""
-    player = _resolve_player_by_identifier(storage, identifier)
+    """Hard-delete a player by game_id so linked users must register again.
+
+    This is not a reset and not a soft-delete. The previous profile is removed
+    from the storage together with platform links, name index, link codes and
+    web sessions. No profile backup is created for this operation.
+    """
+    game_id = normalize_game_id(identifier)
+    if not is_valid_game_id(game_id):
+        return (
+            False,
+            "Удаление выполняется только по игровому ID вида NT-XXXXXXXXXX. "
+            "Пример: /admin_delete_player NT-1A2B3C4D5E CONFIRM_DELETE",
+            None,
+        )
+
+    player = storage.get_player_by_game_id(game_id) if hasattr(storage, "get_player_by_game_id") else None
     if player is None:
-        return False, f"Игрок {identifier} не найден. Используй настоящий game_id вида NT-..., public_id, tg_123456, vk_123456, telegram:123456 или vk:123456.", None
+        return False, f"Игрок {game_id} не найден. Проверь игровой ID в профиле игрока.", None
 
-    game_id = str(player.get("game_id") or player.get("id"))
-    backup_player(player, "before_delete")
+    if not hasattr(storage, "delete_player"):
+        return False, "Хранилище не поддерживает жёсткое удаление игроков. Обнови проект до последней версии.", player
 
-    if hasattr(storage, "delete_player"):
-        deleted = bool(storage.delete_player(game_id))
-    else:
-        data = storage.load()
-        deleted = game_id in data.get("players", {})
-        if deleted:
-            data["players"].pop(game_id, None)
-            data["platform_links"] = {
-                key: value
-                for key, value in data.get("platform_links", {}).items()
-                if value != game_id
-            }
-            data["names"] = {
-                key: value
-                for key, value in data.get("names", {}).items()
-                if value != game_id
-            }
-            data["link_codes"] = {
-                key: value
-                for key, value in data.get("link_codes", {}).items()
-                if not isinstance(value, dict) or value.get("game_id") != game_id
-            }
-            for sessions_key in ("site_sessions", "web_sessions"):
-                if sessions_key in data:
-                    data[sessions_key] = {
-                        token: session
-                        for token, session in data.get(sessions_key, {}).items()
-                        if not isinstance(session, dict) or session.get("game_id") != game_id
-                    }
-            storage.save(data)
-
+    deleted = bool(storage.delete_player(game_id))
     if not deleted:
         return False, f"Игрок {game_id} не найден или уже удалён.", player
-    return True, f"Профиль игрока {game_id} удалён. При следующем /start игрок снова попадёт на регистрацию.", player
+
+    return (
+        True,
+        f"Профиль игрока {game_id} полностью удалён. "
+        "Старые данные, привязки Telegram/VK, имя, web-сессии и коды привязки очищены. "
+        "При любой следующей команде игрок будет отправлен на начало регистрации и начнёт с нуля.",
+        player,
+    )
 
 
 def reset_player_progress(storage: Any, game_id: str) -> tuple[bool, str, dict[str, Any] | None]:
