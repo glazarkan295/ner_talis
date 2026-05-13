@@ -9,6 +9,7 @@
 - отключать промокод;
 - смотреть последние промокоды;
 - обнулять прогресс игрока по `game_id`;
+- удалять профиль игрока и возвращать его на регистрацию;
 - добавлять предмет игроку;
 - добавлять предмет с полными JSON-полями;
 - писать audit log;
@@ -84,7 +85,29 @@ ADMIN_BACKUP_DIR=data/admin_backups
 /admin_reset_player GAME_ID CONFIRM
 ```
 
-`CONFIRM` обязателен, чтобы случайно не стереть игрока.
+`CONFIRM` обязателен, чтобы случайно не стереть прогресс игрока.
+
+### Удалить профиль игрока
+
+```text
+/admin_delete_player ID CONFIRM_DELETE
+```
+
+`CONFIRM_DELETE` обязателен, чтобы случайно не удалить профиль.
+После удаления игрок при следующем `/start` снова попадает на регистрацию персонажа.
+
+Поддерживаемые варианты `ID`:
+
+```text
+/admin_delete_player NT-ABC1234567 CONFIRM_DELETE
+/admin_delete_player tg_123456 CONFIRM_DELETE
+/admin_delete_player telegram:123456 CONFIRM_DELETE
+/admin_delete_player vk_123456 CONFIRM_DELETE
+/admin_delete_player vk:123456 CONFIRM_DELETE
+/admin_delete_player PUBLIC_ID CONFIRM_DELETE
+```
+
+В Telegram-группе команда также работает в виде `/admin_delete_player@BotName ...`.
 
 ### Добавить простой предмет
 
@@ -117,5 +140,5 @@ ADMIN_BACKUP_DIR=data/admin_backups
 - разрешённый чат или беседа;
 - разрешённый user id администратора.
 
-Перед сбросом игрока и добавлением предметов создаётся backup профиля в `ADMIN_BACKUP_DIR`.
+Перед сбросом, удалением игрока и добавлением предметов создаётся backup профиля в `ADMIN_BACKUP_DIR`.
 Все действия пишутся в `ADMIN_AUDIT_LOG_PATH`.
