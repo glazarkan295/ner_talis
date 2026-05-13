@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from services.admin_audit import write_admin_audit
-from services.admin_player_service import add_item_to_player, reset_player_progress
+from services.admin_player_service import add_item_to_player, delete_player_profile, reset_player_progress
 from services.promo_service import add_promo_code, deactivate_promo_code, import_promo_codes, list_promo_codes
 
 ADMIN_COMMAND_PREFIX = "/admin"
@@ -38,6 +38,8 @@ def admin_help_text() -> str:
         "/admin_promo_list — показать последние промокоды.\n\n"
         "Игроки:\n"
         "/admin_reset_player GAME_ID CONFIRM — обнулить прогресс игрока.\n"
+        "/admin_delete_player ID CONFIRM_DELETE — удалить профиль игрока и вернуть его на регистрацию.\n"
+        "ID для удаления: GAME_ID, public_id, tg_123, vk_123 или telegram:123.\n"
         "/admin_add_item GAME_ID ITEM_ID AMOUNT QUALITY — добавить простой предмет.\n"
         "/admin_add_item_json GAME_ID ITEM_JSON — добавить предмет с полными полями.\n\n"
         "Все опасные действия пишутся в audit log и делают backup профиля игрока."
@@ -137,6 +139,23 @@ def execute_admin_command(*, text: str, storage: Any, platform: str, admin_user_
         ok, message, _player = reset_player_progress(storage, game_id)
         if ok:
             write_admin_audit(platform=platform, admin_user_id=admin_user_id, command=text, action="reset_player", details={"game_id": game_id})
+        return AdminCommandResult(True, message)
+
+    if command == "/admin_delete_player":
+        if len(parts) < 3:
+            return AdminCommandResult(True, "Формат: /admin_delete_player ID CONFIRM_DELETE")
+        identifier, confirm = parts[1], parts[2]
+        if confirm != "CONFIRM_DELETE":
+            return AdminCommandResult(True, "Для удаления нужно явно написать CONFIRM_DELETE третьим аргументом.")
+        ok, message, player = delete_player_profile(storage, identifier)
+        if ok:
+            write_admin_audit(
+                platform=platform,
+                admin_user_id=admin_user_id,
+                command=text,
+                action="delete_player",
+                details={"identifier": identifier, "game_id": player.get("game_id") if player else None},
+            )
         return AdminCommandResult(True, message)
 
     if command == "/admin_add_item":

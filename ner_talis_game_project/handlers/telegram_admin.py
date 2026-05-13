@@ -14,6 +14,7 @@ ADMIN_COMMANDS = (
     "admin_promo_off",
     "admin_promo_list",
     "admin_reset_player",
+    "admin_delete_player",
     "admin_add_item",
     "admin_add_item_json",
 )
