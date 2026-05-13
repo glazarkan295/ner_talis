@@ -21,8 +21,8 @@ GAME_ID_PATTERN = re.compile(r"^NT-[A-Z0-9]{10}$", re.IGNORECASE)
 
 
 def normalize_game_id(identifier: str) -> str:
-    """Возвращает game_id в каноническом виде NT-XXXXXXXXXX."""
-    return str(identifier or "").strip().strip("\"'").upper()
+    """Возвращает игровой ID в каноническом виде NT-XXXXXXXXXX."""
+    return str(identifier or "").strip().strip("\'\"").upper()
 
 
 def is_valid_game_id(identifier: str) -> bool:
@@ -61,11 +61,11 @@ def _base_stats_for_player(player: dict[str, Any]) -> dict[str, int]:
 
 
 def delete_player_profile(storage: Any, identifier: str) -> tuple[bool, str, dict[str, Any] | None]:
-    """Hard-delete a player by game_id so linked users must register again.
+    """Безоговорочно удаляет профиль игрока по game_id NT-XXXXXXXXXX.
 
-    This is not a reset and not a soft-delete. The previous profile is removed
-    from the storage together with platform links, name index, link codes and
-    web sessions. No profile backup is created for this operation.
+    Это не сброс и не мягкое удаление. Профиль удаляется вместе с
+    Telegram/VK-привязками, занятым именем, web-сессиями и кодами привязки.
+    Backup старого профиля не создаётся, чтобы игрок начал полностью с нуля.
     """
     game_id = normalize_game_id(identifier)
     if not is_valid_game_id(game_id):
@@ -76,14 +76,18 @@ def delete_player_profile(storage: Any, identifier: str) -> tuple[bool, str, dic
             None,
         )
 
-    player = storage.get_player_by_game_id(game_id) if hasattr(storage, "get_player_by_game_id") else None
+    if not hasattr(storage, "get_player_by_game_id"):
+        return False, "Хранилище не умеет искать игроков по game_id. Обнови проект до этой версии.", None
+
+    player = storage.get_player_by_game_id(game_id)
     if player is None:
         return False, f"Игрок {game_id} не найден. Проверь игровой ID в профиле игрока.", None
 
-    if not hasattr(storage, "delete_player"):
-        return False, "Хранилище не поддерживает жёсткое удаление игроков. Обнови проект до последней версии.", player
+    delete_method = getattr(storage, "hard_delete_player_by_game_id", None) or getattr(storage, "delete_player", None)
+    if delete_method is None:
+        return False, "Хранилище не поддерживает жёсткое удаление игроков. Обнови проект до этой версии.", player
 
-    deleted = bool(storage.delete_player(game_id))
+    deleted = bool(delete_method(game_id))
     if not deleted:
         return False, f"Игрок {game_id} не найден или уже удалён.", player
 
@@ -91,7 +95,7 @@ def delete_player_profile(storage: Any, identifier: str) -> tuple[bool, str, dic
         True,
         f"Профиль игрока {game_id} полностью удалён. "
         "Старые данные, привязки Telegram/VK, имя, web-сессии и коды привязки очищены. "
-        "При любой следующей команде игрок будет отправлен на начало регистрации и начнёт с нуля.",
+        "При следующей команде игрок будет отправлен на начало регистрации и начнёт с нуля.",
         player,
     )
 
