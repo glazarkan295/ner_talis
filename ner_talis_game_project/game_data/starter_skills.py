@@ -10,7 +10,7 @@ STARTER_SKILLS: dict[str, list[dict[str, Any]]] = {
         {
             "id": "basic_attack",
             "name": "Обычный удар",
-            "level": "стартовый",
+            "level": 0,
             "skill_type": "active",
             "category": "Физическая атака ближнего боя",
             "resource_branch": "neutral",
@@ -23,19 +23,17 @@ STARTER_SKILLS: dict[str, list[dict[str, Any]]] = {
             "mana_cost": 0,
             "damage_type": "physical",
             "base_damage_formula": "ceil(5 + player_level * 1.2)",
+            "damage": "5 + уровень персонажа × 1.2",
             "uses_hit_check": True,
             "can_crit": True,
             "crit_type": "physical",
             "defense_type": "physical_defense",
-            "description": (
-                "Простой удар оружием или рукой. Нейтральный стартовый навык, "
-                "не прокачивается и не открывает ветки развития."
-            ),
+            "description": "Урон зависит от уровня персонажа.",
         },
         {
             "id": "magic_spark",
             "name": "Магический сгусток",
-            "level": "стартовый",
+            "level": 0,
             "skill_type": "active",
             "category": "Магическая атака",
             "resource_branch": "neutral",
@@ -48,14 +46,12 @@ STARTER_SKILLS: dict[str, list[dict[str, Any]]] = {
             "mana_cost": 0,
             "damage_type": "magic",
             "base_damage_formula": "ceil(4 + player_level * 1.1)",
+            "damage": "4 + уровень персонажа × 1.1",
             "uses_hit_check": True,
             "can_crit": True,
             "crit_type": "magic",
             "defense_type": "magic_defense",
-            "description": (
-                "Слабый сгусток сырой маны. Нейтральный стартовый навык, "
-                "не прокачивается и не открывает Ветвь Маны."
-            ),
+            "description": "Урон зависит от уровня персонажа.",
         },
     ],
     "passive": [],

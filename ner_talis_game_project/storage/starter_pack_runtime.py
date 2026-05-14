@@ -74,13 +74,45 @@ POSTGRES_COLUMN_FIELDS = {
     "updated_at",
 }
 
+STARTER_SKILL_IDS = {skill["id"]: skill for skill in get_starter_skills()["active"]}
 
-def ensure_starter_pack(player: dict[str, Any]) -> bool:
-    """Ensure a profile has starter gear and skills exactly once."""
-    if player.get("starter_pack_applied"):
+
+def sync_starter_skill_definitions(player: dict[str, Any]) -> bool:
+    """Update old starter skills to the current non-upgradeable definition."""
+    skills = player.get("skills")
+    if not isinstance(skills, dict):
+        return False
+
+    active_skills = skills.get("active")
+    if not isinstance(active_skills, list):
         return False
 
     changed = False
+    for index, skill in enumerate(active_skills):
+        if not isinstance(skill, dict):
+            continue
+        skill_id = skill.get("id")
+        template = STARTER_SKILL_IDS.get(skill_id)
+        if not template:
+            continue
+
+        updated = deepcopy(skill)
+        for key, value in template.items():
+            if updated.get(key) != value:
+                updated[key] = deepcopy(value)
+                changed = True
+        active_skills[index] = updated
+
+    return changed
+
+
+def ensure_starter_pack(player: dict[str, Any]) -> bool:
+    """Ensure a profile has starter gear and current starter skills exactly once."""
+    changed = False
+
+    if player.get("starter_pack_applied"):
+        return sync_starter_skill_definitions(player)
+
     if not isinstance(player.get("equipment"), dict) or not player.get("equipment"):
         player["equipment"] = get_starter_equipment()
         changed = True
@@ -90,9 +122,11 @@ def ensure_starter_pack(player: dict[str, Any]) -> bool:
     if not isinstance(skills, dict) or not isinstance(active_skills, list) or not active_skills:
         player["skills"] = get_starter_skills()
         changed = True
+    else:
+        changed = sync_starter_skill_definitions(player) or changed
 
     player["starter_pack_applied"] = True
-    return True or changed
+    return True
 
 
 def build_extra_payload(player: dict[str, Any]) -> dict[str, Any]:

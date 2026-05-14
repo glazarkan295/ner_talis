@@ -1,6 +1,6 @@
 """Profile API for the React website.
 
-The React profile from ``web/`` talks to these endpoints.  The module uses the
+The React profile from ``web/`` talks to these endpoints. The module uses the
 same storage factory as Telegram/VK, so it works with PostgreSQL, SQLite and
 JSON without a separate data file.
 """
@@ -102,10 +102,19 @@ def ceil(value: float) -> int:
     return int(math.ceil(value))
 
 
+def safe_int(value: Any, default: int = 0) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def effective_stat(player: dict[str, Any], stat_key: str) -> int:
-    base = int((player.get("stats") or {}).get(stat_key, 0))
-    invested = int((player.get("invested_stats") or {}).get(stat_key, 0))
-    bonus = int((player.get("stat_bonuses") or {}).get(stat_key, 0))
+    base = safe_int((player.get("stats") or {}).get(stat_key), 0)
+    invested = safe_int((player.get("invested_stats") or {}).get(stat_key), 0)
+    bonus = safe_int((player.get("stat_bonuses") or {}).get(stat_key), 0)
     invested_total = base + invested
     return int(math.floor(1000 * math.log(1 + invested_total / 1000) + bonus))
 
@@ -116,25 +125,12 @@ def soft_level(level: int) -> int:
 
 def format_money(copper: int) -> str:
     copper = max(0, int(copper or 0))
-    ancient_value = 500_000_000_000
-    magic_gold_value = 1_000_000_000
-    gold_value = 1_000_000
-    silver_value = 1_000
-
-    ancient, copper = divmod(copper, ancient_value)
-    magic_gold, copper = divmod(copper, magic_gold_value)
-    gold, copper = divmod(copper, gold_value)
-    silver, copper = divmod(copper, silver_value)
-
+    values = [(500_000_000_000, "древн."), (1_000_000_000, "маг. зол."), (1_000_000, "зол."), (1_000, "сер.")]
     parts: list[str] = []
-    if ancient:
-        parts.append(f"{ancient} древн.")
-    if magic_gold:
-        parts.append(f"{magic_gold} маг. зол.")
-    if gold:
-        parts.append(f"{gold} зол.")
-    if silver:
-        parts.append(f"{silver} сер.")
+    for cost, label in values:
+        amount, copper = divmod(copper, cost)
+        if amount:
+            parts.append(f"{amount} {label}")
     if copper or not parts:
         parts.append(f"{copper} мед.")
     return " ".join(parts)
@@ -170,36 +166,50 @@ def normalize_item(item: dict[str, Any], default_category: str = "Прочее")
     return normalized
 
 
+def format_skill_damage(skill: dict[str, Any], player_level: int) -> Any:
+    if not isinstance(skill, dict):
+        return None
+    formula = str(skill.get("base_damage_formula") or "")
+    if skill.get("id") == "basic_attack" or "5 + player_level * 1.2" in formula:
+        return f"{ceil(5 + player_level * 1.2)} (5 + уровень × 1.2)"
+    if skill.get("id") == "magic_spark" or "4 + player_level * 1.1" in formula:
+        return f"{ceil(4 + player_level * 1.1)} (4 + уровень × 1.1)"
+    return skill.get("damage")
+
+
+def normalize_skill(skill: dict[str, Any], player_level: int) -> dict[str, Any]:
+    normalized = deepcopy(skill)
+    damage = format_skill_damage(normalized, player_level)
+    if damage is not None:
+        normalized["damage"] = damage
+    return normalized
+
+
 def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
-    level = int(player.get("level", 1))
+    level = safe_int(player.get("level"), 1) or 1
     s_level = soft_level(level)
-
     eff = {front_key: effective_stat(player, back_key) for front_key, back_key, *_ in ATTRIBUTE_META}
-    armor = int(player.get("armor", 0))
-    magic_armor = int(player.get("magic_armor", armor))
+    armor = safe_int(player.get("armor"), 0)
+    magic_armor = safe_int(player.get("magic_armor"), armor)
 
-    hp_max = ceil(100 + eff["endurance"] * 4.0 + eff["strength"] * 0.8 + s_level * 4 + int(player.get("bonus_hp", 0)))
-    spirit_max = ceil(20 + eff["endurance"] * 1.2 + eff["strength"] * 1.0 + eff["agility"] * 0.7 + s_level * 1.2 + int(player.get("bonus_spirit", 0)))
-    mana_max = ceil(20 + eff["intelligence"] * 1.6 + eff["wisdom"] * 1.3 + s_level * 1.2 + int(player.get("bonus_mana", 0)))
-    physical_defense = ceil(armor * 1.5 + eff["endurance"] * 0.9 + eff["strength"] * 0.6 + eff["agility"] * 0.2 + int(player.get("bonus_physical_defense", 0)))
-    magic_defense = ceil(magic_armor * 1.5 + eff["wisdom"] * 0.9 + eff["intelligence"] * 0.6 + eff["endurance"] * 0.2 + int(player.get("bonus_magic_defense", 0)))
-    accuracy = ceil(eff["perception"] * 1.8 + eff["agility"] * 1.1 + s_level * 0.7 + int(player.get("bonus_accuracy", 0)))
-    dodge = ceil(eff["agility"] * 1.8 + eff["perception"] * 0.9 + eff["wisdom"] * 0.3 + s_level * 0.5 + int(player.get("bonus_dodge", 0)))
-    crit_stat = ceil(eff["perception"] * 1.5 + eff["agility"] * 0.8 + eff["wisdom"] * 0.2 + s_level * 0.2 + int(player.get("bonus_crit_chance", 0)))
+    hp_max = ceil(100 + eff["endurance"] * 4.0 + eff["strength"] * 0.8 + s_level * 4 + safe_int(player.get("bonus_hp"), 0))
+    spirit_max = ceil(20 + eff["endurance"] * 1.2 + eff["strength"] * 1.0 + eff["agility"] * 0.7 + s_level * 1.2 + safe_int(player.get("bonus_spirit"), 0))
+    mana_max = ceil(20 + eff["intelligence"] * 1.6 + eff["wisdom"] * 1.3 + s_level * 1.2 + safe_int(player.get("bonus_mana"), 0))
+    concentration_max = ceil(1 + (20 * eff["wisdom"] / (eff["wisdom"] + 4000)) + (12 * eff["intelligence"] / (eff["intelligence"] + 5000)) + (6 * eff["endurance"] / (eff["endurance"] + 6000)) + float(player.get("bonus_max_concentration") or 0))
+
+    physical_defense = ceil(armor * 1.5 + eff["endurance"] * 0.9 + eff["strength"] * 0.6 + eff["agility"] * 0.2 + safe_int(player.get("bonus_physical_defense"), 0))
+    magic_defense = ceil(magic_armor * 1.5 + eff["wisdom"] * 0.9 + eff["intelligence"] * 0.6 + eff["endurance"] * 0.2 + safe_int(player.get("bonus_magic_defense"), 0))
+    accuracy = ceil(eff["perception"] * 1.8 + eff["agility"] * 1.1 + s_level * 0.7 + safe_int(player.get("bonus_accuracy"), 0))
+    dodge = ceil(eff["agility"] * 1.8 + eff["perception"] * 0.9 + eff["wisdom"] * 0.3 + s_level * 0.5 + safe_int(player.get("bonus_dodge"), 0))
+    crit_stat = ceil(eff["perception"] * 1.5 + eff["agility"] * 0.8 + eff["wisdom"] * 0.2 + s_level * 0.2 + safe_int(player.get("bonus_crit_chance"), 0))
     crit_chance = min(0.49, crit_stat / (crit_stat + 5000))
-    concentration_max = ceil(1 + (20 * eff["wisdom"] / (eff["wisdom"] + 4000)) + (12 * eff["intelligence"] / (eff["intelligence"] + 5000)) + (6 * eff["endurance"] / (eff["endurance"] + 6000)) + float(player.get("bonus_max_concentration", 0)))
 
     attributes = []
     for front_key, back_key, label, description in ATTRIBUTE_META:
-        base = int((player.get("stats") or {}).get(back_key, 0))
-        invested = int((player.get("invested_stats") or {}).get(back_key, 0))
-        bonus = int((player.get("stat_bonuses") or {}).get(back_key, 0))
-        attributes.append({
-            "key": front_key,
-            "label": label,
-            "value": base + invested + bonus,
-            "description": description,
-        })
+        base = safe_int((player.get("stats") or {}).get(back_key), 0)
+        invested = safe_int((player.get("invested_stats") or {}).get(back_key), 0)
+        bonus = safe_int((player.get("stat_bonuses") or {}).get(back_key), 0)
+        attributes.append({"key": front_key, "label": label, "value": base + invested + bonus, "description": description})
 
     equipment = {}
     for slot_key, raw_item in (player.get("equipment") or {}).items():
@@ -215,27 +225,22 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(raw_item, dict):
             continue
         item = normalize_item(raw_item)
-        if item.get("category") in {"Снаряжение", "Оружие", "Бижутерия", "Особое"} and item.get("targetSlotKey"):
-            item.setdefault("actions", ["Надеть"])
+        if item.get("category") in {"Снаряжение", "Оружие", "Бижутерия", "Особое"} and (item.get("targetSlotKey") or item.get("slot")):
+            item["actions"] = ["Надеть"]
         elif item.get("category") in {"Алхимия", "Еда", "Напитки"}:
-            item.setdefault("actions", ["Использовать"])
+            item["actions"] = ["Использовать"]
         else:
             item.setdefault("actions", [])
         inventory.append(item)
 
     skills = player.get("skills", {}) if isinstance(player.get("skills"), dict) else {}
-    active_skills = skills.get("active", []) if isinstance(skills.get("active", []), list) else []
-    passive_skills = skills.get("passive", []) if isinstance(skills.get("passive", []), list) else []
+    active_skills = [normalize_skill(skill, level) for skill in skills.get("active", []) if isinstance(skill, dict)]
+    passive_skills = [normalize_skill(skill, level) for skill in skills.get("passive", []) if isinstance(skill, dict)]
 
     crafting_levels = []
     for key, value in (player.get("crafting_levels") or {}).items():
-        if not isinstance(value, dict):
-            continue
-        crafting_levels.append({
-            "name": CRAFT_LABELS.get(key, key),
-            "level": int(value.get("level", 1)),
-            "exp": f"{int(value.get('experience', 0))} опыта",
-        })
+        if isinstance(value, dict):
+            crafting_levels.append({"name": CRAFT_LABELS.get(key, key), "level": safe_int(value.get("level"), 1), "exp": f"{safe_int(value.get('experience'), 0)} опыта"})
 
     race_key = RACE_MODEL_KEYS.get(str(player.get("race_id", "human")), str(player.get("race_id", "human")))
 
@@ -258,20 +263,20 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "raceName": player.get("race_name", "Человек"),
             "branch": player.get("branch", "Ветвь не выбрана"),
             "level": level,
-            "experienceCurrent": int(player.get("experience", 0)),
-            "experienceToNext": int(player.get("experience_to_next", max(100, level * 100))),
-            "freeAttributePoints": int(player.get("free_stat_points", 0)),
-            "freeSkillPoints": int(player.get("free_skill_points", 0)),
-            "balanceText": format_money(int(player.get("money", 0))),
+            "experienceCurrent": safe_int(player.get("experience"), 0),
+            "experienceToNext": safe_int(player.get("experience_to_next"), max(100, level * 100)),
+            "freeAttributePoints": safe_int(player.get("free_stat_points"), 0),
+            "freeSkillPoints": safe_int(player.get("free_skill_points"), 0),
+            "balanceText": format_money(safe_int(player.get("money"), 0)),
             "registrationDate": format_date(player.get("created_at")),
         },
         "attributes": attributes,
         "parameters": [
-            {"label": "HP", "value": f"{int(player.get('hp', hp_max))} / {hp_max}"},
-            {"label": "Дух", "value": f"{int(player.get('spirit', spirit_max))} / {spirit_max}"},
-            {"label": "Мана", "value": f"{int(player.get('mana', mana_max))} / {mana_max}"},
-            {"label": "Энергия", "value": f"{int(player.get('energy', 100))} / {int(player.get('max_energy', 100))}"},
-            {"label": "Концентрация", "value": f"{int(player.get('concentration', concentration_max))} / {concentration_max}"},
+            {"label": "HP", "value": f"{safe_int(player.get('hp'), hp_max)} / {hp_max}"},
+            {"label": "Дух", "value": f"{safe_int(player.get('spirit'), spirit_max)} / {spirit_max}"},
+            {"label": "Мана", "value": f"{safe_int(player.get('mana'), mana_max)} / {mana_max}"},
+            {"label": "Энергия", "value": f"{safe_int(player.get('energy'), 100)} / {safe_int(player.get('max_energy'), 100)}"},
+            {"label": "Концентрация", "value": f"{safe_int(player.get('concentration'), concentration_max)} / {concentration_max}"},
             {"label": "Физическая защита", "value": physical_defense},
             {"label": "Магическая защита", "value": magic_defense},
             {"label": "Точность", "value": accuracy},
@@ -287,12 +292,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         "information": {
             "achievements": player.get("achievements", []),
             "rating": player.get("rating", {"globalPlace": "—", "pvePlace": "—", "pvpPlace": "—", "craftPlace": "—"}),
-            "activity": {
-                "pveKills": int(player.get("pve_kills", 0)),
-                "pvpKills": int(player.get("pvp_kills", 0)),
-                "soulParticlesAbsorbed": int(player.get("soul_particles_absorbed", 0)),
-                "craftingLevels": crafting_levels,
-            },
+            "activity": {"pveKills": safe_int(player.get("pve_kills"), 0), "pvpKills": safe_int(player.get("pvp_kills"), 0), "soulParticlesAbsorbed": safe_int(player.get("soul_particles_absorbed"), 0), "craftingLevels": crafting_levels},
         },
     }
 
@@ -302,8 +302,7 @@ def get_player_by_public_id(storage: Any, public_id: str) -> dict[str, Any] | No
         player = storage.get_player_by_public_id(public_id)
         if player is not None:
             return player
-    data = storage.load()
-    for player in (data.get("players") or {}).values():
+    for player in (storage.load().get("players") or {}).values():
         if isinstance(player, dict) and str(player.get("public_id")) == str(public_id):
             return player
     return None
@@ -312,7 +311,6 @@ def get_player_by_public_id(storage: Any, public_id: str) -> dict[str, Any] | No
 def get_session_and_player_by_token(storage: Any, token: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     if hasattr(storage, "get_player_by_web_token"):
         return storage.get_player_by_web_token(token, scope=PROFILE_SCOPE)
-
     data = storage.load()
     sessions = data.get("web_sessions") or data.get("site_sessions") or {}
     session = sessions.get(token)
@@ -321,8 +319,7 @@ def get_session_and_player_by_token(storage: Any, token: str) -> tuple[dict[str,
     expires_at = parse_datetime(session.get("expires_at"))
     if expires_at and expires_at <= datetime.now(timezone.utc):
         return None, None
-    game_id = session.get("game_id")
-    player = (data.get("players") or {}).get(game_id)
+    player = (data.get("players") or {}).get(session.get("game_id"))
     return player, session if player else None
 
 
@@ -367,17 +364,13 @@ def create_profile_api_router(get_storage) -> APIRouter:
     def spend_attribute(identifier: str, request: SpendAttributeRequest) -> dict[str, Any]:
         storage = get_storage()
         player = resolve_profile_write(storage, identifier)
-
         stat_key = FRONT_TO_BACK_STAT.get(request.attribute_key)
         if not stat_key:
             raise HTTPException(status_code=400, detail="Неизвестная характеристика.")
-
-        free_points = int(player.get("free_stat_points", 0))
+        free_points = safe_int(player.get("free_stat_points"), 0)
         if request.amount > free_points:
             raise HTTPException(status_code=400, detail="Недостаточно свободных очков характеристик.")
-
-        player.setdefault("invested_stats", {})
-        player["invested_stats"][stat_key] = int(player["invested_stats"].get(stat_key, 0)) + request.amount
+        player.setdefault("invested_stats", {})[stat_key] = safe_int(player.setdefault("invested_stats", {}).get(stat_key), 0) + request.amount
         player["free_stat_points"] = free_points - request.amount
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
@@ -386,30 +379,24 @@ def create_profile_api_router(get_storage) -> APIRouter:
     def equip_inventory_item(identifier: str, request: EquipItemRequest) -> dict[str, Any]:
         storage = get_storage()
         player = resolve_profile_write(storage, identifier)
-
         inventory = player.setdefault("inventory", [])
         equipment = player.setdefault("equipment", {})
-
-        item_index = next((index for index, item in enumerate(inventory) if isinstance(item, dict) and str(item.get("id")) == request.item_id), None)
+        item_index = next((index for index, item in enumerate(inventory) if isinstance(item, dict) and str(item.get("id") or item.get("item_id")) == request.item_id), None)
         if item_index is None:
             raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
-
         item = inventory.pop(item_index)
         slot_key = item.get("targetSlotKey") or item.get("slotKey") or item.get("slot")
         if not slot_key:
             inventory.insert(item_index, item)
             raise HTTPException(status_code=400, detail="У предмета не указан слот экипировки.")
-
         previous_item = equipment.get(slot_key)
         if isinstance(previous_item, dict):
             previous_item["targetSlotKey"] = slot_key
             previous_item.pop("slotKey", None)
             inventory.append(previous_item)
-
         item["slotKey"] = slot_key
         item.pop("targetSlotKey", None)
         equipment[slot_key] = item
-
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
 
@@ -417,16 +404,13 @@ def create_profile_api_router(get_storage) -> APIRouter:
     def unequip_inventory_item(identifier: str, request: UnequipItemRequest) -> dict[str, Any]:
         storage = get_storage()
         player = resolve_profile_write(storage, identifier)
-
         equipment = player.setdefault("equipment", {})
         item = equipment.pop(request.slot_key, None)
         if not isinstance(item, dict):
             raise HTTPException(status_code=404, detail="В этом слоте нет предмета.")
-
         item["targetSlotKey"] = request.slot_key
         item.pop("slotKey", None)
         player.setdefault("inventory", []).append(item)
-
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
 
@@ -434,19 +418,16 @@ def create_profile_api_router(get_storage) -> APIRouter:
     def use_inventory_item(identifier: str, request: UseItemRequest) -> dict[str, Any]:
         storage = get_storage()
         player = resolve_profile_write(storage, identifier)
-
         inventory = player.setdefault("inventory", [])
-        item_index = next((index for index, item in enumerate(inventory) if isinstance(item, dict) and str(item.get("id")) == request.item_id), None)
+        item_index = next((index for index, item in enumerate(inventory) if isinstance(item, dict) and str(item.get("id") or item.get("item_id")) == request.item_id), None)
         if item_index is None:
             raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
-
         item = inventory[item_index]
-        amount = int(item.get("amount", 1))
+        amount = safe_int(item.get("amount"), 1)
         if amount > 1:
             item["amount"] = amount - 1
         else:
             inventory.pop(item_index)
-
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
 

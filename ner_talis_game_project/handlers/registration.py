@@ -9,13 +9,13 @@ from keyboards.reply_keyboards import (
     start_keyboard,
 )
 from services.registration_service import (
-    build_profile_url,
     create_player,
     format_race_card,
     get_race_id_by_name,
     load_races,
     validate_name,
 )
+from services.web_profile import create_profile_site_link
 from storage.base import PlayerStorage
 from texts.registration_texts import (
     ASK_NAME_TEXT,
@@ -233,12 +233,14 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    profile_url = build_profile_url(player)
+    profile_url = create_profile_site_link(storage, player, TELEGRAM_PLATFORM)
     await update.message.reply_text(
-        f"🔮 Профиль игрока {player['name']}:\n"
+        f"🔮 Временная ссылка на профиль игрока {player['name']}:\n"
         f"Единый игровой ID: {player['game_id']}\n"
-        f"Ссылка: {profile_url}",
+        f"Ссылка: {profile_url}\n\n"
+        "Ссылка действует ограниченное время. Когда она истечёт, нажми «Профиль» ещё раз.",
         reply_markup=after_registration_keyboard(),
+        disable_web_page_preview=True,
     )
 
 
