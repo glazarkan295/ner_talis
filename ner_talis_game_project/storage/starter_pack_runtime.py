@@ -74,12 +74,45 @@ POSTGRES_COLUMN_FIELDS = {
     "updated_at",
 }
 
+STARTER_SKILL_IDS = {skill["id"]: skill for skill in get_starter_skills()["active"]}
 
-def ensure_starter_pack(player: dict[str, Any]) -> bool:
-    if player.get("starter_pack_applied"):
+
+def sync_starter_skill_definitions(player: dict[str, Any]) -> bool:
+    """Update old starter skills to the current non-upgradeable definition."""
+    skills = player.get("skills")
+    if not isinstance(skills, dict):
+        return False
+
+    active_skills = skills.get("active")
+    if not isinstance(active_skills, list):
         return False
 
     changed = False
+    for index, skill in enumerate(active_skills):
+        if not isinstance(skill, dict):
+            continue
+        skill_id = skill.get("id")
+        template = STARTER_SKILL_IDS.get(skill_id)
+        if not template:
+            continue
+
+        updated = deepcopy(skill)
+        for key, value in template.items():
+            if updated.get(key) != value:
+                updated[key] = deepcopy(value)
+                changed = True
+        active_skills[index] = updated
+
+    return changed
+
+
+def ensure_starter_pack(player: dict[str, Any]) -> bool:
+    """Ensure a profile has starter gear and current starter skills exactly once."""
+    changed = False
+
+    if player.get("starter_pack_applied"):
+        return sync_starter_skill_definitions(player)
+
     if not isinstance(player.get("equipment"), dict) or not player.get("equipment"):
         player["equipment"] = get_starter_equipment()
         changed = True
@@ -89,37 +122,11 @@ def ensure_starter_pack(player: dict[str, Any]) -> bool:
     if not isinstance(skills, dict) or not isinstance(active_skills, list) or not active_skills:
         player["skills"] = get_starter_skills()
         changed = True
+    else:
+        changed = sync_starter_skill_definitions(player) or changed
 
     player["starter_pack_applied"] = True
-    return changed or True
-
-
-def sync_starter_skills(player: dict[str, Any]) -> bool:
-    """Update existing starter skills to the current level-0 definition."""
-    skills = player.get("skills")
-    if not isinstance(skills, dict):
-        return False
-
-    active = skills.get("active")
-    if not isinstance(active, list):
-        return False
-
-    starter_by_id = {skill["id"]: skill for skill in get_starter_skills().get("active", [])}
-    changed = False
-    for index, skill in enumerate(active):
-        if not isinstance(skill, dict):
-            continue
-        starter = starter_by_id.get(skill.get("id"))
-        if not starter:
-            continue
-        merged = deepcopy(starter)
-        for key, value in skill.items():
-            if key not in merged:
-                merged[key] = value
-        if merged != skill:
-            active[index] = merged
-            changed = True
-    return changed
+    return True
 
 
 def build_extra_payload(player: dict[str, Any]) -> dict[str, Any]:
@@ -146,7 +153,6 @@ def patch_postgres_starter_pack(storage_class: type[Any]) -> type[Any]:
     def _normalize_player(self: Any, player: dict[str, Any]) -> dict[str, Any]:
         normalized = original_normalize(self, player)
         ensure_starter_pack(normalized)
-        sync_starter_skills(normalized)
         normalized["extra"] = build_extra_payload(normalized)
         return normalized
 
@@ -159,14 +165,12 @@ def patch_postgres_starter_pack(storage_class: type[Any]) -> type[Any]:
             for key, value in extra.items():
                 player.setdefault(key, value)
         ensure_starter_pack(player)
-        sync_starter_skills(player)
         player["extra"] = build_extra_payload(player)
         return player
 
     def _upsert_player(self: Any, player: dict[str, Any]) -> dict[str, Any]:
         patched_player = dict(player)
         ensure_starter_pack(patched_player)
-        sync_starter_skills(patched_player)
         patched_player["extra"] = build_extra_payload(patched_player)
         return original_upsert(self, patched_player)
 
@@ -174,7 +178,6 @@ def patch_postgres_starter_pack(storage_class: type[Any]) -> type[Any]:
     storage_class._row_to_player = _row_to_player
     storage_class._upsert_player = _upsert_player
     storage_class._ensure_starter_pack = staticmethod(ensure_starter_pack)
-    storage_class._sync_starter_skills = staticmethod(sync_starter_skills)
     storage_class._build_extra_payload = staticmethod(build_extra_payload)
     storage_class.COLUMN_FIELDS = POSTGRES_COLUMN_FIELDS
     storage_class.DEFAULT_EXTRA_FIELDS = STARTER_EXTRA_FIELDS
