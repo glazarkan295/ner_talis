@@ -54,7 +54,7 @@ def race_confirm_keyboard() -> ReplyKeyboardMarkup:
 
 def after_registration_keyboard() -> ReplyKeyboardMarkup:
     return make_keyboard([
-        ["Профиль", "Профиль на сайте"],
+        ["Профиль"],
         ["В город"],
     ])
 
