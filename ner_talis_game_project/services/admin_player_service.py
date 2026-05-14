@@ -143,6 +143,36 @@ def delete_player_profile(storage: Any, identifier: str) -> tuple[bool, str, dic
     if not deleted:
         return False, f"Игрок {game_id} не найден или уже удалён.", player
 
+    try:
+        still_exists_by_game_id = storage.get_player_by_game_id(game_id)
+    except Exception as exc:
+        return False, f"Удаление выполнено с ошибкой проверки: {exc}", player
+
+    if still_exists_by_game_id is not None:
+        return (
+            False,
+            f"Ошибка: хранилище сообщило об удалении {game_id}, но профиль всё ещё находится по игровому ID. "
+            "Обнови проект и перезапусти приложение на Timeweb.",
+            player,
+        )
+
+    linked_accounts = player.get("linked_accounts") if isinstance(player, dict) else {}
+    if isinstance(linked_accounts, dict) and hasattr(storage, "get_player_by_platform"):
+        for platform, external_user_id in linked_accounts.items():
+            if not external_user_id:
+                continue
+            try:
+                linked_player = storage.get_player_by_platform(platform, external_user_id)
+            except Exception as exc:
+                return False, f"Удаление выполнено с ошибкой проверки привязки {platform}: {exc}", player
+            if linked_player is not None:
+                return (
+                    False,
+                    f"Ошибка: профиль {game_id} удалён не полностью — привязка {platform}:{external_user_id} всё ещё открывает персонажа. "
+                    "Обнови проект и перезапусти приложение на Timeweb.",
+                    player,
+                )
+
     return (
         True,
         f"Профиль игрока {game_id} полностью удалён. "
