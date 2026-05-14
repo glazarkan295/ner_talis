@@ -159,6 +159,7 @@ def create_player(
         "storage": [],
         "equipment": get_starter_equipment(),
         "skills": get_starter_skills(),
+        "starter_pack_applied": True,
         "active_effects": [],
         "active_sets": [],
         "known_recipes": [],
