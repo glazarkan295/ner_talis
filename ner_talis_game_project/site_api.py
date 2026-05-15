@@ -156,8 +156,40 @@ def normalize_quality(value: str | None) -> str:
     return (value or "обычный").strip().lower()
 
 
+HIDDEN_FORMULA_KEYS = {"formula", "base_damage_formula", "damage_formula", "scaling_formula"}
+FORMULA_TEXT_MARKERS = ("player_level", "ceil(", "floor(", "уровень ×", "уровня ×", "уровень персонажа ×")
+
+
+def contains_formula_text(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    lowered = value.casefold()
+    return any(marker in lowered for marker in FORMULA_TEXT_MARKERS)
+
+
+def strip_hidden_formulas(value: Any) -> Any:
+    if isinstance(value, dict):
+        cleaned = {}
+        for key, nested_value in value.items():
+            key_text = str(key).casefold()
+            if key_text in HIDDEN_FORMULA_KEYS or "formula" in key_text:
+                continue
+            cleaned_value = strip_hidden_formulas(nested_value)
+            if cleaned_value is None:
+                continue
+            cleaned[key] = cleaned_value
+        return cleaned
+    if isinstance(value, list):
+        return [cleaned for item in value if (cleaned := strip_hidden_formulas(item)) is not None]
+    if contains_formula_text(value):
+        return None
+    return value
+
+
 def normalize_item(item: dict[str, Any], default_category: str = "Прочее") -> dict[str, Any]:
-    normalized = deepcopy(item)
+    normalized = strip_hidden_formulas(deepcopy(item))
+    if not isinstance(normalized, dict):
+        normalized = {}
     normalized.setdefault("id", normalized.get("item_id") or normalized.get("name") or "item")
     normalized.setdefault("name", "Безымянный предмет")
     normalized.setdefault("category", default_category)
@@ -177,17 +209,24 @@ def format_skill_damage(skill: dict[str, Any], player_level: int) -> Any:
         return None
     formula = str(skill.get("base_damage_formula") or "")
     if skill.get("id") == "basic_attack" or "5 + player_level * 1.2" in formula:
-        return f"{ceil(5 + player_level * 1.2)} (5 + уровень × 1.2)"
+        return ceil(5 + player_level * 1.2)
     if skill.get("id") == "magic_spark" or "4 + player_level * 1.1" in formula:
-        return f"{ceil(4 + player_level * 1.1)} (4 + уровень × 1.1)"
-    return skill.get("damage")
+        return ceil(4 + player_level * 1.1)
+    damage = skill.get("damage")
+    if contains_formula_text(damage):
+        return None
+    return damage
 
 
 def normalize_skill(skill: dict[str, Any], player_level: int) -> dict[str, Any]:
-    normalized = deepcopy(skill)
-    damage = format_skill_damage(normalized, player_level)
+    normalized = strip_hidden_formulas(deepcopy(skill))
+    if not isinstance(normalized, dict):
+        normalized = {}
+    damage = format_skill_damage(skill, player_level)
     if damage is not None:
         normalized["damage"] = damage
+    else:
+        normalized.pop("damage", None)
     return normalized
 
 

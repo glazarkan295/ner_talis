@@ -1,14 +1,48 @@
+const PROFILE_TOKEN_STORAGE_KEY = "ner_talis_profile_token";
+
+function rememberPrivateProfileToken(token) {
+  if (!token) return;
+  try {
+    window.localStorage.setItem(PROFILE_TOKEN_STORAGE_KEY, token);
+  } catch {
+    // VK/embedded browsers can block localStorage. The URL token still works.
+  }
+}
+
+function getRememberedPrivateProfileToken() {
+  try {
+    return window.localStorage.getItem(PROFILE_TOKEN_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
 export function getProfileIdentifierFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  const fromQuery =
-    params.get("token") ||
+  const token = params.get("token");
+  if (token) {
+    rememberPrivateProfileToken(token);
+    return token;
+  }
+
+  const explicitPublicId =
     params.get("player") ||
     params.get("public_id") ||
     params.get("id");
-  if (fromQuery) return fromQuery;
+  if (explicitPublicId) return explicitPublicId;
 
   const parts = window.location.pathname.split("/").filter(Boolean);
-  return parts[parts.length - 1] || "";
+  const pathIdentifier = parts[parts.length - 1] || "";
+
+  // In VK's embedded browser the query string can be lost after internal
+  // navigation. Keep using the short-lived token from the bot if the page is
+  // still the profile page and there is no explicit public id in the URL.
+  if (!pathIdentifier || pathIdentifier === "profile") {
+    const rememberedToken = getRememberedPrivateProfileToken();
+    if (rememberedToken) return rememberedToken;
+  }
+
+  return pathIdentifier;
 }
 
 export const getPublicIdFromUrl = getProfileIdentifierFromUrl;

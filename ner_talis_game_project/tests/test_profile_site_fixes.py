@@ -1,4 +1,5 @@
 import sys
+import types
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,10 +11,42 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+
+if "vk_api" not in sys.modules:
+    vk_api_stub = types.ModuleType("vk_api")
+    vk_api_stub.VkApi = lambda *args, **kwargs: None
+    bot_longpoll_stub = types.ModuleType("vk_api.bot_longpoll")
+    bot_longpoll_stub.VkBotEventType = types.SimpleNamespace(MESSAGE_NEW="message_new")
+    bot_longpoll_stub.VkBotLongPoll = lambda *args, **kwargs: None
+    utils_stub = types.ModuleType("vk_api.utils")
+    utils_stub.get_random_id = lambda: 1
+    keyboard_stub = types.ModuleType("vk_api.keyboard")
+
+    class _FakeKeyboard:
+        def __init__(self, *args, **kwargs):
+            self.buttons = []
+
+        def add_line(self):
+            self.buttons.append("line")
+
+        def add_button(self, label, color=None):
+            self.buttons.append(label)
+
+        def get_keyboard(self):
+            return "{}"
+
+    keyboard_stub.VkKeyboard = _FakeKeyboard
+    keyboard_stub.VkKeyboardColor = types.SimpleNamespace(PRIMARY="primary")
+    sys.modules["vk_api"] = vk_api_stub
+    sys.modules["vk_api.bot_longpoll"] = bot_longpoll_stub
+    sys.modules["vk_api.utils"] = utils_stub
+    sys.modules["vk_api.keyboard"] = keyboard_stub
+
 from services.registration_service import create_player, load_races
 from services.web_profile import PROFILE_SCOPE, create_profile_site_link
 from site_api import create_profile_api_router, frontend_profile
 from storage.json_storage import JsonStorage
+from handlers.vk_registration import VK_PLATFORM, VkRegistrationBot
 
 
 class ProfileSiteFixesTest(unittest.TestCase):
@@ -74,6 +107,32 @@ class ProfileSiteFixesTest(unittest.TestCase):
 
             self.assertIn("/profile?token=", link)
 
+
+    def test_vk_profile_button_uses_short_lived_token_link(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            races = load_races("data/races.json")
+            player = create_player(
+                game_id=storage.generate_game_id(),
+                platform=VK_PLATFORM,
+                external_user_id="222",
+                name="ВКСсылка",
+                race_id="human",
+                races=races,
+            )
+            storage.save_new_player(player, VK_PLATFORM, "222")
+
+            sent_messages = []
+            bot = object.__new__(VkRegistrationBot)
+            bot.storage = storage
+            bot.send = lambda peer_id, text, keyboard=None: sent_messages.append(text)
+
+            bot.send_profile("222", 123)
+
+            self.assertTrue(sent_messages)
+            self.assertIn("/profile?token=", sent_messages[0])
+            self.assertNotIn(player["public_id"], sent_messages[0])
+
     def test_starter_skills_are_level_zero_and_show_damage(self):
         player = self._new_player()
         skills = player["skills"]["active"]
@@ -87,8 +146,9 @@ class ProfileSiteFixesTest(unittest.TestCase):
         player["level"] = 10
         profile = frontend_profile(player)
         frontend_skills = profile["skills"]["active"]
-        self.assertEqual(frontend_skills[0]["damage"], "17 (5 + уровень × 1.2)")
-        self.assertEqual(frontend_skills[1]["damage"], "15 (4 + уровень × 1.1)")
+        self.assertEqual(frontend_skills[0]["damage"], 17)
+        self.assertEqual(frontend_skills[1]["damage"], 15)
+        self.assertNotIn("base_damage_formula", frontend_skills[0])
 
     def test_skill_points_can_be_spent_through_private_profile_token(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -19,7 +19,6 @@ from services.city_service import (
     get_city_response,
 )
 from services.registration_service import (
-    build_profile_url,
     create_player,
     format_race_card,
     get_race_id_by_name,
@@ -28,6 +27,8 @@ from services.registration_service import (
 )
 from storage.base import PlayerStorage
 from storage.storage_factory import create_storage
+
+from services.web_profile import create_profile_site_link
 from texts.registration_texts import (
     ASK_NAME_TEXT,
     ASK_RACE_TEXT,
@@ -337,12 +338,13 @@ class VkRegistrationBot:
             )
             return
 
-        profile_url = build_profile_url(player)
+        profile_url = create_profile_site_link(self.storage, player, VK_PLATFORM)
         self.send(
             peer_id,
-            f"🔮 Профиль игрока {player['name']}:\n"
+            f"🔮 Временная ссылка на профиль игрока {player['name']}:\n"
             f"Единый игровой ID: {player['game_id']}\n"
-            f"Ссылка: {profile_url}",
+            f"Ссылка: {profile_url}\n\n"
+            "Ссылка действует ограниченное время. Когда она истечёт, нажми «Профиль» ещё раз.",
             after_registration_keyboard(),
         )
 
