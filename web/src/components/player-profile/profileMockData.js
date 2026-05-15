@@ -45,22 +45,20 @@ export const profileMockData = {
     { label: "Шанс крита", value: "3%" },
   ],
   effects: [],
-  activeSets: [
-    { name: "Полевой комплект", bonus: "+2 к выносливости при 2 предметах." },
-  ],
+  activeSets: [{ name: "Полевой комплект", bonus: "+2 к выносливости при 2 предметах." }],
   equipmentSlots: [
-    { key: "helmet", label: "Шлем", icon: "⛑" },
-    { key: "necklace", label: "Ожерелье", icon: "◆" },
-    { key: "chest", label: "Нагрудник", icon: "▣" },
-    { key: "belt", label: "Пояс", icon: "▰" },
-    { key: "pants", label: "Штаны", icon: "▥" },
-    { key: "boots", label: "Ботинки", icon: "▱" },
-    { key: "gloves", label: "Перчатки", icon: "✋" },
-    { key: "ring1", label: "Кольцо 1", icon: "○" },
-    { key: "ring2", label: "Кольцо 2", icon: "○" },
-    { key: "weapon1", label: "Оружие 1", icon: "⚔" },
-    { key: "weapon2", label: "Оружие 2", icon: "🛡" },
-    { key: "special", label: "Особый слот", icon: "✦" },
+    { key: "helmet", label: "Шлем" },
+    { key: "necklace", label: "Ожерелье" },
+    { key: "chest", label: "Нагрудник" },
+    { key: "belt", label: "Пояс" },
+    { key: "pants", label: "Штаны" },
+    { key: "boots", label: "Ботинки" },
+    { key: "gloves", label: "Перчатки" },
+    { key: "ring1", label: "Кольцо 1" },
+    { key: "ring2", label: "Кольцо 2" },
+    { key: "weapon1", label: "Оружие 1" },
+    { key: "weapon2", label: "Оружие 2" },
+    { key: "special", label: "Особый слот" },
   ],
   equipment: {
     weapon1: {
@@ -104,12 +102,8 @@ export const profileMockData = {
     },
   ],
   skills: {
-    active: [
-      { name: "Обычная атака", level: 1, description: "Базовый удар оружием." },
-    ],
-    passive: [
-      { name: "Меткий взгляд", level: 2, description: "+точность через восприятие." },
-    ],
+    active: [{ name: "Обычная атака", level: 1, description: "Базовый удар оружием." }],
+    passive: [{ name: "Меткий взгляд", level: 2, description: "+точность через восприятие." }],
   },
   information: {
     achievements: [{ name: "Первый шаг", description: "Персонаж создан." }],
