@@ -6,6 +6,7 @@ import {
   getProfileIdentifierFromUrl,
   loadPlayerProfile,
   spendAttributePoints,
+  spendSkillPoints,
   unequipItem,
   useItem,
 } from "./api/profileApi.js";
@@ -27,7 +28,6 @@ function App() {
       setError("");
       const payload = await loadPlayerProfile(profileIdentifier);
       setProfile(payload);
-      return payload;
     } catch (requestError) {
       setError(requestError.message || "Не удалось загрузить профиль игрока.");
     } finally {
@@ -42,8 +42,12 @@ function App() {
   async function runProfileAction(action) {
     try {
       setError("");
-      await action();
-      return await reloadProfile();
+      const payload = await action();
+      if (payload?.profile) {
+        setProfile(payload.profile);
+      } else {
+        await reloadProfile();
+      }
     } catch (requestError) {
       setError(requestError.message || "Действие не выполнено.");
     }
@@ -62,18 +66,21 @@ function App() {
       {error ? <div className="nt-api-error">{error}</div> : null}
       <PlayerProfile
         profile={profile}
-        onSpendAttributePoints={(attributeKey, amount) => (
-          runProfileAction(() => spendAttributePoints(profileIdentifier, attributeKey, amount))
-        )}
-        onEquipItem={(item) => (
-          runProfileAction(() => equipItem(profileIdentifier, item.id))
-        )}
-        onUnequipItem={(slotKey) => (
-          runProfileAction(() => unequipItem(profileIdentifier, slotKey))
-        )}
-        onUseItem={(item) => (
-          runProfileAction(() => useItem(profileIdentifier, item.id))
-        )}
+        onSpendAttributePoints={(attributeKey, amount) => {
+          return runProfileAction(() => spendAttributePoints(profileIdentifier, attributeKey, amount));
+        }}
+        onSpendSkillPoints={(skill, modifierId, amount) => {
+          return runProfileAction(() => spendSkillPoints(profileIdentifier, skill.id || skill.name, modifierId, amount));
+        }}
+        onEquipItem={(item) => {
+          return runProfileAction(() => equipItem(profileIdentifier, item.id));
+        }}
+        onUnequipItem={(slotKey) => {
+          return runProfileAction(() => unequipItem(profileIdentifier, slotKey));
+        }}
+        onUseItem={(item) => {
+          return runProfileAction(() => useItem(profileIdentifier, item.id));
+        }}
       />
     </>
   );
