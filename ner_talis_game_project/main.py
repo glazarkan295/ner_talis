@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import threading
+import time
 import traceback
 from typing import Any
 
@@ -114,6 +115,25 @@ def require_int_env(name: str) -> int:
         ) from exc
 
 
+def get_bool_env(name: str, default: bool = False) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    value = normalize_env_value(name, raw_value).casefold()
+    return value in {"1", "true", "yes", "on", "да"}
+
+
+def get_int_env(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        return int(float(normalize_env_value(name, raw_value)))
+    except ValueError:
+        logger.warning("Переменная окружения %s должна быть числом, получено: %r", name, raw_value)
+        return default
+
+
 def get_telegram_application_builder():
     if callable(build_application):
         return build_application
@@ -161,15 +181,23 @@ def build_vk_bot() -> Any:
 
 def run_vk_bot() -> None:
     """Запускает VK-бота внутри фонового потока."""
-    try:
-        logger.info("VK bot is starting")
-        build_vk_bot().run()
-    except Exception:
-        logger.error(
-            "VK bot stopped because of an error:\n%s",
-            redact_sensitive_text(traceback.format_exc()),
-        )
-        raise
+    retry_on_error = get_bool_env("VK_RESTART_ON_ERROR", True)
+    retry_seconds = max(5, get_int_env("VK_RESTART_RETRY_SECONDS", 30))
+
+    while True:
+        try:
+            logger.info("VK bot is starting")
+            build_vk_bot().run()
+            return
+        except Exception:
+            logger.error(
+                "VK bot stopped because of an error:\n%s",
+                redact_sensitive_text(traceback.format_exc()),
+            )
+            if not retry_on_error:
+                raise
+            logger.info("VK bot will restart in %s seconds", retry_seconds)
+            time.sleep(retry_seconds)
 
 
 def start_vk_thread() -> threading.Thread:

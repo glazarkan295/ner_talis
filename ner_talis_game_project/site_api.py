@@ -74,6 +74,12 @@ class SpendAttributeRequest(BaseModel):
     amount: int = Field(gt=0)
 
 
+class SpendSkillRequest(BaseModel):
+    skill_id: str
+    modifier_id: str | None = None
+    amount: int = Field(gt=0)
+
+
 class EquipItemRequest(BaseModel):
     item_id: str
 
@@ -352,6 +358,50 @@ def save_player(storage: Any, player: dict[str, Any]) -> None:
     storage.save(data)
 
 
+def find_player_skill(player: dict[str, Any], skill_id: str) -> dict[str, Any] | None:
+    target = str(skill_id or "").strip()
+    if not target:
+        return None
+    skills = player.get("skills")
+    if not isinstance(skills, dict):
+        return None
+    for section in ("active", "passive"):
+        for skill in skills.get(section, []):
+            if not isinstance(skill, dict):
+                continue
+            if target in {str(skill.get("id") or ""), str(skill.get("name") or "")}:
+                return skill
+    return None
+
+
+def spend_points_on_skill(skill: dict[str, Any], modifier_id: str | None, amount: int) -> None:
+    if not skill.get("upgradeable"):
+        raise HTTPException(status_code=400, detail="Этот навык нельзя улучшить.")
+
+    skill["level"] = safe_int(skill.get("level"), 0) + amount
+    modifiers = skill.get("modifiers")
+    target_modifier = str(modifier_id or "main").strip()
+    if not isinstance(modifiers, list) or not modifiers:
+        if target_modifier in {"", "main"}:
+            return
+        raise HTTPException(status_code=400, detail="Модификатор навыка не найден.")
+
+    for modifier in modifiers:
+        if not isinstance(modifier, dict):
+            continue
+        modifier_keys = {
+            str(modifier.get("id") or ""),
+            str(modifier.get("name") or ""),
+            str(modifier.get("label") or ""),
+        }
+        if target_modifier in modifier_keys:
+            level_key = "level" if "level" in modifier or "points" not in modifier else "points"
+            modifier[level_key] = safe_int(modifier.get(level_key), 0) + amount
+            return
+
+    raise HTTPException(status_code=400, detail="Модификатор навыка не найден.")
+
+
 def create_profile_api_router(get_storage) -> APIRouter:
     router = APIRouter(prefix="/api/profile", tags=["profile"])
 
@@ -372,6 +422,21 @@ def create_profile_api_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=400, detail="Недостаточно свободных очков характеристик.")
         player.setdefault("invested_stats", {})[stat_key] = safe_int(player.setdefault("invested_stats", {}).get(stat_key), 0) + request.amount
         player["free_stat_points"] = free_points - request.amount
+        save_player(storage, player)
+        return {"ok": True, "profile": frontend_profile(player)}
+
+    @router.post("/{identifier}/skills/spend")
+    def spend_skill(identifier: str, request: SpendSkillRequest) -> dict[str, Any]:
+        storage = get_storage()
+        player = resolve_profile_write(storage, identifier)
+        free_points = safe_int(player.get("free_skill_points"), 0)
+        if request.amount > free_points:
+            raise HTTPException(status_code=400, detail="Недостаточно свободных очков навыков.")
+        skill = find_player_skill(player, request.skill_id)
+        if skill is None:
+            raise HTTPException(status_code=404, detail="Навык не найден.")
+        spend_points_on_skill(skill, request.modifier_id, request.amount)
+        player["free_skill_points"] = free_points - request.amount
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
 

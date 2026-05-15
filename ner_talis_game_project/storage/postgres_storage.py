@@ -14,6 +14,13 @@ from typing import Any
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
+from storage.starter_pack_runtime import (
+    POSTGRES_COLUMN_FIELDS,
+    STARTER_EXTRA_FIELDS,
+    build_extra_payload,
+    ensure_starter_pack,
+)
+
 
 class PostgresStorage:
     """Player storage backed by PostgreSQL.
@@ -24,6 +31,11 @@ class PostgresStorage:
 
     LINK_CODE_LIFETIME_MINUTES = 15
     _lock = threading.RLock()
+    _starter_pack_native = True
+    COLUMN_FIELDS = POSTGRES_COLUMN_FIELDS
+    DEFAULT_EXTRA_FIELDS = STARTER_EXTRA_FIELDS
+    _ensure_starter_pack = staticmethod(ensure_starter_pack)
+    _build_extra_payload = staticmethod(build_extra_payload)
 
     def __init__(self, database_url: str | None = None, legacy_json_path: str | Path | None = None):
         self.database_url = database_url or os.getenv("DATABASE_URL", "").strip()
@@ -176,6 +188,8 @@ class PostgresStorage:
         player.setdefault("current_city", "seldar")
         player.setdefault("energy", 100)
         player.setdefault("max_energy", 100)
+        self._ensure_starter_pack(player)
+        player["extra"] = self._build_extra_payload(player)
         return player
 
     def _row_to_player(self, row: Any) -> dict[str, Any] | None:
@@ -188,12 +202,21 @@ class PostgresStorage:
         player["crafting_levels"] = self._loads(player.get("crafting_levels"), {})
         player["housing"] = self._loads(player.get("housing"), {})
         player["extra"] = self._loads(player.get("extra"), {})
+        if isinstance(player["extra"], dict):
+            for key, value in player["extra"].items():
+                if key not in {"game_id", "id"}:
+                    player.setdefault(key, value)
+        for date_key in ("created_at", "updated_at"):
+            if hasattr(player.get(date_key), "isoformat"):
+                player[date_key] = player[date_key].isoformat()
         links = self.get_links_for_game_id(player["game_id"])
         player["linked_accounts"] = links
         if links.get("telegram"):
             player["telegram_id"] = links["telegram"]
         if links.get("vk"):
             player["vk_id"] = links["vk"]
+        self._ensure_starter_pack(player)
+        player["extra"] = self._build_extra_payload(player)
         return player
 
     def get_links_for_game_id(self, game_id: str) -> dict[str, str]:
@@ -290,7 +313,7 @@ class PostgresStorage:
                 "inventory": self._dumps(player.get("inventory", [])),
                 "crafting_levels": self._dumps(player.get("crafting_levels", {})),
                 "housing": self._dumps(player.get("housing", {})),
-                "extra": self._dumps(player.get("extra", {})),
+                "extra": self._dumps(player.get("extra") or self._build_extra_payload(player)),
             })
         for platform, platform_user_id in (player.get("linked_accounts") or {}).items():
             if platform_user_id:

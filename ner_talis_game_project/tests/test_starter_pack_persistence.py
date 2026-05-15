@@ -32,11 +32,9 @@ class StarterPackPersistenceTest(unittest.TestCase):
     def test_postgres_runtime_packs_starter_fields_into_extra_json(self):
         try:
             from storage.postgres_storage import PostgresStorage
-            from storage.starter_pack_runtime import patch_postgres_starter_pack
         except ModuleNotFoundError as exc:
             self.skipTest(f"PostgreSQL dependencies are not installed: {exc}")
 
-        patch_postgres_starter_pack(PostgresStorage)
         races = load_races("data/races.json")
         player = create_player(
             game_id="NT-POSTGRES",

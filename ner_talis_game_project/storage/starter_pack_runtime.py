@@ -146,6 +146,14 @@ def patch_postgres_starter_pack(storage_class: type[Any]) -> type[Any]:
     if getattr(storage_class, "_starter_pack_runtime_patched", False):
         return storage_class
 
+    if getattr(storage_class, "_starter_pack_native", False):
+        storage_class._ensure_starter_pack = staticmethod(ensure_starter_pack)
+        storage_class._build_extra_payload = staticmethod(build_extra_payload)
+        storage_class.COLUMN_FIELDS = POSTGRES_COLUMN_FIELDS
+        storage_class.DEFAULT_EXTRA_FIELDS = STARTER_EXTRA_FIELDS
+        storage_class._starter_pack_runtime_patched = True
+        return storage_class
+
     original_normalize = storage_class._normalize_player
     original_row_to_player = storage_class._row_to_player
     original_upsert = storage_class._upsert_player

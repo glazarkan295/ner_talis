@@ -3,13 +3,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from services.registration_service import create_player, load_races
-from services.web_profile import create_profile_site_link
-from site_api import frontend_profile
+from services.web_profile import PROFILE_SCOPE, create_profile_site_link
+from site_api import create_profile_api_router, frontend_profile
 from storage.json_storage import JsonStorage
 
 
@@ -86,6 +89,55 @@ class ProfileSiteFixesTest(unittest.TestCase):
         frontend_skills = profile["skills"]["active"]
         self.assertEqual(frontend_skills[0]["damage"], "17 (5 + уровень × 1.2)")
         self.assertEqual(frontend_skills[1]["damage"], "15 (4 + уровень × 1.1)")
+
+    def test_skill_points_can_be_spent_through_private_profile_token(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["free_skill_points"] = 3
+            player["skills"]["passive"].append(
+                {
+                    "id": "focus",
+                    "name": "Фокус",
+                    "level": 1,
+                    "upgradeable": True,
+                    "modifiers": [{"id": "clarity", "name": "Ясность", "level": 0}],
+                }
+            )
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            response = TestClient(app).post(
+                f"/api/profile/{token}/skills/spend",
+                json={"skill_id": "focus", "modifier_id": "clarity", "amount": 2},
+            )
+
+            self.assertEqual(response.status_code, 200, response.text)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(restored["free_skill_points"], 1)
+            self.assertEqual(restored["skills"]["passive"][0]["level"], 3)
+            self.assertEqual(restored["skills"]["passive"][0]["modifiers"][0]["level"], 2)
+
+    def test_skill_points_cannot_be_spent_through_public_profile_id(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["free_skill_points"] = 1
+            player["skills"]["passive"].append(
+                {"id": "focus", "name": "Фокус", "level": 1, "upgradeable": True}
+            )
+            storage.save_new_player(player, "telegram", "111")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            response = TestClient(app).post(
+                f"/api/profile/{player['public_id']}/skills/spend",
+                json={"skill_id": "focus", "modifier_id": "main", "amount": 1},
+            )
+
+            self.assertEqual(response.status_code, 401)
 
 
 if __name__ == "__main__":

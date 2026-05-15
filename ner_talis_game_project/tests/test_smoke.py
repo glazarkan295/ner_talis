@@ -180,6 +180,37 @@ class GameSmokeTest(unittest.TestCase):
 
         self.assertIn("telegram build failed", str(context.exception))
 
+    def test_vk_bot_restarts_after_runtime_error(self):
+        import main as combined_main
+
+        events: list[str] = []
+
+        class FlakyVkBot:
+            def __init__(self, token: str, group_id: int, storage_path: str):
+                self.token = token
+                self.group_id = group_id
+                self.storage_path = storage_path
+
+            def run(self):
+                events.append("vk_run")
+                if events.count("vk_run") == 1:
+                    raise RuntimeError("temporary vk failure")
+
+        env = {
+            "VK_GROUP_TOKEN": "vk-test-token",
+            "VK_GROUP_ID": "123456",
+            "PLAYERS_STORAGE_PATH": "data/players.json",
+            "VK_RESTART_ON_ERROR": "true",
+            "VK_RESTART_RETRY_SECONDS": "5",
+        }
+
+        with patch.dict(os.environ, env, clear=False), \
+             patch.object(combined_main, "VkRegistrationBot", FlakyVkBot), \
+             patch.object(combined_main.time, "sleep", lambda seconds: events.append(f"sleep:{seconds}")):
+            combined_main.run_vk_bot()
+
+        self.assertEqual(events, ["vk_run", "sleep:5", "vk_run"])
+
     def test_env_values_with_names_are_normalized(self):
         import main as combined_main
 
