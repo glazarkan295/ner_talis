@@ -67,3 +67,11 @@ export function useItem(identifier, itemId) {
     body: JSON.stringify({ item_id: itemId }),
   });
 }
+
+
+export function spendSkillPoints(identifier, skillId, modifierId, amount) {
+  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/skills/spend`, {
+    method: "POST",
+    body: JSON.stringify({ skill_id: skillId, modifier_id: modifierId, amount }),
+  });
+}
