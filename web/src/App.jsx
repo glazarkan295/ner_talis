@@ -18,7 +18,7 @@ function App() {
 
   const reloadProfile = useCallback(async () => {
     if (!profileIdentifier || profileIdentifier === "profile") {
-      setError("В ссылке нет token или public_id игрока. Открой профиль кнопкой «Профиль на сайте» в боте.");
+      setError("В ссылке нет token или public_id игрока. Открой профиль кнопкой «Профиль» в боте.");
       setLoading(false);
       return;
     }
@@ -27,6 +27,7 @@ function App() {
       setError("");
       const payload = await loadPlayerProfile(profileIdentifier);
       setProfile(payload);
+      return payload;
     } catch (requestError) {
       setError(requestError.message || "Не удалось загрузить профиль игрока.");
     } finally {
@@ -42,7 +43,7 @@ function App() {
     try {
       setError("");
       await action();
-      await reloadProfile();
+      return await reloadProfile();
     } catch (requestError) {
       setError(requestError.message || "Действие не выполнено.");
     }
@@ -61,18 +62,18 @@ function App() {
       {error ? <div className="nt-api-error">{error}</div> : null}
       <PlayerProfile
         profile={profile}
-        onSpendAttributePoints={(attributeKey, amount) => {
-          runProfileAction(() => spendAttributePoints(profileIdentifier, attributeKey, amount));
-        }}
-        onEquipItem={(item) => {
-          runProfileAction(() => equipItem(profileIdentifier, item.id));
-        }}
-        onUnequipItem={(slotKey) => {
-          runProfileAction(() => unequipItem(profileIdentifier, slotKey));
-        }}
-        onUseItem={(item) => {
-          runProfileAction(() => useItem(profileIdentifier, item.id));
-        }}
+        onSpendAttributePoints={(attributeKey, amount) => (
+          runProfileAction(() => spendAttributePoints(profileIdentifier, attributeKey, amount))
+        )}
+        onEquipItem={(item) => (
+          runProfileAction(() => equipItem(profileIdentifier, item.id))
+        )}
+        onUnequipItem={(slotKey) => (
+          runProfileAction(() => unequipItem(profileIdentifier, slotKey))
+        )}
+        onUseItem={(item) => (
+          runProfileAction(() => useItem(profileIdentifier, item.id))
+        )}
       />
     </>
   );
