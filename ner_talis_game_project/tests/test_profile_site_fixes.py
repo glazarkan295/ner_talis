@@ -104,6 +104,62 @@ class ProfileSiteFixesTest(unittest.TestCase):
 
         self.assertEqual(modifiers["bonus_accuracy"], 3)
 
+    def test_structured_equipment_modifiers_are_not_double_counted_by_display_stats(self):
+        player = self._new_player()
+        player["equipment"] = {
+            "ring1": {
+                "stat_modifiers": {"bonus_accuracy": 2},
+                "stats": ["Точность: +2"],
+            }
+        }
+
+        modifiers = equipment_modifier_totals(player)
+
+        self.assertEqual(modifiers["bonus_accuracy"], 2)
+
+    def test_active_effect_modifiers_are_used_in_profile_formulas(self):
+        player = self._new_player()
+        player["energy"] = 150
+        base_profile = frontend_profile(player)
+        player["active_effects"] = [
+            {
+                "name": "Сосредоточенность",
+                "stat_modifiers": {
+                    "bonus_accuracy": 10,
+                    "max_energy": 15,
+                    "bonus_crit_damage_percent": 25,
+                },
+            }
+        ]
+
+        boosted_profile = frontend_profile(player)
+        base_values = {row["label"]: row["value"] for row in base_profile["parameters"]}
+        boosted_values = {row["label"]: row["value"] for row in boosted_profile["parameters"]}
+
+        self.assertGreater(int(boosted_values["Точность"]), int(base_values["Точность"]))
+        self.assertEqual(boosted_values["Энергия"], "115 / 115")
+        self.assertEqual(boosted_values["Урон крита"], "125%")
+
+    def test_damage_modifiers_are_used_in_frontend_skill_damage(self):
+        player = self._new_player()
+        player["level"] = 10
+        player["active_effects"] = [
+            {
+                "name": "Боевой импульс",
+                "stat_modifiers": {
+                    "bonus_damage": 2,
+                    "bonus_physical_damage": 3,
+                    "magic_damage": 4,
+                },
+            }
+        ]
+
+        profile = frontend_profile(player)
+        skills = {skill["id"]: skill for skill in profile["skills"]["active"]}
+
+        self.assertEqual(skills["basic_attack"]["damage"], 22)
+        self.assertEqual(skills["magic_spark"]["damage"], 21)
+
     def test_inventory_actions_are_based_on_current_location(self):
         player = self._new_player()
         item = player["equipment"].pop("weapon1")
@@ -207,6 +263,36 @@ class ProfileSiteFixesTest(unittest.TestCase):
             self.assertEqual(restored["free_skill_points"], 1)
             self.assertEqual(restored["skills"]["passive"][0]["level"], 3)
             self.assertEqual(restored["skills"]["passive"][0]["modifiers"][0]["level"], 2)
+
+    def test_consumable_with_explicit_modifiers_adds_active_effect(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["inventory"] = [
+                {
+                    "id": "focus_food",
+                    "name": "Питательная похлебка",
+                    "category": "Еда",
+                    "amount": 2,
+                    "use_effect": {"stat_modifiers": {"bonus_max_energy": 20}},
+                }
+            ]
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            response = TestClient(app).post(
+                f"/api/profile/{token}/inventory/use",
+                json={"item_id": "focus_food"},
+            )
+
+            self.assertEqual(response.status_code, 200, response.text)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(restored["inventory"][0]["amount"], 1)
+            self.assertEqual(restored["active_effects"][0]["stat_modifiers"]["bonus_max_energy"], 20)
+            values = {row["label"]: row["value"] for row in response.json()["profile"]["parameters"]}
+            self.assertEqual(values["Энергия"], "100 / 120")
 
     def test_skill_points_cannot_be_spent_through_public_profile_id(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

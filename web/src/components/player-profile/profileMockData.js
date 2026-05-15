@@ -43,6 +43,7 @@ export const profileMockData = {
     { label: "Точность", value: 22 },
     { label: "Уклонение", value: 20 },
     { label: "Шанс крита", value: "3%" },
+    { label: "Урон крита", value: "100%" },
   ],
   effects: [],
   activeSets: [{ name: "Полевой комплект", bonus: "+2 к выносливости при 2 предметах." }],

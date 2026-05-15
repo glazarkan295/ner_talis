@@ -118,12 +118,21 @@ def safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def effective_stat(player: dict[str, Any], stat_key: str, equipment_modifiers: dict[str, int] | None = None) -> int:
+def safe_float(value: Any, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def effective_stat(player: dict[str, Any], stat_key: str, bonus_modifiers: dict[str, int] | None = None) -> int:
     base = safe_int((player.get("stats") or {}).get(stat_key), 0)
     invested = safe_int((player.get("invested_stats") or {}).get(stat_key), 0)
     bonus = safe_int((player.get("stat_bonuses") or {}).get(stat_key), 0)
-    if equipment_modifiers:
-        bonus += equipment_stat_bonus(equipment_modifiers, stat_key)
+    if bonus_modifiers:
+        bonus += equipment_stat_bonus(bonus_modifiers, stat_key)
     invested_total = base + invested
     return int(math.floor(1000 * math.log(1 + invested_total / 1000) + bonus))
 
@@ -145,19 +154,91 @@ def parse_item_stat_modifier(line: Any) -> tuple[str, int] | None:
         return None
     if ":" in text:
         label, value = text.split(":", 1)
-    elif " к " in text:
-        value, label = text.split(" к ", 1)
     else:
-        return None
-    label_key = label.strip().casefold()
-    modifier_key = ITEM_STAT_LABEL_TO_MODIFIER.get(label_key)
+        match = re.match(r"([+-]?\s*\d+(?:[.,]\d+)?)\s*(?:к\s+)?(.+)$", text, flags=re.IGNORECASE)
+        if not match:
+            return None
+        value, label = match.groups()
+    modifier_key = normalize_modifier_key(label)
     if not modifier_key:
         return None
-    match = re.search(r"([+-]?)\s*(\d+)", value)
+    match = re.search(r"([+-]?)\s*(\d+(?:[.,]\d+)?)", value)
     if not match:
         return None
     sign = -1 if match.group(1) == "-" else 1
-    return modifier_key, sign * safe_int(match.group(2), 0)
+    amount = int(float(match.group(2).replace(",", ".")))
+    return modifier_key, sign * amount
+
+
+def normalize_modifier_key(key: Any) -> str | None:
+    raw_key = str(key or "").strip()
+    if not raw_key:
+        return None
+    folded = raw_key.casefold()
+    if folded in ITEM_STAT_LABEL_TO_MODIFIER:
+        return ITEM_STAT_LABEL_TO_MODIFIER[folded]
+    snake_key = folded.replace("-", "_").replace(" ", "_").replace(".", "")
+    normalized = MODIFIER_KEY_ALIASES.get(snake_key, snake_key)
+    if normalized in KNOWN_MODIFIER_KEYS:
+        return normalized
+    return None
+
+
+def modifier_amount(value: Any) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        if contains_formula_text(value):
+            return 0
+        match = re.search(r"([+-]?)\s*(\d+(?:[.,]\d+)?)", value)
+        if match:
+            sign = -1 if match.group(1) == "-" else 1
+            return sign * int(float(match.group(2).replace(",", ".")))
+    return safe_int(value, 0)
+
+
+def add_modifier(totals: dict[str, int], key: Any, value: Any) -> None:
+    normalized_key = normalize_modifier_key(key)
+    if not normalized_key:
+        return
+    totals[normalized_key] = safe_int(totals.get(normalized_key), 0) + modifier_amount(value)
+
+
+def collect_modifiers_from_value(value: Any, totals: dict[str, int]) -> None:
+    if isinstance(value, dict):
+        explicit_fields = ("stat_modifiers", "modifiers", "bonus_modifiers", "effect_modifiers", "bonuses")
+        has_explicit_modifiers = any(isinstance(value.get(field), (dict, list)) for field in explicit_fields)
+
+        for field in explicit_fields:
+            nested = value.get(field)
+            if isinstance(nested, (dict, list)):
+                collect_modifiers_from_value(nested, totals)
+
+        text_fields = ("properties", "enchantments", "effects") if has_explicit_modifiers else ("stats", "properties", "enchantments", "effects")
+        for field in text_fields:
+            nested = value.get(field)
+            if isinstance(nested, (dict, list)):
+                collect_modifiers_from_value(nested, totals)
+
+        skipped_fields = set(explicit_fields) | {"stats", "properties", "enchantments", "effects"}
+        for key, nested_value in value.items():
+            if key in skipped_fields:
+                continue
+            if isinstance(nested_value, (int, float, str)):
+                add_modifier(totals, key, nested_value)
+        return
+
+    if isinstance(value, list):
+        for nested in value:
+            collect_modifiers_from_value(nested, totals)
+        return
+
+    parsed = parse_item_stat_modifier(value)
+    if parsed is not None:
+        key, amount = parsed
+        add_modifier(totals, key, amount)
 
 
 def equipment_modifier_totals(player: dict[str, Any]) -> dict[str, int]:
@@ -166,27 +247,47 @@ def equipment_modifier_totals(player: dict[str, Any]) -> dict[str, int]:
     if not isinstance(equipment, dict):
         return totals
     for raw_item in equipment.values():
-        if not isinstance(raw_item, dict):
-            continue
-        stat_modifiers = raw_item.get("stat_modifiers")
-        if isinstance(stat_modifiers, dict):
-            for key, value in stat_modifiers.items():
-                totals[str(key)] = safe_int(totals.get(str(key)), 0) + safe_int(value, 0)
-        for field in ("stats", "properties", "enchantments"):
-            lines = raw_item.get(field)
-            if not isinstance(lines, list):
-                continue
-            for line in lines:
-                parsed = parse_item_stat_modifier(line)
-                if parsed is None:
-                    continue
-                key, amount = parsed
-                totals[key] = safe_int(totals.get(key), 0) + amount
+        if isinstance(raw_item, dict):
+            collect_modifiers_from_value(raw_item, totals)
     return totals
 
 
-def equipment_bonus(equipment_modifiers: dict[str, int], key: str) -> int:
-    return safe_int(equipment_modifiers.get(key), 0)
+def external_effect_modifier_totals(player: dict[str, Any]) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for field in EXTERNAL_EFFECT_FIELDS:
+        collect_modifiers_from_value(player.get(field), totals)
+    return totals
+
+
+def merge_modifier_totals(*sources: dict[str, int]) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for source in sources:
+        for key, value in (source or {}).items():
+            add_modifier(totals, key, value)
+    return totals
+
+
+def equipment_bonus(bonus_modifiers: dict[str, int] | None, key: str) -> int:
+    return safe_int((bonus_modifiers or {}).get(key), 0)
+
+
+def consumable_effect_from_item(item: dict[str, Any]) -> dict[str, Any] | None:
+    effect_payload = item.get("use_effect") or item.get("active_effect") or item.get("consumable_effect")
+    if effect_payload is None and any(field in item for field in ("stat_modifiers", "modifiers", "bonus_modifiers", "effect_modifiers", "bonuses")):
+        effect_payload = item
+    if effect_payload is None:
+        return None
+    totals: dict[str, int] = {}
+    collect_modifiers_from_value(effect_payload, totals)
+    if not totals:
+        return None
+    return {
+        "id": f"effect_{item.get('id') or item.get('item_id') or item.get('name')}",
+        "name": item.get("effect_name") or item.get("name") or "Временный эффект",
+        "source": "consumable",
+        "stat_modifiers": totals,
+        "description": item.get("effect_description") or item.get("description") or "Эффект от использованного предмета.",
+    }
 
 
 def soft_level(level: int) -> int:
@@ -221,7 +322,7 @@ def normalize_quality(value: str | None) -> str:
 
 
 HIDDEN_FORMULA_KEYS = {"formula", "base_damage_formula", "damage_formula", "scaling_formula"}
-FORMULA_TEXT_MARKERS = ("player_level", "ceil(", "floor(", "уровень ×", "уровня ×", "уровень персонажа ×")
+FORMULA_TEXT_MARKERS = ("player_level", "ceil(", "floor(", "log2(", "ln(", "уровень ×", "уровня ×", "уровень персонажа ×")
 STAT_EQUIPMENT_BONUS_KEYS = {
     "strength": "bonus_strength",
     "endurance": "bonus_endurance",
@@ -244,6 +345,27 @@ ITEM_STAT_LABEL_TO_MODIFIER = {
     "уклонение": "bonus_dodge",
     "шанс крита": "bonus_crit_chance",
     "урон крита": "bonus_crit_damage",
+    "критический урон": "bonus_crit_damage",
+    "концентрация": "bonus_max_concentration",
+    "макс. концентрация": "bonus_max_concentration",
+    "максимальная концентрация": "bonus_max_concentration",
+    "реген концентрации": "bonus_concentration_regen",
+    "регенерация концентрации": "bonus_concentration_regen",
+    "реген hp": "bonus_hp_regen_percent",
+    "регенерация hp": "bonus_hp_regen_percent",
+    "реген здоровья": "bonus_hp_regen_percent",
+    "реген духа": "bonus_spirit_regen_percent",
+    "регенерация духа": "bonus_spirit_regen_percent",
+    "реген маны": "bonus_mana_regen_percent",
+    "регенерация маны": "bonus_mana_regen_percent",
+    "энергия": "bonus_max_energy",
+    "макс. энергия": "bonus_max_energy",
+    "максимальная энергия": "bonus_max_energy",
+    "экономия энергии": "bonus_energy_saving_percent",
+    "восстановление энергии": "bonus_energy_restore_percent",
+    "урон": "bonus_damage",
+    "физический урон": "bonus_physical_damage",
+    "магический урон": "bonus_magic_damage",
     "сила": "bonus_strength",
     "выносливость": "bonus_endurance",
     "ловкость": "bonus_agility",
@@ -251,6 +373,79 @@ ITEM_STAT_LABEL_TO_MODIFIER = {
     "интеллект": "bonus_intelligence",
     "мудрость": "bonus_wisdom",
 }
+MODIFIER_KEY_ALIASES = {
+    "hp": "bonus_hp",
+    "spirit": "bonus_spirit",
+    "mana": "bonus_mana",
+    "strength": "bonus_strength",
+    "endurance": "bonus_endurance",
+    "agility": "bonus_agility",
+    "dexterity": "bonus_agility",
+    "perception": "bonus_perception",
+    "intelligence": "bonus_intelligence",
+    "wisdom": "bonus_wisdom",
+    "crit_damage_percent": "bonus_crit_damage",
+    "bonus_crit_damage_percent": "bonus_crit_damage",
+    "critical_damage": "bonus_crit_damage",
+    "critical_damage_percent": "bonus_crit_damage",
+    "hp_regen_percent": "bonus_hp_regen_percent",
+    "spirit_regen_percent": "bonus_spirit_regen_percent",
+    "mana_regen_percent": "bonus_mana_regen_percent",
+    "max_concentration": "bonus_max_concentration",
+    "concentration_regen": "bonus_concentration_regen",
+    "max_energy": "bonus_max_energy",
+    "energy_saving_percent": "bonus_energy_saving_percent",
+    "energy_restore_bonus_percent": "bonus_energy_restore_percent",
+    "energy_restore_percent": "bonus_energy_restore_percent",
+    "physical_damage": "bonus_physical_damage",
+    "magic_damage": "bonus_magic_damage",
+    "damage": "bonus_damage",
+}
+KNOWN_MODIFIER_KEYS = {
+    "armor",
+    "magic_armor",
+    "bonus_hp",
+    "bonus_spirit",
+    "bonus_mana",
+    "bonus_physical_defense",
+    "bonus_magic_defense",
+    "bonus_accuracy",
+    "bonus_dodge",
+    "bonus_crit_chance",
+    "bonus_crit_damage",
+    "bonus_strength",
+    "bonus_endurance",
+    "bonus_agility",
+    "bonus_perception",
+    "bonus_intelligence",
+    "bonus_wisdom",
+    "bonus_max_concentration",
+    "bonus_concentration_regen",
+    "bonus_hp_regen_percent",
+    "bonus_spirit_regen_percent",
+    "bonus_mana_regen_percent",
+    "bonus_max_energy",
+    "bonus_energy_saving_percent",
+    "bonus_energy_restore_percent",
+    "bonus_damage",
+    "bonus_physical_damage",
+    "bonus_magic_damage",
+}
+EXTERNAL_EFFECT_FIELDS = (
+    "active_effects",
+    "effects",
+    "temporary_effects",
+    "location_effects",
+    "active_location_effects",
+    "environment_effects",
+    "active_buffs",
+    "buffs",
+    "potions",
+    "consumed_potions",
+    "active_consumables",
+    "active_food_effects",
+    "active_sets",
+)
 
 
 def contains_formula_text(value: Any) -> bool:
@@ -297,25 +492,28 @@ def normalize_item(item: dict[str, Any], default_category: str = "Прочее")
     return normalized
 
 
-def format_skill_damage(skill: dict[str, Any], player_level: int) -> Any:
+def format_skill_damage(skill: dict[str, Any], player_level: int, bonus_modifiers: dict[str, int] | None = None) -> Any:
     if not isinstance(skill, dict):
         return None
     formula = str(skill.get("base_damage_formula") or "")
+    generic_bonus = equipment_bonus(bonus_modifiers, "bonus_damage")
     if skill.get("id") == "basic_attack" or "5 + player_level * 1.2" in formula:
-        return ceil(5 + player_level * 1.2)
+        return max(1, ceil(5 + player_level * 1.2 + generic_bonus + equipment_bonus(bonus_modifiers, "bonus_physical_damage")))
     if skill.get("id") == "magic_spark" or "4 + player_level * 1.1" in formula:
-        return ceil(4 + player_level * 1.1)
+        return max(1, ceil(4 + player_level * 1.1 + generic_bonus + equipment_bonus(bonus_modifiers, "bonus_magic_damage")))
     damage = skill.get("damage")
     if contains_formula_text(damage):
         return None
+    if isinstance(damage, (int, float)):
+        return max(1, ceil(float(damage) + generic_bonus))
     return damage
 
 
-def normalize_skill(skill: dict[str, Any], player_level: int) -> dict[str, Any]:
+def normalize_skill(skill: dict[str, Any], player_level: int, bonus_modifiers: dict[str, int] | None = None) -> dict[str, Any]:
     normalized = strip_hidden_formulas(deepcopy(skill))
     if not isinstance(normalized, dict):
         normalized = {}
-    damage = format_skill_damage(skill, player_level)
+    damage = format_skill_damage(skill, player_level, bonus_modifiers)
     if damage is not None:
         normalized["damage"] = damage
     else:
@@ -327,28 +525,32 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
     level = safe_int(player.get("level"), 1) or 1
     s_level = soft_level(level)
     equipment_modifiers = equipment_modifier_totals(player)
-    eff = {front_key: effective_stat(player, back_key, equipment_modifiers) for front_key, back_key, *_ in ATTRIBUTE_META}
-    armor = safe_int(player.get("armor"), 0) + equipment_bonus(equipment_modifiers, "armor")
-    magic_armor = safe_int(player.get("magic_armor"), safe_int(player.get("armor"), 0)) + equipment_bonus(equipment_modifiers, "magic_armor")
+    external_modifiers = external_effect_modifier_totals(player)
+    bonus_modifiers = merge_modifier_totals(equipment_modifiers, external_modifiers)
+    eff = {front_key: effective_stat(player, back_key, bonus_modifiers) for front_key, back_key, *_ in ATTRIBUTE_META}
+    armor = safe_int(player.get("armor"), 0) + equipment_bonus(bonus_modifiers, "armor")
+    magic_armor = safe_int(player.get("magic_armor"), safe_int(player.get("armor"), 0)) + equipment_bonus(bonus_modifiers, "magic_armor")
 
-    hp_max = ceil(100 + eff["endurance"] * 4.0 + eff["strength"] * 0.8 + s_level * 4 + safe_int(player.get("bonus_hp"), 0) + equipment_bonus(equipment_modifiers, "bonus_hp"))
-    spirit_max = ceil(20 + eff["endurance"] * 1.2 + eff["strength"] * 1.0 + eff["agility"] * 0.7 + s_level * 1.2 + safe_int(player.get("bonus_spirit"), 0) + equipment_bonus(equipment_modifiers, "bonus_spirit"))
-    mana_max = ceil(20 + eff["intelligence"] * 1.6 + eff["wisdom"] * 1.3 + s_level * 1.2 + safe_int(player.get("bonus_mana"), 0) + equipment_bonus(equipment_modifiers, "bonus_mana"))
-    concentration_max = ceil(1 + (20 * eff["wisdom"] / (eff["wisdom"] + 4000)) + (12 * eff["intelligence"] / (eff["intelligence"] + 5000)) + (6 * eff["endurance"] / (eff["endurance"] + 6000)) + float(player.get("bonus_max_concentration") or 0) + equipment_bonus(equipment_modifiers, "bonus_max_concentration"))
+    hp_max = ceil(100 + eff["endurance"] * 4.0 + eff["strength"] * 0.8 + s_level * 4 + safe_int(player.get("bonus_hp"), 0) + equipment_bonus(bonus_modifiers, "bonus_hp"))
+    spirit_max = ceil(20 + eff["endurance"] * 1.2 + eff["strength"] * 1.0 + eff["agility"] * 0.7 + s_level * 1.2 + safe_int(player.get("bonus_spirit"), 0) + equipment_bonus(bonus_modifiers, "bonus_spirit"))
+    mana_max = ceil(20 + eff["intelligence"] * 1.6 + eff["wisdom"] * 1.3 + s_level * 1.2 + safe_int(player.get("bonus_mana"), 0) + equipment_bonus(bonus_modifiers, "bonus_mana"))
+    concentration_max = ceil(1 + (20 * eff["wisdom"] / (eff["wisdom"] + 4000)) + (12 * eff["intelligence"] / (eff["intelligence"] + 5000)) + (6 * eff["endurance"] / (eff["endurance"] + 6000)) + safe_float(player.get("bonus_max_concentration"), 0) + equipment_bonus(bonus_modifiers, "bonus_max_concentration"))
 
-    physical_defense = ceil(armor * 1.5 + eff["endurance"] * 0.9 + eff["strength"] * 0.6 + eff["agility"] * 0.2 + safe_int(player.get("bonus_physical_defense"), 0) + equipment_bonus(equipment_modifiers, "bonus_physical_defense"))
-    magic_defense = ceil(magic_armor * 1.5 + eff["wisdom"] * 0.9 + eff["intelligence"] * 0.6 + eff["endurance"] * 0.2 + safe_int(player.get("bonus_magic_defense"), 0) + equipment_bonus(equipment_modifiers, "bonus_magic_defense"))
-    accuracy = ceil(eff["perception"] * 1.8 + eff["agility"] * 1.1 + s_level * 0.7 + safe_int(player.get("bonus_accuracy"), 0) + equipment_bonus(equipment_modifiers, "bonus_accuracy"))
-    dodge = ceil(eff["agility"] * 1.8 + eff["perception"] * 0.9 + eff["wisdom"] * 0.3 + s_level * 0.5 + safe_int(player.get("bonus_dodge"), 0) + equipment_bonus(equipment_modifiers, "bonus_dodge"))
-    crit_stat = ceil(eff["perception"] * 1.5 + eff["agility"] * 0.8 + eff["wisdom"] * 0.2 + s_level * 0.2 + safe_int(player.get("bonus_crit_chance"), 0) + equipment_bonus(equipment_modifiers, "bonus_crit_chance"))
+    physical_defense = ceil(armor * 1.5 + eff["endurance"] * 0.9 + eff["strength"] * 0.6 + eff["agility"] * 0.2 + safe_int(player.get("bonus_physical_defense"), 0) + equipment_bonus(bonus_modifiers, "bonus_physical_defense"))
+    magic_defense = ceil(magic_armor * 1.5 + eff["wisdom"] * 0.9 + eff["intelligence"] * 0.6 + eff["endurance"] * 0.2 + safe_int(player.get("bonus_magic_defense"), 0) + equipment_bonus(bonus_modifiers, "bonus_magic_defense"))
+    accuracy = ceil(eff["perception"] * 1.8 + eff["agility"] * 1.1 + s_level * 0.7 + safe_int(player.get("bonus_accuracy"), 0) + equipment_bonus(bonus_modifiers, "bonus_accuracy"))
+    dodge = ceil(eff["agility"] * 1.8 + eff["perception"] * 0.9 + eff["wisdom"] * 0.3 + s_level * 0.5 + safe_int(player.get("bonus_dodge"), 0) + equipment_bonus(bonus_modifiers, "bonus_dodge"))
+    crit_stat = ceil(eff["perception"] * 1.5 + eff["agility"] * 0.8 + eff["wisdom"] * 0.2 + s_level * 0.2 + safe_int(player.get("bonus_crit_chance"), 0) + equipment_bonus(bonus_modifiers, "bonus_crit_chance"))
     crit_chance = min(0.49, crit_stat / (crit_stat + 5000))
-    crit_damage = max(100, 100 + safe_int(player.get("bonus_crit_damage"), 0) + equipment_bonus(equipment_modifiers, "bonus_crit_damage"))
+    crit_damage = max(100, 100 + safe_int(player.get("bonus_crit_damage"), 0) + equipment_bonus(bonus_modifiers, "bonus_crit_damage"))
+    max_energy = max(1, safe_int(player.get("max_energy"), 100) + equipment_bonus(bonus_modifiers, "bonus_max_energy"))
+    current_energy = max(0, min(max_energy, safe_int(player.get("energy"), max_energy)))
 
     attributes = []
     for front_key, back_key, label, description in ATTRIBUTE_META:
         base = safe_int((player.get("stats") or {}).get(back_key), 0)
         invested = safe_int((player.get("invested_stats") or {}).get(back_key), 0)
-        bonus = safe_int((player.get("stat_bonuses") or {}).get(back_key), 0) + equipment_stat_bonus(equipment_modifiers, back_key)
+        bonus = safe_int((player.get("stat_bonuses") or {}).get(back_key), 0) + equipment_stat_bonus(bonus_modifiers, back_key)
         attributes.append({"key": front_key, "label": label, "value": base + invested + bonus, "description": description})
 
     equipment = {}
@@ -374,8 +576,8 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         inventory.append(item)
 
     skills = player.get("skills", {}) if isinstance(player.get("skills"), dict) else {}
-    active_skills = [normalize_skill(skill, level) for skill in skills.get("active", []) if isinstance(skill, dict)]
-    passive_skills = [normalize_skill(skill, level) for skill in skills.get("passive", []) if isinstance(skill, dict)]
+    active_skills = [normalize_skill(skill, level, bonus_modifiers) for skill in skills.get("active", []) if isinstance(skill, dict)]
+    passive_skills = [normalize_skill(skill, level, bonus_modifiers) for skill in skills.get("passive", []) if isinstance(skill, dict)]
 
     crafting_levels = []
     for key, value in (player.get("crafting_levels") or {}).items():
@@ -415,7 +617,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             {"label": "HP", "value": f"{safe_int(player.get('hp'), hp_max)} / {hp_max}"},
             {"label": "Дух", "value": f"{safe_int(player.get('spirit'), spirit_max)} / {spirit_max}"},
             {"label": "Мана", "value": f"{safe_int(player.get('mana'), mana_max)} / {mana_max}"},
-            {"label": "Энергия", "value": f"{safe_int(player.get('energy'), 100)} / {safe_int(player.get('max_energy'), 100)}"},
+            {"label": "Энергия", "value": f"{current_energy} / {max_energy}"},
             {"label": "Концентрация", "value": f"{safe_int(player.get('concentration'), concentration_max)} / {concentration_max}"},
             {"label": "Физическая защита", "value": physical_defense},
             {"label": "Магическая защита", "value": magic_defense},
@@ -623,6 +825,10 @@ def create_profile_api_router(get_storage) -> APIRouter:
         if item_index is None:
             raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
         item = inventory[item_index]
+        if item.get("category") in {"Алхимия", "Еда", "Напитки"}:
+            effect = consumable_effect_from_item(item)
+            if effect is not None:
+                player.setdefault("active_effects", []).append(effect)
         amount = safe_int(item.get("amount"), 1)
         if amount > 1:
             item["amount"] = amount - 1
