@@ -44,7 +44,7 @@ if "vk_api" not in sys.modules:
 
 from services.registration_service import create_player, load_races
 from services.web_profile import PROFILE_SCOPE, create_profile_site_link
-from site_api import create_profile_api_router, frontend_profile
+from site_api import create_profile_api_router, equipment_modifier_totals, frontend_profile
 from storage.json_storage import JsonStorage
 from handlers.vk_registration import VK_PLATFORM, VkRegistrationBot
 
@@ -75,6 +75,34 @@ class ProfileSiteFixesTest(unittest.TestCase):
         self.assertRegex(values["Дух"], r"^\d+ / \d+$")
         self.assertRegex(values["Мана"], r"^\d+ / \d+$")
         self.assertRegex(values["Концентрация"], r"^\d+ / \d+$")
+
+
+    def test_equipped_items_change_final_parameters(self):
+        player = self._new_player()
+
+        with_equipment = frontend_profile(player)
+        player["equipment"].pop("weapon1")
+        without_staff = frontend_profile(player)
+
+        def parameter(profile, label):
+            value = next(row["value"] for row in profile["parameters"] if row["label"] == label)
+            if isinstance(value, str) and "/" in value:
+                return int(value.split("/")[-1].strip())
+            return int(str(value).rstrip("%"))
+
+        self.assertGreater(parameter(with_equipment, "Мана"), parameter(without_staff, "Мана"))
+        self.assertGreater(parameter(with_equipment, "Точность"), parameter(without_staff, "Точность"))
+
+    def test_equipment_text_modifiers_are_summed(self):
+        player = self._new_player()
+        player["equipment"] = {
+            "ring1": {"stats": ["Точность: +1"]},
+            "ring2": {"stats": ["+2 к точность"]},
+        }
+
+        modifiers = equipment_modifier_totals(player)
+
+        self.assertEqual(modifiers["bonus_accuracy"], 3)
 
     def test_inventory_actions_are_based_on_current_location(self):
         player = self._new_player()

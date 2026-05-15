@@ -8,6 +8,7 @@ JSON without a separate data file.
 from __future__ import annotations
 
 import math
+import re
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any
@@ -117,12 +118,75 @@ def safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def effective_stat(player: dict[str, Any], stat_key: str) -> int:
+def effective_stat(player: dict[str, Any], stat_key: str, equipment_modifiers: dict[str, int] | None = None) -> int:
     base = safe_int((player.get("stats") or {}).get(stat_key), 0)
     invested = safe_int((player.get("invested_stats") or {}).get(stat_key), 0)
     bonus = safe_int((player.get("stat_bonuses") or {}).get(stat_key), 0)
+    if equipment_modifiers:
+        bonus += equipment_stat_bonus(equipment_modifiers, stat_key)
     invested_total = base + invested
     return int(math.floor(1000 * math.log(1 + invested_total / 1000) + bonus))
+
+
+def equipment_stat_bonus(equipment_modifiers: dict[str, int], stat_key: str) -> int:
+    bonus_key = STAT_EQUIPMENT_BONUS_KEYS.get(stat_key, f"bonus_{stat_key}")
+    fallback_key = f"bonus_{stat_key}"
+    total = safe_int(equipment_modifiers.get(bonus_key), 0)
+    if fallback_key != bonus_key:
+        total += safe_int(equipment_modifiers.get(fallback_key), 0)
+    return total
+
+
+def parse_item_stat_modifier(line: Any) -> tuple[str, int] | None:
+    if not isinstance(line, str):
+        return None
+    text = line.strip()
+    if not text or contains_formula_text(text):
+        return None
+    if ":" in text:
+        label, value = text.split(":", 1)
+    elif " к " in text:
+        value, label = text.split(" к ", 1)
+    else:
+        return None
+    label_key = label.strip().casefold()
+    modifier_key = ITEM_STAT_LABEL_TO_MODIFIER.get(label_key)
+    if not modifier_key:
+        return None
+    match = re.search(r"([+-]?)\s*(\d+)", value)
+    if not match:
+        return None
+    sign = -1 if match.group(1) == "-" else 1
+    return modifier_key, sign * safe_int(match.group(2), 0)
+
+
+def equipment_modifier_totals(player: dict[str, Any]) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    equipment = player.get("equipment") or {}
+    if not isinstance(equipment, dict):
+        return totals
+    for raw_item in equipment.values():
+        if not isinstance(raw_item, dict):
+            continue
+        stat_modifiers = raw_item.get("stat_modifiers")
+        if isinstance(stat_modifiers, dict):
+            for key, value in stat_modifiers.items():
+                totals[str(key)] = safe_int(totals.get(str(key)), 0) + safe_int(value, 0)
+        for field in ("stats", "properties", "enchantments"):
+            lines = raw_item.get(field)
+            if not isinstance(lines, list):
+                continue
+            for line in lines:
+                parsed = parse_item_stat_modifier(line)
+                if parsed is None:
+                    continue
+                key, amount = parsed
+                totals[key] = safe_int(totals.get(key), 0) + amount
+    return totals
+
+
+def equipment_bonus(equipment_modifiers: dict[str, int], key: str) -> int:
+    return safe_int(equipment_modifiers.get(key), 0)
 
 
 def soft_level(level: int) -> int:
@@ -158,6 +222,35 @@ def normalize_quality(value: str | None) -> str:
 
 HIDDEN_FORMULA_KEYS = {"formula", "base_damage_formula", "damage_formula", "scaling_formula"}
 FORMULA_TEXT_MARKERS = ("player_level", "ceil(", "floor(", "уровень ×", "уровня ×", "уровень персонажа ×")
+STAT_EQUIPMENT_BONUS_KEYS = {
+    "strength": "bonus_strength",
+    "endurance": "bonus_endurance",
+    "dexterity": "bonus_agility",
+    "perception": "bonus_perception",
+    "intelligence": "bonus_intelligence",
+    "wisdom": "bonus_wisdom",
+}
+ITEM_STAT_LABEL_TO_MODIFIER = {
+    "броня": "armor",
+    "магическая броня": "magic_armor",
+    "маг. броня": "magic_armor",
+    "магическая защита": "bonus_magic_defense",
+    "физическая защита": "bonus_physical_defense",
+    "hp": "bonus_hp",
+    "здоровье": "bonus_hp",
+    "дух": "bonus_spirit",
+    "мана": "bonus_mana",
+    "точность": "bonus_accuracy",
+    "уклонение": "bonus_dodge",
+    "шанс крита": "bonus_crit_chance",
+    "урон крита": "bonus_crit_damage",
+    "сила": "bonus_strength",
+    "выносливость": "bonus_endurance",
+    "ловкость": "bonus_agility",
+    "восприятие": "bonus_perception",
+    "интеллект": "bonus_intelligence",
+    "мудрость": "bonus_wisdom",
+}
 
 
 def contains_formula_text(value: Any) -> bool:
@@ -233,27 +326,29 @@ def normalize_skill(skill: dict[str, Any], player_level: int) -> dict[str, Any]:
 def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
     level = safe_int(player.get("level"), 1) or 1
     s_level = soft_level(level)
-    eff = {front_key: effective_stat(player, back_key) for front_key, back_key, *_ in ATTRIBUTE_META}
-    armor = safe_int(player.get("armor"), 0)
-    magic_armor = safe_int(player.get("magic_armor"), armor)
+    equipment_modifiers = equipment_modifier_totals(player)
+    eff = {front_key: effective_stat(player, back_key, equipment_modifiers) for front_key, back_key, *_ in ATTRIBUTE_META}
+    armor = safe_int(player.get("armor"), 0) + equipment_bonus(equipment_modifiers, "armor")
+    magic_armor = safe_int(player.get("magic_armor"), safe_int(player.get("armor"), 0)) + equipment_bonus(equipment_modifiers, "magic_armor")
 
-    hp_max = ceil(100 + eff["endurance"] * 4.0 + eff["strength"] * 0.8 + s_level * 4 + safe_int(player.get("bonus_hp"), 0))
-    spirit_max = ceil(20 + eff["endurance"] * 1.2 + eff["strength"] * 1.0 + eff["agility"] * 0.7 + s_level * 1.2 + safe_int(player.get("bonus_spirit"), 0))
-    mana_max = ceil(20 + eff["intelligence"] * 1.6 + eff["wisdom"] * 1.3 + s_level * 1.2 + safe_int(player.get("bonus_mana"), 0))
-    concentration_max = ceil(1 + (20 * eff["wisdom"] / (eff["wisdom"] + 4000)) + (12 * eff["intelligence"] / (eff["intelligence"] + 5000)) + (6 * eff["endurance"] / (eff["endurance"] + 6000)) + float(player.get("bonus_max_concentration") or 0))
+    hp_max = ceil(100 + eff["endurance"] * 4.0 + eff["strength"] * 0.8 + s_level * 4 + safe_int(player.get("bonus_hp"), 0) + equipment_bonus(equipment_modifiers, "bonus_hp"))
+    spirit_max = ceil(20 + eff["endurance"] * 1.2 + eff["strength"] * 1.0 + eff["agility"] * 0.7 + s_level * 1.2 + safe_int(player.get("bonus_spirit"), 0) + equipment_bonus(equipment_modifiers, "bonus_spirit"))
+    mana_max = ceil(20 + eff["intelligence"] * 1.6 + eff["wisdom"] * 1.3 + s_level * 1.2 + safe_int(player.get("bonus_mana"), 0) + equipment_bonus(equipment_modifiers, "bonus_mana"))
+    concentration_max = ceil(1 + (20 * eff["wisdom"] / (eff["wisdom"] + 4000)) + (12 * eff["intelligence"] / (eff["intelligence"] + 5000)) + (6 * eff["endurance"] / (eff["endurance"] + 6000)) + float(player.get("bonus_max_concentration") or 0) + equipment_bonus(equipment_modifiers, "bonus_max_concentration"))
 
-    physical_defense = ceil(armor * 1.5 + eff["endurance"] * 0.9 + eff["strength"] * 0.6 + eff["agility"] * 0.2 + safe_int(player.get("bonus_physical_defense"), 0))
-    magic_defense = ceil(magic_armor * 1.5 + eff["wisdom"] * 0.9 + eff["intelligence"] * 0.6 + eff["endurance"] * 0.2 + safe_int(player.get("bonus_magic_defense"), 0))
-    accuracy = ceil(eff["perception"] * 1.8 + eff["agility"] * 1.1 + s_level * 0.7 + safe_int(player.get("bonus_accuracy"), 0))
-    dodge = ceil(eff["agility"] * 1.8 + eff["perception"] * 0.9 + eff["wisdom"] * 0.3 + s_level * 0.5 + safe_int(player.get("bonus_dodge"), 0))
-    crit_stat = ceil(eff["perception"] * 1.5 + eff["agility"] * 0.8 + eff["wisdom"] * 0.2 + s_level * 0.2 + safe_int(player.get("bonus_crit_chance"), 0))
+    physical_defense = ceil(armor * 1.5 + eff["endurance"] * 0.9 + eff["strength"] * 0.6 + eff["agility"] * 0.2 + safe_int(player.get("bonus_physical_defense"), 0) + equipment_bonus(equipment_modifiers, "bonus_physical_defense"))
+    magic_defense = ceil(magic_armor * 1.5 + eff["wisdom"] * 0.9 + eff["intelligence"] * 0.6 + eff["endurance"] * 0.2 + safe_int(player.get("bonus_magic_defense"), 0) + equipment_bonus(equipment_modifiers, "bonus_magic_defense"))
+    accuracy = ceil(eff["perception"] * 1.8 + eff["agility"] * 1.1 + s_level * 0.7 + safe_int(player.get("bonus_accuracy"), 0) + equipment_bonus(equipment_modifiers, "bonus_accuracy"))
+    dodge = ceil(eff["agility"] * 1.8 + eff["perception"] * 0.9 + eff["wisdom"] * 0.3 + s_level * 0.5 + safe_int(player.get("bonus_dodge"), 0) + equipment_bonus(equipment_modifiers, "bonus_dodge"))
+    crit_stat = ceil(eff["perception"] * 1.5 + eff["agility"] * 0.8 + eff["wisdom"] * 0.2 + s_level * 0.2 + safe_int(player.get("bonus_crit_chance"), 0) + equipment_bonus(equipment_modifiers, "bonus_crit_chance"))
     crit_chance = min(0.49, crit_stat / (crit_stat + 5000))
+    crit_damage = max(100, 100 + safe_int(player.get("bonus_crit_damage"), 0) + equipment_bonus(equipment_modifiers, "bonus_crit_damage"))
 
     attributes = []
     for front_key, back_key, label, description in ATTRIBUTE_META:
         base = safe_int((player.get("stats") or {}).get(back_key), 0)
         invested = safe_int((player.get("invested_stats") or {}).get(back_key), 0)
-        bonus = safe_int((player.get("stat_bonuses") or {}).get(back_key), 0)
+        bonus = safe_int((player.get("stat_bonuses") or {}).get(back_key), 0) + equipment_stat_bonus(equipment_modifiers, back_key)
         attributes.append({"key": front_key, "label": label, "value": base + invested + bonus, "description": description})
 
     equipment = {}
@@ -327,6 +422,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             {"label": "Точность", "value": accuracy},
             {"label": "Уклонение", "value": dodge},
             {"label": "Шанс крита", "value": f"{ceil(crit_chance * 100)}%"},
+            {"label": "Урон крита", "value": f"{crit_damage}%"},
         ],
         "effects": player.get("active_effects", []),
         "activeSets": player.get("active_sets", []),
