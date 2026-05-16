@@ -66,7 +66,6 @@ class ProfileSiteFixesTest(unittest.TestCase):
         player["hp"] = None
         player["spirit"] = None
         player["mana"] = None
-        player["concentration"] = None
 
         profile = frontend_profile(player)
 
@@ -74,8 +73,26 @@ class ProfileSiteFixesTest(unittest.TestCase):
         self.assertRegex(values["HP"], r"^\d+ / \d+$")
         self.assertRegex(values["Дух"], r"^\d+ / \d+$")
         self.assertRegex(values["Мана"], r"^\d+ / \d+$")
-        self.assertRegex(values["Концентрация"], r"^\d+ / \d+$")
+        self.assertNotIn("Концентрация", values)
 
+    def test_frontend_profile_filters_legacy_concentration_skill_costs(self):
+        player = self._new_player()
+        player["skills"]["active"].append(
+            {
+                "id": "legacy_focus",
+                "name": "Старый фокус",
+                "resource_text": "Cost: Concentration: 1",
+                "concentration_cost": 1,
+                "mana_cost": 2,
+                "spirit_cost": 0,
+            }
+        )
+
+        profile = frontend_profile(player)
+        skill = next(skill for skill in profile["skills"]["active"] if skill["id"] == "legacy_focus")
+
+        self.assertEqual(skill["resourceText"], "Расход: Мана: 2")
+        self.assertNotIn("concentration_cost", skill)
 
     def test_equipped_items_change_final_parameters(self):
         player = self._new_player()

@@ -34,7 +34,7 @@ ATTRIBUTE_META = [
     ("agility", "dexterity", "Ловкость", "Уклонение, парирование, быстрые атаки."),
     ("perception", "perception", "Восприятие", "Точность, крит, обнаружение угроз."),
     ("intelligence", "intelligence", "Интеллект", "Магические навыки, мана, сложные формы."),
-    ("wisdom", "wisdom", "Мудрость", "Концентрация, поддержка, лечение, регенерация маны."),
+    ("wisdom", "wisdom", "Мудрость", "Поддержка, лечение, регенерация маны и устойчивые магические формы."),
 ]
 
 EQUIPMENT_SLOTS = [
@@ -394,6 +394,7 @@ def translate_item_name(value: Any) -> str:
 
 HIDDEN_FORMULA_KEYS = {"formula", "base_damage_formula", "damage_formula", "scaling_formula"}
 FORMULA_TEXT_MARKERS = ("player_level", "ceil(", "floor(", "log2(", "ln(", "уровень ×", "уровня ×", "уровень персонажа ×")
+CONCENTRATION_TEXT_MARKERS = ("концентрац", "concentration")
 STAT_EQUIPMENT_BONUS_KEYS = {
     "strength": "bonus_strength",
     "endurance": "bonus_endurance",
@@ -417,11 +418,6 @@ ITEM_STAT_LABEL_TO_MODIFIER = {
     "шанс крита": "bonus_crit_chance",
     "урон крита": "bonus_crit_damage",
     "критический урон": "bonus_crit_damage",
-    "концентрация": "bonus_max_concentration",
-    "макс. концентрация": "bonus_max_concentration",
-    "максимальная концентрация": "bonus_max_concentration",
-    "реген концентрации": "bonus_concentration_regen",
-    "регенерация концентрации": "bonus_concentration_regen",
     "реген hp": "bonus_hp_regen_percent",
     "регенерация hp": "bonus_hp_regen_percent",
     "реген здоровья": "bonus_hp_regen_percent",
@@ -462,8 +458,6 @@ MODIFIER_KEY_ALIASES = {
     "hp_regen_percent": "bonus_hp_regen_percent",
     "spirit_regen_percent": "bonus_spirit_regen_percent",
     "mana_regen_percent": "bonus_mana_regen_percent",
-    "max_concentration": "bonus_max_concentration",
-    "concentration_regen": "bonus_concentration_regen",
     "max_energy": "bonus_max_energy",
     "energy_saving_percent": "bonus_energy_saving_percent",
     "energy_restore_bonus_percent": "bonus_energy_restore_percent",
@@ -490,8 +484,6 @@ KNOWN_MODIFIER_KEYS = {
     "bonus_perception",
     "bonus_intelligence",
     "bonus_wisdom",
-    "bonus_max_concentration",
-    "bonus_concentration_regen",
     "bonus_hp_regen_percent",
     "bonus_spirit_regen_percent",
     "bonus_mana_regen_percent",
@@ -524,6 +516,13 @@ def contains_formula_text(value: Any) -> bool:
         return False
     lowered = value.casefold()
     return any(marker in lowered for marker in FORMULA_TEXT_MARKERS)
+
+
+def contains_concentration_text(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    lowered = value.casefold()
+    return any(marker in lowered for marker in CONCENTRATION_TEXT_MARKERS)
 
 
 def strip_hidden_formulas(value: Any) -> Any:
@@ -589,14 +588,11 @@ def format_skill_damage(skill: dict[str, Any], player_level: int, bonus_modifier
 def skill_resource_text(skill: dict[str, Any]) -> str:
     mana = safe_float(skill.get("mana_cost") if "mana_cost" in skill else skill.get("manaCost"), 0)
     spirit = safe_float(skill.get("spirit_cost") if "spirit_cost" in skill else skill.get("spiritCost"), 0)
-    concentration = safe_float(skill.get("concentration_cost") if "concentration_cost" in skill else skill.get("concentrationCost"), 0)
     parts: list[str] = []
     if mana > 0:
         parts.append(f"Мана: {mana:g}")
     if spirit > 0:
         parts.append(f"Дух: {spirit:g}")
-    if concentration > 0:
-        parts.append(f"Концентрация: {concentration:g}")
     if parts:
         return "Расход: " + " · ".join(parts)
     return "Расход: не требует маны и духа"
@@ -611,12 +607,18 @@ def normalize_skill(skill: dict[str, Any], player_level: int, bonus_modifiers: d
     normalized = strip_hidden_formulas(deepcopy(skill))
     if not isinstance(normalized, dict):
         normalized = {}
+    for hidden_key in ("concentration_cost", "concentrationCost", "bonus_max_concentration", "bonus_concentration_regen"):
+        normalized.pop(hidden_key, None)
     damage = format_skill_damage(skill, player_level, bonus_modifiers)
     if damage is not None:
         normalized["damage"] = damage
     else:
         normalized.pop("damage", None)
-    normalized["resourceText"] = skill.get("resource_text") or skill.get("cost") or skill_resource_text(skill)
+    raw_resource_text = skill.get("resource_text") or skill.get("cost")
+    if isinstance(raw_resource_text, str) and not contains_concentration_text(raw_resource_text) and not contains_formula_text(raw_resource_text):
+        normalized["resourceText"] = raw_resource_text
+    else:
+        normalized["resourceText"] = skill_resource_text(skill)
     normalized["cooldownText"] = skill.get("cooldown_text") or skill_cooldown_text(skill)
     normalized["cooldown"] = safe_int(skill.get("cooldown_turns") if "cooldown_turns" in skill else skill.get("cooldown"), 0)
     skill_type = str(skill.get("skill_type") or skill.get("type") or source_section or "active").lower()
@@ -638,8 +640,6 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
     hp_max = ceil(100 + eff["endurance"] * 4.0 + eff["strength"] * 0.8 + s_level * 4 + safe_int(player.get("bonus_hp"), 0) + equipment_bonus(bonus_modifiers, "bonus_hp"))
     spirit_max = ceil(20 + eff["endurance"] * 1.2 + eff["strength"] * 1.0 + eff["agility"] * 0.7 + s_level * 1.2 + safe_int(player.get("bonus_spirit"), 0) + equipment_bonus(bonus_modifiers, "bonus_spirit"))
     mana_max = ceil(20 + eff["intelligence"] * 1.6 + eff["wisdom"] * 1.3 + s_level * 1.2 + safe_int(player.get("bonus_mana"), 0) + equipment_bonus(bonus_modifiers, "bonus_mana"))
-    concentration_max = ceil(1 + (20 * eff["wisdom"] / (eff["wisdom"] + 4000)) + (12 * eff["intelligence"] / (eff["intelligence"] + 5000)) + (6 * eff["endurance"] / (eff["endurance"] + 6000)) + safe_float(player.get("bonus_max_concentration"), 0) + equipment_bonus(bonus_modifiers, "bonus_max_concentration"))
-
     physical_defense = ceil(armor * 1.5 + eff["endurance"] * 0.9 + eff["strength"] * 0.6 + eff["agility"] * 0.2 + safe_int(player.get("bonus_physical_defense"), 0) + equipment_bonus(bonus_modifiers, "bonus_physical_defense"))
     magic_defense = ceil(magic_armor * 1.5 + eff["wisdom"] * 0.9 + eff["intelligence"] * 0.6 + eff["endurance"] * 0.2 + safe_int(player.get("bonus_magic_defense"), 0) + equipment_bonus(bonus_modifiers, "bonus_magic_defense"))
     accuracy = ceil(eff["perception"] * 1.8 + eff["agility"] * 1.1 + s_level * 0.7 + safe_int(player.get("bonus_accuracy"), 0) + equipment_bonus(bonus_modifiers, "bonus_accuracy"))
@@ -728,6 +728,9 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "inventoryCapacity": safe_int(player.get("inventory_capacity") or player.get("max_inventory_slots") or player.get("inventory_slots"), 20),
             "inventoryUsedSlots": len(inventory),
             "inventoryFreeSlots": max(0, safe_int(player.get("inventory_capacity") or player.get("max_inventory_slots") or player.get("inventory_slots"), 20) - len(inventory)),
+            "skillEquipCapacity": safe_int(player.get("skill_equip_capacity") or player.get("max_equipped_skills"), 2),
+            "skillEquipUsed": len(equipped_skills),
+            "skillEquipFree": max(0, safe_int(player.get("skill_equip_capacity") or player.get("max_equipped_skills"), 2) - len(equipped_skills)),
         },
         "attributes": attributes,
         "parameters": [
@@ -735,7 +738,6 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             {"label": "Дух", "value": f"{safe_int(player.get('spirit'), spirit_max)} / {spirit_max}"},
             {"label": "Мана", "value": f"{safe_int(player.get('mana'), mana_max)} / {mana_max}"},
             {"label": "Энергия", "value": f"{current_energy} / {max_energy}"},
-            {"label": "Концентрация", "value": f"{safe_int(player.get('concentration'), concentration_max)} / {concentration_max}"},
             {"label": "Физическая защита", "value": physical_defense},
             {"label": "Магическая защита", "value": magic_defense},
             {"label": "Точность", "value": accuracy},
@@ -844,6 +846,9 @@ def equip_player_skill(player: dict[str, Any], skill_id: str) -> None:
         skills["equipped"] = equipped
     if any(isinstance(skill, dict) and skill_matches(skill, skill_id) for skill in equipped):
         return
+    capacity = safe_int(player.get("skill_equip_capacity") or player.get("max_equipped_skills"), 2)
+    if len(equipped) >= capacity:
+        raise HTTPException(status_code=400, detail="Нет свободных слотов экипированных навыков.")
     found = find_player_skill_with_section(player, skill_id, ("active", "passive"))
     if found is None:
         raise HTTPException(status_code=404, detail="Навык не найден.")

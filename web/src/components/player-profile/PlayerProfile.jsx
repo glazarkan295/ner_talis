@@ -28,31 +28,26 @@ const DEFAULT_SLOTS = [
 const RACE_INFO = {
   human: {
     name: "Человек",
-    description: "Сбалансированная раса без сильных слабостей, быстро обучается и умеет извлекать выгоду из покупок.",
     stats: "Сила 3 · Ловкость 3 · Выносливость 4 · Интеллект 3 · Мудрость 3 · Восприятие 4",
     bonuses: ["Возврат золота у NPC", "+2% получаемого опыта", "+1% к основным характеристикам"],
   },
   elf: {
     name: "Эльф",
-    description: "Ловкая и разумная раса, хорошо чувствует магию, природу и алхимию.",
     stats: "Сила 2 · Ловкость 4 · Выносливость 2 · Интеллект 5 · Мудрость 4 · Восприятие 3",
     bonuses: ["+3% магического урона", "+4% к алхимии", "+3% к сбору алхимических ингредиентов"],
   },
   dwarf: {
     name: "Дворф",
-    description: "Крепкая раса мастеров, сильна в кузнечном деле и работе с металлом.",
     stats: "Сила 5 · Ловкость 2 · Выносливость 5 · Интеллект 3 · Мудрость 3 · Восприятие 2",
     bonuses: ["+4% к созданию оружия и брони", "-3% расхода руды и металла", "+3% к выносливости"],
   },
   undead: {
     name: "Нежить",
-    description: "Мрачная и живучая раса, устойчивая к боли, ядам и проклятиям.",
     stats: "Сила 3 · Ловкость 2 · Выносливость 6 · Интеллект 3 · Мудрость 4 · Восприятие 2",
     bonuses: ["+4% к здоровью", "-5% шанс получить негативный эффект", "-3% периодического урона"],
   },
   lizardfolk: {
     name: "Ящеролюд",
-    description: "Сильная дикая раса с крепкой чешуёй, боевой регенерацией и чутьём на добычу.",
     stats: "Сила 4 · Ловкость 4 · Выносливость 4 · Интеллект 1 · Мудрость 2 · Восприятие 5",
     bonuses: ["0.5% регенерации HP в бою", "-2% физического урона", "+4% к поиску добычи и ресурсов"],
   },
@@ -266,16 +261,19 @@ function skillKey(skill) {
   return String(skill?.id || skill?.name || "").trim();
 }
 
+function hasConcentrationText(value) {
+  const text = String(value || "").toLowerCase();
+  return text.includes("концентрац") || text.includes("concentration");
+}
+
 function skillCostText(skill) {
-  if (skill?.resourceText) return skill.resourceText;
-  if (skill?.cost) return skill.cost;
+  const rawText = skill?.resourceText || skill?.cost;
+  if (rawText && !hasConcentrationText(rawText)) return rawText;
   const mana = Number(skill?.mana_cost ?? skill?.manaCost ?? 0);
   const spirit = Number(skill?.spirit_cost ?? skill?.spiritCost ?? 0);
-  const concentration = Number(skill?.concentration_cost ?? skill?.concentrationCost ?? 0);
   const parts = [];
   if (mana > 0) parts.push(`Мана: ${mana}`);
   if (spirit > 0) parts.push(`Дух: ${spirit}`);
-  if (concentration > 0) parts.push(`Концентрация: ${concentration}`);
   if (!parts.length) return "Расход: не требует маны и духа";
   return `Расход: ${parts.join(" · ")}`;
 }
@@ -296,6 +294,14 @@ function canEquipSkill(skill) {
   if (skill.equippable === false) return false;
   if (isPassiveSkill(skill)) return Boolean(skill.equippable);
   return true;
+}
+
+function skillEquipCapacity(profile) {
+  return Number(profile.player?.skillEquipCapacity ?? profile.player?.maxEquippedSkills ?? 2) || 2;
+}
+
+function skillEquipUsed(profile, equipped) {
+  return Number(profile.player?.skillEquipUsed ?? equipped.length ?? 0) || 0;
 }
 
 function statLines(item) {
@@ -669,11 +675,29 @@ function SkillsTab({ profile, onSpendSkillPoints, onEquipSkill, onUnequipSkill }
     onEquipSkill,
     onUnequipSkill,
   };
+  const equipCapacity = skillEquipCapacity(profile);
+  const equipUsed = skillEquipUsed(profile, equipped);
+  const emptySlots = Math.max(0, equipCapacity - equipUsed);
   return (
     <div className="nt-stack">
+      <Panel title="Развитие" right={<span className="nt-badge">Свободно: {freePoints}</span>}>
+        <div className="nt-lines">
+          <Row label="Свободные очки навыков" value={freePoints} />
+          <Row label="Ветвь развития" value={profile.player?.branch || "—"} />
+        </div>
+      </Panel>
+      <Panel title="Экипированные" right={<span className="nt-badge">{equipUsed} / {equipCapacity}</span>}>
+        <div className="nt-skills-list nt-equipped-skills-list">
+          {equipped.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="equipped" {...sharedProps} />)}
+          {Array.from({ length: emptySlots }).map((_, index) => (
+            <div className="nt-empty-skill-slot" key={`empty-skill-${index}`}>
+              <span>Слот навыка {equipUsed + index + 1}</span>
+              <strong>пусто</strong>
+            </div>
+          ))}
+        </div>
+      </Panel>
       <Panel title="Активные навыки"><div className="nt-skills-list">{active.length ? active.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Активных навыков пока нет.</p>}</div></Panel>
-      <Panel title="Экипированные"><div className="nt-skills-list">{equipped.length ? equipped.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="equipped" {...sharedProps} />) : <p className="nt-empty-text">Навыки для использования пока не выбраны.</p>}</div></Panel>
-      <Panel title="Развитие" right={<span className="nt-badge">Свободно: {freePoints}</span>}><div className="nt-lines"><Row label="Свободные очки навыков" value={freePoints} /><Row label="Ветвь развития" value={profile.player?.branch || "—"} /></div></Panel>
       <Panel title="Пассивные навыки"><div className="nt-skills-list">{passive.length ? passive.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Пассивных навыков пока нет.</p>}</div></Panel>
       <ModifierHelpModal modifier={modifierHelp?.modifier} position={modifierHelp?.position} onClose={() => setModifierHelp(null)} />
       <SkillUpgradeModal skill={upgradeSkill?.skill} freePoints={freePoints} position={upgradeSkill?.position} onClose={() => setUpgradeSkill(null)} onSpendSkillPoints={onSpendSkillPoints} />
