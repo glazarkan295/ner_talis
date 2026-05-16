@@ -3,11 +3,13 @@ import { PlayerProfile } from "./components/player-profile";
 import "./components/player-profile/PlayerProfile.css";
 import {
   equipItem,
+  equipSkill,
   getProfileIdentifierFromUrl,
   loadPlayerProfile,
   spendAttributePoints,
   spendSkillPoints,
   unequipItem,
+  unequipSkill,
   useItem,
 } from "./api/profileApi.js";
 
@@ -80,6 +82,12 @@ function App() {
         }}
         onUseItem={(item) => {
           return runProfileAction(() => useItem(profileIdentifier, item.id));
+        }}
+        onEquipSkill={(skill) => {
+          return runProfileAction(() => equipSkill(profileIdentifier, skill.id || skill.name));
+        }}
+        onUnequipSkill={(skill) => {
+          return runProfileAction(() => unequipSkill(profileIdentifier, skill.id || skill.name));
         }}
       />
     </>

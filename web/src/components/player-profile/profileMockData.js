@@ -21,6 +21,9 @@ export const profileMockData = {
     experienceToNext: 1200,
     freeAttributePoints: 5,
     freeSkillPoints: 2,
+    inventoryCapacity: 20,
+    inventoryUsedSlots: 2,
+    inventoryFreeSlots: 18,
     balanceText: "2 зол. 450 сер.",
     registrationDate: "12.05.2026",
   },
@@ -103,8 +106,9 @@ export const profileMockData = {
     },
   ],
   skills: {
-    active: [{ name: "Обычная атака", level: 1, description: "Базовый удар оружием." }],
-    passive: [{ name: "Меткий взгляд", level: 2, description: "+точность через восприятие." }],
+    active: [{ id: "demo_attack", name: "Обычная атака", level: 1, description: "Базовый удар оружием.", damage: 14, resourceText: "Расход: Дух: 1 · Концентрация: 0.5", cooldownText: "Откат: 0 ходов", skill_type: "active" }],
+    equipped: [],
+    passive: [{ id: "demo_passive", name: "Меткий взгляд", level: 2, description: "+точность через восприятие.", skill_type: "passive", equippable: false }],
   },
   information: {
     achievements: [{ name: "Первый шаг", description: "Персонаж создан." }],

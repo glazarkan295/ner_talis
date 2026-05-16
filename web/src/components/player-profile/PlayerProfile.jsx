@@ -238,6 +238,66 @@ function compactSlotName(slotKey = "") {
   return map[slotKey] || slotKey || "—";
 }
 
+function inventoryCapacity(profile) {
+  return Number(
+    profile.player?.inventoryCapacity ??
+    profile.player?.maxInventorySlots ??
+    profile.inventoryCapacity ??
+    profile.inventory?.capacity ??
+    20
+  ) || 20;
+}
+
+function inventoryUsedSlots(inventory) {
+  return Array.isArray(inventory) ? inventory.length : 0;
+}
+
+function inventoryFreeSlots(profile, inventory) {
+  const capacity = inventoryCapacity(profile);
+  const used = Number(
+    profile.player?.inventoryUsedSlots ??
+    profile.inventoryUsedSlots ??
+    inventoryUsedSlots(inventory)
+  ) || 0;
+  return Math.max(0, capacity - used);
+}
+
+function skillKey(skill) {
+  return String(skill?.id || skill?.name || "").trim();
+}
+
+function skillCostText(skill) {
+  if (skill?.resourceText) return skill.resourceText;
+  if (skill?.cost) return skill.cost;
+  const mana = Number(skill?.mana_cost ?? skill?.manaCost ?? 0);
+  const spirit = Number(skill?.spirit_cost ?? skill?.spiritCost ?? 0);
+  const concentration = Number(skill?.concentration_cost ?? skill?.concentrationCost ?? 0);
+  const parts = [];
+  if (mana > 0) parts.push(`Мана: ${mana}`);
+  if (spirit > 0) parts.push(`Дух: ${spirit}`);
+  if (concentration > 0) parts.push(`Концентрация: ${concentration}`);
+  if (!parts.length) return "Расход: не требует маны и духа";
+  return `Расход: ${parts.join(" · ")}`;
+}
+
+function skillCooldownText(skill) {
+  if (skill?.cooldownText) return skill.cooldownText;
+  const turns = Number(skill?.cooldown_turns ?? skill?.cooldownTurns ?? skill?.cooldown ?? 0) || 0;
+  return `Откат: ${turns} ходов`;
+}
+
+function isPassiveSkill(skill) {
+  const rawType = String(skill?.skill_type || skill?.type || "").toLowerCase();
+  return rawType === "passive" || rawType === "пассивный";
+}
+
+function canEquipSkill(skill) {
+  if (!skill) return false;
+  if (skill.equippable === false) return false;
+  if (isPassiveSkill(skill)) return Boolean(skill.equippable);
+  return true;
+}
+
 function statLines(item) {
   if (!item) return [];
   if (Array.isArray(item.stats)) return item.stats;
@@ -305,25 +365,23 @@ function ItemArt({ item, fallback = "◇", className = "nt-item-art" }) {
   return <span className={className}>{icon ? <img src={icon} alt="" /> : fallback}</span>;
 }
 
-function RaceInfoModal({ profile, position, onClose }) {
+function RaceInfoPopover({ profile, onClose }) {
   if (!profile) return null;
   const race = RACE_INFO[raceKey(profile.player)] || RACE_INFO.human;
   return (
-    <div className="nt-modal-layer" onMouseDown={onClose}>
-      <article className="nt-modal nt-race-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
-        <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
-        <div className="nt-modal-kicker">Бонусы расы</div>
-        <h3>{race.name}</h3>
-        <div className="nt-modal-block">
-          <h4>Стартовые характеристики</h4>
-          <p className="nt-race-stats">{race.stats}</p>
-        </div>
-        <div className="nt-modal-block">
-          <h4>Бонусы</h4>
-          <ul>{race.bonuses.map((bonus) => <li key={bonus}>{bonus}</li>)}</ul>
-        </div>
-      </article>
-    </div>
+    <aside className="nt-race-popover" role="dialog" aria-label="Бонусы расы">
+      <button className="nt-popover-close" type="button" onClick={onClose} aria-label="Закрыть">×</button>
+      <div className="nt-modal-kicker">Бонусы расы</div>
+      <h3>{race.name}</h3>
+      <div className="nt-modal-block">
+        <h4>Стартовые характеристики</h4>
+        <p className="nt-race-stats">{race.stats}</p>
+      </div>
+      <div className="nt-modal-block">
+        <h4>Бонусы</h4>
+        <ul>{race.bonuses.map((bonus) => <li key={bonus}>{bonus}</li>)}</ul>
+      </div>
+    </aside>
   );
 }
 
@@ -421,8 +479,21 @@ function EquipmentPanel({ profile, onOpenItem, onOpenSlot }) {
   );
 }
 
+function RaceRow({ profile }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="nt-row nt-race-row">
+      <span>Раса</span>
+      <strong className="nt-race-cell">
+        <span className="nt-race-value">{profile.player?.raceName || "—"}</span>
+        <button className="nt-race-info-button" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label="Показать бонусы расы">!</button>
+      </strong>
+      {open ? <RaceInfoPopover profile={profile} onClose={() => setOpen(false)} /> : null}
+    </div>
+  );
+}
+
 function CharacterTab({ profile, onOpenItem, onOpenSlot, onSpendAttributePoints }) {
-  const [raceOpen, setRaceOpen] = useState(null);
   const [attributeAmounts, setAttributeAmounts] = useState({});
   const xpCurrent = Number(profile.player?.experienceCurrent || 0);
   const xpNext = Math.max(1, Number(profile.player?.experienceToNext || 1));
@@ -443,7 +514,7 @@ function CharacterTab({ profile, onOpenItem, onOpenSlot, onSpendAttributePoints 
       <Panel title="Сводка">
         <div className="nt-lines">
           <Row label="Имя" value={profile.player?.nickname || "—"} />
-          <Row label="Раса" value={<span className="nt-race-value">{profile.player?.raceName || "—"}<button className="nt-race-info-button" type="button" onClick={(event) => setRaceOpen(getFloatingPosition(event, 360, 300))}>!</button></span>} />
+          <RaceRow profile={profile} />
           <Row label="Ветка" value={profile.player?.branch || "—"} />
           <Row label="Уровень" value={profile.player?.level || 1} />
           <Row label="Баланс" value={profile.player?.balanceText || "0 мед."} />
@@ -470,7 +541,6 @@ function CharacterTab({ profile, onOpenItem, onOpenSlot, onSpendAttributePoints 
       <Panel title="Активные сеты">
         {(profile.activeSets || []).length ? <div className="nt-column-list">{profile.activeSets.map((set) => <div key={set.name} className="nt-mini-card"><CardRow label={set.name} value="активен" /><p>{set.bonus}</p></div>)}</div> : <p className="nt-empty-text">Активных сетов нет.</p>}
       </Panel>
-      {raceOpen ? <RaceInfoModal profile={profile} position={raceOpen} onClose={() => setRaceOpen(null)} /> : null}
     </div>
   );
 }
@@ -479,6 +549,8 @@ function InventoryTab({ profile, onOpenItem }) {
   const [category, setCategory] = useState("Всё");
   const [query, setQuery] = useState("");
   const inventory = profile.inventory || [];
+  const freeSlots = inventoryFreeSlots(profile, inventory);
+  const capacity = inventoryCapacity(profile);
   const filtered = useMemo(() => inventory.filter((item) => {
     const categoryOk = category === "Всё" || item.category === category;
     const queryOk = !query || String(item.name || "").toLowerCase().includes(query.toLowerCase());
@@ -487,7 +559,7 @@ function InventoryTab({ profile, onOpenItem }) {
 
   return (
     <div className="nt-stack">
-      <Panel title="Инвентарь">
+      <Panel title="Инвентарь" right={<span className="nt-badge">Свободно: {freeSlots} / {capacity}</span>}>
         <div className="nt-toolbar">
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск предмета" />
           <div className="nt-category-row">{INVENTORY_CATEGORIES.map((item) => <button key={item} className={category === item ? "active" : ""} type="button" onClick={() => setCategory(item)}>{item}</button>)}</div>
@@ -554,10 +626,17 @@ function SkillUpgradeModal({ skill, freePoints, position, onClose, onSpendSkillP
   );
 }
 
-function SkillCard({ skill, freePoints, onShowModifier, onOpenUpgrade }) {
+function SkillCard({ skill, freePoints, mode = "available", onShowModifier, onOpenUpgrade, onEquipSkill, onUnequipSkill }) {
   const modifiers = skill.modifiers || [];
   const canUpgrade = freePoints > 0 && skill.upgradeable;
-  const details = [skill.damage !== undefined && skill.damage !== null ? `Урон: ${skill.damage}` : null, skill.cooldown !== undefined && skill.cooldown !== null ? `Откат: ${skill.cooldown}` : null, skill.cost ? `Затраты: ${skill.cost}` : null].filter(Boolean);
+  const details = [
+    skill.damage !== undefined && skill.damage !== null ? `Урон: ${skill.damage}` : null,
+    skillCostText(skill),
+    skillCooldownText(skill),
+  ].filter(Boolean);
+  const actionLabel = mode === "equipped" ? "Снять" : "Использовать";
+  const actionHandler = mode === "equipped" ? onUnequipSkill : onEquipSkill;
+  const showAction = mode === "equipped" || canEquipSkill(skill);
   return (
     <article className="nt-skill-card">
       <div className="nt-skill-main">
@@ -566,22 +645,36 @@ function SkillCard({ skill, freePoints, onShowModifier, onOpenUpgrade }) {
         {details.length ? <div className="nt-skill-details">{details.map((detail) => <span key={detail}>{detail}</span>)}</div> : null}
         {modifiers.length ? <div className="nt-modifiers">{modifiers.map((modifier) => <button key={modifier.id || modifier.name} type="button" onClick={(event) => onShowModifier(modifier, event)}>{modifier.name || modifier.label} <b>{modifier.level || modifier.points || 0}</b></button>)}</div> : null}
       </div>
-      <div className="nt-skill-side"><div className="nt-skill-level"><span>Уровень</span><strong>{skill.level || 0}</strong></div>{canUpgrade ? <button className="nt-skill-plus" type="button" onClick={(event) => onOpenUpgrade(skill, event)}>+</button> : null}</div>
+      <div className="nt-skill-side">
+        <div className="nt-skill-level"><span>Уровень</span><strong>{skill.level || 0}</strong></div>
+        {canUpgrade ? <button className="nt-skill-plus" type="button" onClick={(event) => onOpenUpgrade(skill, event)}>+</button> : null}
+        {showAction ? <button className="nt-skill-action" type="button" onClick={() => actionHandler?.(skill)}>{actionLabel}</button> : null}
+      </div>
     </article>
   );
 }
 
-function SkillsTab({ profile, onSpendSkillPoints }) {
+function SkillsTab({ profile, onSpendSkillPoints, onEquipSkill, onUnequipSkill }) {
   const [modifierHelp, setModifierHelp] = useState(null);
   const [upgradeSkill, setUpgradeSkill] = useState(null);
   const freePoints = profile.player?.freeSkillPoints || 0;
-  const active = profile.skills?.active || [];
-  const passive = profile.skills?.passive || [];
+  const equipped = profile.skills?.equipped || [];
+  const equippedKeys = new Set(equipped.map(skillKey));
+  const active = (profile.skills?.active || []).filter((skill) => !equippedKeys.has(skillKey(skill)));
+  const passive = (profile.skills?.passive || []).filter((skill) => !equippedKeys.has(skillKey(skill)));
+  const sharedProps = {
+    freePoints,
+    onShowModifier: (modifier, event) => setModifierHelp({ modifier, position: getFloatingPosition(event, 360, 300) }),
+    onOpenUpgrade: (skillToUpgrade, event) => setUpgradeSkill({ skill: skillToUpgrade, position: getFloatingPosition(event, 390, 360) }),
+    onEquipSkill,
+    onUnequipSkill,
+  };
   return (
     <div className="nt-stack">
+      <Panel title="Активные навыки"><div className="nt-skills-list">{active.length ? active.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Активных навыков пока нет.</p>}</div></Panel>
+      <Panel title="Экипированные"><div className="nt-skills-list">{equipped.length ? equipped.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="equipped" {...sharedProps} />) : <p className="nt-empty-text">Навыки для использования пока не выбраны.</p>}</div></Panel>
       <Panel title="Развитие" right={<span className="nt-badge">Свободно: {freePoints}</span>}><div className="nt-lines"><Row label="Свободные очки навыков" value={freePoints} /><Row label="Ветвь развития" value={profile.player?.branch || "—"} /></div></Panel>
-      <Panel title="Активные навыки"><div className="nt-skills-list">{active.length ? active.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} freePoints={freePoints} onShowModifier={(modifier, event) => setModifierHelp({ modifier, position: getFloatingPosition(event, 360, 300) })} onOpenUpgrade={(skillToUpgrade, event) => setUpgradeSkill({ skill: skillToUpgrade, position: getFloatingPosition(event, 390, 360) })} />) : <p className="nt-empty-text">Активных навыков пока нет.</p>}</div></Panel>
-      <Panel title="Пассивные навыки"><div className="nt-skills-list">{passive.length ? passive.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} freePoints={freePoints} onShowModifier={(modifier, event) => setModifierHelp({ modifier, position: getFloatingPosition(event, 360, 300) })} onOpenUpgrade={(skillToUpgrade, event) => setUpgradeSkill({ skill: skillToUpgrade, position: getFloatingPosition(event, 390, 360) })} />) : <p className="nt-empty-text">Пассивных навыков пока нет.</p>}</div></Panel>
+      <Panel title="Пассивные навыки"><div className="nt-skills-list">{passive.length ? passive.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Пассивных навыков пока нет.</p>}</div></Panel>
       <ModifierHelpModal modifier={modifierHelp?.modifier} position={modifierHelp?.position} onClose={() => setModifierHelp(null)} />
       <SkillUpgradeModal skill={upgradeSkill?.skill} freePoints={freePoints} position={upgradeSkill?.position} onClose={() => setUpgradeSkill(null)} onSpendSkillPoints={onSpendSkillPoints} />
     </div>
@@ -601,7 +694,7 @@ function InfoTab({ profile }) {
   );
 }
 
-export function PlayerProfile({ profile, onSpendAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem }) {
+export function PlayerProfile({ profile, onSpendAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onEquipSkill, onUnequipSkill }) {
   const data = profileOrMock(profile);
   const [tab, setTab] = useState("character");
   const [modal, setModal] = useState(null);
@@ -658,7 +751,7 @@ export function PlayerProfile({ profile, onSpendAttributePoints, onSpendSkillPoi
         <section className="nt-content">
           {tab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} /> : null}
           {tab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
-          {tab === "skills" ? <SkillsTab profile={data} onSpendSkillPoints={onSpendSkillPoints} /> : null}
+          {tab === "skills" ? <SkillsTab profile={data} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
           {tab === "info" ? <InfoTab profile={data} /> : null}
         </section>
       </div>

@@ -294,6 +294,61 @@ class ProfileSiteFixesTest(unittest.TestCase):
             values = {row["label"]: row["value"] for row in response.json()["profile"]["parameters"]}
             self.assertEqual(values["Энергия"], "100 / 120")
 
+
+    def test_skills_can_be_equipped_and_unequipped_through_private_profile_token(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            client = TestClient(app)
+
+            equip_response = client.post(
+                f"/api/profile/{token}/skills/equip",
+                json={"skill_id": "basic_attack"},
+            )
+            self.assertEqual(equip_response.status_code, 200, equip_response.text)
+            equipped_names = [skill["id"] for skill in equip_response.json()["profile"]["skills"]["equipped"]]
+            active_names = [skill["id"] for skill in equip_response.json()["profile"]["skills"]["active"]]
+            self.assertIn("basic_attack", equipped_names)
+            self.assertNotIn("basic_attack", active_names)
+
+            unequip_response = client.post(
+                f"/api/profile/{token}/skills/unequip",
+                json={"skill_id": "basic_attack"},
+            )
+            self.assertEqual(unequip_response.status_code, 200, unequip_response.text)
+            equipped_names = [skill["id"] for skill in unequip_response.json()["profile"]["skills"]["equipped"]]
+            active_names = [skill["id"] for skill in unequip_response.json()["profile"]["skills"]["active"]]
+            self.assertNotIn("basic_attack", equipped_names)
+            self.assertIn("basic_attack", active_names)
+
+    def test_passive_skills_without_explicit_type_are_not_equippable(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["skills"]["passive"].append({"id": "focus", "name": "Фокус", "level": 1})
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            client = TestClient(app)
+
+            profile_response = client.get(f"/api/profile/{token}")
+            self.assertEqual(profile_response.status_code, 200, profile_response.text)
+            passive_skill = next(skill for skill in profile_response.json()["skills"]["passive"] if skill["id"] == "focus")
+            self.assertFalse(passive_skill["equippable"])
+
+            equip_response = client.post(
+                f"/api/profile/{token}/skills/equip",
+                json={"skill_id": "focus"},
+            )
+            self.assertEqual(equip_response.status_code, 400)
+
     def test_skill_points_cannot_be_spent_through_public_profile_id(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             storage = JsonStorage(str(Path(tmp_dir) / "players.json"))

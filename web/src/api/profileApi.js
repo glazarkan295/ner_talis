@@ -109,3 +109,18 @@ export function spendSkillPoints(identifier, skillId, modifierId, amount) {
     body: JSON.stringify({ skill_id: skillId, modifier_id: modifierId, amount }),
   });
 }
+
+
+export function equipSkill(identifier, skillId) {
+  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/skills/equip`, {
+    method: "POST",
+    body: JSON.stringify({ skill_id: skillId }),
+  });
+}
+
+export function unequipSkill(identifier, skillId) {
+  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/skills/unequip`, {
+    method: "POST",
+    body: JSON.stringify({ skill_id: skillId }),
+  });
+}

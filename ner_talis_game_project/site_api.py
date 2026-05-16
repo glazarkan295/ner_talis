@@ -61,6 +61,58 @@ CRAFT_LABELS = {
     "enchanting": "Зачарование",
 }
 
+ITEM_VALUE_TRANSLATIONS = {
+    "weapon": "Оружие",
+    "armor": "Броня",
+    "jewelry": "Бижутерия",
+    "accessory": "Аксессуар",
+    "consumable": "Расходник",
+    "potion": "Зелье",
+    "food": "Еда",
+    "drink": "Напиток",
+    "resource": "Ресурс",
+    "staff": "Посох",
+    "sword": "Меч",
+    "axe": "Топор",
+    "dagger": "Кинжал",
+    "bow": "Лук",
+    "crossbow": "Арбалет",
+    "mace": "Булава",
+    "hammer": "Молот",
+    "shield": "Щит",
+    "cloth_armor": "Тканевая броня",
+    "light_armor": "Лёгкая броня",
+    "medium_armor": "Средняя броня",
+    "heavy_armor": "Тяжёлая броня",
+    "light_boots": "Лёгкие сапоги",
+    "cloth_headwear": "Тканевый головной убор",
+    "ring": "Кольцо",
+    "necklace": "Ожерелье",
+    "bracelet": "Браслет",
+    "helmet": "Шлем",
+    "chest": "Нагрудник",
+    "pants": "Штаны",
+    "boots": "Ботинки",
+    "gloves": "Перчатки",
+    "belt": "Пояс",
+    "special": "Особый предмет",
+    "physical": "Физический",
+    "magic": "Магический",
+    "physical_blunt": "Дробящий физический",
+    "melee": "Ближний бой",
+    "ranged": "Дальний бой",
+    "normal": "Обычная",
+}
+
+ENGLISH_ITEM_NAME_TRANSLATIONS = {
+    "wooden staff": "Деревянный посох",
+    "tunic": "Туника",
+    "canvas pants": "Холщевые штаны",
+    "old boots": "Старые сапоги",
+    "bandana": "Бандана",
+}
+
+
 RACE_MODEL_KEYS = {
     "human": "human",
     "elf": "elf",
@@ -79,6 +131,10 @@ class SpendSkillRequest(BaseModel):
     skill_id: str
     modifier_id: str | None = None
     amount: int = Field(gt=0)
+
+
+class SkillEquipRequest(BaseModel):
+    skill_id: str
 
 
 class EquipItemRequest(BaseModel):
@@ -321,6 +377,21 @@ def normalize_quality(value: str | None) -> str:
     return (value or "обычный").strip().lower()
 
 
+def translate_item_value(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    stripped = value.strip()
+    translated = ITEM_VALUE_TRANSLATIONS.get(stripped.casefold())
+    return translated or stripped
+
+
+def translate_item_name(value: Any) -> str:
+    if not isinstance(value, str):
+        return "Безымянный предмет"
+    stripped = value.strip()
+    return ENGLISH_ITEM_NAME_TRANSLATIONS.get(stripped.casefold(), stripped or "Безымянный предмет")
+
+
 HIDDEN_FORMULA_KEYS = {"formula", "base_damage_formula", "damage_formula", "scaling_formula"}
 FORMULA_TEXT_MARKERS = ("player_level", "ceil(", "floor(", "log2(", "ln(", "уровень ×", "уровня ×", "уровень персонажа ×")
 STAT_EQUIPMENT_BONUS_KEYS = {
@@ -479,9 +550,15 @@ def normalize_item(item: dict[str, Any], default_category: str = "Прочее")
     if not isinstance(normalized, dict):
         normalized = {}
     normalized.setdefault("id", normalized.get("item_id") or normalized.get("name") or "item")
-    normalized.setdefault("name", "Безымянный предмет")
-    normalized.setdefault("category", default_category)
-    normalized.setdefault("type", normalized.get("slotKey") or normalized.get("slot") or "Предмет")
+    normalized["name"] = translate_item_name(normalized.get("name"))
+    normalized["category"] = translate_item_value(normalized.get("category") or default_category)
+    raw_subtype = normalized.get("subtype")
+    raw_type = normalized.get("type") or normalized.get("slotKey") or normalized.get("slot") or "Предмет"
+    translated_subtype = translate_item_value(raw_subtype) if raw_subtype else None
+    translated_type = translate_item_value(raw_type)
+    normalized["type"] = translated_subtype if translated_subtype and translated_type in {"Оружие", "Броня", "Предмет"} else translated_type
+    if raw_subtype:
+        normalized["subtype"] = translated_subtype
     normalized["quality"] = normalize_quality(normalized.get("quality"))
     normalized.setdefault("level", 1)
     normalized.setdefault("description", "Описание предмета пока не добавлено.")
@@ -509,7 +586,28 @@ def format_skill_damage(skill: dict[str, Any], player_level: int, bonus_modifier
     return damage
 
 
-def normalize_skill(skill: dict[str, Any], player_level: int, bonus_modifiers: dict[str, int] | None = None) -> dict[str, Any]:
+def skill_resource_text(skill: dict[str, Any]) -> str:
+    mana = safe_float(skill.get("mana_cost") if "mana_cost" in skill else skill.get("manaCost"), 0)
+    spirit = safe_float(skill.get("spirit_cost") if "spirit_cost" in skill else skill.get("spiritCost"), 0)
+    concentration = safe_float(skill.get("concentration_cost") if "concentration_cost" in skill else skill.get("concentrationCost"), 0)
+    parts: list[str] = []
+    if mana > 0:
+        parts.append(f"Мана: {mana:g}")
+    if spirit > 0:
+        parts.append(f"Дух: {spirit:g}")
+    if concentration > 0:
+        parts.append(f"Концентрация: {concentration:g}")
+    if parts:
+        return "Расход: " + " · ".join(parts)
+    return "Расход: не требует маны и духа"
+
+
+def skill_cooldown_text(skill: dict[str, Any]) -> str:
+    turns = safe_int(skill.get("cooldown_turns") if "cooldown_turns" in skill else skill.get("cooldown"), 0)
+    return f"Откат: {turns} ходов"
+
+
+def normalize_skill(skill: dict[str, Any], player_level: int, bonus_modifiers: dict[str, int] | None = None, source_section: str = "active") -> dict[str, Any]:
     normalized = strip_hidden_formulas(deepcopy(skill))
     if not isinstance(normalized, dict):
         normalized = {}
@@ -518,6 +616,12 @@ def normalize_skill(skill: dict[str, Any], player_level: int, bonus_modifiers: d
         normalized["damage"] = damage
     else:
         normalized.pop("damage", None)
+    normalized["resourceText"] = skill.get("resource_text") or skill.get("cost") or skill_resource_text(skill)
+    normalized["cooldownText"] = skill.get("cooldown_text") or skill_cooldown_text(skill)
+    normalized["cooldown"] = safe_int(skill.get("cooldown_turns") if "cooldown_turns" in skill else skill.get("cooldown"), 0)
+    skill_type = str(skill.get("skill_type") or skill.get("type") or source_section or "active").lower()
+    normalized.setdefault("skill_type", skill_type)
+    normalized["equippable"] = bool(skill.get("equippable", skill_type not in {"passive", "пассивный"}))
     return normalized
 
 
@@ -576,8 +680,18 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         inventory.append(item)
 
     skills = player.get("skills", {}) if isinstance(player.get("skills"), dict) else {}
-    active_skills = [normalize_skill(skill, level, bonus_modifiers) for skill in skills.get("active", []) if isinstance(skill, dict)]
-    passive_skills = [normalize_skill(skill, level, bonus_modifiers) for skill in skills.get("passive", []) if isinstance(skill, dict)]
+    equipped_skills = [normalize_skill(skill, level, bonus_modifiers, "equipped") for skill in skills.get("equipped", []) if isinstance(skill, dict)]
+    equipped_skill_keys = {str(skill.get("id") or skill.get("name") or "") for skill in equipped_skills}
+    active_skills = [
+        normalize_skill(skill, level, bonus_modifiers, "active")
+        for skill in skills.get("active", [])
+        if isinstance(skill, dict) and str(skill.get("id") or skill.get("name") or "") not in equipped_skill_keys
+    ]
+    passive_skills = [
+        normalize_skill(skill, level, bonus_modifiers, "passive")
+        for skill in skills.get("passive", [])
+        if isinstance(skill, dict) and str(skill.get("id") or skill.get("name") or "") not in equipped_skill_keys
+    ]
 
     crafting_levels = []
     for key, value in (player.get("crafting_levels") or {}).items():
@@ -611,6 +725,9 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "freeSkillPoints": safe_int(player.get("free_skill_points"), 0),
             "balanceText": format_money(safe_int(player.get("money"), 0)),
             "registrationDate": format_date(player.get("created_at")),
+            "inventoryCapacity": safe_int(player.get("inventory_capacity") or player.get("max_inventory_slots") or player.get("inventory_slots"), 20),
+            "inventoryUsedSlots": len(inventory),
+            "inventoryFreeSlots": max(0, safe_int(player.get("inventory_capacity") or player.get("max_inventory_slots") or player.get("inventory_slots"), 20) - len(inventory)),
         },
         "attributes": attributes,
         "parameters": [
@@ -631,7 +748,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         "equipmentSlots": EQUIPMENT_SLOTS,
         "equipment": equipment,
         "inventory": inventory,
-        "skills": {"active": active_skills, "passive": passive_skills},
+        "skills": {"active": active_skills, "equipped": equipped_skills, "passive": passive_skills},
         "information": {
             "achievements": player.get("achievements", []),
             "rating": player.get("rating", {"globalPlace": "—", "pvePlace": "—", "pvpPlace": "—", "craftPlace": "—"}),
@@ -695,20 +812,63 @@ def save_player(storage: Any, player: dict[str, Any]) -> None:
     storage.save(data)
 
 
-def find_player_skill(player: dict[str, Any], skill_id: str) -> dict[str, Any] | None:
+def skill_matches(skill: dict[str, Any], skill_id: str) -> bool:
     target = str(skill_id or "").strip()
-    if not target:
-        return None
+    return bool(target) and target in {str(skill.get("id") or ""), str(skill.get("name") or "")}
+
+
+def find_player_skill_with_section(player: dict[str, Any], skill_id: str, sections: tuple[str, ...] = ("active", "equipped", "passive")) -> tuple[str, int, dict[str, Any]] | None:
     skills = player.get("skills")
     if not isinstance(skills, dict):
         return None
-    for section in ("active", "passive"):
-        for skill in skills.get(section, []):
-            if not isinstance(skill, dict):
-                continue
-            if target in {str(skill.get("id") or ""), str(skill.get("name") or "")}:
-                return skill
+    for section in sections:
+        section_skills = skills.get(section, [])
+        if not isinstance(section_skills, list):
+            continue
+        for index, skill in enumerate(section_skills):
+            if isinstance(skill, dict) and skill_matches(skill, skill_id):
+                return section, index, skill
     return None
+
+
+def find_player_skill(player: dict[str, Any], skill_id: str) -> dict[str, Any] | None:
+    found = find_player_skill_with_section(player, skill_id)
+    return found[2] if found else None
+
+
+def equip_player_skill(player: dict[str, Any], skill_id: str) -> None:
+    skills = player.setdefault("skills", {})
+    equipped = skills.setdefault("equipped", [])
+    if not isinstance(equipped, list):
+        equipped = []
+        skills["equipped"] = equipped
+    if any(isinstance(skill, dict) and skill_matches(skill, skill_id) for skill in equipped):
+        return
+    found = find_player_skill_with_section(player, skill_id, ("active", "passive"))
+    if found is None:
+        raise HTTPException(status_code=404, detail="Навык не найден.")
+    source_section, index, skill = found
+    skill_type = str(skill.get("skill_type") or skill.get("type") or source_section).lower()
+    if skill.get("equippable") is False or skill_type in {"passive", "пассивный"}:
+        raise HTTPException(status_code=400, detail="Этот навык нельзя экипировать для использования.")
+    source_list = skills.get(source_section)
+    if isinstance(source_list, list):
+        source_list.pop(index)
+    skill["source_section"] = source_section
+    equipped.append(skill)
+
+
+def unequip_player_skill(player: dict[str, Any], skill_id: str) -> None:
+    skills = player.setdefault("skills", {})
+    found = find_player_skill_with_section(player, skill_id, ("equipped",))
+    if found is None:
+        raise HTTPException(status_code=404, detail="Экипированный навык не найден.")
+    _section, index, skill = found
+    equipped = skills.get("equipped", [])
+    if isinstance(equipped, list):
+        equipped.pop(index)
+    target_section = skill.pop("source_section", None) or ("passive" if str(skill.get("skill_type") or "").lower() in {"passive", "пассивный"} else "active")
+    skills.setdefault(target_section, []).append(skill)
 
 
 def spend_points_on_skill(skill: dict[str, Any], modifier_id: str | None, amount: int) -> None:
@@ -774,6 +934,22 @@ def create_profile_api_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=404, detail="Навык не найден.")
         spend_points_on_skill(skill, request.modifier_id, request.amount)
         player["free_skill_points"] = free_points - request.amount
+        save_player(storage, player)
+        return {"ok": True, "profile": frontend_profile(player)}
+
+    @router.post("/{identifier}/skills/equip")
+    def equip_skill(identifier: str, request: SkillEquipRequest) -> dict[str, Any]:
+        storage = get_storage()
+        player = resolve_profile_write(storage, identifier)
+        equip_player_skill(player, request.skill_id)
+        save_player(storage, player)
+        return {"ok": True, "profile": frontend_profile(player)}
+
+    @router.post("/{identifier}/skills/unequip")
+    def unequip_skill(identifier: str, request: SkillEquipRequest) -> dict[str, Any]:
+        storage = get_storage()
+        player = resolve_profile_write(storage, identifier)
+        unequip_player_skill(player, request.skill_id)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
 
