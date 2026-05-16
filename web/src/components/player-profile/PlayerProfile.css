@@ -242,9 +242,25 @@ button { cursor: pointer; }
 .quality-древний, .quality-ancient { border-color: rgba(109, 199, 176, .62) !important; }
 .quality-уникальный, .quality-unique { border-color: rgba(216, 113, 87, .72) !important; }
 
-.nt-modal-layer { position: fixed; inset: 0; z-index: 100; display: block; padding: 0; background: rgba(0,0,0,.26); }
-.nt-modal { width: min(500px, calc(100vw - 26px)); max-height: min(82vh, calc(100vh - 24px)); overflow: auto; border: 1px solid rgba(177,143,83,.42); border-radius: 16px; padding: 16px; background: linear-gradient(145deg, #1f1d19, #080909); box-shadow: 0 30px 90px rgba(0,0,0,.74); position: fixed; top: var(--nt-modal-top, 18px); left: var(--nt-modal-left, auto); right: var(--nt-modal-right, 18px); text-align: left; }
-.nt-small-modal { width: min(390px, calc(100vw - 26px)); }
+.nt-modal-layer { position: fixed; inset: 0; z-index: 100; display: block; padding: 0; background: rgba(0,0,0,.12); }
+.nt-modal {
+  width: var(--nt-modal-width, min(500px, calc(100vw - 26px)));
+  max-width: var(--nt-modal-width, min(500px, calc(100vw - 26px)));
+  max-height: var(--nt-modal-max-height, min(82vh, calc(100vh - 24px)));
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid rgba(177,143,83,.42);
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(145deg, #1f1d19, #080909);
+  box-shadow: 0 20px 60px rgba(0,0,0,.70);
+  position: fixed;
+  top: var(--nt-modal-top, 18px);
+  left: var(--nt-modal-left, auto);
+  right: var(--nt-modal-right, 18px);
+  text-align: left;
+}
+.nt-small-modal { width: var(--nt-modal-width, min(390px, calc(100vw - 26px))); max-width: var(--nt-modal-width, min(390px, calc(100vw - 26px))); }
 .nt-race-modal, .nt-slot-modal { background: linear-gradient(145deg, rgba(31,29,25,.96), rgba(8,9,9,.98)); }
 .nt-modal-close { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(177,143,83,.35); background: rgba(0,0,0,.28); color: #d7b46f; }
 .nt-modal-title-row { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 10px; }
@@ -265,7 +281,7 @@ button { cursor: pointer; }
 .nt-secondary { background: rgba(0,0,0,.22) !important; color: #d8c7a3 !important; }
 
 .nt-slot-modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.nt-slot-items-list { display: grid; gap: 6px; align-content: start; }
+.nt-slot-items-list { display: grid; gap: 6px; align-content: start; max-height: 260px; overflow: auto; padding-right: 2px; }
 .nt-slot-choice { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: center; gap: 7px; border-radius: 10px; padding: 5px; text-align: left; }
 .nt-slot-choice.active { border-color: rgba(220,177,97,.70); }
 .nt-choice-icon { width: 30px; height: 30px; display: grid; place-items: center; }
@@ -305,5 +321,9 @@ button { cursor: pointer; }
   .nt-skill-card { grid-template-columns: minmax(0, 1fr) 48px; }
   .nt-slot-modal-grid { grid-template-columns: 1fr; }
   .nt-modal-layer { padding: 0; }
-  .nt-modal { top: 8px !important; left: 8px !important; right: 8px !important; width: calc(100vw - 16px); }
+  .nt-modal {
+    width: var(--nt-modal-width, calc(100vw - 26px));
+    max-width: var(--nt-modal-width, calc(100vw - 26px));
+    max-height: var(--nt-modal-max-height, calc(100vh - 24px));
+  }
 }

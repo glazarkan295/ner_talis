@@ -113,22 +113,79 @@ function TabIcon({ type }) {
   );
 }
 
-function getFloatingPosition(event, preferredWidth = 500) {
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(value, max));
+}
+
+function getProfileBounds(target, gap) {
+  if (typeof window === "undefined") {
+    return { left: gap, top: gap, right: 560, bottom: 720, width: 560, height: 720 };
+  }
+
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 360;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 640;
+  const shell = target?.closest?.(".nt-shell");
+  const rect = shell?.getBoundingClientRect?.();
+
+  const rawBounds = rect && rect.width > 0 && rect.height > 0
+    ? rect
+    : { left: 0, top: 0, right: viewportWidth, bottom: viewportHeight, width: viewportWidth, height: viewportHeight };
+
+  const left = clamp(rawBounds.left, gap, viewportWidth - gap);
+  const top = clamp(rawBounds.top, gap, viewportHeight - gap);
+  const right = clamp(rawBounds.right, left + 1, viewportWidth - gap);
+  const bottom = clamp(rawBounds.bottom, top + 1, viewportHeight - gap);
+
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
+function getFloatingPosition(event, preferredWidth = 500, preferredHeight = 420) {
   if (!event?.currentTarget || typeof window === "undefined") {
     return null;
   }
-  const rect = event.currentTarget.getBoundingClientRect();
-  const gap = 10;
+
+  const target = event.currentTarget;
+  const anchor = target.getBoundingClientRect();
+  const gap = 8;
+  const bounds = getProfileBounds(target, gap);
   const viewportWidth = window.innerWidth || document.documentElement.clientWidth || preferredWidth;
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 700;
-  const modalWidth = Math.min(preferredWidth, Math.max(280, viewportWidth - 26));
-  let left = rect.right + gap;
-  if (left + modalWidth > viewportWidth - gap) {
-    left = rect.left - modalWidth - gap;
+  const isMobile = viewportWidth <= 560;
+
+  const modalWidth = Math.max(260, Math.min(preferredWidth, bounds.width - gap * 2));
+  const modalMaxHeight = Math.max(220, Math.min(preferredHeight, bounds.height - gap * 2));
+
+  let left;
+  if (isMobile || bounds.width < preferredWidth + gap * 2) {
+    left = bounds.left + gap;
+  } else {
+    left = anchor.right + gap;
+    if (left + modalWidth > bounds.right - gap) {
+      left = anchor.left - modalWidth - gap;
+    }
   }
-  left = Math.max(gap, Math.min(left, viewportWidth - modalWidth - gap));
-  const top = Math.max(gap, Math.min(rect.top, viewportHeight - 120));
-  return { top, left };
+  left = clamp(left, bounds.left + gap, bounds.right - modalWidth - gap);
+
+  let top = anchor.top;
+  const preferredBottom = anchor.bottom + gap;
+  const preferredAbove = anchor.top - modalMaxHeight - gap;
+
+  if (isMobile) {
+    top = preferredBottom;
+    if (top + modalMaxHeight > bounds.bottom - gap) {
+      top = preferredAbove;
+    }
+  } else if (top + modalMaxHeight > bounds.bottom - gap && preferredAbove >= bounds.top + gap) {
+    top = preferredAbove;
+  }
+
+  top = clamp(top, bounds.top + gap, bounds.bottom - modalMaxHeight - gap);
+
+  return {
+    top,
+    left,
+    width: modalWidth,
+    maxHeight: modalMaxHeight,
+  };
 }
 
 function floatingModalStyle(position) {
@@ -136,6 +193,8 @@ function floatingModalStyle(position) {
   return {
     "--nt-modal-top": `${Math.round(position.top)}px`,
     "--nt-modal-left": `${Math.round(position.left)}px`,
+    "--nt-modal-width": `${Math.round(position.width)}px`,
+    "--nt-modal-max-height": `${Math.round(position.maxHeight)}px`,
     "--nt-modal-right": "auto",
   };
 }
@@ -384,7 +443,7 @@ function CharacterTab({ profile, onOpenItem, onOpenSlot, onSpendAttributePoints 
       <Panel title="Сводка">
         <div className="nt-lines">
           <Row label="Имя" value={profile.player?.nickname || "—"} />
-          <Row label="Раса" value={<span className="nt-race-value">{profile.player?.raceName || "—"}<button className="nt-race-info-button" type="button" onClick={(event) => setRaceOpen(getFloatingPosition(event, 360))}>!</button></span>} />
+          <Row label="Раса" value={<span className="nt-race-value">{profile.player?.raceName || "—"}<button className="nt-race-info-button" type="button" onClick={(event) => setRaceOpen(getFloatingPosition(event, 360, 300))}>!</button></span>} />
           <Row label="Ветка" value={profile.player?.branch || "—"} />
           <Row label="Уровень" value={profile.player?.level || 1} />
           <Row label="Баланс" value={profile.player?.balanceText || "0 мед."} />
@@ -521,8 +580,8 @@ function SkillsTab({ profile, onSpendSkillPoints }) {
   return (
     <div className="nt-stack">
       <Panel title="Развитие" right={<span className="nt-badge">Свободно: {freePoints}</span>}><div className="nt-lines"><Row label="Свободные очки навыков" value={freePoints} /><Row label="Ветвь развития" value={profile.player?.branch || "—"} /></div></Panel>
-      <Panel title="Активные навыки"><div className="nt-skills-list">{active.length ? active.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} freePoints={freePoints} onShowModifier={(modifier, event) => setModifierHelp({ modifier, position: getFloatingPosition(event, 360) })} onOpenUpgrade={(skillToUpgrade, event) => setUpgradeSkill({ skill: skillToUpgrade, position: getFloatingPosition(event, 390) })} />) : <p className="nt-empty-text">Активных навыков пока нет.</p>}</div></Panel>
-      <Panel title="Пассивные навыки"><div className="nt-skills-list">{passive.length ? passive.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} freePoints={freePoints} onShowModifier={(modifier, event) => setModifierHelp({ modifier, position: getFloatingPosition(event, 360) })} onOpenUpgrade={(skillToUpgrade, event) => setUpgradeSkill({ skill: skillToUpgrade, position: getFloatingPosition(event, 390) })} />) : <p className="nt-empty-text">Пассивных навыков пока нет.</p>}</div></Panel>
+      <Panel title="Активные навыки"><div className="nt-skills-list">{active.length ? active.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} freePoints={freePoints} onShowModifier={(modifier, event) => setModifierHelp({ modifier, position: getFloatingPosition(event, 360, 300) })} onOpenUpgrade={(skillToUpgrade, event) => setUpgradeSkill({ skill: skillToUpgrade, position: getFloatingPosition(event, 390, 360) })} />) : <p className="nt-empty-text">Активных навыков пока нет.</p>}</div></Panel>
+      <Panel title="Пассивные навыки"><div className="nt-skills-list">{passive.length ? passive.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} freePoints={freePoints} onShowModifier={(modifier, event) => setModifierHelp({ modifier, position: getFloatingPosition(event, 360, 300) })} onOpenUpgrade={(skillToUpgrade, event) => setUpgradeSkill({ skill: skillToUpgrade, position: getFloatingPosition(event, 390, 360) })} />) : <p className="nt-empty-text">Пассивных навыков пока нет.</p>}</div></Panel>
       <ModifierHelpModal modifier={modifierHelp?.modifier} position={modifierHelp?.position} onClose={() => setModifierHelp(null)} />
       <SkillUpgradeModal skill={upgradeSkill?.skill} freePoints={freePoints} position={upgradeSkill?.position} onClose={() => setUpgradeSkill(null)} onSpendSkillPoints={onSpendSkillPoints} />
     </div>
@@ -553,7 +612,7 @@ export function PlayerProfile({ profile, onSpendAttributePoints, onSpendSkillPoi
   const inventory = data.inventory || [];
 
   function openItem(item, slotKey = null, event = null) {
-    setModal({ item, slotKey, position: getFloatingPosition(event, 500) });
+    setModal({ item, slotKey, position: getFloatingPosition(event, 500, 520) });
   }
 
   function openSlot(slot, event = null) {
@@ -563,7 +622,7 @@ export function PlayerProfile({ profile, onSpendAttributePoints, onSpendSkillPoi
       if ((slot.key === "ring1" || slot.key === "ring2") && (target === "ring" || item.type === "Кольцо" || item.type === "ring")) return true;
       return false;
     });
-    setSlotModal({ slot, items, selectedItem: items[0] || null, position: getFloatingPosition(event, 520) });
+    setSlotModal({ slot, items, selectedItem: items[0] || null, position: getFloatingPosition(event, 520, 540) });
   }
 
   async function equipFromSlot(item) {
