@@ -12,12 +12,7 @@ from keyboards.vk_keyboards import (
     race_keyboard,
     start_keyboard,
 )
-from services.city_service import (
-    CITY_BUTTONS,
-    apply_city_transition,
-    build_response_text,
-    get_city_response,
-)
+from services.city_service import CITY_BUTTONS, process_world_action
 from services.registration_service import (
     create_player,
     format_race_card,
@@ -405,15 +400,13 @@ class VkRegistrationBot:
             )
             return
 
-        response = get_city_response(action)
-        player = apply_city_transition(self.storage, player, response)
-        text = build_response_text(
+        result = process_world_action(
             storage=self.storage,
             player=player,
-            response=response,
+            action=action,
             platform=VK_PLATFORM,
         )
-        self.send(peer_id, text, make_keyboard(response.buttons))
+        self.send(peer_id, result.text, make_keyboard(result.buttons))
 
     def send(self, peer_id: int, text: str, keyboard: str | None = None) -> None:
         params = {

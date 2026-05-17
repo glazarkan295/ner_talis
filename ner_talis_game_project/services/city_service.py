@@ -2,6 +2,13 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from services.external_location_service import (
+    EXTERNAL_LOCATION_BUTTONS,
+    LEGACY_OUTSIDE_CITY,
+    OUTSIDE_CITY,
+    handle_external_location_action,
+)
+
 
 CENTRAL_SQUARE = "Центральная площадь"
 BACK_TO_CENTRAL = "⬅️ Центральная площадь"
@@ -14,6 +21,12 @@ class CityResponse:
     buttons: list[list[str]]
     zone_id: str
     needs_site_session: bool = False
+
+
+@dataclass(frozen=True)
+class WorldActionResult:
+    text: str
+    buttons: list[list[str]]
 
 
 def central_square_buttons() -> list[list[str]]:
@@ -92,7 +105,7 @@ def upper_buttons() -> list[list[str]]:
 
 def gates_buttons() -> list[list[str]]:
     return [
-        ["Выйти к локациям"],
+        [OUTSIDE_CITY],
         [BACK_TO_CENTRAL],
     ]
 
@@ -384,15 +397,13 @@ HOUSING_TEXT = """🏡 Жилой район
 
 GATES_TEXT = """🚪 Городские ворота
 
-Здесь заканчивается безопасность Селдара и начинаются внешние локации.
+Вы стоите у городских ворот Селдара. За массивными створками начинается дорога к ближайшим землям Нер-Вира. Стражники лениво переговариваются, пропуская путников, торговцев и искателей добычи.
 
-Позже отсюда можно будет выйти в стартовую локацию «Поле» и другие открытые территории."""
+Отсюда можно выйти к внешним локациям или вернуться на Центральную площадь."""
 
 LEAVE_CITY_TEXT = """🗺 Выход к локациям
 
-Переход к внешним локациям будет подключён следующим модулем.
-
-Пока персонаж остаётся у городских ворот Селдара."""
+Покинув безопасные стены Селдара, вы оказываетесь на развилке. Дороги ведут к ближайшим землям, где можно искать травы, руду, дичь, случайные находки и опасности."""
 
 ANNOUNCEMENTS_TEXT = """📢 Объявления Селдара
 
@@ -447,11 +458,39 @@ CITY_ACTIONS: dict[str, CityResponse] = {
     "Ратуша": CityResponse(TOWN_HALL_TEXT, upper_buttons(), "seldar_town_hall"),
     "Жилой район": CityResponse(HOUSING_TEXT, upper_buttons(), "seldar_residential_district"),
     "Городские ворота": CityResponse(GATES_TEXT, gates_buttons(), "seldar_city_gates"),
-    "Выйти к локациям": CityResponse(LEAVE_CITY_TEXT, gates_buttons(), "seldar_city_gates"),
+    LEGACY_OUTSIDE_CITY: CityResponse(LEAVE_CITY_TEXT, gates_buttons(), "outside_city_crossroads"),
+    OUTSIDE_CITY: CityResponse(LEAVE_CITY_TEXT, gates_buttons(), "outside_city_crossroads"),
     "Объявления": CityResponse(ANNOUNCEMENTS_TEXT, central_square_buttons(), "seldar_announcements"),
 }
 
-CITY_BUTTONS = frozenset(CITY_ACTIONS.keys())
+CITY_BUTTONS = frozenset(CITY_ACTIONS.keys()) | EXTERNAL_LOCATION_BUTTONS
+
+
+def process_world_action(
+    storage: Any,
+    player: dict[str, Any],
+    action: str,
+    platform: str,
+) -> WorldActionResult:
+    """Processes city and external-location actions from Telegram/VK.
+
+    City navigation stays in this module; external exploration is delegated to
+    services.external_location_service. Both paths update the same player
+    profile and return ready-to-send text/buttons.
+    """
+    if player.get("in_battle") or action in EXTERNAL_LOCATION_BUTTONS:
+        response = handle_external_location_action(storage, player, action)
+        return WorldActionResult(text=response.text, buttons=response.buttons)
+
+    response = get_city_response(action)
+    updated_player = apply_city_transition(storage, player, response)
+    text = build_response_text(
+        storage=storage,
+        player=updated_player,
+        response=response,
+        platform=platform,
+    )
+    return WorldActionResult(text=text, buttons=response.buttons)
 
 
 def build_pavilion_url(token: str) -> str:

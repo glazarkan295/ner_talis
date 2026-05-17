@@ -14,6 +14,7 @@ data/import_seed.json
 - meta                         # описание проекта
 - races                        # расы
 - cities.seldar                # город Селдар
+- external_locations.hilly_meadows # стартовая внешняя локация «Холмистые луга»
 - storage_schema               # пустая схема JSON-хранилища
 - default_player_fields        # стартовые городские поля игрока
 ```
@@ -29,6 +30,7 @@ python ner_talis_game_project/tools/import_seed.py
 ```text
 data/races.json
 data/seldar_city.json
+data/hilly_meadows.json
 ```
 
 `data/players.json` по умолчанию не перезаписывается, чтобы не потерять игроков.

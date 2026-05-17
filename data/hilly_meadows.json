@@ -1,0 +1,67 @@
+{
+  "id": "hilly_meadows",
+  "name": "Холмистые луга",
+  "type": "start_location",
+  "mob_scaling_cap": 50,
+  "base_search_time_seconds": 60,
+  "max_search_time_seconds": 600,
+  "base_search_energy_cost": 4,
+  "min_search_energy_cost": 1,
+  "danger": "low",
+  "common_buttons": [
+    "Начать поиск",
+    "Разбить лагерь",
+    "Вернуться в город"
+  ],
+  "events": {
+    "alchemy_ingredient": 25,
+    "stone_or_ore": 17,
+    "berries": 20,
+    "trap": 10,
+    "glint": 8,
+    "battle": 20
+  },
+  "glint_variants": {
+    "old_knife_up_slope": {
+      "chance": 50,
+      "text": "Выйдя на солнечную сторону холма, вы замечаете короткий блик чуть выше по склону."
+    },
+    "search_traces_down_slope": {
+      "chance": 50,
+      "text": "Выйдя на солнечную сторону холма, вы замечаете короткий блик чуть ниже по склону."
+    }
+  },
+  "camp_recipes": {
+    "Сушёное мясо": {
+      "restore_energy": 7,
+      "ingredients": {
+        "Сырое мясо": 1
+      }
+    },
+    "Травяной чай": {
+      "restore_energy": 20,
+      "ingredients": {
+        "Чистая вода": 1,
+        "Любая съедобная ягода": 1,
+        "Луговая мята": 1
+      }
+    },
+    "Лепёшка с мясом": {
+      "restore_energy": 35,
+      "ingredients": {
+        "Чистая вода": 1,
+        "Сырое мясо": 1,
+        "Грубая мука": 1
+      }
+    },
+    "Сытная похлёбка": {
+      "restore_energy": 50,
+      "ingredients": {
+        "Чистая вода": 1,
+        "Съедобный корень": 1,
+        "Съедобный гриб": 1,
+        "Сырое мясо": 1
+      }
+    }
+  }
+}
