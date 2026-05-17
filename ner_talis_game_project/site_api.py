@@ -16,6 +16,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from services.item_registry import enrich_inventory_item
 from services.web_profile import PROFILE_SCOPE
 
 FRONT_TO_BACK_STAT = {
@@ -545,6 +546,7 @@ def strip_hidden_formulas(value: Any) -> Any:
 
 
 def normalize_item(item: dict[str, Any], default_category: str = "Прочее") -> dict[str, Any]:
+    item = enrich_inventory_item(item)
     normalized = strip_hidden_formulas(deepcopy(item))
     if not isinstance(normalized, dict):
         normalized = {}

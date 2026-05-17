@@ -4,12 +4,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from keyboards.reply_keyboards import make_keyboard, start_keyboard
-from services.city_service import (
-    CITY_BUTTONS,
-    apply_city_transition,
-    build_response_text,
-    get_city_response,
-)
+from services.city_service import CITY_BUTTONS, process_world_action
 from storage.base import PlayerStorage
 
 TELEGRAM_PLATFORM = "telegram"
@@ -44,17 +39,15 @@ async def send_city_response(
         )
         return
 
-    response = get_city_response(action)
-    player = apply_city_transition(storage, player, response)
-    text = build_response_text(
+    result = process_world_action(
         storage=storage,
         player=player,
-        response=response,
+        action=action,
         platform=TELEGRAM_PLATFORM,
     )
 
     await update.message.reply_text(
-        text,
-        reply_markup=make_keyboard(response.buttons),
+        result.text,
+        reply_markup=make_keyboard(result.buttons),
         disable_web_page_preview=True,
     )

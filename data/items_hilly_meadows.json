@@ -1,0 +1,599 @@
+[
+  {
+    "id": "dried_meat",
+    "name_ru": "Сушёное мясо",
+    "category": "camp_food",
+    "subtype": "food",
+    "item_class": "camp_food",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/camp_food/dried_meat.png",
+    "source_location": "camp_cooking",
+    "integration_tags": [
+      "inventory_item",
+      "food",
+      "energy_restore"
+    ],
+    "energy_restore": 7
+  },
+  {
+    "id": "herbal_tea",
+    "name_ru": "Травяной чай",
+    "category": "camp_food",
+    "subtype": "drink",
+    "item_class": "camp_food",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/camp_food/herbal_tea.png",
+    "source_location": "camp_cooking",
+    "integration_tags": [
+      "inventory_item",
+      "food",
+      "energy_restore"
+    ],
+    "energy_restore": 20
+  },
+  {
+    "id": "meat_flatbread",
+    "name_ru": "Лепёшка с мясом",
+    "category": "camp_food",
+    "subtype": "food",
+    "item_class": "camp_food",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/camp_food/meat_flatbread.png",
+    "source_location": "camp_cooking",
+    "integration_tags": [
+      "inventory_item",
+      "food",
+      "energy_restore"
+    ],
+    "energy_restore": 35
+  },
+  {
+    "id": "hearty_stew",
+    "name_ru": "Сытная похлёбка",
+    "category": "camp_food",
+    "subtype": "food",
+    "item_class": "camp_food",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/camp_food/hearty_stew.png",
+    "source_location": "camp_cooking",
+    "integration_tags": [
+      "inventory_item",
+      "food",
+      "energy_restore"
+    ],
+    "energy_restore": 50
+  },
+  {
+    "id": "clean_water",
+    "name_ru": "Чистая вода",
+    "category": "ingredients",
+    "subtype": "liquid",
+    "item_class": "common_ingredient",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/ingredients/clean_water.png",
+    "source_location": "common_vendor_or_location",
+    "integration_tags": [
+      "inventory_item",
+      "ingredient"
+    ],
+    "alchemy_type": "liquid"
+  },
+  {
+    "id": "coarse_flour",
+    "name_ru": "Грубая мука",
+    "category": "ingredients",
+    "subtype": "powder",
+    "item_class": "common_ingredient",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/ingredients/coarse_flour.png",
+    "source_location": "common_vendor",
+    "integration_tags": [
+      "inventory_item",
+      "ingredient"
+    ],
+    "alchemy_type": "powder"
+  },
+  {
+    "id": "edible_mushroom",
+    "name_ru": "Съедобный гриб",
+    "category": "ingredients",
+    "subtype": "mushroom",
+    "item_class": "common_ingredient",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/ingredients/edible_mushroom.png",
+    "source_location": "common_locations",
+    "integration_tags": [
+      "inventory_item",
+      "ingredient"
+    ],
+    "alchemy_type": "mushroom"
+  },
+  {
+    "id": "edible_root",
+    "name_ru": "Съедобный корень",
+    "category": "ingredients",
+    "subtype": "root",
+    "item_class": "common_ingredient",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/ingredients/edible_root.png",
+    "source_location": "common_locations",
+    "integration_tags": [
+      "inventory_item",
+      "ingredient"
+    ],
+    "alchemy_type": "herb"
+  },
+  {
+    "id": "raw_meat",
+    "name_ru": "Сырое мясо",
+    "category": "ingredients",
+    "subtype": "meat",
+    "item_class": "common_ingredient",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/ingredients/raw_meat.png",
+    "source_location": "beast_trophy_or_vendor",
+    "integration_tags": [
+      "inventory_item",
+      "ingredient"
+    ]
+  },
+  {
+    "id": "meadow_mint",
+    "name_ru": "Луговая мята",
+    "category": "ingredients",
+    "subtype": "herb",
+    "item_class": "alchemy_ingredient",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/ingredients/meadow_mint.png",
+    "source_location": "hilly_meadows",
+    "integration_tags": [
+      "inventory_item",
+      "ingredient",
+      "alchemy"
+    ],
+    "alchemy_type": "herb"
+  },
+  {
+    "id": "meadow_root",
+    "name_ru": "Луговой корень",
+    "category": "ingredients",
+    "subtype": "root",
+    "item_class": "alchemy_ingredient",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/ingredients/meadow_root.png",
+    "source_location": "hilly_meadows",
+    "integration_tags": [
+      "inventory_item",
+      "ingredient",
+      "alchemy"
+    ],
+    "alchemy_type": "herb"
+  },
+  {
+    "id": "mountain_wormwood",
+    "name_ru": "Горная полынь",
+    "category": "ingredients",
+    "subtype": "herb",
+    "item_class": "alchemy_ingredient",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/ingredients/mountain_wormwood.png",
+    "source_location": "hilly_meadows",
+    "integration_tags": [
+      "inventory_item",
+      "ingredient",
+      "alchemy"
+    ],
+    "alchemy_type": "herb"
+  },
+  {
+    "id": "silver_chamomile",
+    "name_ru": "Серебристая ромашка",
+    "category": "ingredients",
+    "subtype": "flower",
+    "item_class": "alchemy_ingredient",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/ingredients/silver_chamomile.png",
+    "source_location": "hilly_meadows",
+    "integration_tags": [
+      "inventory_item",
+      "ingredient",
+      "alchemy"
+    ],
+    "alchemy_type": "herb"
+  },
+  {
+    "id": "sweet_meadow_berry",
+    "name_ru": "Сладкая луговая ягода",
+    "category": "ingredients",
+    "subtype": "berry",
+    "item_class": "food_ingredient",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/ingredients/sweet_meadow_berry.png",
+    "source_location": "hilly_meadows",
+    "integration_tags": [
+      "inventory_item",
+      "ingredient"
+    ]
+  },
+  {
+    "id": "tart_blue_berry",
+    "name_ru": "Терпкая синяя ягода",
+    "category": "ingredients",
+    "subtype": "berry",
+    "item_class": "food_ingredient",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/ingredients/tart_blue_berry.png",
+    "source_location": "hilly_meadows",
+    "integration_tags": [
+      "inventory_item",
+      "ingredient"
+    ]
+  },
+  {
+    "id": "yellow_clover",
+    "name_ru": "Жёлтый клевер",
+    "category": "ingredients",
+    "subtype": "flower",
+    "item_class": "alchemy_ingredient",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/ingredients/yellow_clover.png",
+    "source_location": "hilly_meadows",
+    "integration_tags": [
+      "inventory_item",
+      "ingredient",
+      "alchemy"
+    ],
+    "alchemy_type": "herb"
+  },
+  {
+    "id": "common_stone",
+    "name_ru": "Обычный камень",
+    "category": "resources",
+    "subtype": "stone",
+    "item_class": "resource",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 50,
+    "icon": "assets/items/hilly_meadows/resources/common_stone.png",
+    "source_location": "hilly_meadows",
+    "integration_tags": [
+      "inventory_item",
+      "resource",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "copper_ore_chunk",
+    "name_ru": "Кусок медной руды",
+    "category": "resources",
+    "subtype": "ore",
+    "item_class": "resource",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 50,
+    "icon": "assets/items/hilly_meadows/resources/copper_ore_chunk.png",
+    "source_location": "hilly_meadows",
+    "integration_tags": [
+      "inventory_item",
+      "resource",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "iron_ore_chunk",
+    "name_ru": "Кусок железной руды",
+    "category": "resources",
+    "subtype": "ore",
+    "item_class": "resource",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 50,
+    "icon": "assets/items/hilly_meadows/resources/iron_ore_chunk.png",
+    "source_location": "hilly_meadows",
+    "integration_tags": [
+      "inventory_item",
+      "resource",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "iron_scrap",
+    "name_ru": "Железный лом",
+    "category": "resources",
+    "subtype": "scrap",
+    "item_class": "resource",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 50,
+    "icon": "assets/items/hilly_meadows/resources/iron_scrap.png",
+    "source_location": "hilly_meadows_blik",
+    "integration_tags": [
+      "inventory_item",
+      "resource",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "copper_coin",
+    "name_ru": "Медная монета",
+    "category": "currency",
+    "subtype": "coin",
+    "item_class": "currency",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 999999,
+    "icon": "assets/items/hilly_meadows/currency/copper_coin.png",
+    "source_location": "hilly_meadows_blik",
+    "integration_tags": [
+      "currency"
+    ],
+    "currency_value_copper": 1
+  },
+  {
+    "id": "silver_coin",
+    "name_ru": "Серебряная монета",
+    "category": "currency",
+    "subtype": "coin",
+    "item_class": "currency",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 999999,
+    "icon": "assets/items/hilly_meadows/currency/silver_coin.png",
+    "source_location": "hilly_meadows_blik",
+    "integration_tags": [
+      "currency"
+    ],
+    "currency_value_copper": 1000
+  },
+  {
+    "id": "old_knife",
+    "name_ru": "Старый нож",
+    "category": "items",
+    "subtype": "knife",
+    "item_class": "junk_or_tool",
+    "quality": "common",
+    "stackable": false,
+    "stack_size": 1,
+    "icon": "assets/items/hilly_meadows/items/old_knife.png",
+    "source_location": "hilly_meadows_blik",
+    "integration_tags": [],
+    "can_dismantle": true,
+    "can_sell": true
+  },
+  {
+    "id": "bull_horn",
+    "name_ru": "Бычий рог",
+    "category": "trophies",
+    "subtype": "horn",
+    "item_class": "beast_trophy",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/trophies/bull_horn.png",
+    "source_location": "bull",
+    "integration_tags": [
+      "inventory_item",
+      "trophy",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "dense_hide",
+    "name_ru": "Плотная шкура",
+    "category": "trophies",
+    "subtype": "hide",
+    "item_class": "beast_trophy",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/trophies/dense_hide.png",
+    "source_location": "bull",
+    "integration_tags": [
+      "inventory_item",
+      "trophy",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "gopher_claw",
+    "name_ru": "Коготок суслика",
+    "category": "trophies",
+    "subtype": "claw",
+    "item_class": "beast_trophy",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/trophies/gopher_claw.png",
+    "source_location": "oversized_gopher",
+    "integration_tags": [
+      "inventory_item",
+      "trophy",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "jackal_fang",
+    "name_ru": "Клык шакала",
+    "category": "trophies",
+    "subtype": "fang",
+    "item_class": "beast_trophy",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/trophies/jackal_fang.png",
+    "source_location": "wild_jackal",
+    "integration_tags": [
+      "inventory_item",
+      "trophy",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "jackal_hide",
+    "name_ru": "Шкура шакала",
+    "category": "trophies",
+    "subtype": "hide",
+    "item_class": "beast_trophy",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/trophies/jackal_hide.png",
+    "source_location": "wild_jackal",
+    "integration_tags": [
+      "inventory_item",
+      "trophy",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "meat_piece",
+    "name_ru": "Кусочек мяса",
+    "category": "trophies",
+    "subtype": "meat",
+    "item_class": "food_trophy",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/trophies/meat_piece.png",
+    "source_location": "oversized_gopher",
+    "integration_tags": [
+      "inventory_item",
+      "trophy",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "rabid_rabbit_tooth",
+    "name_ru": "Зуб бешеного кролика",
+    "category": "trophies",
+    "subtype": "tooth",
+    "item_class": "beast_trophy",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/trophies/rabid_rabbit_tooth.png",
+    "source_location": "rabid_rabbit",
+    "integration_tags": [
+      "inventory_item",
+      "trophy",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "sharp_tooth",
+    "name_ru": "Острый зуб",
+    "category": "trophies",
+    "subtype": "tooth",
+    "item_class": "beast_trophy",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/trophies/sharp_tooth.png",
+    "source_location": "oversized_gopher",
+    "integration_tags": [
+      "inventory_item",
+      "trophy",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "small_hide",
+    "name_ru": "Маленькая шкура",
+    "category": "trophies",
+    "subtype": "hide",
+    "item_class": "beast_trophy",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/trophies/small_hide.png",
+    "source_location": "oversized_gopher",
+    "integration_tags": [
+      "inventory_item",
+      "trophy",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "small_pelt",
+    "name_ru": "Маленькая шкурка",
+    "category": "trophies",
+    "subtype": "pelt",
+    "item_class": "beast_trophy",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/trophies/small_pelt.png",
+    "source_location": "rabid_rabbit",
+    "integration_tags": [
+      "inventory_item",
+      "trophy",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "strong_tendon",
+    "name_ru": "Крепкое сухожилие",
+    "category": "trophies",
+    "subtype": "tendon",
+    "item_class": "beast_trophy",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/trophies/strong_tendon.png",
+    "source_location": "bull",
+    "integration_tags": [
+      "inventory_item",
+      "trophy",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "tough_tendon",
+    "name_ru": "Жёсткое сухожилие",
+    "category": "trophies",
+    "subtype": "tendon",
+    "item_class": "beast_trophy",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 20,
+    "icon": "assets/items/hilly_meadows/trophies/tough_tendon.png",
+    "source_location": "wild_jackal",
+    "integration_tags": [
+      "inventory_item",
+      "trophy",
+      "crafting_material"
+    ]
+  }
+]

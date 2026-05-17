@@ -28,6 +28,7 @@ ner_talis/
 ├── data/
 │   ├── races.json                  # Расы и стартовые характеристики
 │   ├── seldar_city.json            # Техническая карта города Селдар
+│   ├── hilly_meadows.json          # Стартовая внешняя локация, события, лагерь
 │   ├── import_seed.json            # Единый файл импорта стартовых данных
 │   └── players.empty.json          # Пустой шаблон хранилища игроков
 │
@@ -128,10 +129,39 @@ seldar_central_square
 
 ```text
 Бой:                    services/combat_service.py + handlers/combat.py
-Локации вне города:     services/location_service.py + data/locations.json
+Локации вне города:     services/external_location_service.py + data/hilly_meadows.json
 Инвентарь:              services/inventory_service.py
 Экономика:              services/economy_service.py
 Крафт:                  services/crafting_service.py
 Алхимия:                services/alchemy_service.py
 Сайт/API:               site_api/ или отдельный FastAPI-проект
 ```
+
+## Внешние локации
+
+Добавлен рабочий переход из городских ворот к внешним направлениям. Сейчас полностью подключены:
+
+```text
+- Холмистые луга
+- Крепость в ущелье как безопасная зона/перевалочный пункт
+```
+
+`services/external_location_service.py` содержит общую механику внешних локаций для Telegram и VK: выход из города, выбор локации, стандартные кнопки обычной исследовательской зоны, расход энергии на поиск, случайные события, событие «Блик в траве» с шансом 50/50 на два варианта, лагерь, готовку и употребление походной еды.
+
+## Интеграция ассетов предметов и PVE-боя
+
+Добавленные файлы:
+
+```text
+services/item_registry.py              # единый реестр предметов и иконок
+services/pve_battle_models.py          # модели состояния PVE-боя
+services/pve_battle_service.py         # первый рабочий PVE-бой для Холмистых лугов
+data/items_hilly_meadows.json          # импорт предметов/ресурсов/трофеев локации
+data/item_visual_assets_hilly_meadows.json
+/data/pve_battle_schema.json           # JSON Schema состояния PVE-боя
+web/public/assets/items/hilly_meadows/ # PNG-иконки предметов для сайта
+```
+
+Поиск в «Холмистых лугах» теперь при событии «Битва» создаёт `player.active_battle`, ставит `player.in_battle = true` и показывает боевые кнопки: «Обычная атака», «Магический сгусток», «Защита», «Сбежать».
+
+Пока бой реализован как стартовый рабочий слой: он поддерживает HP, дух, ману, точность, уклонение, физическую/магическую защиту, типы урона `physical`, `magic`, `mixed`, победу, отступление, опыт и трофеи. Позже поверх него можно подключить полную систему активных навыков, эффектов, откатов и AI.

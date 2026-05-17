@@ -1,0 +1,391 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ner-Talis PVE Battle State",
+  "type": "object",
+  "required": [
+    "battle_id",
+    "player_id",
+    "location_id",
+    "round_number",
+    "player_state",
+    "enemies"
+  ],
+  "properties": {
+    "battle_id": {
+      "type": "string"
+    },
+    "player_id": {
+      "type": "string"
+    },
+    "location_id": {
+      "type": "string"
+    },
+    "battle_type": {
+      "type": "string",
+      "enum": [
+        "random_event",
+        "resource_guard",
+        "dungeon",
+        "quest",
+        "boss"
+      ]
+    },
+    "round_number": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "can_escape": {
+      "type": "boolean"
+    },
+    "player_state": {
+      "$ref": "#/$defs/player_state"
+    },
+    "enemies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/enemy_state"
+      }
+    },
+    "battle_log": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "player_state": {
+      "type": "object",
+      "required": [
+        "current_hp",
+        "max_hp",
+        "current_spirit",
+        "max_spirit",
+        "current_mana",
+        "max_mana",
+        "armor",
+        "magic_armor",
+        "physical_defense",
+        "magic_defense",
+        "accuracy",
+        "dodge"
+      ],
+      "properties": {
+        "current_hp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_hp": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "current_spirit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_spirit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "current_mana": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_mana": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "armor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "magic_armor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "physical_defense": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "magic_defense": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "accuracy": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dodge": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "temporary_shields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/shield"
+          }
+        },
+        "active_effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/battle_effect"
+          }
+        },
+        "cooldowns": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "used_items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "defense_stance": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "enemy_state": {
+      "type": "object",
+      "required": [
+        "mob_id",
+        "name",
+        "rank",
+        "biological_type",
+        "role",
+        "level",
+        "damage_type",
+        "current_hp",
+        "max_hp",
+        "armor",
+        "magic_armor",
+        "physical_defense",
+        "magic_defense",
+        "accuracy",
+        "dodge"
+      ],
+      "properties": {
+        "mob_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "rank": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "empowered",
+            "elite",
+            "mini_boss",
+            "boss",
+            "raid_boss"
+          ]
+        },
+        "biological_type": {
+          "type": "string",
+          "enum": [
+            "beast",
+            "humanoid",
+            "undead",
+            "insect",
+            "reptile",
+            "plant",
+            "spirit",
+            "mechanism",
+            "anomaly"
+          ]
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "attacker",
+            "defender",
+            "archer",
+            "mage",
+            "support",
+            "controller",
+            "summoner"
+          ]
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "damage_type": {
+          "type": "string",
+          "enum": [
+            "physical",
+            "magic",
+            "mixed"
+          ]
+        },
+        "damage_split": {
+          "type": "object",
+          "properties": {
+            "physical": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "magic": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        },
+        "current_hp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_hp": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "current_spirit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_spirit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "current_mana": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_mana": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "armor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "magic_armor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "physical_defense": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "magic_defense": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "accuracy": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dodge": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "active_effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/battle_effect"
+          }
+        },
+        "cooldowns": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "ai_behavior": {
+          "type": "string"
+        }
+      }
+    },
+    "shield": {
+      "type": "object",
+      "properties": {
+        "shield_id": {
+          "type": "string"
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration_rounds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "battle_effect": {
+      "type": "object",
+      "properties": {
+        "effect_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "poison",
+            "bleed",
+            "burn",
+            "curse",
+            "stun",
+            "slow",
+            "weakness",
+            "healing_block",
+            "shield",
+            "mark"
+          ]
+        },
+        "duration_rounds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "power": {
+          "type": "integer"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "can_stack": {
+          "type": "boolean"
+        },
+        "stack_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_stacks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "remove_condition": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}
