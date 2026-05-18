@@ -44,7 +44,7 @@ STARTER_SKILLS: dict[str, list[dict[str, Any]]] = {
             "mana_cost": 2,
             "damage_type": "magic",
             "base_damage_formula": "ceil(4 + player_level * 1.1)",
-            "damage": "5 + уровень персонажа × 1.4",
+            "damage": "6 + уровень персонажа × 1.2",
             "uses_hit_check": True,
             "can_crit": True,
             "crit_type": "magic",
