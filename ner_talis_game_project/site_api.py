@@ -17,7 +17,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from services.item_registry import enrich_inventory_item
-from services.race_bonus_service import hp_multiplier, outgoing_damage_multiplier, stat_multiplier
 from services.web_profile import PROFILE_SCOPE
 
 FRONT_TO_BACK_STAT = {
@@ -73,6 +72,12 @@ ITEM_VALUE_TRANSLATIONS = {
     "food": "Еда",
     "drink": "Напиток",
     "resource": "Ресурс",
+    "resources": "Ресурсы",
+    "location_resource": "Ресурсы",
+    "gathered_resource": "Ресурсы",
+    "loot": "Добыча",
+    "mob_loot": "Добыча",
+    "drop": "Добыча",
     "staff": "Посох",
     "sword": "Меч",
     "axe": "Топор",
@@ -104,6 +109,15 @@ ITEM_VALUE_TRANSLATIONS = {
     "melee": "Ближний бой",
     "ranged": "Дальний бой",
     "normal": "Обычная",
+    "ingredient": "Ингредиент",
+    "ore": "Руда",
+    "wood": "Дерево",
+    "herb": "Трава",
+    "mushroom": "Гриб",
+    "stone": "Камень",
+    "hide": "Шкура",
+    "claw": "Коготь",
+    "fang": "Клык",
 }
 
 ENGLISH_ITEM_NAME_TRANSLATIONS = {
@@ -196,7 +210,7 @@ def effective_stat(player: dict[str, Any], stat_key: str, bonus_modifiers: dict[
     bonus = safe_int((player.get("stat_bonuses") or {}).get(stat_key), 0)
     if bonus_modifiers:
         bonus += equipment_stat_bonus(bonus_modifiers, stat_key)
-    invested_total = (base + invested) * stat_multiplier(player, stat_key)
+    invested_total = base + invested
     return int(math.floor(1000 * math.log(1 + invested_total / 1000) + bonus))
 
 
@@ -353,48 +367,26 @@ def consumable_effect_from_item(item: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-CAMP_FOOD_ENERGY = {
-    "Сушёное мясо": 7,
-    "Травяной чай": 20,
-    "Лепёшка с мясом": 35,
-    "Сытная похлёбка": 50,
-}
-
-
 def item_energy_restore(item: dict[str, Any]) -> int:
-    name = str(item.get("name") or item.get("name_ru") or "")
-    effect = item.get("use_effect") if isinstance(item.get("use_effect"), dict) else {}
-    restore = max(
-        safe_int(item.get("restore_energy"), 0),
-        safe_int(item.get("energy_restore"), 0),
-        safe_int(item.get("energyRestore"), 0),
-        safe_int(effect.get("restore_energy"), 0),
-        safe_int(effect.get("energy_restore"), 0),
-        CAMP_FOOD_ENERGY.get(name, 0),
-    )
-    return max(0, restore)
-
-
-def apply_energy_restore(player: dict[str, Any], item: dict[str, Any]) -> int:
-    restore = item_energy_restore(item)
-    if restore <= 0:
-        return 0
-    equipment_modifiers = equipment_modifier_totals(player)
-    external_modifiers = external_effect_modifier_totals(player)
-    bonus_modifiers = merge_modifier_totals(equipment_modifiers, external_modifiers)
-    max_energy = max(1, safe_int(player.get("max_energy"), 100) + equipment_bonus(bonus_modifiers, "bonus_max_energy"))
-    current = max(0, min(max_energy, safe_int(player.get("energy"), max_energy)))
-    bonus_percent = max(0, safe_int(player.get("bonus_energy_restore_percent"), 0) + equipment_bonus(bonus_modifiers, "bonus_energy_restore_percent"))
-    final_restore = ceil(restore * (1 + bonus_percent / 100))
-    new_value = min(max_energy, current + final_restore)
-    player["max_energy"] = max_energy
-    player["energy"] = new_value
-    player["current_energy"] = new_value
-    if new_value > 50:
-        player.pop("energy_warning_50_sent", None)
-    if new_value > 10:
-        player.pop("energy_warning_10_sent", None)
-    return new_value - current
+    """Return ready energy restore amount from food, drinks or consumables."""
+    effect_payload = item.get("use_effect") or item.get("active_effect") or item.get("consumable_effect") or {}
+    if not isinstance(effect_payload, dict):
+        effect_payload = {}
+    for key in (
+        "energy_restore",
+        "restore_energy",
+        "energyRestored",
+        "energy_restore_amount",
+        "base_energy_restore",
+        "energy",
+    ):
+        value = item.get(key)
+        if value is None:
+            value = effect_payload.get(key)
+        amount = safe_int(value, 0)
+        if amount > 0:
+            return amount
+    return 0
 
 
 def soft_level(level: int) -> int:
@@ -603,6 +595,14 @@ def normalize_item(item: dict[str, Any], default_category: str = "Прочее")
     normalized.setdefault("id", normalized.get("item_id") or normalized.get("name") or "item")
     normalized["name"] = translate_item_name(normalized.get("name"))
     normalized["category"] = translate_item_value(normalized.get("category") or default_category)
+    source_text = str(normalized.get("source") or normalized.get("origin") or "").casefold()
+    type_text = str(normalized.get("type") or "").casefold()
+    if any(marker in source_text for marker in ("моб", "добыч", "pve", "enemy", "monster", "mob")):
+        normalized["category"] = "Добыча"
+    elif normalized.get("category") in {"Ресурс", "resource", "resources"}:
+        normalized["category"] = "Ресурсы"
+    elif any(marker in type_text for marker in ("ore", "wood", "herb", "mushroom", "stone", "resource", "руда", "дерево", "трава", "гриб", "камень")):
+        normalized["category"] = "Ресурсы"
     raw_subtype = normalized.get("subtype")
     raw_type = normalized.get("type") or normalized.get("slotKey") or normalized.get("slot") or "Предмет"
     translated_subtype = translate_item_value(raw_subtype) if raw_subtype else None
@@ -617,32 +617,18 @@ def normalize_item(item: dict[str, Any], default_category: str = "Прочее")
     normalized.setdefault("enchantments", [])
     normalized.setdefault("compare", [])
     normalized.setdefault("amount", 1)
-    energy_restore = item_energy_restore(normalized)
-    if energy_restore > 0:
-        normalized["category"] = "Еда" if normalized.get("category") not in {"Напитки", "Алхимия"} else normalized.get("category")
-        stats = list(normalized.get("stats") or [])
-        if not any("энерг" in str(line).casefold() for line in stats):
-            stats.append(f"Восстановление энергии: +{energy_restore}")
-        normalized["stats"] = stats
     return normalized
 
 
-def format_skill_damage(
-    skill: dict[str, Any],
-    player_level: int,
-    bonus_modifiers: dict[str, int] | None = None,
-    player: dict[str, Any] | None = None,
-) -> Any:
+def format_skill_damage(skill: dict[str, Any], player_level: int, bonus_modifiers: dict[str, int] | None = None) -> Any:
     if not isinstance(skill, dict):
         return None
     formula = str(skill.get("base_damage_formula") or "")
     generic_bonus = equipment_bonus(bonus_modifiers, "bonus_damage")
     if skill.get("id") == "basic_attack" or "5 + player_level * 1.2" in formula:
-        damage = 5 + player_level * 1.2 + generic_bonus + equipment_bonus(bonus_modifiers, "bonus_physical_damage")
-        return max(1, ceil(damage * outgoing_damage_multiplier(player or {}, "physical")))
+        return max(1, ceil(5 + player_level * 1.2 + generic_bonus + equipment_bonus(bonus_modifiers, "bonus_physical_damage")))
     if skill.get("id") == "magic_spark" or "4 + player_level * 1.1" in formula:
-        damage = 4 + player_level * 1.1 + generic_bonus + equipment_bonus(bonus_modifiers, "bonus_magic_damage")
-        return max(1, ceil(damage * outgoing_damage_multiplier(player or {}, "magic")))
+        return max(1, ceil(4 + player_level * 1.1 + generic_bonus + equipment_bonus(bonus_modifiers, "bonus_magic_damage")))
     damage = skill.get("damage")
     if contains_formula_text(damage):
         return None
@@ -669,19 +655,13 @@ def skill_cooldown_text(skill: dict[str, Any]) -> str:
     return f"Откат: {turns} ходов"
 
 
-def normalize_skill(
-    skill: dict[str, Any],
-    player_level: int,
-    bonus_modifiers: dict[str, int] | None = None,
-    source_section: str = "active",
-    player: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+def normalize_skill(skill: dict[str, Any], player_level: int, bonus_modifiers: dict[str, int] | None = None, source_section: str = "active") -> dict[str, Any]:
     normalized = strip_hidden_formulas(deepcopy(skill))
     if not isinstance(normalized, dict):
         normalized = {}
     for hidden_key in ("concentration_cost", "concentrationCost", "bonus_max_concentration", "bonus_concentration_regen"):
         normalized.pop(hidden_key, None)
-    damage = format_skill_damage(skill, player_level, bonus_modifiers, player)
+    damage = format_skill_damage(skill, player_level, bonus_modifiers)
     if damage is not None:
         normalized["damage"] = damage
     else:
@@ -709,7 +689,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
     armor = safe_int(player.get("armor"), 0) + equipment_bonus(bonus_modifiers, "armor")
     magic_armor = safe_int(player.get("magic_armor"), safe_int(player.get("armor"), 0)) + equipment_bonus(bonus_modifiers, "magic_armor")
 
-    hp_max = ceil((100 + eff["endurance"] * 4.0 + eff["strength"] * 0.8 + s_level * 4 + safe_int(player.get("bonus_hp"), 0) + equipment_bonus(bonus_modifiers, "bonus_hp")) * hp_multiplier(player))
+    hp_max = ceil(100 + eff["endurance"] * 4.0 + eff["strength"] * 0.8 + s_level * 4 + safe_int(player.get("bonus_hp"), 0) + equipment_bonus(bonus_modifiers, "bonus_hp"))
     spirit_max = ceil(20 + eff["endurance"] * 1.2 + eff["strength"] * 1.0 + eff["agility"] * 0.7 + s_level * 1.2 + safe_int(player.get("bonus_spirit"), 0) + equipment_bonus(bonus_modifiers, "bonus_spirit"))
     mana_max = ceil(20 + eff["intelligence"] * 1.6 + eff["wisdom"] * 1.3 + s_level * 1.2 + safe_int(player.get("bonus_mana"), 0) + equipment_bonus(bonus_modifiers, "bonus_mana"))
     physical_defense = ceil(armor * 1.5 + eff["endurance"] * 0.9 + eff["strength"] * 0.6 + eff["agility"] * 0.2 + safe_int(player.get("bonus_physical_defense"), 0) + equipment_bonus(bonus_modifiers, "bonus_physical_defense"))
@@ -727,7 +707,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         base = safe_int((player.get("stats") or {}).get(back_key), 0)
         invested = safe_int((player.get("invested_stats") or {}).get(back_key), 0)
         bonus = safe_int((player.get("stat_bonuses") or {}).get(back_key), 0) + equipment_stat_bonus(bonus_modifiers, back_key)
-        attributes.append({"key": front_key, "label": label, "value": int(math.floor((base + invested) * stat_multiplier(player, back_key) + bonus)), "description": description})
+        attributes.append({"key": front_key, "label": label, "value": base + invested + bonus, "description": description})
 
     equipment = {}
     for slot_key, raw_item in (player.get("equipment") or {}).items():
@@ -744,26 +724,23 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             continue
         item = normalize_item(raw_item)
         if item.get("category") in {"Снаряжение", "Оружие", "Бижутерия", "Особое"} and (item.get("targetSlotKey") or item.get("slot")):
-            item["actions"] = ["Надеть", "Выбросить"]
-        elif item.get("category") in {"Алхимия", "Еда", "Напитки"} or item_energy_restore(item) > 0:
-            item["actions"] = ["Использовать", "Выбросить"]
+            item["actions"] = ["Надеть"]
+        elif item.get("category") in {"Алхимия", "Еда", "Напитки"}:
+            item["actions"] = ["Использовать"]
         else:
-            actions = list(item.get("actions") or [])
-            if "Выбросить" not in actions:
-                actions.append("Выбросить")
-            item["actions"] = actions
+            item.setdefault("actions", [])
         inventory.append(item)
 
     skills = player.get("skills", {}) if isinstance(player.get("skills"), dict) else {}
-    equipped_skills = [normalize_skill(skill, level, bonus_modifiers, "equipped", player) for skill in skills.get("equipped", []) if isinstance(skill, dict)]
+    equipped_skills = [normalize_skill(skill, level, bonus_modifiers, "equipped") for skill in skills.get("equipped", []) if isinstance(skill, dict)]
     equipped_skill_keys = {str(skill.get("id") or skill.get("name") or "") for skill in equipped_skills}
     active_skills = [
-        normalize_skill(skill, level, bonus_modifiers, "active", player)
+        normalize_skill(skill, level, bonus_modifiers, "active")
         for skill in skills.get("active", [])
         if isinstance(skill, dict) and str(skill.get("id") or skill.get("name") or "") not in equipped_skill_keys
     ]
     passive_skills = [
-        normalize_skill(skill, level, bonus_modifiers, "passive", player)
+        normalize_skill(skill, level, bonus_modifiers, "passive")
         for skill in skills.get("passive", [])
         if isinstance(skill, dict) and str(skill.get("id") or skill.get("name") or "") not in equipped_skill_keys
     ]
@@ -1081,8 +1058,14 @@ def create_profile_api_router(get_storage) -> APIRouter:
         if item_index is None:
             raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
         item = inventory[item_index]
-        restored_energy = apply_energy_restore(player, item)
         if item.get("category") in {"Алхимия", "Еда", "Напитки"}:
+            restore_energy = item_energy_restore(item)
+            if restore_energy > 0:
+                max_energy = max(1, safe_int(player.get("max_energy"), 100) + safe_int(player.get("bonus_max_energy"), 0))
+                before_energy = safe_int(player.get("energy") if player.get("energy") is not None else player.get("current_energy"), max_energy)
+                after_energy = min(max_energy, max(0, before_energy) + restore_energy)
+                player["energy"] = after_energy
+                player["current_energy"] = after_energy
             effect = consumable_effect_from_item(item)
             if effect is not None:
                 player.setdefault("active_effects", []).append(effect)
@@ -1092,7 +1075,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
         else:
             inventory.pop(item_index)
         save_player(storage, player)
-        return {"ok": True, "restoredEnergy": restored_energy, "profile": frontend_profile(player)}
+        return {"ok": True, "profile": frontend_profile(player)}
 
     @router.post("/{identifier}/inventory/drop")
     def drop_inventory_item(identifier: str, request: DropItemRequest) -> dict[str, Any]:
@@ -1103,11 +1086,10 @@ def create_profile_api_router(get_storage) -> APIRouter:
         if item_index is None:
             raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
         item = inventory[item_index]
-        current_amount = safe_int(item.get("amount"), 1)
-        if request.amount > current_amount:
-            raise HTTPException(status_code=400, detail="Нельзя выбросить больше предметов, чем есть в инвентаре.")
-        if request.amount < current_amount:
-            item["amount"] = current_amount - request.amount
+        amount = max(1, safe_int(item.get("amount"), 1))
+        drop_amount = min(amount, max(1, safe_int(request.amount, 1)))
+        if amount > drop_amount:
+            item["amount"] = amount - drop_amount
         else:
             inventory.pop(item_index)
         save_player(storage, player)

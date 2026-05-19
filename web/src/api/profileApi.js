@@ -49,8 +49,11 @@ export const getPublicIdFromUrl = getProfileIdentifierFromUrl;
 
 async function requestJson(url, options = {}) {
   const response = await fetch(url, {
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
       ...(options.headers || {}),
     },
     ...options,
@@ -71,7 +74,7 @@ async function requestJson(url, options = {}) {
 }
 
 export function loadPlayerProfile(identifier) {
-  return requestJson(`/api/profile/${encodeURIComponent(identifier)}`);
+  return requestJson(`/api/profile/${encodeURIComponent(identifier)}?_=${Date.now()}`);
 }
 
 export function spendAttributePoints(identifier, attributeKey, amount) {
@@ -122,5 +125,13 @@ export function unequipSkill(identifier, skillId) {
   return requestJson(`/api/profile/${encodeURIComponent(identifier)}/skills/unequip`, {
     method: "POST",
     body: JSON.stringify({ skill_id: skillId }),
+  });
+}
+
+
+export function dropItem(identifier, itemId, amount) {
+  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/inventory/drop`, {
+    method: "POST",
+    body: JSON.stringify({ item_id: itemId, amount }),
   });
 }

@@ -8,7 +8,7 @@ const TABS = [
   { id: "info", label: "Информация", icon: "scroll" },
 ];
 
-const INVENTORY_CATEGORIES = ["Всё", "Снаряжение", "Оружие", "Бижутерия", "Алхимия", "Ресурсы", "Прочее", "Особое"];
+const INVENTORY_CATEGORIES = ["Всё", "Снаряжение", "Оружие", "Бижутерия", "Алхимия", "Ресурсы", "Добыча", "Прочее", "Особое"];
 
 const DEFAULT_SLOTS = [
   { key: "helmet", label: "Шлем" },
@@ -391,7 +391,7 @@ function RaceInfoPopover({ profile, onClose }) {
   );
 }
 
-function ItemModal({ item, slotKey, position, onClose, onEquipItem, onUnequipItem, onUseItem }) {
+function ItemModal({ item, slotKey, position, onClose, onEquipItem, onUnequipItem, onUseItem, onDropItem }) {
   if (!item) return null;
   const actions = item.actions || [];
   const itemStats = statLines(item);
@@ -421,6 +421,13 @@ function ItemModal({ item, slotKey, position, onClose, onEquipItem, onUnequipIte
           {actions.includes("Надеть") || (!slotKey && itemSlot(item)) ? <button type="button" onClick={() => onEquipItem?.(item)}>Надеть</button> : null}
           {actions.includes("Снять") || slotKey ? <button type="button" onClick={() => onUnequipItem?.(slotKey || itemSlot(item), item)}>Снять</button> : null}
           {actions.includes("Использовать") ? <button type="button" onClick={() => onUseItem?.(item)}>Использовать</button> : null}
+          {!slotKey ? <button className="nt-danger" type="button" onClick={() => {
+            const maxAmount = Math.max(1, Number(item.amount || 1));
+            const raw = window.prompt(`Сколько выбросить? Доступно: ${maxAmount}`, "1");
+            if (raw === null) return;
+            const amount = Math.max(1, Math.min(maxAmount, Number(raw) || 1));
+            onDropItem?.(item, amount);
+          }}>Выбросить</button> : null}
           <button className="nt-secondary" type="button" onClick={onClose}>Закрыть</button>
         </footer>
       </article>
@@ -718,7 +725,7 @@ function InfoTab({ profile }) {
   );
 }
 
-export function PlayerProfile({ profile, onSpendAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onEquipSkill, onUnequipSkill }) {
+export function PlayerProfile({ profile, onSpendAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onEquipSkill, onUnequipSkill }) {
   const data = profileOrMock(profile);
   const [tab, setTab] = useState("character");
   const [modal, setModal] = useState(null);
@@ -762,6 +769,11 @@ export function PlayerProfile({ profile, onSpendAttributePoints, onSpendSkillPoi
     setModal(null);
   }
 
+  async function dropAndClose(item, amount) {
+    await onDropItem?.(item, amount);
+    setModal(null);
+  }
+
   return (
     <main className="nt-profile" style={{ backgroundImage: `linear-gradient(rgba(5, 7, 7, .32), rgba(4, 4, 4, .50)), url(${background})` }}>
       <div className="nt-shell">
@@ -779,7 +791,7 @@ export function PlayerProfile({ profile, onSpendAttributePoints, onSpendSkillPoi
           {tab === "info" ? <InfoTab profile={data} /> : null}
         </section>
       </div>
-      <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} />
+      <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onDropItem={dropAndClose} />
       <SlotItemsModal slot={slotModal?.slot} items={slotModal?.items || []} selectedItem={slotModal?.selectedItem} position={slotModal?.position} onSelectItem={(item) => setSlotModal((current) => ({ ...current, selectedItem: item }))} onClose={() => setSlotModal(null)} onEquipItem={equipFromSlot} />
     </main>
   );

@@ -13,6 +13,8 @@ from keyboards.vk_keyboards import (
     start_keyboard,
 )
 from services.city_service import CITY_BUTTONS, process_world_action
+from services.external_location_service import complete_active_timer
+from services.runtime_timer_scheduler import attach_timer_notification, schedule_timer_delivery
 from services.registration_service import (
     create_player,
     format_race_card,
@@ -113,6 +115,11 @@ class VkRegistrationBot:
             return
 
         if text in CITY_BUTTONS:
+            self.handle_city_action(external_user_id, peer_id, text)
+            return
+
+        existing_player = self.storage.get_player_by_platform(VK_PLATFORM, external_user_id)
+        if existing_player is not None and (existing_player.get("in_battle") or existing_player.get("active_timer") or str(existing_player.get("current_zone") or "").startswith("hilly_meadows")):
             self.handle_city_action(external_user_id, peer_id, text)
             return
 
@@ -334,13 +341,13 @@ class VkRegistrationBot:
             return
 
         profile_url = create_profile_site_link(self.storage, player, VK_PLATFORM)
+        # Не передаём keyboard: ссылка на профиль не должна менять текущие кнопки.
         self.send(
             peer_id,
             f"🔮 Временная ссылка на профиль игрока {player['name']}:\n"
             f"Единый игровой ID: {player['game_id']}\n"
             f"Ссылка: {profile_url}\n\n"
             "Ссылка действует ограниченное время. Когда она истечёт, нажми «Профиль» ещё раз.",
-            after_registration_keyboard(),
         )
 
     def send_link_code(self, external_user_id: str, peer_id: int) -> None:
@@ -407,6 +414,36 @@ class VkRegistrationBot:
             platform=VK_PLATFORM,
         )
         self.send(peer_id, result.text, make_keyboard(result.buttons))
+        self.schedule_timer_notification(peer_id, result.scheduled_timer)
+
+    def schedule_timer_notification(self, peer_id: int, timer_data: dict | None) -> None:
+        if not timer_data:
+            return
+        seconds = max(0.05, float(timer_data.get("seconds") or 0.05))
+        game_id = timer_data.get("game_id")
+        timer_id = timer_data.get("timer_id")
+        if not game_id or not timer_id:
+            return
+
+        attach_timer_notification(
+            storage=self.storage,
+            game_id=str(game_id),
+            timer_id=str(timer_id),
+            platform=VK_PLATFORM,
+            target_id=str(peer_id),
+        )
+
+        def send_timer_result(_platform: str, target_id: str, response) -> None:
+            self.send(int(target_id), response.text, make_keyboard(response.buttons))
+
+        schedule_timer_delivery(
+            storage=self.storage,
+            game_id=str(game_id),
+            timer_id=str(timer_id),
+            seconds=seconds,
+            send_callback=send_timer_result,
+            platform_filter=VK_PLATFORM,
+        )
 
     def send(self, peer_id: int, text: str, keyboard: str | None = None) -> None:
         params = {

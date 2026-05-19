@@ -6,7 +6,6 @@ from services.external_location_service import (
     EXTERNAL_LOCATION_BUTTONS,
     LEGACY_OUTSIDE_CITY,
     OUTSIDE_CITY,
-    RETURN_TO_CITY,
     handle_external_location_action,
 )
 
@@ -28,7 +27,6 @@ class CityResponse:
 class WorldActionResult:
     text: str
     buttons: list[list[str]]
-    scheduled_timer: dict[str, Any] | None = None
 
 
 def central_square_buttons() -> list[list[str]]:
@@ -405,7 +403,7 @@ GATES_TEXT = """🚪 Городские ворота
 
 LEAVE_CITY_TEXT = """🗺 Выход к локациям
 
-Покинув безопасные стены Селдара, вы оказываетесь на развилке. Дороги ведут к ближайшим землям, где можно искать травы, руду, дичь и случайные находки."""
+Покинув безопасные стены Селдара, вы оказываетесь на развилке. Дороги ведут к ближайшим землям, где можно искать травы, руду, дичь, случайные находки и опасности."""
 
 ANNOUNCEMENTS_TEXT = """📢 Объявления Селдара
 
@@ -468,16 +466,6 @@ CITY_ACTIONS: dict[str, CityResponse] = {
 CITY_BUTTONS = frozenset(CITY_ACTIONS.keys()) | EXTERNAL_LOCATION_BUTTONS
 
 
-def player_has_external_state(player: dict[str, Any]) -> bool:
-    return bool(
-        player.get("in_battle")
-        or player.get("active_timer")
-        or player.get("active_event")
-        or player.get("current_city") == "outside_seldar"
-        or player.get("current_location")
-    )
-
-
 def process_world_action(
     storage: Any,
     player: dict[str, Any],
@@ -490,10 +478,9 @@ def process_world_action(
     services.external_location_service. Both paths update the same player
     profile and return ready-to-send text/buttons.
     """
-    if player_has_external_state(player) or action in EXTERNAL_LOCATION_BUTTONS:
-        external_action = RETURN_TO_CITY if action == "В город" else action
-        response = handle_external_location_action(storage, player, external_action)
-        return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
+    if player.get("in_battle") or action in EXTERNAL_LOCATION_BUTTONS:
+        response = handle_external_location_action(storage, player, action)
+        return WorldActionResult(text=response.text, buttons=response.buttons)
 
     response = get_city_response(action)
     updated_player = apply_city_transition(storage, player, response)

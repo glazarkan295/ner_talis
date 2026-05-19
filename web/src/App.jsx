@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { PlayerProfile } from "./components/player-profile";
 import "./components/player-profile/PlayerProfile.css";
 import {
+  dropItem,
   equipItem,
   equipSkill,
   getProfileIdentifierFromUrl,
@@ -82,6 +83,9 @@ function App() {
         }}
         onUseItem={(item) => {
           return runProfileAction(() => useItem(profileIdentifier, item.id));
+        }}
+        onDropItem={(item, amount) => {
+          return runProfileAction(() => dropItem(profileIdentifier, item.id, amount));
         }}
         onEquipSkill={(skill) => {
           return runProfileAction(() => equipSkill(profileIdentifier, skill.id || skill.name));

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import re
@@ -223,6 +224,85 @@ def run_telegram_bot() -> None:
     run_telegram_application(build_telegram_bot_application())
 
 
+
+def recover_runtime_timers(telegram_application: Any) -> None:
+    """Restore real-time search/rest notifications after app restart."""
+    bot_data = getattr(telegram_application, "bot_data", None)
+    if not isinstance(bot_data, dict):
+        return
+
+    storage = bot_data.get("storage")
+    if storage is None:
+        return
+
+    from services.runtime_timer_scheduler import recover_saved_timers, start_persistent_timer_worker
+
+    try:
+        from keyboards.reply_keyboards import make_keyboard as telegram_keyboard
+        from keyboards.vk_keyboards import make_keyboard as vk_keyboard
+        from vk_api.utils import get_random_id
+        import vk_api
+    except ModuleNotFoundError:
+        # Local smoke tests may run without optional bot dependencies.
+        return
+
+    def send_telegram(_platform: str, target_id: str, response: Any) -> None:
+        asyncio.run(
+            telegram_application.bot.send_message(
+                chat_id=int(target_id),
+                text=response.text,
+                reply_markup=telegram_keyboard(response.buttons),
+                disable_web_page_preview=True,
+            )
+        )
+
+    timer_worker_interval = int(os.getenv("TIMER_RECOVERY_INTERVAL_SECONDS", "30") or 30)
+
+    telegram_count = recover_saved_timers(
+        storage=storage,
+        send_callback=send_telegram,
+        platform_filter="telegram",
+        schedule_future=True,
+    )
+    start_persistent_timer_worker(
+        storage=storage,
+        send_callback=send_telegram,
+        platform_filter="telegram",
+        interval_seconds=timer_worker_interval,
+    )
+
+    vk_count = 0
+    if os.getenv("VK_GROUP_TOKEN"):
+        vk_api_client = vk_api.VkApi(token=require_env("VK_GROUP_TOKEN")).get_api()
+
+        def send_vk(_platform: str, target_id: str, response: Any) -> None:
+            vk_api_client.messages.send(
+                peer_id=int(target_id),
+                message=response.text,
+                random_id=get_random_id(),
+                keyboard=vk_keyboard(response.buttons),
+            )
+
+        vk_count = recover_saved_timers(
+            storage=storage,
+            send_callback=send_vk,
+            platform_filter="vk",
+            schedule_future=True,
+        )
+        start_persistent_timer_worker(
+            storage=storage,
+            send_callback=send_vk,
+            platform_filter="vk",
+            interval_seconds=timer_worker_interval,
+        )
+
+    if telegram_count or vk_count:
+        logger.info(
+            "Recovered persisted timers: telegram=%s, vk=%s",
+            telegram_count,
+            vk_count,
+        )
+
 def run_bots() -> None:
     """Запускает Telegram и VK из единой точки входа.
 
@@ -232,6 +312,7 @@ def run_bots() -> None:
     VK-бот работает параллельно в фоновом потоке.
     """
     telegram_application = build_telegram_bot_application()
+    recover_runtime_timers(telegram_application)
     start_vk_thread()
     run_telegram_application(telegram_application)
 
