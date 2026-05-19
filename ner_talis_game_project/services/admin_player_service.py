@@ -205,6 +205,8 @@ def reset_player_progress(storage: Any, game_id: str) -> tuple[bool, str, dict[s
         **identity,
         "level": 1,
         "experience": 0,
+        "experience_to_next": 100,
+        "total_experience": 0,
         "current_city": "seldar",
         "current_zone": "seldar_central_square",
         "location_id": "seldar_central_square",

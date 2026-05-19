@@ -13,6 +13,7 @@ from services.external_location_service import (
     CAMP_DISHES,
     HILLY_MEADOWS,
     OUTSIDE_CITY,
+    SEARCH_ENERGY_COST,
     START_SEARCH,
     add_item,
     calculate_scaled_seconds,
@@ -75,6 +76,7 @@ class HillyMeadowsIntegrationTest(unittest.TestCase):
 
         player = storage.get_player_by_platform("telegram", "111")
         self.assertLess(player["energy"], 100)
+        self.assertEqual(player["energy"], 100 - SEARCH_ENERGY_COST)
         self.assertEqual(player["current_energy"], player["energy"])
 
     def test_glint_event_can_be_resolved_with_look(self):
@@ -119,6 +121,8 @@ class HillyMeadowsIntegrationTest(unittest.TestCase):
         self.assertGreater(calculate_scaled_seconds(50, 100, 60, 600), 60)
         self.assertLessEqual(calculate_scaled_seconds(0, 100, 60, 600), 600)
         self.assertEqual(CAMP_DISHES["Сытная похлёбка"]["restore_energy"], 50)
+        self.assertIn("Луговой корень", CAMP_DISHES["Сытная похлёбка"]["ingredients"])
+        self.assertNotIn("Съедобный корень", CAMP_DISHES["Сытная похлёбка"]["ingredients"])
 
 
 if __name__ == "__main__":
