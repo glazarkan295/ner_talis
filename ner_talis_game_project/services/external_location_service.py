@@ -16,6 +16,7 @@ from typing import Any, Iterable
 
 from services.item_registry import build_inventory_item, get_item_definition_by_name, slugify_fallback_item_id
 from services.pve_battle_service import BATTLE_ACTIONS, battle_buttons, create_hilly_meadows_battle, handle_battle_action
+from services.race_bonus_service import search_event_weights
 
 
 OUTSIDE_CITY = "Выход из города"
@@ -41,6 +42,15 @@ INSPECT_AND_TAKE = "Осмотреть и забрать"
 LOOK = "Посмотреть"
 LEAVE = "Уйти"
 RETREAT = "Отступить"
+SEARCH_ENERGY_COST = 2
+BASE_SEARCH_EVENT_WEIGHTS = [
+    ("alchemy_ingredient", 25),
+    ("stone_or_ore", 17),
+    ("berries", 20),
+    ("trap", 10),
+    ("glint", 8),
+    ("battle", 20),
+]
 
 CAMP_DISHES = {
     "Сушёное мясо": {
@@ -59,7 +69,7 @@ CAMP_DISHES = {
         "restore_energy": 50,
         "ingredients": {
             "Чистая вода": 1,
-            "Съедобный корень": 1,
+            "Луговой корень": 1,
             "Съедобный гриб": 1,
             "Сырое мясо": 1,
         },
@@ -186,10 +196,13 @@ def camp_buttons() -> list[list[str]]:
     ]
 
 
-def cook_buttons() -> list[list[str]]:
+def cook_buttons(player: dict[str, Any] | None = None) -> list[list[str]]:
     rows: list[list[str]] = []
     for dish_name in CAMP_DISHES:
-        rows.append([f"Приготовить: {dish_name} ×1", f"Приготовить: {dish_name} ×10"])
+        row = [f"Приготовить: {dish_name} ×1"]
+        if player is not None and available_craft_count(player, dish_name) >= 10:
+            row.append(f"Приготовить: {dish_name} ×10")
+        rows.append(row)
     rows.append([BACK_TO_CAMP])
     return rows
 
@@ -625,22 +638,12 @@ def start_search(storage: Any, player: dict[str, Any], rng: random.Random | None
         return LocationResponse("⚡ Недостаточно энергии даже для минимального поиска. Съешьте блюдо или восстановитесь другим способом.", hilly_meadows_buttons(), "hilly_meadows")
 
     seconds = calculate_scaled_seconds(energy, max_energy, 60, 600)
-    cost = 2 if energy >= 2 else 1
+    cost = min(SEARCH_ENERGY_COST, energy)
     player["energy"] = max(0, energy - cost)
     player["current_energy"] = player["energy"]
     player["last_search_time_seconds"] = seconds
 
-    event_type = weighted_choice(
-        [
-            ("alchemy_ingredient", 25),
-            ("stone_or_ore", 17),
-            ("berries", 20),
-            ("trap", 10),
-            ("glint", 8),
-            ("battle", 20),
-        ],
-        rng,
-    )
+    event_type = weighted_choice(search_event_weights(player, BASE_SEARCH_EVENT_WEIGHTS), rng)
 
     payload: dict[str, Any]
     if event_type == "trap":
@@ -882,7 +885,7 @@ def show_cooking_menu(storage: Any, player: dict[str, Any]) -> LocationResponse:
         can_craft = available_craft_count(player, dish_name)
         mark = "✅" if can_craft > 0 else "❌"
         recipe_lines.append(f"{mark} {dish_name}: {ingredients}. ⚡ Энергия +{data['restore_energy']}. Можно приготовить: {can_craft}.")
-    return LocationResponse("\n".join(recipe_lines), cook_buttons(), "hilly_meadows_camp_cooking")
+    return LocationResponse("\n".join(recipe_lines), cook_buttons(player), "hilly_meadows_camp_cooking")
 
 
 def cook_dish(storage: Any, player: dict[str, Any], dish_name: str, amount: int = 1) -> LocationResponse:
@@ -891,12 +894,12 @@ def cook_dish(storage: Any, player: dict[str, Any], dish_name: str, amount: int 
     dish = CAMP_DISHES[dish_name]
     missing = [f"{name} ×{needed * amount}" for name, needed in dish["ingredients"].items() if not has_ingredient(player, name, needed * amount)]
     if missing:
-        return LocationResponse("У вас не хватает простых ингредиентов для этого блюда.\n\nНе хватает: " + ", ".join(missing), cook_buttons(), "hilly_meadows_camp_cooking")
+        return LocationResponse("У вас не хватает простых ингредиентов для этого блюда.\n\nНе хватает: " + ", ".join(missing), cook_buttons(player), "hilly_meadows_camp_cooking")
     for name, needed in dish["ingredients"].items():
         consume_ingredient(player, name, needed * amount)
     add_item(player, dish_name, amount, item_id=slugify_item_name(dish_name), max_stack=20)
     storage.update_player(player)
-    return LocationResponse(f"🔥 Вы готовите походное блюдо на маленьком костре.\nПолучено: {dish_name} ×{amount}.", cook_buttons(), "hilly_meadows_camp_cooking")
+    return LocationResponse(f"🔥 Вы готовите походное блюдо на маленьком костре.\nПолучено: {dish_name} ×{amount}.", cook_buttons(player), "hilly_meadows_camp_cooking")
 
 
 def show_eating_menu(storage: Any, player: dict[str, Any]) -> LocationResponse:
