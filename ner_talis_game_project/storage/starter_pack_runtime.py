@@ -25,6 +25,8 @@ STARTER_EXTRA_FIELDS = {
     "stat_bonuses",
     "free_stat_points",
     "free_skill_points",
+    "experience_to_next",
+    "total_experience",
     "hp",
     "spirit",
     "mana",

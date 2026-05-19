@@ -16,6 +16,7 @@ from dataclasses import asdict
 from typing import Any
 
 from services.item_registry import build_inventory_item, get_item_definition_by_name
+from services.progression_service import grant_experience
 from services.pve_battle_models import (
     BattleState,
     DamageSplit,
@@ -26,19 +27,42 @@ from services.pve_battle_models import (
     calculate_final_damage,
     calculate_hit_chance,
 )
+from services.race_bonus_service import (
+    combat_hp_regen_percent,
+    hp_multiplier,
+    incoming_physical_damage_multiplier,
+    outgoing_damage_multiplier,
+    stat_multiplier,
+)
 
 BATTLE_ATTACK = "Обычная атака"
 BATTLE_MAGIC_SPARK = "Магический сгусток"
 BATTLE_DEFEND = "Защита"
+BATTLE_POUCH = "Подсумок"
 BATTLE_ESCAPE = "Сбежать"
 
-BATTLE_ACTIONS = frozenset({BATTLE_ATTACK, BATTLE_MAGIC_SPARK, BATTLE_DEFEND, BATTLE_ESCAPE, "Отступить"})
-BATTLE_BUTTONS = [[BATTLE_ATTACK, BATTLE_MAGIC_SPARK], [BATTLE_DEFEND, BATTLE_ESCAPE]]
+BATTLE_ACTIONS = frozenset({BATTLE_ATTACK, BATTLE_MAGIC_SPARK, BATTLE_DEFEND, BATTLE_POUCH, BATTLE_ESCAPE, "Отступить"})
+BATTLE_BUTTONS = [[BATTLE_ATTACK, BATTLE_DEFEND], [BATTLE_POUCH, BATTLE_ESCAPE]]
 
 RANK_MULTIPLIERS = {
     EnemyRank.NORMAL: {"hp": 1.0, "damage": 1.0, "accuracy": 1.0, "dodge": 1.0, "defense": 1.0, "xp": 1.0},
     EnemyRank.EMPOWERED: {"hp": 1.45, "damage": 1.35, "accuracy": 1.18, "dodge": 1.1, "defense": 1.25, "xp": 1.7},
     EnemyRank.ELITE: {"hp": 2.3, "damage": 1.85, "accuracy": 1.35, "dodge": 1.2, "defense": 1.6, "xp": 3.2},
+}
+
+ENEMY_RANK_LABELS = {
+    "normal": "обычный",
+    "empowered": "усиленный",
+    "elite": "элитный",
+    "mini_boss": "мини-босс",
+    "boss": "босс",
+    "raid_boss": "рейдовый босс",
+}
+
+DAMAGE_TYPE_LABELS = {
+    "physical": "физический",
+    "magic": "магический",
+    "mixed": "смешанный",
 }
 
 HILLY_MEADOWS_MOBS = {
@@ -93,8 +117,19 @@ HILLY_MEADOWS_MOBS = {
 }
 
 
-def battle_buttons() -> list[list[str]]:
-    return [row[:] for row in BATTLE_BUTTONS]
+def battle_buttons(player: dict[str, Any] | None = None) -> list[list[str]]:
+    rows = [row[:] for row in BATTLE_BUTTONS]
+    skills = ((player or {}).get("skills") or {}).get("equipped", []) if isinstance((player or {}).get("skills"), dict) else []
+    skill_names = [str(skill.get("name") or skill.get("id")) for skill in skills if isinstance(skill, dict)]
+    for index in range(0, len(skill_names), 2):
+        rows.append(skill_names[index:index + 2])
+    return rows
+
+
+def target_buttons(battle: dict[str, Any]) -> list[list[str]]:
+    rows = [[f"Цель: {index + 1}" for index, _enemy in enumerate(alive_enemies(battle))]]
+    rows.extend(battle_buttons())
+    return rows
 
 
 def soft_level(level: int) -> int:
@@ -110,11 +145,12 @@ def safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def _player_stat(player: dict[str, Any], key: str) -> int:
+def _player_stat(player: dict[str, Any], key: str) -> float:
     stats = player.get("stats") or {}
     invested = player.get("invested_stats") or {}
     bonuses = player.get("stat_bonuses") or {}
-    return safe_int(stats.get(key), 0) + safe_int(invested.get(key), 0) + safe_int(bonuses.get(key), 0)
+    raw = safe_int(stats.get(key), 0) + safe_int(invested.get(key), 0)
+    return raw * stat_multiplier(player, key) + safe_int(bonuses.get(key), 0)
 
 
 def calculate_player_derived_stats(player: dict[str, Any]) -> dict[str, int]:
@@ -154,7 +190,7 @@ def calculate_player_derived_stats(player: dict[str, Any]) -> dict[str, int]:
 
     armor = max(0, safe_int(player.get("armor"), 0) + equipment_armor)
     magic_armor = max(0, safe_int(player.get("magic_armor"), 0) + equipment_magic_armor)
-    max_hp = math.ceil(100 + endurance * 4.0 + strength * 0.8 + s_level * 4 + bonus_hp)
+    max_hp = math.ceil((100 + endurance * 4.0 + strength * 0.8 + s_level * 4 + bonus_hp) * hp_multiplier(player))
     max_spirit = math.ceil(20 + endurance * 1.2 + strength * 1.0 + dexterity * 0.7 + s_level * 1.2 + bonus_spirit)
     max_mana = math.ceil(20 + intelligence * 1.6 + wisdom * 1.3 + s_level * 1.2 + bonus_mana)
     physical_defense = math.ceil(armor * 1.5 + endurance * 0.9 + strength * 0.6 + dexterity * 0.2 + bonus_physical_defense)
@@ -208,8 +244,12 @@ def make_player_battle_state(player: dict[str, Any]) -> PlayerBattleState:
     )
 
 
-def choose_battle_rank(rng: random.Random) -> EnemyRank:
+def choose_battle_rank(rng: random.Random, player_level: int = 1) -> EnemyRank:
     roll = rng.uniform(0, 100)
+    if player_level <= 3:
+        if roll <= 92:
+            return EnemyRank.NORMAL
+        return EnemyRank.EMPOWERED
     if roll <= 78:
         return EnemyRank.NORMAL
     if roll <= 96:
@@ -218,6 +258,12 @@ def choose_battle_rank(rng: random.Random) -> EnemyRank:
 
 
 def enemy_level_for_rank(player_level: int, rank: EnemyRank, rng: random.Random) -> int:
+    if player_level <= 3:
+        if rank == EnemyRank.NORMAL:
+            return max(1, min(50, player_level + rng.randint(-1, 0)))
+        if rank == EnemyRank.EMPOWERED:
+            return max(1, min(50, player_level + rng.randint(1, 2)))
+        return max(1, min(50, player_level + rng.randint(3, 4)))
     if rank == EnemyRank.NORMAL:
         return max(1, min(50, player_level + rng.randint(-1, 1)))
     if rank == EnemyRank.EMPOWERED:
@@ -225,10 +271,12 @@ def enemy_level_for_rank(player_level: int, rank: EnemyRank, rng: random.Random)
     return max(1, min(50, player_level + rng.randint(7, 9)))
 
 
-def choose_mob_key(rank: EnemyRank, rng: random.Random) -> str:
+def choose_mob_key(rank: EnemyRank, rng: random.Random, player_level: int = 1) -> str:
     if rank == EnemyRank.ELITE:
         return "hill_bull"
     if rank == EnemyRank.EMPOWERED:
+        if player_level <= 3:
+            return rng.choice(["overgrown_gopher", "wild_jackal", "rabid_rabbit"])
         return rng.choice(["overgrown_gopher", "wild_jackal", "rabid_rabbit", "hill_bull"])
     return rng.choice(["overgrown_gopher", "wild_jackal", "rabid_rabbit"])
 
@@ -275,13 +323,15 @@ def build_enemy(mob_key: str, rank: EnemyRank, level: int, index: int) -> EnemyB
 def create_hilly_meadows_battle(player: dict[str, Any], rng: random.Random | None = None) -> tuple[dict[str, Any], str]:
     rng = rng or random.Random()
     player_level = max(1, safe_int(player.get("level"), 1))
-    rank = choose_battle_rank(rng)
-    mob_key = choose_mob_key(rank, rng)
+    rank = choose_battle_rank(rng, player_level)
+    mob_key = choose_mob_key(rank, rng, player_level)
     template = HILLY_MEADOWS_MOBS[mob_key]
     min_count, max_count = template["group"][rank]
+    if player_level <= 3:
+        min_count = 1
+        max_count = 1 if rank != EnemyRank.NORMAL else min(2, max_count)
     count = 1 if rank == EnemyRank.ELITE else rng.randint(min_count, max_count)
-    level = enemy_level_for_rank(player_level, rank, rng)
-    enemies = [build_enemy(mob_key, rank, level, index + 1) for index in range(count)]
+    enemies = [build_enemy(mob_key, rank, enemy_level_for_rank(player_level, rank, rng), index + 1) for index in range(count)]
     battle = BattleState(
         battle_id=f"pve_{uuid.uuid4().hex[:12]}",
         player_id=str(player.get("game_id") or player.get("id") or "player"),
@@ -366,9 +416,150 @@ def player_attack_raw_damage(player: dict[str, Any], action: str) -> tuple[int, 
     level = stats["level"]
     if action == BATTLE_MAGIC_SPARK:
         raw = math.ceil(4 + level * 1.1 + stats["intelligence"] * 0.8)
+        raw = math.ceil(raw * outgoing_damage_multiplier(player, DamageType.MAGIC.value))
         return max(1, raw), DamageType.MAGIC, "магическим сгустком"
     raw = math.ceil(5 + level * 1.2 + stats["strength"] * 0.8)
+    raw = math.ceil(raw * outgoing_damage_multiplier(player, DamageType.PHYSICAL.value))
     return max(1, raw), DamageType.PHYSICAL, "обычной атакой"
+
+
+def get_equipped_skill(player: dict[str, Any], action: str) -> dict[str, Any] | None:
+    skills = player.get("skills") if isinstance(player.get("skills"), dict) else {}
+    for skill in skills.get("equipped", []):
+        if not isinstance(skill, dict):
+            continue
+        if str(skill.get("name") or skill.get("id") or "") == action or str(skill.get("id") or "") == action:
+            return skill
+    return None
+
+
+def skill_costs(skill: dict[str, Any]) -> tuple[int, int]:
+    spirit = safe_int(skill.get("spirit_cost") if "spirit_cost" in skill else skill.get("spiritCost"), 0)
+    mana = safe_int(skill.get("mana_cost") if "mana_cost" in skill else skill.get("manaCost"), 0)
+    return max(0, spirit), max(0, mana)
+
+
+def skill_damage_type(skill: dict[str, Any]) -> DamageType:
+    raw = str(skill.get("damage_type") or skill.get("damageType") or "physical").casefold()
+    if "маг" in raw or raw == "magic":
+        return DamageType.MAGIC
+    if "mixed" in raw or "смеш" in raw:
+        return DamageType.MIXED
+    return DamageType.PHYSICAL
+
+
+def player_skill_raw_damage(player: dict[str, Any], skill: dict[str, Any]) -> tuple[int, DamageType, str]:
+    stats = calculate_player_derived_stats(player)
+    damage = skill.get("damage")
+    if not isinstance(damage, (int, float)):
+        if skill.get("id") == "magic_spark" or str(skill.get("name")) == BATTLE_MAGIC_SPARK:
+            damage = math.ceil(4 + stats["level"] * 1.1 + stats["intelligence"] * 0.8)
+        else:
+            damage = math.ceil(5 + stats["level"] * 1.2 + stats["strength"] * 0.8)
+    damage_type = skill_damage_type(skill)
+    damage = math.ceil(float(damage) * outgoing_damage_multiplier(player, damage_type.value))
+    return max(1, safe_int(damage, 1)), damage_type, str(skill.get("name") or "навыком")
+
+
+def is_food_item(item: dict[str, Any]) -> bool:
+    category = str(item.get("category") or item.get("type") or item.get("subtype") or "").casefold()
+    item_class = str(item.get("item_class") or "").casefold()
+    tags = {str(tag).casefold() for tag in item.get("integration_tags", []) if isinstance(tag, str)}
+    return bool(
+        "еда" in category
+        or "напит" in category
+        or "food" in category
+        or "drink" in category
+        or item_class == "camp_food"
+        or "food" in tags
+        or "energy_restore" in tags
+        or item.get("energy_restore")
+    )
+
+
+def combat_restore_amount(item: dict[str, Any]) -> int:
+    effect = item.get("use_effect") if isinstance(item.get("use_effect"), dict) else {}
+    amount = 0
+    for label in ("restore_hp", "hp_restore", "restore_spirit", "spirit_restore", "restore_mana", "mana_restore"):
+        amount = max(amount, safe_int(item.get(label), 0), safe_int(effect.get(label), 0))
+    return amount
+
+
+def is_combat_pouch_item(item: dict[str, Any]) -> bool:
+    if not isinstance(item, dict) or is_food_item(item):
+        return False
+    category = str(item.get("category") or item.get("type") or "")
+    allowed_categories = {"Алхимия", "Расходник", "Расходники"}
+    return category in allowed_categories or combat_restore_amount(item) > 0
+
+
+def pouch_items(player: dict[str, Any]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for item in player.get("inventory", []):
+        if not isinstance(item, dict):
+            continue
+        if is_combat_pouch_item(item):
+            result.append(item)
+    return result
+
+
+def format_pouch(player: dict[str, Any]) -> tuple[str, list[list[str]]]:
+    items = pouch_items(player)
+    if not items:
+        return "🎒 Подсумок пуст. В инвентаре нет зелий или расходников для боя.", battle_buttons(player)
+    lines = ["🎒 Подсумок", "", "Можно использовать один расходник за ход:"]
+    buttons: list[list[str]] = []
+    for item in items[:10]:
+        name = str(item.get("name") or "Предмет")
+        amount = safe_int(item.get("amount"), 1)
+        lines.append(f"• {name} ×{amount}")
+        buttons.append([f"Использовать: {name}"])
+    buttons.extend(battle_buttons(player))
+    return "\n".join(lines), buttons
+
+
+def remove_inventory_item_by_name(player: dict[str, Any], name: str, amount: int = 1) -> dict[str, Any] | None:
+    inventory = player.setdefault("inventory", [])
+    for index, item in enumerate(list(inventory)):
+        if not isinstance(item, dict) or str(item.get("name") or "") != name:
+            continue
+        current = safe_int(item.get("amount"), 1)
+        used = dict(item)
+        if current > amount:
+            item["amount"] = current - amount
+        else:
+            inventory.pop(index)
+        return used
+    return None
+
+
+def use_pouch_item(player: dict[str, Any], battle: dict[str, Any], item_name: str) -> tuple[str, bool]:
+    source_item = next((item for item in player.get("inventory", []) if isinstance(item, dict) and str(item.get("name") or "") == item_name), None)
+    if source_item is None:
+        return "🎒 Такого предмета нет в подсумке.", False
+    if not is_combat_pouch_item(source_item):
+        return "🎒 Этот предмет нельзя использовать в бою.", False
+    player_state = battle.setdefault("player_state", {})
+    restored_parts: list[str] = []
+    # Common consumable fields. Energy is outside combat, so combat shows only HP/spirit/mana effects.
+    for current_key, max_key, labels in (("current_hp", "max_hp", ("restore_hp", "hp_restore")), ("current_spirit", "max_spirit", ("restore_spirit", "spirit_restore")), ("current_mana", "max_mana", ("restore_mana", "mana_restore"))):
+        restore = 0
+        for label in labels:
+            restore = max(restore, safe_int(source_item.get(label), 0))
+            effect = source_item.get("use_effect") if isinstance(source_item.get("use_effect"), dict) else {}
+            restore = max(restore, safe_int(effect.get(label), 0))
+        if restore <= 0:
+            continue
+        before = safe_int(player_state.get(current_key), 0)
+        maximum = max(1, safe_int(player_state.get(max_key), before))
+        player_state[current_key] = min(maximum, before + restore)
+        actual = player_state[current_key] - before
+        if actual:
+            restored_parts.append(f"+{actual} {current_key.removeprefix('current_')}")
+    if not restored_parts:
+        return f"🎒 {item_name} сейчас не даёт боевого эффекта.", False
+    remove_inventory_item_by_name(player, item_name, 1)
+    return f"🎒 Вы использовали {item_name}: " + ", ".join(restored_parts) + ".", True
 
 
 def sync_player_from_battle(player: dict[str, Any], battle: dict[str, Any]) -> None:
@@ -381,7 +572,14 @@ def sync_player_from_battle(player: dict[str, Any], battle: dict[str, Any]) -> N
 def format_enemy_line(enemy: dict[str, Any]) -> str:
     hp = max(0, safe_int(enemy.get("current_hp"), 0))
     max_hp = max(1, safe_int(enemy.get("max_hp"), 1))
-    return f"• {enemy.get('name')} ур. {enemy.get('level')} — HP {hp}/{max_hp}"
+    rank = ENEMY_RANK_LABELS.get(str(enemy.get("rank") or "normal"), str(enemy.get("rank") or "обычный"))
+    damage_type = DAMAGE_TYPE_LABELS.get(str(enemy.get("damage_type") or "physical"), str(enemy.get("damage_type") or "физический"))
+    return (
+        f"• {enemy.get('name')} ур. {enemy.get('level')} — ❤️ {hp}/{max_hp}\n"
+        f"  Тип: {rank} · Урон: {damage_type}\n"
+        f"  🎯 {safe_int(enemy.get('accuracy'), 0)} · 🌀 {safe_int(enemy.get('dodge'), 0)} · "
+        f"🛡 {safe_int(enemy.get('physical_defense'), 0)} · ✨ {safe_int(enemy.get('magic_defense'), 0)}"
+    )
 
 
 def format_battle_started_text(battle: dict[str, Any]) -> str:
@@ -389,24 +587,34 @@ def format_battle_started_text(battle: dict[str, Any]) -> str:
     enemy_lines = "\n".join(format_enemy_line(enemy) for enemy in battle.get("enemies", []))
     player_state = battle.get("player_state") or {}
     return (
-        f"⚔️ {intro}\n\n"
-        f"Бой начался. Раунд: {battle.get('round_number', 1)}.\n\n"
-        f"Враги:\n{enemy_lines}\n\n"
-        f"Ваше HP: {player_state.get('current_hp')}/{player_state.get('max_hp')}"
+        f"⚔️ Бой начался!\n{intro}\n\n"
+        f"Ход: {battle.get('round_number', 1)}.\n\n"
+        f"🧍 Вы:\n"
+        f"❤️ {player_state.get('current_hp')}/{player_state.get('max_hp')} · "
+        f"🔥 {player_state.get('current_spirit')}/{player_state.get('max_spirit')} · "
+        f"✨ {player_state.get('current_mana')}/{player_state.get('max_mana')}\n"
+        f"🎯 {player_state.get('accuracy')} · 🌀 {player_state.get('dodge')} · "
+        f"🛡 {player_state.get('physical_defense')} · ✨🛡 {player_state.get('magic_defense')}\n"
+        f"Тип урона: физический/магический по выбранному действию\n\n"
+        f"👹 Противники:\n{enemy_lines}"
     )
 
 
 def format_battle_status(battle: dict[str, Any]) -> str:
     enemy_lines = "\n".join(format_enemy_line(enemy) for enemy in battle.get("enemies", [])) or "• врагов не осталось"
     player_state = battle.get("player_state") or {}
-    last_log = "\n".join(battle.get("battle_log", [])[-6:])
+    last_log = "\n".join(battle.get("last_turn_log") or battle.get("battle_log", [])[-4:]) or "—"
     return (
-        f"⚔️ PVE-бой. Раунд: {battle.get('round_number', 1)}.\n\n"
-        f"Ваше HP: {player_state.get('current_hp')}/{player_state.get('max_hp')}\n"
-        f"Дух: {player_state.get('current_spirit')}/{player_state.get('max_spirit')} · "
-        f"Мана: {player_state.get('current_mana')}/{player_state.get('max_mana')}\n\n"
-        f"Враги:\n{enemy_lines}\n\n"
-        f"Последние действия:\n{last_log}"
+        f"⚔️ PVE-бой. Ход: {battle.get('round_number', 1)}.\n\n"
+        f"🧍 Вы:\n"
+        f"❤️ {player_state.get('current_hp')}/{player_state.get('max_hp')} · "
+        f"🔥 {player_state.get('current_spirit')}/{player_state.get('max_spirit')} · "
+        f"✨ {player_state.get('current_mana')}/{player_state.get('max_mana')}\n"
+        f"🎯 Точность: {player_state.get('accuracy')} · 🌀 Уклонение: {player_state.get('dodge')}\n"
+        f"🛡 Физ. защита: {player_state.get('physical_defense')} · ✨ Маг. защита: {player_state.get('magic_defense')}\n"
+        f"Тип урона: зависит от выбранного действия\n\n"
+        f"👹 Противники:\n{enemy_lines}\n\n"
+        f"📜 Действие прошлого хода:\n{last_log}"
     )
 
 
@@ -434,9 +642,14 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
                 loot_lines.append(f"{item_name} ×{amount}")
     group_count = max(1, len(enemies))
     xp_total = math.ceil(xp_total * max(0.55, 1 - ((group_count - 1) * 0.05)))
-    player["experience"] = safe_int(player.get("experience"), 0) + xp_total
+    progress = grant_experience(player, xp_total)
     player["pve_kills"] = safe_int(player.get("pve_kills"), 0) + len(enemies)
-    rewards = [f"Опыт: +{xp_total}"]
+    rewards = [f"Опыт: +{progress['gained']}"]
+    if progress["levels_gained"]:
+        rewards.append(
+            f"Новый уровень: {player.get('level')} "
+            f"(+{progress['levels_gained'] * 5} очков характеристик, +{progress['levels_gained']} очков навыков)"
+        )
     if loot_lines:
         rewards.append("Добыча: " + ", ".join(loot_lines))
     else:
@@ -478,6 +691,68 @@ def add_inventory_item(player: dict[str, Any], item_name: str, amount: int) -> N
         remaining -= added
 
 
+def apply_enemy_phase(
+    player: dict[str, Any],
+    battle: dict[str, Any],
+    rng: random.Random,
+    log: list[str],
+    *,
+    defending: bool = False,
+) -> bool:
+    player_state = battle.setdefault("player_state", {})
+    for enemy in alive_enemies(battle):
+        hit_chance = calculate_hit_chance(safe_int(enemy.get("accuracy"), 1), safe_int(player_state.get("dodge"), 1))
+        if rng.random() > hit_chance:
+            log.append(f"{enemy.get('name')} промахивается.")
+            continue
+        raw = enemy_raw_damage(enemy)
+        if defending:
+            raw = math.ceil(raw * 0.65)
+        final_damage = calculate_final_damage(
+            raw_damage=raw,
+            damage_type=enemy_damage_type(enemy),
+            target_physical_defense=safe_int(player_state.get("physical_defense"), 0),
+            target_magic_defense=safe_int(player_state.get("magic_defense"), 0),
+            target_soft_level=soft_level(safe_int(player.get("level"), 1)),
+            damage_split=enemy_damage_split(enemy),
+        )
+        if enemy_damage_type(enemy) == DamageType.PHYSICAL:
+            final_damage = max(1, math.ceil(final_damage * incoming_physical_damage_multiplier(player)))
+        player_state["current_hp"] = max(0, safe_int(player_state.get("current_hp"), 0) - final_damage)
+        log.append(f"{enemy.get('name')} атакует и наносит {final_damage} урона.")
+
+    if safe_int(player_state.get("current_hp"), 0) > 0:
+        regen_percent = combat_hp_regen_percent(player)
+        if regen_percent > 0:
+            maximum = max(1, safe_int(player_state.get("max_hp"), 1))
+            before = safe_int(player_state.get("current_hp"), maximum)
+            restored = max(1, math.ceil(maximum * regen_percent / 100))
+            player_state["current_hp"] = min(maximum, before + restored)
+            actual = player_state["current_hp"] - before
+            if actual > 0:
+                log.append(f"Регенерация восстанавливает {actual} HP.")
+
+    cooldowns = player_state.setdefault("cooldowns", {})
+    for key in list(cooldowns.keys()):
+        cooldowns[key] = max(0, safe_int(cooldowns.get(key), 0) - 1)
+        if cooldowns[key] <= 0:
+            cooldowns.pop(key, None)
+
+    battle["round_number"] = safe_int(battle.get("round_number"), 1) + 1
+    return safe_int(player_state.get("current_hp"), 0) <= 0
+
+
+def finish_player_defeat(player: dict[str, Any], battle: dict[str, Any], log: list[str]) -> tuple[str, list[list[str]]]:
+    sync_player_from_battle(player, battle)
+    player["in_battle"] = False
+    player["active_battle"] = None
+    player["active_event"] = None
+    player["current_zone"] = "hilly_meadows"
+    player["location_id"] = "hilly_meadows"
+    player["hp"] = max(1, math.ceil(safe_int(player.get("max_hp"), 100) * 0.2))
+    return "\n".join(log) + "\n\n❌ Вы проиграли бой и отступили к безопасному месту. HP частично восстановлено.", []
+
+
 def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random | None = None) -> tuple[str, list[list[str]]]:
     rng = rng or random.Random()
     battle = player.get("active_battle")
@@ -503,13 +778,66 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         rewards = grant_battle_rewards(player, battle, rng)
         return f"Победа!\n\n{rewards}", []
 
+    if action == BATTLE_POUCH:
+        return format_pouch(player)
+
+    if action.startswith("Использовать: "):
+        item_name = action.removeprefix("Использовать: ").strip()
+        message, consumed = use_pouch_item(player, battle, item_name)
+        log = [message]
+        if consumed and alive_enemies(battle):
+            if apply_enemy_phase(player, battle, rng, log, defending=False):
+                battle["last_turn_log"] = log[:]
+                battle.setdefault("battle_log", []).extend(log)
+                return finish_player_defeat(player, battle, log)
+        battle["last_turn_log"] = log
+        battle.setdefault("battle_log", []).extend(log)
+        player["active_battle"] = battle
+        sync_player_from_battle(player, battle)
+        return format_battle_status(battle), battle_buttons(player)
+
+    pending_skill = battle.get("pending_skill") if isinstance(battle.get("pending_skill"), dict) else None
+    target_index: int | None = None
+    if action.startswith("Цель: ") and pending_skill:
+        raw_target = action.removeprefix("Цель: ").strip().split()[0]
+        try:
+            target_index = max(0, int(raw_target) - 1)
+        except ValueError:
+            target_index = 0
+        action = str(pending_skill.get("name") or pending_skill.get("id") or action)
+        battle.pop("pending_skill", None)
+
+    equipped_skill = get_equipped_skill(player, action)
+    if equipped_skill is not None and target_index is None and len(enemies) > 1:
+        battle["pending_skill"] = equipped_skill
+        player["active_battle"] = battle
+        return f"🎯 Выберите противника для навыка «{equipped_skill.get('name')}».", target_buttons(battle)
+
     log: list[str] = []
     defending = action == BATTLE_DEFEND
     if defending:
-        log.append("Вы занимаете защитную стойку. Входящий урон в этом раунде снижен.")
+        log.append("Вы занимаете защитную стойку. Входящий урон в этом ходе снижен.")
     else:
-        target = enemies[0]
-        raw_damage, damage_type, action_text = player_attack_raw_damage(player, action)
+        target = enemies[target_index] if target_index is not None and 0 <= target_index < len(enemies) else enemies[0]
+        if equipped_skill is not None:
+            spirit_cost, mana_cost = skill_costs(equipped_skill)
+            cooldown_key = str(equipped_skill.get("id") or equipped_skill.get("name"))
+            cooldowns = player_state.setdefault("cooldowns", {})
+            if safe_int(cooldowns.get(cooldown_key), 0) > 0:
+                return f"⏳ Навык «{equipped_skill.get('name')}» ещё на откате: {cooldowns[cooldown_key]} ход.", battle_buttons(player)
+            if spirit_cost > safe_int(player_state.get("current_spirit"), 0):
+                return f"🔥 Не хватает духа для навыка «{equipped_skill.get('name')}». Нужно: {spirit_cost}.", battle_buttons(player)
+            if mana_cost > safe_int(player_state.get("current_mana"), 0):
+                return f"✨ Не хватает маны для навыка «{equipped_skill.get('name')}». Нужно: {mana_cost}.", battle_buttons(player)
+            player_state["current_spirit"] = max(0, safe_int(player_state.get("current_spirit"), 0) - spirit_cost)
+            player_state["current_mana"] = max(0, safe_int(player_state.get("current_mana"), 0) - mana_cost)
+            cooldown = safe_int(equipped_skill.get("cooldown_turns") if "cooldown_turns" in equipped_skill else equipped_skill.get("cooldown"), 0)
+            if cooldown > 0:
+                cooldowns[cooldown_key] = cooldown
+            raw_damage, damage_type, action_text = player_skill_raw_damage(player, equipped_skill)
+            action_text = f"навыком «{action_text}»"
+        else:
+            raw_damage, damage_type, action_text = player_attack_raw_damage(player, action)
         hit_chance = calculate_hit_chance(safe_int(player_state.get("accuracy"), 1), safe_int(target.get("dodge"), 1))
         if rng.random() <= hit_chance:
             final_damage = calculate_final_damage(
@@ -535,37 +863,13 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         rewards = grant_battle_rewards(player, battle, rng)
         return f"{chr(10).join(log)}\n\n✅ Победа!\n\n{rewards}", []
 
-    for enemy in alive_enemies(battle):
-        hit_chance = calculate_hit_chance(safe_int(enemy.get("accuracy"), 1), safe_int(player_state.get("dodge"), 1))
-        if rng.random() > hit_chance:
-            log.append(f"{enemy.get('name')} промахивается.")
-            continue
-        raw = enemy_raw_damage(enemy)
-        if defending:
-            raw = math.ceil(raw * 0.65)
-        final_damage = calculate_final_damage(
-            raw_damage=raw,
-            damage_type=enemy_damage_type(enemy),
-            target_physical_defense=safe_int(player_state.get("physical_defense"), 0),
-            target_magic_defense=safe_int(player_state.get("magic_defense"), 0),
-            target_soft_level=soft_level(safe_int(player.get("level"), 1)),
-            damage_split=enemy_damage_split(enemy),
-        )
-        player_state["current_hp"] = max(0, safe_int(player_state.get("current_hp"), 0) - final_damage)
-        log.append(f"{enemy.get('name')} атакует и наносит {final_damage} урона.")
-
-    battle["round_number"] = safe_int(battle.get("round_number"), 1) + 1
+    defeated = apply_enemy_phase(player, battle, rng, log, defending=defending)
+    battle["last_turn_log"] = log[:]
     battle.setdefault("battle_log", []).extend(log)
     sync_player_from_battle(player, battle)
 
-    if safe_int(player_state.get("current_hp"), 0) <= 0:
-        player["in_battle"] = False
-        player["active_battle"] = None
-        player["active_event"] = None
-        player["current_zone"] = "hilly_meadows"
-        player["location_id"] = "hilly_meadows"
-        player["hp"] = max(1, math.ceil(safe_int(player.get("max_hp"), 100) * 0.2))
-        return "\n".join(log) + "\n\n❌ Вы проиграли бой и отступили к безопасному месту. HP частично восстановлено.", []
+    if defeated:
+        return finish_player_defeat(player, battle, log)
 
     player["active_battle"] = battle
-    return format_battle_status(battle), battle_buttons()
+    return format_battle_status(battle), battle_buttons(player)
