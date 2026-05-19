@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
 
 PROFILE_SCOPE = "profile"
@@ -33,7 +34,7 @@ def get_site_base_url() -> str:
 
 def build_site_url(path: str, token: str) -> str:
     cleaned_path = "/" + path.strip("/")
-    return f"{get_site_base_url()}{cleaned_path}?token={token}"
+    return f"{get_site_base_url()}{cleaned_path}?token={token}&t={int(time.time())}"
 
 
 def build_profile_site_url(token: str) -> str:

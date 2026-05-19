@@ -234,12 +234,13 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     profile_url = create_profile_site_link(storage, player, TELEGRAM_PLATFORM)
+    # Не передаём reply_markup: кнопка «Профиль» должна выдать ссылку,
+    # но не менять текущую клавиатуру локации, боя или лагеря.
     await update.message.reply_text(
         f"🔮 Временная ссылка на профиль игрока {player['name']}:\n"
         f"Единый игровой ID: {player['game_id']}\n"
         f"Ссылка: {profile_url}\n\n"
         "Ссылка действует ограниченное время. Когда она истечёт, нажми «Профиль» ещё раз.",
-        reply_markup=after_registration_keyboard(),
         disable_web_page_preview=True,
     )
 

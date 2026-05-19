@@ -16,7 +16,6 @@ from typing import Any, Iterable
 
 from services.item_registry import build_inventory_item, get_item_definition_by_name, slugify_fallback_item_id
 from services.pve_battle_service import BATTLE_ACTIONS, battle_buttons, create_hilly_meadows_battle, handle_battle_action
-from services.race_bonus_service import search_event_weights
 
 
 OUTSIDE_CITY = "Выход из города"
@@ -42,15 +41,6 @@ INSPECT_AND_TAKE = "Осмотреть и забрать"
 LOOK = "Посмотреть"
 LEAVE = "Уйти"
 RETREAT = "Отступить"
-SEARCH_ENERGY_COST = 2
-BASE_SEARCH_EVENT_WEIGHTS = [
-    ("alchemy_ingredient", 25),
-    ("stone_or_ore", 17),
-    ("berries", 20),
-    ("trap", 10),
-    ("glint", 8),
-    ("battle", 20),
-]
 
 CAMP_DISHES = {
     "Сушёное мясо": {
@@ -77,6 +67,37 @@ CAMP_DISHES = {
 }
 
 EDIBLE_BERRIES = {"Сладкая луговая ягода", "Терпкая синяя ягода", "Любая съедобная ягода"}
+
+LOCATION_RESOURCE_NAMES = {
+    "Луговая мята",
+    "Серебристая ромашка",
+    "Жёлтый клевер",
+    "Горная полынь",
+    "Луговой корень",
+    "Обычный камень",
+    "Кусок медной руды",
+    "Кусок железной руды",
+    "Сладкая луговая ягода",
+    "Терпкая синяя ягода",
+    "Съедобный корень",
+    "Съедобный гриб",
+    "Чистая вода",
+}
+
+CAMP_FOOD_CATEGORY = "Еда"
+LOCATION_RESOURCE_CATEGORY = "Ресурсы"
+
+
+def apply_location_item_category(item: dict[str, Any], name: str) -> None:
+    if name in CAMP_DISHES:
+        item["category"] = CAMP_FOOD_CATEGORY
+        item["type"] = "Блюдо"
+        return
+    if name in LOCATION_RESOURCE_NAMES:
+        item["category"] = LOCATION_RESOURCE_CATEGORY
+        item.setdefault("type", "Ресурс")
+        item.setdefault("source", "Локация")
+
 
 EXTERNAL_LOCATION_BUTTONS = frozenset(
     {
@@ -406,6 +427,7 @@ def add_item(player: dict[str, Any], name: str, amount: int, *, item_id: str | N
         for key in ("icon", "asset_icon", "category", "type", "subtype", "quality", "max_stack", "stackable"):
             if inventory_item.get(key) is not None:
                 item.setdefault(key, inventory_item.get(key))
+        apply_location_item_category(item, name)
         remaining -= added
         if remaining <= 0:
             return
@@ -415,6 +437,7 @@ def add_item(player: dict[str, Any], name: str, amount: int, *, item_id: str | N
         item = build_inventory_item(name, added, item_id=item_id, max_stack=max_stack)
         item.setdefault("source", "Холмистые луга")
         item.setdefault("actions", [])
+        apply_location_item_category(item, name)
         inventory.append(item)
         remaining -= added
 
@@ -602,12 +625,22 @@ def start_search(storage: Any, player: dict[str, Any], rng: random.Random | None
         return LocationResponse("⚡ Недостаточно энергии даже для минимального поиска. Съешьте блюдо или восстановитесь другим способом.", hilly_meadows_buttons(), "hilly_meadows")
 
     seconds = calculate_scaled_seconds(energy, max_energy, 60, 600)
-    cost = min(SEARCH_ENERGY_COST, energy)
+    cost = 2 if energy >= 2 else 1
     player["energy"] = max(0, energy - cost)
     player["current_energy"] = player["energy"]
     player["last_search_time_seconds"] = seconds
 
-    event_type = weighted_choice(search_event_weights(player, BASE_SEARCH_EVENT_WEIGHTS), rng)
+    event_type = weighted_choice(
+        [
+            ("alchemy_ingredient", 25),
+            ("stone_or_ore", 17),
+            ("berries", 20),
+            ("trap", 10),
+            ("glint", 8),
+            ("battle", 20),
+        ],
+        rng,
+    )
 
     payload: dict[str, Any]
     if event_type == "trap":

@@ -2,6 +2,7 @@ import json
 import secrets
 import sqlite3
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from storage.json_storage import JsonStorage
+from storage.timer_claims import try_mark_timer_claimed
 
 
 class SQLiteStorage:
@@ -443,6 +445,66 @@ class SQLiteStorage:
                         (platform_key, game_id, platform, str(external_user_id), now),
                     )
                 connection.execute("COMMIT")
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+
+
+    def claim_active_timer_for_delivery(
+        self,
+        game_id: str,
+        timer_id: str,
+        owner: str,
+        *,
+        claim_ttl_seconds: int = 300,
+        platform_filter: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Atomically claim an expired active timer before sending its result."""
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT data FROM players WHERE game_id = ?",
+                    (str(game_id),),
+                ).fetchone()
+                if not row:
+                    connection.execute("ROLLBACK")
+                    return None
+
+                player = self._deserialize(row["data"])
+                if not try_mark_timer_claimed(
+                    player,
+                    str(timer_id),
+                    str(owner),
+                    claim_ttl_seconds=claim_ttl_seconds,
+                    platform_filter=platform_filter,
+                    now=time.time(),
+                ):
+                    connection.execute("ROLLBACK")
+                    return None
+
+                player["game_id"] = str(game_id)
+                player["id"] = str(game_id)
+                player.setdefault("public_id", str(uuid.uuid4()))
+                player.setdefault("linked_accounts", {})
+                name = str(player.get("name") or "").casefold()
+                now_iso = datetime.now(timezone.utc).isoformat()
+                connection.execute(
+                    """
+                    UPDATE players
+                    SET public_id = ?, name_key = ?, data = ?, updated_at = ?
+                    WHERE game_id = ?
+                    """,
+                    (
+                        player["public_id"],
+                        name or None,
+                        self._serialize(player),
+                        now_iso,
+                        str(game_id),
+                    ),
+                )
+                connection.execute("COMMIT")
+                return player
             except Exception:
                 connection.execute("ROLLBACK")
                 raise

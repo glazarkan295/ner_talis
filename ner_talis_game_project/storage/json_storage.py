@@ -1,10 +1,13 @@
 import json
 import secrets
 import threading
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+from storage.timer_claims import try_mark_timer_claimed
 
 
 class JsonStorage:
@@ -245,6 +248,44 @@ class JsonStorage:
             data["players"][game_id] = player
             self.rebuild_indexes(data)
             self.save(data)
+
+
+    def claim_active_timer_for_delivery(
+        self,
+        game_id: str,
+        timer_id: str,
+        owner: str,
+        *,
+        claim_ttl_seconds: int = 300,
+        platform_filter: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Atomically claim an expired active timer before sending its result.
+
+        This prevents duplicate timer-completion messages when several bot
+        processes recover or fire the same persisted timer.
+        """
+        with self._lock:
+            data = self.load()
+            player = data.get("players", {}).get(str(game_id))
+            if not isinstance(player, dict):
+                return None
+
+            if not try_mark_timer_claimed(
+                player,
+                str(timer_id),
+                str(owner),
+                claim_ttl_seconds=claim_ttl_seconds,
+                platform_filter=platform_filter,
+                now=time.time(),
+            ):
+                return None
+
+            player["game_id"] = str(game_id)
+            player["id"] = str(game_id)
+            data["players"][str(game_id)] = player
+            self.rebuild_indexes(data)
+            self.save(data)
+            return player
 
     def update_player_by_platform(
         self,

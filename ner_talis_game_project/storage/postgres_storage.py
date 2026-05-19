@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 import threading
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Any
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
+from storage.timer_claims import try_mark_timer_claimed
 from storage.starter_pack_runtime import (
     POSTGRES_COLUMN_FIELDS,
     STARTER_EXTRA_FIELDS,
@@ -350,6 +352,54 @@ class PostgresStorage:
         if not (player.get("game_id") or player.get("id")):
             raise ValueError("Нельзя обновить игрока без game_id.")
         self._upsert_player(player)
+
+
+    def claim_active_timer_for_delivery(
+        self,
+        game_id: str,
+        timer_id: str,
+        owner: str,
+        *,
+        claim_ttl_seconds: int = 300,
+        platform_filter: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Atomically claim an expired active timer before sending its result.
+
+        PostgreSQL uses ``SELECT ... FOR UPDATE`` so only one app replica can
+        claim and deliver the same timer.  If a process dies after claiming but
+        before completion, the claim expires and a recovery worker can claim it
+        again later.
+        """
+        with self.engine.begin() as connection:
+            row = connection.execute(
+                text("SELECT * FROM players WHERE game_id = :game_id FOR UPDATE"),
+                {"game_id": str(game_id)},
+            ).mappings().first()
+            if row is None:
+                return None
+
+            player = self._row_to_player(row)
+            if not isinstance(player, dict):
+                return None
+
+            if not try_mark_timer_claimed(
+                player,
+                str(timer_id),
+                str(owner),
+                claim_ttl_seconds=claim_ttl_seconds,
+                platform_filter=platform_filter,
+                now=time.time(),
+            ):
+                return None
+
+            player["game_id"] = str(game_id)
+            player["id"] = str(game_id)
+            player["extra"] = self._build_extra_payload(player)
+            connection.execute(
+                text("UPDATE players SET extra = CAST(:extra AS jsonb), updated_at = now() WHERE game_id = :game_id"),
+                {"game_id": str(game_id), "extra": self._dumps(player["extra"])},
+            )
+            return player
 
     def update_player_by_platform(self, platform: str, external_user_id: str | int, updates: dict[str, Any]) -> dict[str, Any] | None:
         player = self.get_player_by_platform(platform, external_user_id)

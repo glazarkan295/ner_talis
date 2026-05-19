@@ -415,3 +415,13 @@ button { cursor: pointer; }
   .nt-skill-side { min-width: 0; }
   .nt-skill-action { min-width: 58px; padding: 3px 4px; }
 }
+
+.nt-modal-actions .nt-danger {
+  border-color: rgba(175, 77, 52, .78);
+  color: #ffd2c6;
+  background: rgba(111, 35, 24, .40);
+}
+
+.nt-modal-actions .nt-danger:hover {
+  background: rgba(142, 43, 28, .55);
+}

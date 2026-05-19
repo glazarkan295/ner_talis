@@ -1,14 +1,54 @@
+import asyncio
 import re
-
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from keyboards.reply_keyboards import make_keyboard, start_keyboard
 from services.city_service import CITY_BUTTONS, process_world_action
+from services.external_location_service import complete_active_timer
+from services.runtime_timer_scheduler import attach_timer_notification, schedule_timer_delivery
 from storage.base import PlayerStorage
 
 TELEGRAM_PLATFORM = "telegram"
-CITY_BUTTON_PATTERN = "^(" + "|".join(re.escape(button) for button in CITY_BUTTONS) + ")$"
+CITY_BUTTON_PATTERN = r"^.+$"
+
+
+def schedule_telegram_timer(context: ContextTypes.DEFAULT_TYPE, chat_id: int, timer_data: dict | None) -> None:
+    if not timer_data:
+        return
+    storage: PlayerStorage = context.bot_data["storage"]
+    seconds = max(0.05, float(timer_data.get("seconds") or 0.05))
+    game_id = timer_data.get("game_id")
+    timer_id = timer_data.get("timer_id")
+    if not game_id or not timer_id:
+        return
+
+    attach_timer_notification(
+        storage=storage,
+        game_id=str(game_id),
+        timer_id=str(timer_id),
+        platform=TELEGRAM_PLATFORM,
+        target_id=str(chat_id),
+    )
+
+    def send_timer_result(_platform: str, target_id: str, response) -> None:
+        asyncio.run(
+            context.bot.send_message(
+                chat_id=int(target_id),
+                text=response.text,
+                reply_markup=make_keyboard(response.buttons),
+                disable_web_page_preview=True,
+            )
+        )
+
+    schedule_timer_delivery(
+        storage=storage,
+        game_id=str(game_id),
+        timer_id=str(timer_id),
+        seconds=seconds,
+        send_callback=send_timer_result,
+        platform_filter=TELEGRAM_PLATFORM,
+    )
 
 
 def get_external_user_id(update: Update) -> str:
@@ -51,3 +91,4 @@ async def send_city_response(
         reply_markup=make_keyboard(result.buttons),
         disable_web_page_preview=True,
     )
+    schedule_telegram_timer(context, update.effective_chat.id, result.scheduled_timer)

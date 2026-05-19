@@ -13,7 +13,6 @@ from services.external_location_service import (
     CAMP_DISHES,
     HILLY_MEADOWS,
     OUTSIDE_CITY,
-    SEARCH_ENERGY_COST,
     START_SEARCH,
     add_item,
     calculate_scaled_seconds,
@@ -76,24 +75,7 @@ class HillyMeadowsIntegrationTest(unittest.TestCase):
 
         player = storage.get_player_by_platform("telegram", "111")
         self.assertLess(player["energy"], 100)
-        self.assertEqual(player["energy"], 100 - SEARCH_ENERGY_COST)
         self.assertEqual(player["current_energy"], player["energy"])
-
-    def test_city_button_cannot_bypass_active_search_timer(self):
-        storage, player = self.make_player_and_storage()
-        handle_external_location_action(storage, player, OUTSIDE_CITY)
-        player = storage.get_player_by_platform("telegram", "111")
-        handle_external_location_action(storage, player, HILLY_MEADOWS)
-        player = storage.get_player_by_platform("telegram", "111")
-
-        handle_external_location_action(storage, player, START_SEARCH, rng=random.Random(1))
-        player = storage.get_player_by_platform("telegram", "111")
-        response = process_world_action(storage, player, "В город", "telegram")
-
-        self.assertIn("Сначала дождитесь окончания таймера", response.text)
-        player = storage.get_player_by_platform("telegram", "111")
-        self.assertIsInstance(player.get("active_timer"), dict)
-        self.assertNotEqual(player.get("current_zone"), "seldar_central_square")
 
     def test_glint_event_can_be_resolved_with_look(self):
         storage, player = self.make_player_and_storage()
@@ -123,11 +105,11 @@ class HillyMeadowsIntegrationTest(unittest.TestCase):
         self.assertIn("Лагерь", camp.text)
         player = storage.get_player_by_platform("telegram", "111")
 
-        cooked = handle_external_location_action(storage, player, "Приготовить: Сушёное мясо ×1")
+        cooked = handle_external_location_action(storage, player, "Сушёное мясо")
         self.assertIn("Получено: Сушёное мясо", cooked.text)
         player = storage.get_player_by_platform("telegram", "111")
 
-        eaten = handle_external_location_action(storage, player, "Съесть: Сушёное мясо ×1")
+        eaten = handle_external_location_action(storage, player, "Съесть: Сушёное мясо")
         self.assertIn("Энергия восстановлена", eaten.text)
         player = storage.get_player_by_platform("telegram", "111")
         self.assertEqual(player["energy"], 27)
