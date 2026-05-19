@@ -20,6 +20,7 @@ from services.pve_battle_service import (
     create_hilly_meadows_battle,
     handle_battle_action,
 )
+from services.progression_service import grant_experience
 from services.registration_service import create_player, load_races
 from storage.json_storage import JsonStorage
 
@@ -118,6 +119,25 @@ class AssetsAndPveIntegrationTest(unittest.TestCase):
         self.assertIn("нельзя использовать", use_text)
         self.assertEqual(player["inventory"][0]["name"], "Сушёное мясо")
         self.assertEqual(player["inventory"][0]["amount"], 1)
+
+    def test_grant_experience_applies_human_bonus_and_level_up(self):
+        _storage, player = self.make_player_and_storage()
+        result = grant_experience(player, 100)
+
+        self.assertEqual(result["gained"], 102)
+        self.assertEqual(result["level_ups"], 1)
+        self.assertEqual(player["level"], 2)
+        self.assertEqual(player["free_stat_points"], 5)
+        self.assertEqual(player["free_skill_points"], 1)
+        self.assertEqual(player["experience"], 2)
+
+    def test_race_bonuses_affect_combat_stats(self):
+        _storage, player = self.make_player_and_storage()
+        human_stats = calculate_player_derived_stats(player)
+        player["race_id"] = "undead"
+        undead_stats = calculate_player_derived_stats(player)
+
+        self.assertGreater(undead_stats["max_hp"], human_stats["max_hp"])
 
 
 if __name__ == "__main__":

@@ -197,6 +197,10 @@
     "location_id": "seldar_central_square",
     "money": 0,
     "debt": 0,
+    "level": 1,
+    "experience": 0,
+    "experience_to_next": 100,
+    "total_experience": 0,
     "energy": 100,
     "max_energy": 100,
     "bonus_max_energy": 0,
@@ -246,7 +250,7 @@
       "mob_scaling_cap": 50,
       "base_search_time_seconds": 60,
       "max_search_time_seconds": 600,
-      "base_search_energy_cost": 4,
+      "base_search_energy_cost": 2,
       "min_search_energy_cost": 1,
       "danger": "low",
       "common_buttons": [
@@ -299,7 +303,7 @@
           "restore_energy": 50,
           "ingredients": {
             "Чистая вода": 1,
-            "Съедобный корень": 1,
+            "Луговой корень": 1,
             "Съедобный гриб": 1,
             "Сырое мясо": 1
           }
