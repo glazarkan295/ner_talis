@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import math
 import random
+import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Iterable
 
 from services.item_registry import build_inventory_item, get_item_definition_by_name, slugify_fallback_item_id
 from services.pve_battle_service import BATTLE_ACTIONS, battle_buttons, create_hilly_meadows_battle, handle_battle_action
+from services.race_bonus_service import search_event_weights
 
 
 OUTSIDE_CITY = "Выход из города"
@@ -31,12 +34,23 @@ COOK_FOOD = "Приготовить еду"
 EAT_FOOD = "Съесть еду"
 BREAK_CAMP = "Свернуть лагерь"
 BACK_TO_CAMP = "⬅️ В лагерь"
+CHECK_TIMER = "Проверить таймер"
+PROFILE_BUTTON = "Профиль"
 COLLECT = "Собрать"
 SKIP = "Пропустить"
 INSPECT_AND_TAKE = "Осмотреть и забрать"
 LOOK = "Посмотреть"
 LEAVE = "Уйти"
 RETREAT = "Отступить"
+SEARCH_ENERGY_COST = 2
+BASE_SEARCH_EVENT_WEIGHTS = [
+    ("alchemy_ingredient", 25),
+    ("stone_or_ore", 17),
+    ("berries", 20),
+    ("trap", 10),
+    ("glint", 8),
+    ("battle", 20),
+]
 
 CAMP_DISHES = {
     "Сушёное мясо": {
@@ -81,6 +95,7 @@ EXTERNAL_LOCATION_BUTTONS = frozenset(
         EAT_FOOD,
         BREAK_CAMP,
         BACK_TO_CAMP,
+        CHECK_TIMER,
         COLLECT,
         SKIP,
         INSPECT_AND_TAKE,
@@ -94,7 +109,11 @@ EXTERNAL_LOCATION_BUTTONS = frozenset(
         "Отдых",
         "Маршруты",
         *CAMP_DISHES.keys(),
+        *(f"Приготовить: {dish_name} ×1" for dish_name in CAMP_DISHES),
+        *(f"Приготовить: {dish_name} ×10" for dish_name in CAMP_DISHES),
         *(f"Съесть: {dish_name}" for dish_name in CAMP_DISHES),
+        *(f"Съесть: {dish_name} ×1" for dish_name in CAMP_DISHES),
+        *(f"Съесть: {dish_name} ×10" for dish_name in CAMP_DISHES),
     }
 )
 
@@ -104,6 +123,7 @@ class LocationResponse:
     text: str
     buttons: list[list[str]]
     zone_id: str
+    scheduled_timer: dict[str, Any] | None = None
 
 
 def outside_city_buttons() -> list[list[str]]:
@@ -139,23 +159,30 @@ def event_choice_buttons(event_type: str) -> list[list[str]]:
 
 def camp_buttons() -> list[list[str]]:
     return [
+        [PROFILE_BUTTON],
         [COOK_FOOD, EAT_FOOD],
         [BREAK_CAMP],
     ]
 
 
 def cook_buttons() -> list[list[str]]:
-    return [
-        ["Сушёное мясо", "Травяной чай"],
-        ["Лепёшка с мясом"],
-        ["Сытная похлёбка"],
-        [BACK_TO_CAMP],
-    ]
+    rows: list[list[str]] = []
+    for dish_name in CAMP_DISHES:
+        rows.append([f"Приготовить: {dish_name} ×1", f"Приготовить: {dish_name} ×10"])
+    rows.append([BACK_TO_CAMP])
+    return rows
 
 
 def eat_buttons(player: dict[str, Any]) -> list[list[str]]:
-    dishes = [name for name in CAMP_DISHES if get_item_count(player, name) > 0]
-    rows = [[f"Съесть: {name}"] for name in dishes]
+    rows: list[list[str]] = []
+    for name in CAMP_DISHES:
+        count = get_item_count(player, name)
+        if count <= 0:
+            continue
+        if count > 10:
+            rows.append([f"Съесть: {name} ×1", f"Съесть: {name} ×10"])
+        else:
+            rows.append([f"Съесть: {name} ×1"])
     rows.append([BACK_TO_CAMP])
     return rows
 
@@ -171,7 +198,7 @@ def fortress_buttons() -> list[list[str]]:
 
 OUTSIDE_CITY_TEXT = """🗺 Выход из города
 
-Покинув безопасные стены Селдара, вы оказываетесь на развилке. Дороги ведут к ближайшим землям, где можно искать травы, руду, дичь, случайные находки и опасности.
+Покинув безопасные стены Селдара, вы оказываетесь на развилке. Дороги ведут к ближайшим землям, где можно искать травы, руду, дичь и случайные находки.
 
 Доступные направления:
 • Малое плато
@@ -183,7 +210,6 @@ HILLY_MEADOWS_TEXT = """🌿 Холмистые луга
 
 Перед вами раскинулись Холмистые луга. Невысокие зелёные холмы тянутся до самого горизонта, трава колышется под ветром, а между склонами прячутся цветы, ягоды, звериные норы и случайные следы чужих путников.
 
-Опасность: низкая.
 Поиск тратит энергию и запускает случайное событие."""
 
 FORTRESS_TEXT = """🏰 Крепость в ущелье
@@ -258,6 +284,83 @@ def sync_money_fields(player: dict[str, Any]) -> None:
     money = max(0, money)
     player["money"] = money
     player["money_copper"] = money
+
+
+def format_duration(seconds: int) -> str:
+    seconds = max(0, int(seconds or 0))
+    minutes, sec = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    parts: list[str] = []
+    if hours:
+        parts.append(f"{hours} ч")
+    if minutes:
+        parts.append(f"{minutes} мин")
+    if sec or not parts:
+        parts.append(f"{sec} сек")
+    return " ".join(parts)
+
+
+def now_ts() -> float:
+    return time.time()
+
+
+def new_timer_id(prefix: str) -> str:
+    return f"{prefix}_{uuid.uuid4().hex[:12]}"
+
+
+def timer_remaining_seconds(timer: dict[str, Any] | None) -> int:
+    if not isinstance(timer, dict):
+        return 0
+    ends_at = float(timer.get("ends_at") or 0)
+    return max(0, math.ceil(ends_at - now_ts()))
+
+
+def clear_energy_warning_if_recovered(player: dict[str, Any]) -> None:
+    energy = int(player.get("energy", 0) or 0)
+    if energy > 50:
+        player.pop("energy_warning_50_sent", None)
+    if energy > 10:
+        player.pop("energy_warning_10_sent", None)
+
+
+def collect_energy_warning_messages(player: dict[str, Any]) -> list[str]:
+    """Returns threshold messages once when energy falls to 50 or 10."""
+    energy = int(player.get("energy", 0) or 0)
+    messages: list[str] = []
+    if energy <= 50 and not player.get("energy_warning_50_sent"):
+        player["energy_warning_50_sent"] = True
+        messages.append("⚠️ Энергия опустилась до 50 единиц или ниже. Лучше приготовить еду или вернуться в лагерь.")
+    if energy <= 10 and not player.get("energy_warning_10_sent"):
+        player["energy_warning_10_sent"] = True
+        messages.append("🚨 Энергия почти закончилась: 10 единиц или меньше. Дальнейшие поиски могут стать недоступны.")
+    return messages
+
+
+def hp_pair(player: dict[str, Any]) -> tuple[int, int]:
+    max_hp = int(player.get("max_hp") or 100)
+    hp = int(player.get("hp") or max_hp)
+    return max(0, hp), max(1, max_hp)
+
+
+def available_craft_count(player: dict[str, Any], dish_name: str) -> int:
+    dish = CAMP_DISHES[dish_name]
+    counts: list[int] = []
+    for ingredient, amount in dish["ingredients"].items():
+        if ingredient == "Любая съедобная ягода":
+            available = sum(get_item_count(player, berry) for berry in EDIBLE_BERRIES)
+        else:
+            available = get_item_count(player, ingredient)
+        counts.append(available // max(1, amount))
+    return min(counts) if counts else 0
+
+
+def build_timer_schedule(player: dict[str, Any], timer: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "timer_id": timer.get("id"),
+        "game_id": player.get("game_id") or player.get("id"),
+        "seconds": int(timer.get("seconds") or timer_remaining_seconds(timer)),
+        "type": timer.get("type"),
+    }
 
 
 def weighted_choice(weighted_items: Iterable[tuple[str, int]], rng: random.Random) -> str:
@@ -419,24 +522,38 @@ def enter_camp(storage: Any, player: dict[str, Any]) -> LocationResponse:
         return LocationResponse("Нельзя разбить лагерь во время боя.", hilly_meadows_buttons(), player.get("current_zone", "hilly_meadows"))
 
     rest_time = calculate_scaled_seconds(int(player.get("energy", 100)), int(player.get("max_energy", 100)), 30, 600)
+    timer = {
+        "id": new_timer_id("camp_rest"),
+        "type": "camp_rest",
+        "seconds": rest_time,
+        "ends_at": now_ts() + rest_time,
+        "location_id": "hilly_meadows_camp",
+    }
     player["current_zone"] = "hilly_meadows_camp"
     player["location_id"] = "hilly_meadows_camp"
-    player["active_timer"] = {"type": "camp_rest", "seconds": rest_time}
-    for current_key, max_key in (("hp", "max_hp"), ("mana", "max_mana"), ("spirit", "max_spirit")):
-        if player.get(max_key) is not None:
-            player[current_key] = player[max_key]
-    player["active_timer"] = None
+    player["active_timer"] = timer
     storage.update_player(player)
-    return LocationResponse(f"{CAMP_TEXT}\n\nВремя отдыха по текущей энергии: {rest_time} сек.", camp_buttons(), "hilly_meadows_camp")
+    hp, max_hp = hp_pair(player)
+    text = (
+        f"{CAMP_TEXT}\n\n"
+        "🛏 Отдых начался.\n"
+        f"⏳ Время отдыха: {format_duration(rest_time)}\n"
+        f"❤️ Жизни сейчас: {hp}/{max_hp}\n\n"
+        "Если свернуть лагерь раньше окончания отдыха, восстановление не сработает."
+    )
+    return LocationResponse(text, camp_buttons(), "hilly_meadows_camp", scheduled_timer=build_timer_schedule(player, timer))
 
 
 def leave_camp(storage: Any, player: dict[str, Any]) -> LocationResponse:
     ensure_external_fields(player)
     player["current_zone"] = "hilly_meadows"
     player["location_id"] = "hilly_meadows"
+    was_resting = isinstance(player.get("active_timer"), dict) and player["active_timer"].get("type") == "camp_rest"
     player["active_timer"] = None
     storage.update_player(player)
-    return LocationResponse("Вы сворачиваете лагерь и возвращаетесь к тропам Холмистых лугов.", hilly_meadows_buttons(), "hilly_meadows")
+    if was_resting:
+        return LocationResponse("⛺ Вы свернули лагерь раньше окончания отдыха. Таймер сброшен, показатели не восстановлены.", hilly_meadows_buttons(), "hilly_meadows")
+    return LocationResponse("⛺ Вы сворачиваете лагерь и возвращаетесь к тропам Холмистых лугов.", hilly_meadows_buttons(), "hilly_meadows")
 
 
 def return_to_gates(storage: Any, player: dict[str, Any]) -> LocationResponse:
@@ -469,50 +586,126 @@ def start_search(storage: Any, player: dict[str, Any], rng: random.Random | None
     if player.get("active_event"):
         event_type = player["active_event"].get("type", "")
         return LocationResponse("Сначала завершите текущее событие.", event_choice_buttons(event_type), "hilly_meadows")
+    if isinstance(player.get("active_timer"), dict):
+        remaining = timer_remaining_seconds(player.get("active_timer"))
+        if remaining > 0:
+            return LocationResponse(
+                f"⏳ Уже идёт действие с таймером. Осталось: {format_duration(remaining)}.",
+                [[CHECK_TIMER], [RETURN_TO_CITY]],
+                player.get("current_zone", "hilly_meadows"),
+            )
+        return complete_active_timer(storage, player, player.get("active_timer", {}).get("id"), rng)
 
     energy = int(player.get("energy", 0) or 0)
     max_energy = int(player.get("max_energy", 100) or 100)
     if energy < 1:
-        return LocationResponse("Недостаточно энергии даже для минимального поиска. Съешьте блюдо или восстановитесь другим способом.", hilly_meadows_buttons(), "hilly_meadows")
+        return LocationResponse("⚡ Недостаточно энергии даже для минимального поиска. Съешьте блюдо или восстановитесь другим способом.", hilly_meadows_buttons(), "hilly_meadows")
 
     seconds = calculate_scaled_seconds(energy, max_energy, 60, 600)
-    cost = 4 if energy >= 4 else 1
+    cost = min(SEARCH_ENERGY_COST, energy)
     player["energy"] = max(0, energy - cost)
     player["current_energy"] = player["energy"]
     player["last_search_time_seconds"] = seconds
 
-    event_type = weighted_choice(
-        [
-            ("alchemy_ingredient", 25),
-            ("stone_or_ore", 17),
-            ("berries", 20),
-            ("trap", 10),
-            ("glint", 8),
-            ("battle", 20),
-        ],
-        rng,
+    event_type = weighted_choice(search_event_weights(player, BASE_SEARCH_EVENT_WEIGHTS), rng)
+
+    payload: dict[str, Any]
+    if event_type == "trap":
+        payload = {"type": "trap"}
+    elif event_type == "battle":
+        payload = {"type": "battle"}
+    else:
+        payload = create_search_event(event_type, rng)
+
+    timer = {
+        "id": new_timer_id("search"),
+        "type": "search",
+        "seconds": seconds,
+        "ends_at": now_ts() + seconds,
+        "energy_spent": cost,
+        "event": payload,
+        "location_id": "hilly_meadows",
+    }
+    player["active_timer"] = timer
+    warnings = collect_energy_warning_messages(player)
+    storage.update_player(player)
+    hp, max_hp = hp_pair(player)
+    lines = [
+        "🔎 Поиск начался",
+        "━━━━━━━━━━━━",
+        f"⏳ Время поиска: {format_duration(seconds)}",
+        f"⚡ Потрачено энергии: {cost}",
+        f"⚡ Осталось энергии: {player['energy']}/{max_energy}",
+        f"❤️ Жизни: {hp}/{max_hp}",
+    ]
+    if warnings:
+        lines.extend(["", *warnings])
+    lines.append("\nКогда таймер закончится, придёт сообщение с найденным событием.")
+    return LocationResponse(
+        "\n".join(lines),
+        [[CHECK_TIMER], [RETURN_TO_CITY]],
+        "hilly_meadows_search",
+        scheduled_timer=build_timer_schedule(player, timer),
     )
+
+
+def complete_active_timer(storage: Any, player: dict[str, Any], timer_id: str | None = None, rng: random.Random | None = None) -> LocationResponse:
+    rng = rng or random.Random()
+    ensure_external_fields(player)
+    timer = player.get("active_timer")
+    if not isinstance(timer, dict):
+        return LocationResponse("⏳ Активного таймера нет.", hilly_meadows_buttons(), player.get("current_zone", "hilly_meadows"))
+    if timer_id and timer.get("id") != timer_id:
+        return LocationResponse("⏳ Этот таймер уже неактуален.", hilly_meadows_buttons(), player.get("current_zone", "hilly_meadows"))
+    remaining = timer_remaining_seconds(timer)
+    if remaining > 0:
+        return LocationResponse(
+            f"⏳ Таймер ещё идёт. Осталось: {format_duration(remaining)}.",
+            [[CHECK_TIMER], [RETURN_TO_CITY]],
+            player.get("current_zone", "hilly_meadows"),
+        )
+
+    timer_type = timer.get("type")
+    if timer_type == "camp_rest":
+        for current_key, max_key in (("hp", "max_hp"), ("mana", "max_mana"), ("spirit", "max_spirit")):
+            if player.get(max_key) is not None:
+                player[current_key] = player[max_key]
+        player["active_timer"] = None
+        storage.update_player(player)
+        return LocationResponse(
+            "✅ Отдых завершён.\n\n❤️ Жизни, ✨ мана и 🔥 дух восстановлены до максимума.",
+            camp_buttons(),
+            "hilly_meadows_camp",
+        )
+
+    if timer_type != "search":
+        player["active_timer"] = None
+        storage.update_player(player)
+        return LocationResponse("⏳ Неизвестный таймер завершён и был очищен.", hilly_meadows_buttons(), "hilly_meadows")
+
+    event = timer.get("event") or {}
+    event_type = event.get("type")
+    player["active_timer"] = None
+    player["current_zone"] = "hilly_meadows"
+    player["location_id"] = "hilly_meadows"
 
     if event_type == "trap":
         text = resolve_trap(player, rng)
+        warnings = collect_energy_warning_messages(player)
         storage.update_player(player)
-        return LocationResponse(f"🔎 Поиск занял примерно {seconds} сек. Потрачено энергии: {cost}.\n\n{text}", hilly_meadows_buttons(), "hilly_meadows")
+        extra = "\n\n" + "\n".join(warnings) if warnings else ""
+        return LocationResponse(f"✅ Поиск завершён.\n\n{text}{extra}", hilly_meadows_buttons(), "hilly_meadows")
 
     if event_type == "battle":
         _battle, battle_text = create_hilly_meadows_battle(player, rng)
         storage.update_player(player)
-        return LocationResponse(
-            f"🔎 Поиск занял примерно {seconds} сек. Потрачено энергии: {cost}.\n\n{battle_text}",
-            battle_buttons(),
-            "hilly_meadows_battle",
-        )
+        return LocationResponse(f"✅ Поиск завершён.\n\n{battle_text}", battle_buttons(player), "hilly_meadows_battle")
 
-    event = create_search_event(event_type, rng)
     player["active_event"] = event
     storage.update_player(player)
     return LocationResponse(
-        f"🔎 Поиск занял примерно {seconds} сек. Потрачено энергии: {cost}.\n\n{event['text']}",
-        event_choice_buttons(event_type),
+        f"✅ Поиск завершён.\n\n{event.get('text', 'Вы нашли событие.')}",
+        event_choice_buttons(str(event_type or "")),
         "hilly_meadows",
     )
 
@@ -653,21 +846,24 @@ def show_cooking_menu(storage: Any, player: dict[str, Any]) -> LocationResponse:
     recipe_lines = ["🔥 Готовка в лагере", "", "Выберите простое лагерное блюдо:"]
     for dish_name, data in CAMP_DISHES.items():
         ingredients = "; ".join(f"{name} ×{amount}" for name, amount in data["ingredients"].items())
-        recipe_lines.append(f"• {dish_name}: {ingredients}. Энергия +{data['restore_energy']}.")
+        can_craft = available_craft_count(player, dish_name)
+        mark = "✅" if can_craft > 0 else "❌"
+        recipe_lines.append(f"{mark} {dish_name}: {ingredients}. ⚡ Энергия +{data['restore_energy']}. Можно приготовить: {can_craft}.")
     return LocationResponse("\n".join(recipe_lines), cook_buttons(), "hilly_meadows_camp_cooking")
 
 
-def cook_dish(storage: Any, player: dict[str, Any], dish_name: str) -> LocationResponse:
+def cook_dish(storage: Any, player: dict[str, Any], dish_name: str, amount: int = 1) -> LocationResponse:
     ensure_external_fields(player)
+    amount = max(1, min(10, int(amount or 1)))
     dish = CAMP_DISHES[dish_name]
-    missing = [f"{name} ×{amount}" for name, amount in dish["ingredients"].items() if not has_ingredient(player, name, amount)]
+    missing = [f"{name} ×{needed * amount}" for name, needed in dish["ingredients"].items() if not has_ingredient(player, name, needed * amount)]
     if missing:
         return LocationResponse("У вас не хватает простых ингредиентов для этого блюда.\n\nНе хватает: " + ", ".join(missing), cook_buttons(), "hilly_meadows_camp_cooking")
-    for name, amount in dish["ingredients"].items():
-        consume_ingredient(player, name, amount)
-    add_item(player, dish_name, 1, item_id=slugify_item_name(dish_name), max_stack=20)
+    for name, needed in dish["ingredients"].items():
+        consume_ingredient(player, name, needed * amount)
+    add_item(player, dish_name, amount, item_id=slugify_item_name(dish_name), max_stack=20)
     storage.update_player(player)
-    return LocationResponse(f"Вы готовите простое походное блюдо на маленьком костре. Получено: {dish_name} ×1.", cook_buttons(), "hilly_meadows_camp_cooking")
+    return LocationResponse(f"🔥 Вы готовите походное блюдо на маленьком костре.\nПолучено: {dish_name} ×{amount}.", cook_buttons(), "hilly_meadows_camp_cooking")
 
 
 def show_eating_menu(storage: Any, player: dict[str, Any]) -> LocationResponse:
@@ -686,18 +882,20 @@ def show_eating_menu(storage: Any, player: dict[str, Any]) -> LocationResponse:
     return LocationResponse("\n".join(lines), eat_buttons(player), "hilly_meadows_camp_eating")
 
 
-def eat_dish(storage: Any, player: dict[str, Any], dish_name: str) -> LocationResponse:
+def eat_dish(storage: Any, player: dict[str, Any], dish_name: str, amount: int = 1) -> LocationResponse:
     ensure_external_fields(player)
+    amount = max(1, min(10, int(amount or 1)))
     dish = CAMP_DISHES[dish_name]
-    if not remove_item(player, dish_name, 1):
+    if not remove_item(player, dish_name, amount):
         return LocationResponse("Такого блюда нет в инвентаре.", eat_buttons(player), "hilly_meadows_camp_eating")
     before = int(player.get("energy", 0) or 0)
-    restored = int(dish["restore_energy"])
+    restored = int(dish["restore_energy"]) * amount
     player["energy"] = min(int(player.get("max_energy", 100) or 100), before + restored)
     player["current_energy"] = player["energy"]
     actual = player["energy"] - before
+    clear_energy_warning_if_recovered(player)
     storage.update_player(player)
-    return LocationResponse(f"Вы съели {dish_name}. Энергия восстановлена: +{actual}.", eat_buttons(player), "hilly_meadows_camp_eating")
+    return LocationResponse(f"🍽 Вы использовали {dish_name} ×{amount}.\n⚡ Энергия восстановлена: +{actual}. Сейчас: {player['energy']}/{player.get('max_energy', 100)}.", eat_buttons(player), "hilly_meadows_camp_eating")
 
 
 def handle_fortress_action(storage: Any, player: dict[str, Any], action: str) -> LocationResponse:
@@ -709,12 +907,32 @@ def handle_fortress_action(storage: Any, player: dict[str, Any], action: str) ->
         "Доска объявлений": "📜 Доска объявлений крепости\n\nПока объявлений нет. Позже здесь появятся задания перевалочного пункта и сообщения о маршрутах.",
         "Торговец припасами": "🎒 Торговец припасами\n\nТорговец сможет продавать простые припасы для дороги: воду, грубую муку, недорогие ягоды и другие обычные вещи. Полная торговля будет подключена позже.",
         "Отдых": "🛏 Отдых в крепости\n\nКрепость безопасна, поэтому отдых здесь работает ближе к городскому. Полная механика восстановления будет подключена отдельным модулем.",
-        "Маршруты": "🧭 Маршруты\n\nКрепость станет перевалочным пунктом к будущим более опасным территориям. Пока доступен возврат к воротам Селдара.",
+        "Маршруты": "🧭 Маршруты\n\nКрепость станет перевалочным пунктом к будущим дальним территориям. Пока доступен возврат к воротам Селдара.",
     }
     player["current_zone"] = "fortress_in_gorge_" + slugify_item_name(action).removeprefix("item_")
     player["location_id"] = player["current_zone"]
     storage.update_player(player)
     return LocationResponse(mapping.get(action, FORTRESS_TEXT), fortress_buttons(), player["current_zone"])
+
+
+def _parse_name_amount(payload: str) -> tuple[str, int]:
+    payload = str(payload or "").strip()
+    if "×" not in payload:
+        return payload, 1
+    name, raw_amount = payload.rsplit("×", 1)
+    try:
+        amount = int(raw_amount.strip())
+    except ValueError:
+        amount = 1
+    return name.strip(), max(1, amount)
+
+
+def _is_equipped_skill_action(player: dict[str, Any], action: str) -> bool:
+    skills = player.get("skills") or {}
+    for skill in skills.get("equipped", []) if isinstance(skills, dict) else []:
+        if isinstance(skill, dict) and str(skill.get("name") or skill.get("id") or "") == action:
+            return True
+    return False
 
 
 def handle_external_location_action(
@@ -727,11 +945,27 @@ def handle_external_location_action(
     ensure_external_fields(player)
 
     if player.get("in_battle"):
-        if action in BATTLE_ACTIONS:
+        if action in BATTLE_ACTIONS or action.startswith("Цель: ") or action.startswith("Использовать: ") or _is_equipped_skill_action(player, action):
             text, buttons = handle_battle_action(player, action, rng)
             storage.update_player(player)
             return LocationResponse(text, buttons or hilly_meadows_buttons(), player.get("current_zone", "hilly_meadows"))
-        return LocationResponse("Сейчас вы в бою. Сначала завершите бой или сбегите.", battle_buttons(), player.get("current_zone", "hilly_meadows_battle"))
+        return LocationResponse("⚔️ Сейчас вы в бою. Сначала завершите бой или сбегите.", battle_buttons(player), player.get("current_zone", "hilly_meadows_battle"))
+
+    if isinstance(player.get("active_timer"), dict):
+        active_timer = player.get("active_timer") or {}
+        if action == CHECK_TIMER:
+            return complete_active_timer(storage, player, active_timer.get("id"), rng)
+        if timer_remaining_seconds(active_timer) <= 0:
+            return complete_active_timer(storage, player, active_timer.get("id"), rng)
+        if action == BREAK_CAMP:
+            return leave_camp(storage, player)
+        if active_timer.get("type") != "camp_rest":
+            remaining = timer_remaining_seconds(active_timer)
+            return LocationResponse(
+                f"⏳ Сначала дождитесь окончания таймера. Осталось: {format_duration(remaining)}.",
+                [[CHECK_TIMER], [RETURN_TO_CITY]],
+                player.get("current_zone", "hilly_meadows"),
+            )
 
     if action in {OUTSIDE_CITY, LEGACY_OUTSIDE_CITY}:
         return enter_outside_city(storage, player)
@@ -767,10 +1001,16 @@ def handle_external_location_action(
         return LocationResponse(CAMP_TEXT, camp_buttons(), "hilly_meadows_camp")
     if action in CAMP_DISHES:
         return cook_dish(storage, player, action)
-    if action.startswith("Съесть: "):
-        dish_name = action.removeprefix("Съесть: ").strip()
+    if action.startswith("Приготовить: "):
+        payload = action.removeprefix("Приготовить: ").strip()
+        dish_name, amount = _parse_name_amount(payload)
         if dish_name in CAMP_DISHES:
-            return eat_dish(storage, player, dish_name)
+            return cook_dish(storage, player, dish_name, amount)
+    if action.startswith("Съесть: "):
+        payload = action.removeprefix("Съесть: ").strip()
+        dish_name, amount = _parse_name_amount(payload)
+        if dish_name in CAMP_DISHES:
+            return eat_dish(storage, player, dish_name, amount)
     if action in {COLLECT, SKIP, INSPECT_AND_TAKE, LOOK, LEAVE, RETREAT}:
         return resolve_active_event(storage, player, action, rng)
 
