@@ -1,8 +1,14 @@
-"""Runtime helpers for race bonuses used by combat, profile and exploration."""
+"""Runtime helpers for race bonuses used by combat, profile, crafting and exploration."""
 
 from __future__ import annotations
 
+import math
+import random
 from typing import Any
+
+
+UNDEAD_RESISTED_EFFECTS = {"poison", "bleed", "stun", "curse", "яд", "кровотечение", "оглушение", "проклятие"}
+METAL_CRAFT_TYPES = {"weapon", "armor", "equipment", "blacksmithing", "оружие", "броня", "снаряжение", "кузнечное дело"}
 
 
 def race_id(player: dict[str, Any]) -> str:
@@ -26,10 +32,54 @@ def experience_multiplier(player: dict[str, Any]) -> float:
     return 1.02 if race_id(player) == "human" else 1.0
 
 
+def npc_purchase_refund_amount(player: dict[str, Any], spent_copper: int, rng: random.Random | None = None) -> int:
+    """Human racial bonus: 5% chance to refund 3% of an NPC purchase."""
+
+    if race_id(player) != "human" or spent_copper <= 0:
+        return 0
+    rng = rng or random.Random()
+    if rng.uniform(0, 100) > 5:
+        return 0
+    return max(1, int(math.ceil(spent_copper * 0.03)))
+
+
 def outgoing_damage_multiplier(player: dict[str, Any], damage_type: str) -> float:
     if race_id(player) == "elf" and str(damage_type).casefold() == "magic":
         return 1.03
     return 1.0
+
+
+def alchemy_quality_chance_bonus_percent(player: dict[str, Any]) -> int:
+    return 4 if race_id(player) == "elf" else 0
+
+
+def extra_alchemy_ingredient_chance_percent(player: dict[str, Any]) -> int:
+    return 3 if race_id(player) == "elf" else 0
+
+
+def crafting_quality_chance_bonus_percent(player: dict[str, Any], craft_type: str) -> int:
+    craft = str(craft_type or "").casefold()
+    if race_id(player) == "dwarf" and craft in METAL_CRAFT_TYPES:
+        return 4
+    return 0
+
+
+def metal_material_cost_multiplier(player: dict[str, Any], craft_type: str) -> float:
+    craft = str(craft_type or "").casefold()
+    if race_id(player) == "dwarf" and craft in METAL_CRAFT_TYPES:
+        return 0.97
+    return 1.0
+
+
+def effect_resistance_bonus_percent(player: dict[str, Any], effect_type: str) -> int:
+    effect = str(effect_type or "").casefold()
+    if race_id(player) == "undead" and effect in UNDEAD_RESISTED_EFFECTS:
+        return 5
+    return 0
+
+
+def incoming_periodic_damage_multiplier(player: dict[str, Any]) -> float:
+    return 0.97 if race_id(player) == "undead" else 1.0
 
 
 def incoming_physical_damage_multiplier(player: dict[str, Any]) -> float:

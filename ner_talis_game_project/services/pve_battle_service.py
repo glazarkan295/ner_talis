@@ -15,6 +15,7 @@ import uuid
 from dataclasses import asdict
 from typing import Any
 
+from services.derived_stats_service import calculate_player_derived_stats, ensure_player_resources, safe_int, soft_level
 from services.item_registry import build_inventory_item, get_item_definition_by_name
 from services.progression_service import grant_experience
 from services.pve_battle_models import (
@@ -132,100 +133,6 @@ def target_buttons(battle: dict[str, Any], player: dict[str, Any] | None = None)
     rows = [[f"Цель: {index + 1}" for index, _enemy in enumerate(alive_enemies(battle))]]
     rows.extend(battle_buttons(player))
     return rows
-
-
-def soft_level(level: int) -> int:
-    return int(math.floor(10 * math.log2(max(1, level) + 1)))
-
-
-def safe_int(value: Any, default: int = 0) -> int:
-    try:
-        if value is None:
-            return default
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _player_stat(player: dict[str, Any], key: str) -> float:
-    stats = player.get("stats") or {}
-    invested = player.get("invested_stats") or {}
-    bonuses = player.get("stat_bonuses") or {}
-    raw = safe_int(stats.get(key), 0) + safe_int(invested.get(key), 0)
-    return raw * stat_multiplier(player, key) + safe_int(bonuses.get(key), 0)
-
-
-def calculate_player_derived_stats(player: dict[str, Any]) -> dict[str, int]:
-    """Small local copy of the project formulas, enough for PVE state creation."""
-    level = max(1, safe_int(player.get("level"), 1))
-    s_level = soft_level(level)
-    strength = _player_stat(player, "strength")
-    endurance = _player_stat(player, "endurance")
-    dexterity = _player_stat(player, "dexterity")
-    perception = _player_stat(player, "perception")
-    intelligence = _player_stat(player, "intelligence")
-    wisdom = _player_stat(player, "wisdom")
-
-    equipment_armor = 0
-    equipment_magic_armor = 0
-    bonus_hp = safe_int(player.get("bonus_hp"), 0)
-    bonus_spirit = safe_int(player.get("bonus_spirit"), 0)
-    bonus_mana = safe_int(player.get("bonus_mana"), 0)
-    bonus_accuracy = safe_int(player.get("bonus_accuracy"), 0)
-    bonus_dodge = safe_int(player.get("bonus_dodge"), 0)
-    bonus_physical_defense = safe_int(player.get("bonus_physical_defense"), 0)
-    bonus_magic_defense = safe_int(player.get("bonus_magic_defense"), 0)
-
-    for item in (player.get("equipment") or {}).values():
-        if not isinstance(item, dict):
-            continue
-        mods = item.get("stat_modifiers") or {}
-        equipment_armor += safe_int(mods.get("armor"), 0)
-        equipment_magic_armor += safe_int(mods.get("magic_armor"), 0)
-        bonus_hp += safe_int(mods.get("bonus_hp"), 0)
-        bonus_spirit += safe_int(mods.get("bonus_spirit"), 0)
-        bonus_mana += safe_int(mods.get("bonus_mana"), 0)
-        bonus_accuracy += safe_int(mods.get("bonus_accuracy"), 0)
-        bonus_dodge += safe_int(mods.get("bonus_dodge"), 0)
-        bonus_physical_defense += safe_int(mods.get("bonus_physical_defense"), 0)
-        bonus_magic_defense += safe_int(mods.get("bonus_magic_defense"), 0)
-
-    armor = max(0, safe_int(player.get("armor"), 0) + equipment_armor)
-    magic_armor = max(0, safe_int(player.get("magic_armor"), 0) + equipment_magic_armor)
-    max_hp = math.ceil((100 + endurance * 4.0 + strength * 0.8 + s_level * 4 + bonus_hp) * hp_multiplier(player))
-    max_spirit = math.ceil(20 + endurance * 1.2 + strength * 1.0 + dexterity * 0.7 + s_level * 1.2 + bonus_spirit)
-    max_mana = math.ceil(20 + intelligence * 1.6 + wisdom * 1.3 + s_level * 1.2 + bonus_mana)
-    physical_defense = math.ceil(armor * 1.5 + endurance * 0.9 + strength * 0.6 + dexterity * 0.2 + bonus_physical_defense)
-    magic_defense = math.ceil((magic_armor if magic_armor else armor * 0.8) + wisdom * 0.9 + intelligence * 0.6 + endurance * 0.2 + bonus_magic_defense)
-    accuracy = math.ceil(perception * 1.8 + dexterity * 1.1 + s_level * 0.7 + bonus_accuracy)
-    dodge = math.ceil(dexterity * 1.8 + perception * 0.9 + wisdom * 0.3 + s_level * 0.5 + bonus_dodge)
-    return {
-        "level": level,
-        "soft_level": s_level,
-        "max_hp": max(1, max_hp),
-        "max_spirit": max(0, max_spirit),
-        "max_mana": max(0, max_mana),
-        "armor": armor,
-        "magic_armor": max(0, magic_armor),
-        "physical_defense": max(0, physical_defense),
-        "magic_defense": max(0, magic_defense),
-        "accuracy": max(1, accuracy),
-        "dodge": max(1, dodge),
-        "strength": strength,
-        "intelligence": intelligence,
-        "perception": perception,
-    }
-
-
-def ensure_player_resources(player: dict[str, Any]) -> dict[str, int]:
-    stats = calculate_player_derived_stats(player)
-    for current_key, max_key in (("hp", "max_hp"), ("spirit", "max_spirit"), ("mana", "max_mana")):
-        max_value = stats[max_key]
-        player[max_key] = max_value
-        if player.get(current_key) is None:
-            player[current_key] = max_value
-        player[current_key] = max(0, min(max_value, safe_int(player.get(current_key), max_value)))
-    return stats
 
 
 def make_player_battle_state(player: dict[str, Any]) -> PlayerBattleState:
@@ -659,7 +566,7 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
     if progress["level_ups"]:
         rewards.append(
             f"Уровень повышен: {progress['level']} "
-            f"(+{progress['level_ups'] * 5} очк. характеристик, +{progress['level_ups']} очк. навыков)"
+            f"(+{progress['level_ups'] * 5} очк. характеристик, +{progress['level_ups'] * 2} очк. навыков)"
         )
     if loot_lines:
         rewards.append("Добыча: " + ", ".join(loot_lines))

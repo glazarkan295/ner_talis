@@ -312,6 +312,66 @@ class ProfileSiteFixesTest(unittest.TestCase):
             self.assertEqual(values["Энергия"], "100 / 120")
 
 
+    def test_direct_use_rejects_non_consumable_without_spending_item(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["inventory"] = [{"id": "plain_stone", "name": "Обычный камень", "category": "Ресурсы", "amount": 3}]
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            response = TestClient(app).post(
+                f"/api/profile/{token}/inventory/use",
+                json={"item_id": "plain_stone"},
+            )
+
+            self.assertEqual(response.status_code, 400)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(restored["inventory"][0]["amount"], 3)
+
+    def test_energy_bonus_does_not_stack_into_saved_max_energy_when_food_used_twice(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["energy"] = 50
+            player["current_energy"] = 50
+            player["max_energy"] = 100
+            player["equipment"] = {"ring1": {"stat_modifiers": {"bonus_max_energy": 20}}}
+            player["inventory"] = [{"id": "food", "name": "Еда", "category": "Еда", "amount": 2, "energy_restore": 10}]
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            client = TestClient(app)
+            first = client.post(f"/api/profile/{token}/inventory/use", json={"item_id": "food"})
+            second = client.post(f"/api/profile/{token}/inventory/use", json={"item_id": "food"})
+
+            self.assertEqual(first.status_code, 200, first.text)
+            self.assertEqual(second.status_code, 200, second.text)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(restored["max_energy"], 100)
+            values = {row["label"]: row["value"] for row in second.json()["profile"]["parameters"]}
+            self.assertEqual(values["Энергия"], "70 / 120")
+
+    def test_profile_inventory_categories_split_consumables_resources_and_mob_loot(self):
+        player = self._new_player()
+        player["inventory"] = [
+            {"id": "tea", "name": "Травяной чай", "category": "Еда", "amount": 1, "energy_restore": 20},
+            {"id": "ore", "name": "Кусок медной руды", "category": "resources", "subtype": "ore", "amount": 1},
+            {"id": "fang", "name": "Клык шакала", "category": "Трофеи", "source": "mob", "amount": 1},
+        ]
+
+        profile = frontend_profile(player)
+        categories = {item["name"]: item["category"] for item in profile["inventory"]}
+
+        self.assertEqual(categories["Травяной чай"], "Расходники")
+        self.assertEqual(categories["Кусок медной руды"], "Ресурсы")
+        self.assertEqual(categories["Клык шакала"], "Добыча")
+
+
     def test_skills_can_be_equipped_and_unequipped_through_private_profile_token(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             storage = JsonStorage(str(Path(tmp_dir) / "players.json"))

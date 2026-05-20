@@ -36,6 +36,16 @@ class AssetsAndPveIntegrationTest(unittest.TestCase):
         storage.save_new_player(player, "telegram", "111")
         return storage, storage.get_player_by_platform("telegram", "111")
 
+    def equip_basic_attack(self, storage, player):
+        skills = player.setdefault("skills", {})
+        active = skills.setdefault("active", [])
+        equipped = skills.setdefault("equipped", [])
+        basic = next(skill for skill in active if skill.get("id") == "basic_attack")
+        active.remove(basic)
+        equipped.append(basic)
+        storage.update_player(player)
+        return storage.get_player_by_platform("telegram", "111")
+
     def test_hilly_meadows_item_registry_is_loaded(self):
         items = load_item_definitions()
         self.assertEqual(len(items), 35)
@@ -73,6 +83,7 @@ class AssetsAndPveIntegrationTest(unittest.TestCase):
         player = storage.get_player_by_platform("telegram", "111")
         handle_external_location_action(storage, player, HILLY_MEADOWS)
         player = storage.get_player_by_platform("telegram", "111")
+        player = self.equip_basic_attack(storage, player)
 
         response = handle_external_location_action(storage, player, START_SEARCH, rng=random.Random(0))
         self.assertIn("Поиск начался", response.text)
@@ -87,10 +98,21 @@ class AssetsAndPveIntegrationTest(unittest.TestCase):
         self.assertIsInstance(player.get("active_battle"), dict)
         self.assertGreaterEqual(len(player["active_battle"]["enemies"]), 1)
 
+    def test_search_requires_equipped_attack_skill(self):
+        storage, player = self.make_player_and_storage()
+        player["current_location"] = "hilly_meadows"
+        player["current_zone"] = "hilly_meadows"
+
+        response = handle_external_location_action(storage, player, START_SEARCH, rng=random.Random(0))
+
+        self.assertIn("экипируйте", response.text.casefold())
+        self.assertIsNone(player.get("active_timer"))
+
     def test_battle_action_updates_or_ends_battle(self):
         storage, player = self.make_player_and_storage()
         player["current_location"] = "hilly_meadows"
         player["current_zone"] = "hilly_meadows"
+        player = self.equip_basic_attack(storage, player)
         response = handle_external_location_action(storage, player, START_SEARCH, rng=random.Random(0))
         self.assertIn("Поиск начался", response.text)
         player = storage.get_player_by_platform("telegram", "111")
@@ -128,7 +150,7 @@ class AssetsAndPveIntegrationTest(unittest.TestCase):
         self.assertEqual(result["level_ups"], 1)
         self.assertEqual(player["level"], 2)
         self.assertEqual(player["free_stat_points"], 5)
-        self.assertEqual(player["free_skill_points"], 1)
+        self.assertEqual(player["free_skill_points"], 2)
         self.assertEqual(player["experience"], 2)
 
     def test_race_bonuses_affect_combat_stats(self):

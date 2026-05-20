@@ -15,6 +15,7 @@ from services.external_location_service import (
     OUTSIDE_CITY,
     SEARCH_ENERGY_COST,
     START_SEARCH,
+    BACK,
     add_item,
     calculate_scaled_seconds,
     create_search_event,
@@ -42,6 +43,16 @@ class HillyMeadowsIntegrationTest(unittest.TestCase):
         storage.save_new_player(player, "telegram", "111")
         return storage, storage.get_player_by_platform("telegram", "111")
 
+    def equip_basic_attack(self, storage, player):
+        skills = player.setdefault("skills", {})
+        active = skills.setdefault("active", [])
+        equipped = skills.setdefault("equipped", [])
+        basic = next(skill for skill in active if skill.get("id") == "basic_attack")
+        active.remove(basic)
+        equipped.append(basic)
+        storage.update_player(player)
+        return storage.get_player_by_platform("telegram", "111")
+
     def test_city_buttons_include_external_location_actions(self):
         self.assertIn(OUTSIDE_CITY, CITY_BUTTONS)
         self.assertIn(HILLY_MEADOWS, CITY_BUTTONS)
@@ -64,20 +75,44 @@ class HillyMeadowsIntegrationTest(unittest.TestCase):
         self.assertEqual(player["current_location"], "hilly_meadows")
         self.assertEqual(player["current_zone"], "hilly_meadows")
 
+    def test_process_world_action_keeps_timer_schedule(self):
+        storage, player = self.make_player_and_storage()
+        handle_external_location_action(storage, player, OUTSIDE_CITY)
+        player = storage.get_player_by_platform("telegram", "111")
+        handle_external_location_action(storage, player, HILLY_MEADOWS)
+        player = storage.get_player_by_platform("telegram", "111")
+        player = self.equip_basic_attack(storage, player)
+
+        response = process_world_action(storage, player, START_SEARCH, "telegram")
+
+        self.assertIsNotNone(response.scheduled_timer)
+        self.assertIn([BACK], response.buttons)
+
     def test_search_spends_energy_and_creates_or_resolves_event(self):
         storage, player = self.make_player_and_storage()
         handle_external_location_action(storage, player, OUTSIDE_CITY)
         player = storage.get_player_by_platform("telegram", "111")
         handle_external_location_action(storage, player, HILLY_MEADOWS)
         player = storage.get_player_by_platform("telegram", "111")
+        player = self.equip_basic_attack(storage, player)
 
         response = handle_external_location_action(storage, player, START_SEARCH, rng=random.Random(1))
         self.assertIn("Потрачено энергии", response.text)
+        self.assertIn([BACK], response.buttons)
+        self.assertNotIn(["Вернуться в город"], response.buttons)
+        self.assertIsNotNone(response.scheduled_timer)
 
         player = storage.get_player_by_platform("telegram", "111")
         self.assertLess(player["energy"], 100)
         self.assertEqual(player["energy"], 100 - SEARCH_ENERGY_COST)
         self.assertEqual(player["current_energy"], player["energy"])
+
+        back_response = handle_external_location_action(storage, player, BACK, rng=random.Random(2))
+        self.assertIn("прекратили поиск", back_response.text)
+        self.assertIn([START_SEARCH], back_response.buttons)
+        player = storage.get_player_by_platform("telegram", "111")
+        self.assertIsNone(player.get("active_timer"))
+        self.assertEqual(player.get("current_zone"), "hilly_meadows")
 
     def test_glint_event_can_be_resolved_with_look(self):
         storage, player = self.make_player_and_storage()

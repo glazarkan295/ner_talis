@@ -39,7 +39,7 @@ def grant_experience(player: dict[str, Any], base_amount: int) -> dict[str, Any]
         player["experience"] -= required
         player["level"] = level + 1
         player["free_stat_points"] = safe_int(player.get("free_stat_points"), 0) + 5
-        player["free_skill_points"] = safe_int(player.get("free_skill_points"), 0) + 1
+        player["free_skill_points"] = safe_int(player.get("free_skill_points"), 0) + 2
         level_ups += 1
 
     return {
