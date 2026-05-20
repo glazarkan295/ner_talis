@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 
 import vk_api
 from vk_api.bot_longpoll import VkBotEventType, VkBotLongPoll
@@ -39,6 +40,7 @@ STATE_AWAITING_RACE = "awaiting_race"
 STATE_RACE_CARD = "race_card"
 STATE_RACE_CONFIRM = "race_confirm"
 VK_PLATFORM = "vk"
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -79,11 +81,21 @@ class VkRegistrationBot:
             if not peer_id or not from_id or not text:
                 continue
 
-            self.handle_message(
-                external_user_id=str(from_id),
-                peer_id=peer_id,
-                text=text,
-            )
+            try:
+                self.handle_message(
+                    external_user_id=str(from_id),
+                    peer_id=peer_id,
+                    text=text,
+                )
+            except Exception:
+                logger.exception("VK message handling failed: peer_id=%s from_id=%s text=%r", peer_id, from_id, text)
+                try:
+                    self.send(
+                        peer_id,
+                        "Команда не выполнилась из-за внутренней ошибки. Попробуйте ещё раз или вернитесь в город командой /city.",
+                    )
+                except Exception:
+                    logger.exception("Failed to send VK error notice: peer_id=%s", peer_id)
 
     def handle_message(self, external_user_id: str, peer_id: int, text: str) -> None:
         session_key = f"{VK_PLATFORM}:{external_user_id}"

@@ -16,6 +16,20 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from services.derived_stats_service import (
+    calculate_player_derived_stats,
+    calculate_energy_stats,
+    collect_modifiers_from_value,
+    contains_formula_text,
+    equipment_bonus,
+    equipment_modifier_totals,
+    equipment_stat_bonus,
+    external_effect_modifier_totals,
+    merge_modifier_totals,
+    safe_int,
+    strip_hidden_formulas,
+    ensure_player_resources,
+)
 from services.item_registry import enrich_inventory_item
 from services.race_bonus_service import hp_multiplier, outgoing_damage_multiplier, stat_multiplier
 from services.web_profile import PROFILE_SCOPE
@@ -68,10 +82,17 @@ ITEM_VALUE_TRANSLATIONS = {
     "armor": "Броня",
     "jewelry": "Бижутерия",
     "accessory": "Аксессуар",
-    "consumable": "Расходник",
-    "potion": "Зелье",
-    "food": "Еда",
-    "drink": "Напиток",
+    "consumable": "Расходники",
+    "consumables": "Расходники",
+    "potion": "Расходники",
+    "potion_item": "Расходники",
+    "combat_item": "Расходники",
+    "battle_item": "Расходники",
+    "single_use": "Расходники",
+    "one_time": "Расходники",
+    "food": "Расходники",
+    "drink": "Расходники",
+    "camp_food": "Расходники",
     "resource": "Ресурс",
     "resources": "Ресурсы",
     "location_resource": "Ресурсы",
@@ -96,7 +117,6 @@ ITEM_VALUE_TRANSLATIONS = {
     "cloth_headwear": "Тканевый головной убор",
     "ring": "Кольцо",
     "necklace": "Ожерелье",
-    "bracelet": "Браслет",
     "helmet": "Шлем",
     "chest": "Нагрудник",
     "pants": "Штаны",
@@ -394,15 +414,14 @@ def apply_energy_restore(player: dict[str, Any], item: dict[str, Any]) -> int:
     restore = item_energy_restore(item)
     if restore <= 0:
         return 0
-    equipment_modifiers = equipment_modifier_totals(player)
-    external_modifiers = external_effect_modifier_totals(player)
-    bonus_modifiers = merge_modifier_totals(equipment_modifiers, external_modifiers)
-    max_energy = max(1, safe_int(player.get("max_energy"), 100) + equipment_bonus(bonus_modifiers, "bonus_max_energy"))
-    current = max(0, min(max_energy, safe_int(player.get("energy"), max_energy)))
+    bonus_modifiers = merge_modifier_totals(equipment_modifier_totals(player), external_effect_modifier_totals(player))
+    energy_stats = calculate_energy_stats(player, bonus_modifiers)
+    max_energy = energy_stats["max_energy"]
+    current = energy_stats["current_energy"]
     bonus_percent = max(0, safe_int(player.get("bonus_energy_restore_percent"), 0) + equipment_bonus(bonus_modifiers, "bonus_energy_restore_percent"))
     final_restore = ceil(restore * (1 + bonus_percent / 100))
     new_value = min(max_energy, current + final_restore)
-    player["max_energy"] = max_energy
+    player.setdefault("base_max_energy", energy_stats["base_max_energy"])
     player["energy"] = new_value
     player["current_energy"] = new_value
     if new_value > 50:
@@ -610,6 +629,51 @@ def strip_hidden_formulas(value: Any) -> Any:
     return value
 
 
+
+CONSUMABLE_CATEGORY_MARKERS = {
+    "алхимия", "еда", "напитки", "напиток", "зелье", "зелья", "расходник", "расходники",
+    "consumable", "consumables", "potion", "food", "drink", "camp_food", "combat_item",
+    "battle_item", "single_use", "one_time", "одноразовый", "боевой предмет",
+}
+RESOURCE_TYPE_MARKERS = {
+    "ore", "wood", "tree", "herb", "flower", "mushroom", "stone", "resource", "resources",
+    "руда", "дерево", "древесина", "трава", "травы", "цветок", "цветы", "гриб", "грибы",
+    "камень", "камни", "корень", "корни", "ягода", "ягоды", "ингредиент", "ингредиенты",
+}
+MOB_LOOT_MARKERS = ("моб", "добыч", "pve", "enemy", "monster", "mob")
+
+
+def _text_parts_for_category(item: dict[str, Any]) -> set[str]:
+    parts = {
+        str(item.get("category") or "").casefold(),
+        str(item.get("type") or "").casefold(),
+        str(item.get("subtype") or "").casefold(),
+        str(item.get("item_class") or "").casefold(),
+    }
+    tags = item.get("integration_tags") or item.get("tags") or []
+    if isinstance(tags, list):
+        parts.update(str(tag).casefold() for tag in tags)
+    return {part for part in parts if part}
+
+
+def classify_profile_inventory_category(item: dict[str, Any], current_category: str) -> str:
+    source_text = str(item.get("source") or item.get("origin") or "").casefold()
+    parts = _text_parts_for_category(item)
+    if any(marker in source_text for marker in MOB_LOOT_MARKERS) or current_category in {"Добыча", "Трофеи"}:
+        return "Добыча"
+    if item_energy_restore(item) > 0 or parts & CONSUMABLE_CATEGORY_MARKERS:
+        return "Расходники"
+    if current_category in {"Ресурс", "Ресурсы", "Ингредиенты"} or parts & RESOURCE_TYPE_MARKERS:
+        return "Ресурсы"
+    return current_category
+
+
+def is_inventory_item_usable(item: dict[str, Any]) -> bool:
+    category = str(item.get("category") or "").casefold()
+    parts = _text_parts_for_category(item)
+    has_effect = consumable_effect_from_item(item) is not None
+    return item_energy_restore(item) > 0 or has_effect or category == "расходники" or bool(parts & CONSUMABLE_CATEGORY_MARKERS)
+
 def normalize_item(item: dict[str, Any], default_category: str = "Прочее") -> dict[str, Any]:
     item = enrich_inventory_item(item)
     normalized = strip_hidden_formulas(deepcopy(item))
@@ -618,14 +682,7 @@ def normalize_item(item: dict[str, Any], default_category: str = "Прочее")
     normalized.setdefault("id", normalized.get("item_id") or normalized.get("name") or "item")
     normalized["name"] = translate_item_name(normalized.get("name"))
     normalized["category"] = translate_item_value(normalized.get("category") or default_category)
-    source_text = str(normalized.get("source") or normalized.get("origin") or "").casefold()
-    type_text = str(normalized.get("type") or "").casefold()
-    if any(marker in source_text for marker in ("моб", "добыч", "pve", "enemy", "monster", "mob")):
-        normalized["category"] = "Добыча"
-    elif normalized.get("category") in {"Ресурс", "resource", "resources"}:
-        normalized["category"] = "Ресурсы"
-    elif any(marker in type_text for marker in ("ore", "wood", "herb", "mushroom", "stone", "resource", "руда", "дерево", "трава", "гриб", "камень")):
-        normalized["category"] = "Ресурсы"
+    normalized["category"] = classify_profile_inventory_category(normalized, str(normalized.get("category") or "Прочее"))
     raw_subtype = normalized.get("subtype")
     raw_type = normalized.get("type") or normalized.get("slotKey") or normalized.get("slot") or "Предмет"
     translated_subtype = translate_item_value(raw_subtype) if raw_subtype else None
@@ -642,7 +699,7 @@ def normalize_item(item: dict[str, Any], default_category: str = "Прочее")
     normalized.setdefault("amount", 1)
     energy_restore = item_energy_restore(normalized)
     if energy_restore > 0:
-        normalized["category"] = "Еда" if normalized.get("category") not in {"Напитки", "Алхимия"} else normalized.get("category")
+        normalized["category"] = "Расходники"
         stats = list(normalized.get("stats") or [])
         if not any("энерг" in str(line).casefold() for line in stats):
             stats.append(f"Восстановление энергии: +{energy_restore}")
@@ -723,27 +780,29 @@ def normalize_skill(
 
 
 def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
-    level = safe_int(player.get("level"), 1) or 1
-    s_level = soft_level(level)
-    equipment_modifiers = equipment_modifier_totals(player)
-    external_modifiers = external_effect_modifier_totals(player)
-    bonus_modifiers = merge_modifier_totals(equipment_modifiers, external_modifiers)
-    eff = {front_key: effective_stat(player, back_key, bonus_modifiers) for front_key, back_key, *_ in ATTRIBUTE_META}
-    armor = safe_int(player.get("armor"), 0) + equipment_bonus(bonus_modifiers, "armor")
-    magic_armor = safe_int(player.get("magic_armor"), safe_int(player.get("armor"), 0)) + equipment_bonus(bonus_modifiers, "magic_armor")
-
-    hp_max = ceil((100 + eff["endurance"] * 4.0 + eff["strength"] * 0.8 + s_level * 4 + safe_int(player.get("bonus_hp"), 0) + equipment_bonus(bonus_modifiers, "bonus_hp")) * hp_multiplier(player))
-    spirit_max = ceil(20 + eff["endurance"] * 1.2 + eff["strength"] * 1.0 + eff["agility"] * 0.7 + s_level * 1.2 + safe_int(player.get("bonus_spirit"), 0) + equipment_bonus(bonus_modifiers, "bonus_spirit"))
-    mana_max = ceil(20 + eff["intelligence"] * 1.6 + eff["wisdom"] * 1.3 + s_level * 1.2 + safe_int(player.get("bonus_mana"), 0) + equipment_bonus(bonus_modifiers, "bonus_mana"))
-    physical_defense = ceil(armor * 1.5 + eff["endurance"] * 0.9 + eff["strength"] * 0.6 + eff["agility"] * 0.2 + safe_int(player.get("bonus_physical_defense"), 0) + equipment_bonus(bonus_modifiers, "bonus_physical_defense"))
-    magic_defense = ceil(magic_armor * 1.5 + eff["wisdom"] * 0.9 + eff["intelligence"] * 0.6 + eff["endurance"] * 0.2 + safe_int(player.get("bonus_magic_defense"), 0) + equipment_bonus(bonus_modifiers, "bonus_magic_defense"))
-    accuracy = ceil(eff["perception"] * 1.8 + eff["agility"] * 1.1 + s_level * 0.7 + safe_int(player.get("bonus_accuracy"), 0) + equipment_bonus(bonus_modifiers, "bonus_accuracy"))
-    dodge = ceil(eff["agility"] * 1.8 + eff["perception"] * 0.9 + eff["wisdom"] * 0.3 + s_level * 0.5 + safe_int(player.get("bonus_dodge"), 0) + equipment_bonus(bonus_modifiers, "bonus_dodge"))
-    crit_stat = ceil(eff["perception"] * 1.5 + eff["agility"] * 0.8 + eff["wisdom"] * 0.2 + s_level * 0.2 + safe_int(player.get("bonus_crit_chance"), 0) + equipment_bonus(bonus_modifiers, "bonus_crit_chance"))
-    crit_chance = min(0.49, crit_stat / (crit_stat + 5000))
-    crit_damage = max(100, 100 + safe_int(player.get("bonus_crit_damage"), 0) + equipment_bonus(bonus_modifiers, "bonus_crit_damage"))
-    max_energy = max(1, safe_int(player.get("max_energy"), 100) + equipment_bonus(bonus_modifiers, "bonus_max_energy"))
-    current_energy = max(0, min(max_energy, safe_int(player.get("energy"), max_energy)))
+    derived = calculate_player_derived_stats(player)
+    level = derived["level"]
+    bonus_modifiers = derived.get("bonus_modifiers", {})
+    eff = {
+        "strength": derived["strength"],
+        "endurance": derived["endurance"],
+        "agility": derived["dexterity"],
+        "dexterity": derived["dexterity"],
+        "perception": derived["perception"],
+        "intelligence": derived["intelligence"],
+        "wisdom": derived["wisdom"],
+    }
+    hp_max = derived["max_hp"]
+    spirit_max = derived["max_spirit"]
+    mana_max = derived["max_mana"]
+    physical_defense = derived["physical_defense"]
+    magic_defense = derived["magic_defense"]
+    accuracy = derived["accuracy"]
+    dodge = derived["dodge"]
+    crit_chance_percent = derived["crit_chance_percent"]
+    crit_damage = derived["crit_damage_percent"]
+    max_energy = derived["max_energy"]
+    current_energy = derived["current_energy"]
 
     attributes = []
     for front_key, back_key, label, description in ATTRIBUTE_META:
@@ -768,7 +827,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         item = normalize_item(raw_item)
         if item.get("category") in {"Снаряжение", "Оружие", "Бижутерия", "Особое"} and (item.get("targetSlotKey") or item.get("slot")):
             item["actions"] = ["Надеть"]
-        elif item.get("category") in {"Алхимия", "Еда", "Напитки"}:
+        elif item.get("category") == "Расходники" or is_inventory_item_usable(item):
             item["actions"] = ["Использовать"]
         else:
             item.setdefault("actions", [])
@@ -837,7 +896,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             {"label": "Магическая защита", "value": magic_defense},
             {"label": "Точность", "value": accuracy},
             {"label": "Уклонение", "value": dodge},
-            {"label": "Шанс крита", "value": f"{ceil(crit_chance * 100)}%"},
+            {"label": "Шанс крита", "value": f"{crit_chance_percent}%"},
             {"label": "Урон крита", "value": f"{crit_damage}%"},
         ],
         "effects": player.get("active_effects", []),
@@ -907,6 +966,12 @@ def save_player(storage: Any, player: dict[str, Any]) -> None:
         raise HTTPException(status_code=500, detail="Нельзя сохранить игрока без game_id.")
     data.setdefault("players", {})[game_id] = player
     storage.save(data)
+
+
+def sync_player_parameters_for_bots(player: dict[str, Any]) -> None:
+    """Persist derived resources so bot messages use current profile values."""
+
+    ensure_player_resources(player)
 
 
 def skill_matches(skill: dict[str, Any], skill_id: str) -> bool:
@@ -1019,6 +1084,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=400, detail="Недостаточно свободных очков характеристик.")
         player.setdefault("invested_stats", {})[stat_key] = safe_int(player.setdefault("invested_stats", {}).get(stat_key), 0) + request.amount
         player["free_stat_points"] = free_points - request.amount
+        sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
 
@@ -1034,6 +1100,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=404, detail="Навык не найден.")
         spend_points_on_skill(skill, request.modifier_id, request.amount)
         player["free_skill_points"] = free_points - request.amount
+        sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
 
@@ -1075,6 +1142,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
         item["slotKey"] = slot_key
         item.pop("targetSlotKey", None)
         equipment[slot_key] = item
+        sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
 
@@ -1089,6 +1157,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
         item["targetSlotKey"] = request.slot_key
         item.pop("slotKey", None)
         player.setdefault("inventory", []).append(item)
+        sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
 
@@ -1101,17 +1170,18 @@ def create_profile_api_router(get_storage) -> APIRouter:
         if item_index is None:
             raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
         item = inventory[item_index]
-        restored_energy = 0
-        if item.get("category") in {"Алхимия", "Еда", "Напитки"} or item_energy_restore(item) > 0:
-            restored_energy = apply_energy_restore(player, item)
-            effect = consumable_effect_from_item(item)
-            if effect is not None:
-                player.setdefault("active_effects", []).append(effect)
+        if not is_inventory_item_usable(item):
+            raise HTTPException(status_code=400, detail="Этот предмет нельзя использовать напрямую из профиля.")
+        restored_energy = apply_energy_restore(player, item)
+        effect = consumable_effect_from_item(item)
+        if effect is not None:
+            player.setdefault("active_effects", []).append(effect)
         amount = safe_int(item.get("amount"), 1)
         if amount > 1:
             item["amount"] = amount - 1
         else:
             inventory.pop(item_index)
+        sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "restoredEnergy": restored_energy, "profile": frontend_profile(player)}
 
@@ -1130,6 +1200,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
             item["amount"] = amount - drop_amount
         else:
             inventory.pop(item_index)
+        sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
 

@@ -27,6 +27,7 @@ class CityResponse:
 class WorldActionResult:
     text: str
     buttons: list[list[str]]
+    scheduled_timer: dict[str, Any] | None = None
 
 
 def central_square_buttons() -> list[list[str]]:
@@ -177,11 +178,10 @@ PIER_FISHING_TEXT = """🎣 Рыбалка на пристани
 Для действия нужна удочка.
 
 Шансы:
-• обычный улов — 36%
-• необычный улов — 10,9%
-• редкий улов — 0,1%
-• мусор — 43%
-• рыба сорвалась — 10%
+• обычный улов — 50%
+• необычный улов — 19%
+• редкий улов — 1%
+• мусор — 30%
 
 Рыбалка может тратить энергию, если используется как добывающее действие."""
 
@@ -342,7 +342,7 @@ JEWELRY_TEXT = """💎 Ювелирная мастерская
 Прокачка: ювелирное дело.
 
 Действия:
-• создание колец, браслетов, ожерелий и амулетов;
+• создание колец, ожерелий и амулетов;
 • создание искусственных камней из осколков;
 • огранка камней;
 • вставка камней в оружие, броню и бижутерию."""
@@ -480,7 +480,7 @@ def process_world_action(
     """
     if player.get("in_battle") or action in EXTERNAL_LOCATION_BUTTONS:
         response = handle_external_location_action(storage, player, action)
-        return WorldActionResult(text=response.text, buttons=response.buttons)
+        return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
 
     response = get_city_response(action)
     updated_player = apply_city_transition(storage, player, response)

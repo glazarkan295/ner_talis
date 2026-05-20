@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -11,6 +12,7 @@ from storage.base import PlayerStorage
 
 TELEGRAM_PLATFORM = "telegram"
 CITY_BUTTON_PATTERN = r"^.+$"
+logger = logging.getLogger(__name__)
 
 
 def schedule_telegram_timer(context: ContextTypes.DEFAULT_TYPE, chat_id: int, timer_data: dict | None) -> None:
@@ -31,15 +33,22 @@ def schedule_telegram_timer(context: ContextTypes.DEFAULT_TYPE, chat_id: int, ti
         target_id=str(chat_id),
     )
 
+    loop = asyncio.get_running_loop()
+
     def send_timer_result(_platform: str, target_id: str, response) -> None:
-        asyncio.run(
+        future = asyncio.run_coroutine_threadsafe(
             context.bot.send_message(
                 chat_id=int(target_id),
                 text=response.text,
                 reply_markup=make_keyboard(response.buttons),
                 disable_web_page_preview=True,
-            )
+            ),
+            loop,
         )
+        try:
+            future.result(timeout=30)
+        except Exception:
+            logger.exception("Failed to send Telegram timer result to chat_id=%s", target_id)
 
     schedule_timer_delivery(
         storage=storage,
