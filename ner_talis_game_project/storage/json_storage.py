@@ -422,9 +422,9 @@ class JsonStorage:
         game_id: str,
         scope: str,
         platform: str,
-        lifetime_minutes: int = 15,
+        lifetime_minutes: int = 1440,
     ) -> str:
-        """Создаёт короткоживущий токен для входа на сайт из бота."""
+        """Создаёт токен ограниченного срока действия для входа на сайт из бота."""
         with self._lock:
             data = self.load()
 

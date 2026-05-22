@@ -38,7 +38,17 @@ def get_external_user_id(update: Update) -> str:
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    storage = get_storage(context)
+    external_user_id = get_external_user_id(update)
+    player = storage.get_player_by_platform(TELEGRAM_PLATFORM, external_user_id)
     context.user_data.clear()
+
+    if player is not None:
+        await update.message.reply_text(
+            "Ты уже зарегистрирован. Команда /start повторно не запускает регистрацию."
+        )
+        return ConversationHandler.END
+
     await update.message.reply_text(
         "Выберите действие:",
         reply_markup=start_keyboard(),

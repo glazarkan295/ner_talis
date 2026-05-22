@@ -733,7 +733,7 @@ class SQLiteStorage:
         game_id: str,
         scope: str,
         platform: str,
-        lifetime_minutes: int = 15,
+        lifetime_minutes: int = 1440,
     ) -> str:
         with self._lock, self._connect() as connection:
             if not connection.execute(

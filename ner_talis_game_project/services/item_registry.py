@@ -1,7 +1,7 @@
 """Item registry and asset enrichment helpers for Ner-Talis.
 
 The registry is intentionally data-driven. It reads imported item metadata from
-``data/items_hilly_meadows.json`` and can be reused by Telegram, VK, the future
+``data/items_*.json`` and can be reused by Telegram, VK, the future
 site API, and tests without hard-coding icons or item ids in event logic.
 """
 
@@ -16,6 +16,7 @@ from typing import Any
 from project_paths import project_path, resolve_project_path
 
 ITEMS_HILLY_MEADOWS_PATH = project_path("data", "items_hilly_meadows.json")
+ITEMS_REGISTRY_GLOB = "items_*.json"
 
 CATEGORY_TO_RU = {
     "camp_food": "Еда",
@@ -24,6 +25,7 @@ CATEGORY_TO_RU = {
     "currency": "Валюта",
     "items": "Предметы",
     "trophies": "Трофеи",
+    "equipment": "Экипировка",
 }
 
 TYPE_TO_RU = {
@@ -48,6 +50,12 @@ TYPE_TO_RU = {
     "claw": "Коготь",
     "horn": "Рог",
     "tendon": "Сухожилие",
+    "wood": "Дерево",
+    "fabric": "Ткань",
+    "gloves": "Перчатки",
+    "belt": "Пояс",
+    "fat": "Жир",
+    "event": "Событие",
 }
 
 QUALITY_TO_RU = {
@@ -72,6 +80,14 @@ def _public_icon_path(icon: str | None) -> str | None:
 
 @lru_cache(maxsize=8)
 def load_item_definitions(path: str | Path | None = None) -> list[dict[str, Any]]:
+    """Load one item registry file.
+
+    Keeping the no-argument call tied to the original hilly-meadows file
+    preserves backward compatibility for tests and import tools. Runtime
+    lookups use ``load_all_item_definitions`` so location packs are still
+    available everywhere.
+    """
+
     items_path = resolve_project_path(path) if path else ITEMS_HILLY_MEADOWS_PATH
     if not items_path.exists():
         return []
@@ -83,10 +99,36 @@ def load_item_definitions(path: str | Path | None = None) -> list[dict[str, Any]
 
 
 @lru_cache(maxsize=8)
+def load_all_item_definitions() -> list[dict[str, Any]]:
+    """Load every gameplay item registry from ``data/items_*.json``."""
+
+    data_dir = project_path("data")
+    paths = [
+        candidate
+        for candidate in sorted(data_dir.glob(ITEMS_REGISTRY_GLOB))
+        if not candidate.name.startswith("items_import_")
+    ]
+    if not paths and ITEMS_HILLY_MEADOWS_PATH.exists():
+        paths = [ITEMS_HILLY_MEADOWS_PATH]
+
+    definitions: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for items_path in paths:
+        for item in load_item_definitions(items_path):
+            item_id = str(item.get("id") or item.get("item_id") or "").strip()
+            if item_id and item_id in seen_ids:
+                continue
+            if item_id:
+                seen_ids.add(item_id)
+            definitions.append(item)
+    return definitions
+
+
+@lru_cache(maxsize=8)
 def _indexes(path: str | Path | None = None) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     by_id: dict[str, dict[str, Any]] = {}
     by_name: dict[str, dict[str, Any]] = {}
-    for item in load_item_definitions(path):
+    for item in (load_item_definitions(path) if path else load_all_item_definitions()):
         item_id = str(item.get("id") or "").strip()
         item_name = str(item.get("name_ru") or item.get("name") or "").strip()
         if item_id:
@@ -197,4 +239,5 @@ def slugify_fallback_item_id(name: str) -> str:
 
 
 # Backward-compatible names for future loaders.
-HILLY_MEADOWS_ITEM_ASSETS = load_item_definitions()
+HILLY_MEADOWS_ITEM_ASSETS = load_item_definitions(ITEMS_HILLY_MEADOWS_PATH)
+ALL_ITEM_ASSETS = load_all_item_definitions()
