@@ -103,6 +103,15 @@ class VkRegistrationBot:
         lowered = text.casefold()
 
         if lowered in {"/start", "начать заново"}:
+            existing_player = self.storage.get_player_by_platform(VK_PLATFORM, external_user_id)
+            if existing_player is not None:
+                self.sessions.pop(session_key, None)
+                self.send(
+                    peer_id,
+                    "Ты уже зарегистрирован. Команда /start повторно не запускает регистрацию.",
+                )
+                return
+
             self.sessions[session_key] = VkRegistrationSession(
                 state=STATE_START_MENU,
             )

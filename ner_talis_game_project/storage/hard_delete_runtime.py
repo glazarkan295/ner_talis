@@ -64,7 +64,7 @@ def create_web_session(
     game_id: str,
     scope: str = "profile",
     platform: str | None = None,
-    lifetime_minutes: int = 15,
+    lifetime_minutes: int = 1440,
     ttl_minutes: int | None = None,
 ) -> str:
     minutes = ttl_minutes if ttl_minutes is not None else lifetime_minutes

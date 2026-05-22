@@ -71,6 +71,6 @@ class PlayerStorage(Protocol):
         game_id: str,
         scope: str,
         platform: str,
-        lifetime_minutes: int = 15,
+        lifetime_minutes: int = 1440,
     ) -> str:
         ...

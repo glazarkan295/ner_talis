@@ -2,7 +2,7 @@
 
 The module integrates the uploaded PVE battle data structures into the existing
 project. It keeps the first implementation intentionally compact: random PVE
-encounters in «Холмистые луга» become real turn-based battles, but the API is
+encounters in external locations become real turn-based battles, but the API is
 stable enough to later replace damage/AI/skill formulas with the full combat
 system.
 """
@@ -127,6 +127,81 @@ HILLY_MEADOWS_MOBS = {
 }
 
 
+ORDINARY_FOREST_MOBS = {
+    "forest_wolf": {
+        "name": "Волк",
+        "biological_type": "beast",
+        "role": "attacker",
+        "damage_type": DamageType.PHYSICAL,
+        "damage_split": DamageSplit(physical=100, magic=0),
+        "group": {EnemyRank.NORMAL: (2, 5), EnemyRank.EMPOWERED: (2, 4), EnemyRank.ELITE: (1, 1)},
+        "skills": ["Укус", "Рывок", "Стайный натиск"],
+        "features": ["Окружение"],
+        "text": "Из-за деревьев доносится протяжный вой. Через несколько мгновений из тени выходят волки. Они медленно расходятся в стороны, пытаясь окружить вас.",
+        "loot": [("Сырое мясо", 60, 1, 2), ("Волчья шкура", 65, 1, 1), ("Волчий клык", 25, 1, 1), ("Жёсткое сухожилие", 20, 1, 1)],
+        "hp_base": 34,
+        "hp_per_level": 9,
+        "armor_factor": 1.1,
+        "dodge_per_level": 1.9,
+    },
+    "angry_deer": {
+        "name": "Разъярённый олень",
+        "biological_type": "beast",
+        "role": "attacker",
+        "damage_type": DamageType.PHYSICAL,
+        "damage_split": DamageSplit(physical=100, magic=0),
+        "group": {EnemyRank.NORMAL: (1, 1), EnemyRank.EMPOWERED: (1, 1), EnemyRank.ELITE: (1, 1)},
+        "skills": ["Удар рогами", "Резкий рывок"],
+        "features": ["Защита территории"],
+        "text": "На небольшой прогалине вы замечаете оленя. Он резко опускает голову, выставляет рога и начинает бить копытом землю.",
+        "loot": [("Сырое мясо", 70, 1, 2), ("Оленья шкура", 60, 1, 1), ("Рог оленя", 30, 1, 1), ("Крепкое сухожилие", 25, 1, 1)],
+        "hp_base": 42,
+        "hp_per_level": 10,
+        "armor_factor": 1.0,
+        "dodge_per_level": 2.0,
+    },
+    "forest_boar": {
+        "name": "Кабан",
+        "biological_type": "beast",
+        "role": "defender",
+        "damage_type": DamageType.PHYSICAL,
+        "damage_split": DamageSplit(physical=100, magic=0),
+        "group": {EnemyRank.NORMAL: (1, 3), EnemyRank.EMPOWERED: (1, 2), EnemyRank.ELITE: (1, 1)},
+        "skills": ["Рывок", "Удар клыками"],
+        "features": ["Толстая шкура"],
+        "text": "Из кустов раздаётся тяжёлое сопение. На тропу выходит кабан; судя по шуму, вы оказались слишком близко к месту кормёжки.",
+        "loot": [("Сырое мясо", 75, 1, 3), ("Кабанья шкура", 65, 1, 1), ("Кабаний клык", 30, 1, 1), ("Жир зверя", 25, 1, 1)],
+        "hp_base": 55,
+        "hp_per_level": 12,
+        "armor_factor": 1.8,
+        "dodge_per_level": 1.0,
+    },
+    "forest_bear": {
+        "name": "Медведь",
+        "biological_type": "beast",
+        "role": "defender",
+        "damage_type": DamageType.PHYSICAL,
+        "damage_split": DamageSplit(physical=100, magic=0),
+        "group": {EnemyRank.NORMAL: (1, 1), EnemyRank.EMPOWERED: (1, 1), EnemyRank.ELITE: (1, 1)},
+        "skills": ["Удар лапой", "Рёв", "Тяжёлый рывок"],
+        "features": ["Толстая шкура"],
+        "text": "Впереди трескаются ветки. Из-за стволов выходит огромный медведь, поднимается на задние лапы и тяжело рычит.",
+        "loot": [("Сырое мясо", 85, 1, 3), ("Медвежья шкура", 75, 1, 1), ("Медвежий коготь", 35, 1, 1), ("Медвежий клык", 30, 1, 1), ("Жир зверя", 25, 1, 1)],
+        "hp_base": 90,
+        "hp_per_level": 16,
+        "armor_factor": 2.4,
+        "dodge_per_level": 0.7,
+        "damage_bonus_per_level": 1.3,
+    },
+}
+
+BATTLE_MOB_CATALOGS = {
+    "hilly_meadows": HILLY_MEADOWS_MOBS,
+    "ordinary_forest": ORDINARY_FOREST_MOBS,
+}
+
+
+
 def player_display_name(player: dict[str, Any] | None) -> str:
     if not isinstance(player, dict):
         return "Игрок"
@@ -246,8 +321,44 @@ def make_player_battle_state(player: dict[str, Any]) -> PlayerBattleState:
     )
 
 
-def choose_battle_rank(rng: random.Random, player_level: int = 1) -> EnemyRank:
+def normalize_battle_location(location_id: str | None) -> str:
+    value = str(location_id or "hilly_meadows")
+    if value.endswith("_battle"):
+        value = value.removesuffix("_battle")
+    if value.endswith("_search"):
+        value = value.removesuffix("_search")
+    if value.endswith("_camp"):
+        value = value.removesuffix("_camp")
+    return value if value in BATTLE_MOB_CATALOGS else "hilly_meadows"
+
+
+def mob_catalog(location_id: str | None) -> dict[str, dict[str, Any]]:
+    return BATTLE_MOB_CATALOGS.get(normalize_battle_location(location_id), HILLY_MEADOWS_MOBS)
+
+
+def battle_return_location(battle: dict[str, Any] | None) -> str:
+    if not isinstance(battle, dict):
+        return "hilly_meadows"
+    return normalize_battle_location(battle.get("return_location") or battle.get("origin_location_id") or battle.get("location_id"))
+
+
+def move_player_to_battle_return_location(player: dict[str, Any], battle: dict[str, Any]) -> str:
+    location_id = battle_return_location(battle)
+    player["current_location"] = location_id
+    player["current_zone"] = location_id
+    player["location_id"] = location_id
+    return location_id
+
+
+def choose_battle_rank(rng: random.Random, player_level: int = 1, location_id: str = "hilly_meadows") -> EnemyRank:
+    location_id = normalize_battle_location(location_id)
     roll = rng.uniform(0, 100)
+    if location_id == "ordinary_forest":
+        if roll <= 72:
+            return EnemyRank.NORMAL
+        if roll <= 94:
+            return EnemyRank.EMPOWERED
+        return EnemyRank.ELITE
     if player_level <= 3:
         if roll <= 92:
             return EnemyRank.NORMAL
@@ -259,21 +370,31 @@ def choose_battle_rank(rng: random.Random, player_level: int = 1) -> EnemyRank:
     return EnemyRank.ELITE
 
 
-def enemy_level_for_rank(player_level: int, rank: EnemyRank, rng: random.Random) -> int:
+def enemy_level_for_rank(player_level: int, rank: EnemyRank, rng: random.Random, *, cap: int = 50) -> int:
     if player_level <= 3:
         if rank == EnemyRank.NORMAL:
-            return max(1, min(50, player_level + rng.randint(-1, 0)))
+            return max(1, min(cap, player_level + rng.randint(-1, 0)))
         if rank == EnemyRank.EMPOWERED:
-            return max(1, min(50, player_level + rng.randint(1, 2)))
-        return max(1, min(50, player_level + rng.randint(3, 4)))
+            return max(1, min(cap, player_level + rng.randint(1, 2)))
+        return max(1, min(cap, player_level + rng.randint(3, 4)))
     if rank == EnemyRank.NORMAL:
-        return max(1, min(50, player_level + rng.randint(-1, 1)))
+        return max(1, min(cap, player_level + rng.randint(-1, 1)))
     if rank == EnemyRank.EMPOWERED:
-        return max(1, min(50, player_level + rng.randint(3, 5)))
-    return max(1, min(50, player_level + rng.randint(7, 9)))
+        return max(1, min(cap, player_level + rng.randint(3, 5)))
+    return max(1, min(cap, player_level + rng.randint(7, 9)))
 
 
-def choose_mob_key(rank: EnemyRank, rng: random.Random, player_level: int = 1) -> str:
+def choose_mob_key(rank: EnemyRank, rng: random.Random, player_level: int = 1, location_id: str = "hilly_meadows") -> str:
+    location_id = normalize_battle_location(location_id)
+    if location_id == "ordinary_forest":
+        if rank == EnemyRank.ELITE:
+            return "forest_bear"
+        if rank == EnemyRank.EMPOWERED:
+            choices = ["forest_wolf", "angry_deer", "forest_boar"]
+            if player_level >= 4:
+                choices.append("forest_bear")
+            return rng.choice(choices)
+        return rng.choice(["forest_wolf", "angry_deer", "forest_boar"])
     if rank == EnemyRank.ELITE:
         return "hill_bull"
     if rank == EnemyRank.EMPOWERED:
@@ -283,25 +404,30 @@ def choose_mob_key(rank: EnemyRank, rng: random.Random, player_level: int = 1) -
     return rng.choice(["overgrown_gopher", "wild_jackal", "rabid_rabbit"])
 
 
-def build_enemy(mob_key: str, rank: EnemyRank, level: int, index: int) -> EnemyBattleState:
-    template = HILLY_MEADOWS_MOBS[mob_key]
+def build_enemy(mob_key: str, rank: EnemyRank, level: int, index: int, location_id: str = "hilly_meadows") -> EnemyBattleState:
+    catalog = mob_catalog(location_id)
+    if mob_key not in catalog:
+        catalog = HILLY_MEADOWS_MOBS
+    template = catalog[mob_key]
     mult = RANK_MULTIPLIERS[rank]
-    base_hp = 28 + level * 8
+    base_hp = int(template.get("hp_base", 28)) + level * int(template.get("hp_per_level", 8))
     if mob_key == "hill_bull":
         base_hp = 70 + level * 14
     elif mob_key == "rabid_rabbit":
         base_hp = 20 + level * 6
     early_hp_multiplier = 1.0
     if level <= 3 and rank == EnemyRank.NORMAL:
-        early_hp_multiplier = 0.62
+        early_hp_multiplier = 0.62 if normalize_battle_location(location_id) == "hilly_meadows" else 0.85
     elif level <= 3 and rank == EnemyRank.EMPOWERED:
-        early_hp_multiplier = 0.78
+        early_hp_multiplier = 0.78 if normalize_battle_location(location_id) == "hilly_meadows" else 0.92
     max_hp = max(1, math.ceil(base_hp * mult["hp"] * early_hp_multiplier))
-    armor = math.ceil(level * (1.0 if mob_key != "hill_bull" else 2.2) * mult["defense"])
+    armor_factor = float(template.get("armor_factor", 1.0 if mob_key != "hill_bull" else 2.2))
+    armor = math.ceil(level * armor_factor * mult["defense"])
     physical_defense = math.ceil(armor * 1.5 + level * 1.4 * mult["defense"])
     magic_defense = math.ceil(level * 0.8 * mult["defense"])
     accuracy = math.ceil((18 + level * 2.1) * mult["accuracy"])
-    dodge_base = 14 + level * (1.7 if mob_key != "hill_bull" else 0.8)
+    dodge_per_level = float(template.get("dodge_per_level", 1.7 if mob_key != "hill_bull" else 0.8))
+    dodge_base = 14 + level * dodge_per_level
     dodge = math.ceil(dodge_base * mult["dodge"])
     enemy = EnemyBattleState(
         mob_id=f"{mob_key}_{index}_{uuid.uuid4().hex[:6]}",
@@ -327,22 +453,28 @@ def build_enemy(mob_key: str, rank: EnemyRank, level: int, index: int) -> EnemyB
     return enemy
 
 
-def create_hilly_meadows_battle(player: dict[str, Any], rng: random.Random | None = None) -> tuple[dict[str, Any], str]:
+def create_location_battle(player: dict[str, Any], rng: random.Random | None = None, location_id: str | None = None) -> tuple[dict[str, Any], str]:
     rng = rng or random.Random()
+    location_id = normalize_battle_location(location_id or player.get("current_location") or player.get("location_id") or "hilly_meadows")
     player_level = max(1, safe_int(player.get("level"), 1))
-    rank = choose_battle_rank(rng, player_level)
-    mob_key = choose_mob_key(rank, rng, player_level)
-    template = HILLY_MEADOWS_MOBS[mob_key]
+    rank = choose_battle_rank(rng, player_level, location_id)
+    mob_key = choose_mob_key(rank, rng, player_level, location_id)
+    catalog = mob_catalog(location_id)
+    template = catalog[mob_key]
     min_count, max_count = template["group"][rank]
     if player_level <= 3:
         min_count = 1
         max_count = 1 if rank != EnemyRank.NORMAL else min(2, max_count)
     count = 1 if rank == EnemyRank.ELITE else rng.randint(min_count, max_count)
-    enemies = [build_enemy(mob_key, rank, enemy_level_for_rank(player_level, rank, rng), index + 1) for index in range(count)]
+    cap = 60 if location_id == "ordinary_forest" else 50
+    enemies = [
+        build_enemy(mob_key, rank, enemy_level_for_rank(player_level, rank, rng, cap=cap), index + 1, location_id)
+        for index in range(count)
+    ]
     battle = BattleState(
         battle_id=f"pve_{uuid.uuid4().hex[:12]}",
         player_id=str(player.get("game_id") or player.get("id") or "player"),
-        location_id=str(player.get("location_id") or player.get("current_location") or "hilly_meadows"),
+        location_id=location_id,
         battle_type="random_event",
         round_number=1,
         player_state=make_player_battle_state(player),
@@ -351,14 +483,21 @@ def create_hilly_meadows_battle(player: dict[str, Any], rng: random.Random | Non
         battle_log=[template["text"]],
     )
     battle_dict = serialize_battle(battle)
+    battle_dict["origin_location_id"] = location_id
+    battle_dict["return_location"] = location_id
     battle_dict["player_name"] = player_display_name(player)
     player["active_battle"] = battle_dict
     player["active_event"] = None
     player["in_battle"] = True
-    player["current_zone"] = "hilly_meadows_battle"
-    player["location_id"] = "hilly_meadows_battle"
+    player["current_location"] = location_id
+    player["current_zone"] = f"{location_id}_battle"
+    player["location_id"] = f"{location_id}_battle"
     sync_player_from_battle(player, battle_dict)
     return battle_dict, format_battle_started_text(battle_dict)
+
+
+def create_hilly_meadows_battle(player: dict[str, Any], rng: random.Random | None = None) -> tuple[dict[str, Any], str]:
+    return create_location_battle(player, rng, "hilly_meadows")
 
 
 def serialize_enemy(enemy: EnemyBattleState) -> dict[str, Any]:
@@ -427,6 +566,10 @@ def enemy_raw_damage(enemy: dict[str, Any]) -> int:
     base = 4 + level * 2.25
     if enemy.get("name") == "Бык":
         base += level * 1.2
+    if enemy.get("name") == "Медведь":
+        base += level * 1.3
+    if enemy.get("name") == "Кабан":
+        base += level * 0.7
     return max(1, math.ceil(base * mult["damage"]))
 
 
@@ -647,6 +790,7 @@ def format_battle_status(battle: dict[str, Any]) -> str:
 def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: random.Random) -> str:
     enemies = battle.get("enemies", [])
     player_level = max(1, safe_int(player.get("level"), 1))
+    catalog = mob_catalog(battle_return_location(battle))
     xp_total = 0
     loot_lines: list[str] = []
     for enemy in enemies:
@@ -660,8 +804,8 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
         else:
             diff_mult = max(0.1, 1 + difference * 0.08)
         xp_total += math.ceil(base_xp * diff_mult)
-        template_key = next((key for key, value in HILLY_MEADOWS_MOBS.items() if value["name"] == enemy.get("name")), "")
-        for item_name, chance, min_amount, max_amount in HILLY_MEADOWS_MOBS.get(template_key, {}).get("loot", []):
+        template_key = next((key for key, value in catalog.items() if value["name"] == enemy.get("name")), "")
+        for item_name, chance, min_amount, max_amount in catalog.get(template_key, {}).get("loot", []):
             if rng.uniform(0, 100) <= chance:
                 amount = rng.randint(min_amount, max_amount)
                 add_result = add_inventory_item(player, item_name, amount)
@@ -767,8 +911,7 @@ def finish_player_defeat(player: dict[str, Any], battle: dict[str, Any], log: li
     player["in_battle"] = False
     player["active_battle"] = None
     player["active_event"] = None
-    player["current_zone"] = "hilly_meadows"
-    player["location_id"] = "hilly_meadows"
+    move_player_to_battle_return_location(player, battle)
     player["hp"] = max(1, math.ceil(safe_int(player.get("max_hp"), 100) * 0.2))
     penalty = apply_death_experience_penalty(player, 10)
     player_name = battle_player_name(battle)
@@ -801,8 +944,7 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         player["in_battle"] = False
         player["active_battle"] = None
         player["active_event"] = None
-        player["current_zone"] = "hilly_meadows"
-        player["location_id"] = "hilly_meadows"
+        move_player_to_battle_return_location(player, battle)
         return f"{player_name} отступает и разрывает дистанцию. Бой завершён без награды.", []
 
     player_state = battle.setdefault("player_state", {})
@@ -811,8 +953,7 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         player["in_battle"] = False
         player["active_battle"] = None
         player["active_event"] = None
-        player["current_zone"] = "hilly_meadows"
-        player["location_id"] = "hilly_meadows"
+        move_player_to_battle_return_location(player, battle)
         rewards = grant_battle_rewards(player, battle, rng)
         return f"Победа!\n\n{rewards}", []
 
@@ -920,8 +1061,7 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         player["in_battle"] = False
         player["active_battle"] = None
         player["active_event"] = None
-        player["current_zone"] = "hilly_meadows"
-        player["location_id"] = "hilly_meadows"
+        move_player_to_battle_return_location(player, battle)
         rewards = grant_battle_rewards(player, battle, rng)
         return f"{chr(10).join(log)}\n\n✅ Победа!\n\n{rewards}", []
 

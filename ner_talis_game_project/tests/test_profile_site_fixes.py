@@ -44,7 +44,7 @@ if "vk_api" not in sys.modules:
 
 from services.registration_service import create_player, load_races
 from services.web_profile import PROFILE_SCOPE, create_profile_site_link
-from site_api import create_profile_api_router, equipment_modifier_totals, frontend_profile
+from site_api import create_profile_api_router, equipment_modifier_totals, frontend_profile, is_inventory_item_usable
 from storage.json_storage import JsonStorage
 from handlers.vk_registration import VK_PLATFORM, VkRegistrationBot
 
@@ -374,6 +374,9 @@ class ProfileSiteFixesTest(unittest.TestCase):
             self.assertEqual(response.status_code, 400)
             restored = storage.get_player_by_game_id(player["game_id"])
             self.assertEqual(restored["inventory"][0]["amount"], 3)
+
+    def test_consumable_category_items_remain_directly_usable(self):
+        self.assertTrue(is_inventory_item_usable({"id": "legacy_consumable", "name": "Старый расходник", "category": "Расходники"}))
 
     def test_energy_bonus_does_not_stack_into_saved_max_energy_when_food_used_twice(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

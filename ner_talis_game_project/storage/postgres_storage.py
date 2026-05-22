@@ -505,7 +505,7 @@ class PostgresStorage:
         game_id: str,
         scope: str = "profile",
         platform: str | None = None,
-        lifetime_minutes: int = 15,
+        lifetime_minutes: int = 1440,
         ttl_minutes: int | None = None,
     ) -> str:
         minutes = ttl_minutes if ttl_minutes is not None else lifetime_minutes
@@ -527,7 +527,7 @@ class PostgresStorage:
             })
         return token
 
-    def create_site_session(self, game_id: str, scope: str = "profile", platform: str | None = None, lifetime_minutes: int = 15) -> str:
+    def create_site_session(self, game_id: str, scope: str = "profile", platform: str | None = None, lifetime_minutes: int = 1440) -> str:
         return self.create_web_session(game_id, scope=scope, platform=platform, lifetime_minutes=lifetime_minutes)
 
     def get_web_session(self, token: str, scope: str | None = None) -> dict[str, Any] | None:
