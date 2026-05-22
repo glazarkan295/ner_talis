@@ -97,6 +97,24 @@ class OrdinaryForestIntegrationTest(unittest.TestCase):
         updated = storage.get_player_by_platform("telegram", "forest_user")
         self.assertTrue(any(item.get("name") == "Сухое бревно" for item in updated.get("inventory", [])))
 
+
+    def test_event_reward_message_mentions_overflow_slot(self):
+        storage, player = self.make_player_and_storage()
+        player["inventory_capacity"] = 20
+        player["inventory"] = [
+            {"id": f"regular_{index}", "name": f"Занятый слот {index}", "amount": 1, "max_stack": 1}
+            for index in range(20)
+        ]
+        player["current_zone"] = "ordinary_forest"
+        player["location_id"] = "ordinary_forest"
+        player["current_location"] = "ordinary_forest"
+        player["active_event"] = create_search_event("dry_tree", random.Random(1), "ordinary_forest")
+        storage.update_player(player)
+
+        response = resolve_active_event(storage, storage.get_player_by_platform("telegram", "forest_user"), COLLECT_TREE, random.Random(1))
+
+        self.assertIn("В доп. слот попало", response.text)
+
     def test_ordinary_forest_camp_eating_keeps_forest_zone(self):
         storage, player = self.make_player_and_storage()
         player["current_location"] = "ordinary_forest"

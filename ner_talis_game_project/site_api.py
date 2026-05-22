@@ -861,7 +861,80 @@ def normalize_skill(
     return normalized
 
 
+EFFECT_MODIFIER_LABELS = {
+    "armor": "Броня",
+    "magic_armor": "Магическая броня",
+    "bonus_hp": "HP",
+    "bonus_spirit": "Дух",
+    "bonus_mana": "Мана",
+    "bonus_physical_defense": "Физическая защита",
+    "bonus_magic_defense": "Магическая защита",
+    "bonus_accuracy": "Точность",
+    "bonus_dodge": "Уклонение",
+    "bonus_crit_chance": "Шанс крита",
+    "bonus_crit_damage": "Урон крита",
+    "bonus_strength": "Сила",
+    "bonus_endurance": "Выносливость",
+    "bonus_agility": "Ловкость",
+    "bonus_perception": "Восприятие",
+    "bonus_intelligence": "Интеллект",
+    "bonus_wisdom": "Мудрость",
+    "bonus_hp_regen_percent": "Регенерация HP",
+    "bonus_spirit_regen_percent": "Регенерация духа",
+    "bonus_mana_regen_percent": "Регенерация маны",
+    "bonus_max_energy": "Максимальная энергия",
+    "bonus_energy_saving_percent": "Экономия энергии",
+    "bonus_energy_restore_percent": "Восстановление энергии",
+    "bonus_damage": "Урон",
+    "bonus_physical_damage": "Физический урон",
+    "bonus_magic_damage": "Магический урон",
+}
+
+
+def normalize_effect_for_frontend(effect: Any) -> dict[str, Any] | None:
+    if not isinstance(effect, dict):
+        return None
+    normalized = strip_hidden_formulas(deepcopy(effect))
+    if not isinstance(normalized, dict):
+        return None
+
+    totals: dict[str, int] = {}
+    collect_modifiers_from_value(normalized, totals)
+    modifiers = [
+        {
+            "key": key,
+            "label": EFFECT_MODIFIER_LABELS.get(key, key),
+            "value": value,
+            "text": f"{EFFECT_MODIFIER_LABELS.get(key, key)} {'+' if value > 0 else ''}{value}",
+        }
+        for key, value in sorted(totals.items())
+        if safe_int(value, 0) != 0
+    ]
+    has_negative = any(safe_int(item.get("value"), 0) < 0 for item in modifiers)
+    has_positive = any(safe_int(item.get("value"), 0) > 0 for item in modifiers)
+    source = str(normalized.get("source") or "").casefold()
+    raw_kind = str(normalized.get("kind") or normalized.get("type") or normalized.get("effect_type") or "").casefold()
+    if has_negative or source in {"inventory_overflow", "debuff", "curse"} or raw_kind in {"negative", "debuff", "curse", "penalty"}:
+        kind = "negative"
+    elif has_positive or raw_kind in {"positive", "buff", "bonus"}:
+        kind = "positive"
+    else:
+        kind = "neutral"
+
+    return {
+        "id": normalized.get("id") or normalized.get("name") or "effect",
+        "name": normalized.get("name") or "Активный эффект",
+        "description": normalized.get("description") or normalized.get("text") or normalized.get("details") or "Описание эффекта пока не добавлено.",
+        "source": normalized.get("source") or "",
+        "kind": kind,
+        "expiresAt": normalized.get("expires_at") or normalized.get("expiresAt") or "",
+        "durationSeconds": safe_int(normalized.get("duration_seconds") or normalized.get("durationSeconds"), 0),
+        "modifiers": modifiers,
+    }
+
+
 def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
+    prune_expired_effects(player)
     recalculate_inventory_overflow(player)
     derived = calculate_player_derived_stats(player)
     level = derived["level"]
@@ -987,7 +1060,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             {"label": "Шанс крита", "value": f"{crit_chance_percent}%"},
             {"label": "Урон крита", "value": f"{crit_damage}%"},
         ],
-        "effects": player.get("active_effects", []),
+        "effects": [effect for effect in (normalize_effect_for_frontend(raw_effect) for raw_effect in player.get("active_effects", [])) if effect],
         "activeSets": player.get("active_sets", []),
         "equipmentSlots": EQUIPMENT_SLOTS,
         "equipment": equipment,
