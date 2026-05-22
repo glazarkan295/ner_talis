@@ -84,6 +84,13 @@ export function spendAttributePoints(identifier, attributeKey, amount) {
   });
 }
 
+export function confirmAttributePoints(identifier, allocations) {
+  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/attributes/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ allocations }),
+  });
+}
+
 export function equipItem(identifier, itemId, slotKey = null) {
   return requestJson(`/api/profile/${encodeURIComponent(identifier)}/equipment/equip`, {
     method: "POST",

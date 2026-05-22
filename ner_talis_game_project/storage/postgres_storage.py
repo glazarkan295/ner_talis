@@ -16,6 +16,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 from storage.timer_claims import try_mark_timer_claimed
+from storage.event_claims import try_mark_active_event_claimed
 from storage.starter_pack_runtime import (
     POSTGRES_COLUMN_FIELDS,
     STARTER_EXTRA_FIELDS,
@@ -396,6 +397,46 @@ class PostgresStorage:
                 str(owner),
                 claim_ttl_seconds=claim_ttl_seconds,
                 platform_filter=platform_filter,
+                now=time.time(),
+            ):
+                return None
+
+            player["game_id"] = str(game_id)
+            player["id"] = str(game_id)
+            player["extra"] = self._build_extra_payload(player)
+            connection.execute(
+                text("UPDATE players SET extra = CAST(:extra AS jsonb), updated_at = now() WHERE game_id = :game_id"),
+                {"game_id": str(game_id), "extra": self._dumps(player["extra"])},
+            )
+            return player
+
+
+    def claim_active_event_for_resolution(
+        self,
+        game_id: str,
+        event_id: str | None,
+        owner: str,
+        *,
+        claim_ttl_seconds: int = 120,
+    ) -> dict[str, Any] | None:
+        """Atomically claim active_event before granting any event reward."""
+        with self.engine.begin() as connection:
+            row = connection.execute(
+                text("SELECT * FROM players WHERE game_id = :game_id FOR UPDATE"),
+                {"game_id": str(game_id)},
+            ).mappings().first()
+            if row is None:
+                return None
+
+            player = self._row_to_player(row)
+            if not isinstance(player, dict):
+                return None
+
+            if not try_mark_active_event_claimed(
+                player,
+                str(event_id) if event_id else None,
+                str(owner),
+                claim_ttl_seconds=claim_ttl_seconds,
                 now=time.time(),
             ):
                 return None

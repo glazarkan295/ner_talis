@@ -7,6 +7,7 @@ import {
   equipSkill,
   getProfileIdentifierFromUrl,
   loadPlayerProfile,
+  confirmAttributePoints,
   spendAttributePoints,
   spendSkillPoints,
   unequipItem,
@@ -71,6 +72,9 @@ function App() {
         profile={profile}
         onSpendAttributePoints={(attributeKey, amount) => {
           return runProfileAction(() => spendAttributePoints(profileIdentifier, attributeKey, amount));
+        }}
+        onConfirmAttributePoints={(allocations) => {
+          return runProfileAction(() => confirmAttributePoints(profileIdentifier, allocations));
         }}
         onSpendSkillPoints={(skill, modifierId, amount) => {
           return runProfileAction(() => spendSkillPoints(profileIdentifier, skill.id || skill.name, modifierId, amount));

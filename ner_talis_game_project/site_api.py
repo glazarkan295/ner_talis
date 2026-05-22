@@ -175,6 +175,10 @@ class SpendAttributeRequest(BaseModel):
     amount: int = Field(gt=0)
 
 
+class ConfirmAttributeAllocationsRequest(BaseModel):
+    allocations: dict[str, int] = Field(default_factory=dict)
+
+
 class SpendSkillRequest(BaseModel):
     skill_id: str
     modifier_id: str | None = None
@@ -1200,6 +1204,39 @@ def create_profile_api_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=400, detail="Недостаточно свободных очков характеристик.")
         player.setdefault("invested_stats", {})[stat_key] = safe_int(player.setdefault("invested_stats", {}).get(stat_key), 0) + request.amount
         player["free_stat_points"] = free_points - request.amount
+        sync_player_parameters_for_bots(player)
+        save_player(storage, player)
+        return {"ok": True, "profile": frontend_profile(player)}
+
+    @router.post("/{identifier}/attributes/confirm")
+    def confirm_attributes(identifier: str, request: ConfirmAttributeAllocationsRequest) -> dict[str, Any]:
+        storage = get_storage()
+        player = resolve_profile_write(storage, identifier)
+        if not request.allocations:
+            raise HTTPException(status_code=400, detail="Нет характеристик для подтверждения.")
+
+        normalized_allocations: dict[str, int] = {}
+        for front_key, raw_amount in request.allocations.items():
+            stat_key = FRONT_TO_BACK_STAT.get(str(front_key))
+            amount = safe_int(raw_amount, 0)
+            if not stat_key:
+                raise HTTPException(status_code=400, detail="Неизвестная характеристика.")
+            if amount <= 0:
+                continue
+            normalized_allocations[stat_key] = normalized_allocations.get(stat_key, 0) + amount
+
+        total_amount = sum(normalized_allocations.values())
+        if total_amount <= 0:
+            raise HTTPException(status_code=400, detail="Нет характеристик для подтверждения.")
+
+        free_points = safe_int(player.get("free_stat_points"), 0)
+        if total_amount > free_points:
+            raise HTTPException(status_code=400, detail="Недостаточно свободных очков характеристик.")
+
+        invested_stats = player.setdefault("invested_stats", {})
+        for stat_key, amount in normalized_allocations.items():
+            invested_stats[stat_key] = safe_int(invested_stats.get(stat_key), 0) + amount
+        player["free_stat_points"] = free_points - total_amount
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}

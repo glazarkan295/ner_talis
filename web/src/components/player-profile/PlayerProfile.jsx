@@ -529,20 +529,39 @@ function RaceRow({ profile }) {
   );
 }
 
-function CharacterTab({ profile, onOpenItem, onOpenSlot, onSpendAttributePoints }) {
+function CharacterTab({ profile, onOpenItem, onOpenSlot, onConfirmAttributePoints }) {
   const [attributeAmounts, setAttributeAmounts] = useState({});
+  const [pendingAttributes, setPendingAttributes] = useState({});
   const xpCurrent = Number(profile.player?.experienceCurrent || 0);
   const xpNext = Math.max(1, Number(profile.player?.experienceToNext || 1));
   const xpPercent = Math.min(100, Math.max(0, Math.round((xpCurrent / xpNext) * 100)));
   const freeStats = Number(profile.player?.freeAttributePoints || 0);
+  const pendingTotal = Object.values(pendingAttributes).reduce((sum, value) => sum + Math.max(0, Number(value || 0)), 0);
+  const remainingFreeStats = Math.max(0, freeStats - pendingTotal);
+  const hasPendingAttributes = pendingTotal > 0;
 
   function changeAttribute(key, value) {
-    setAttributeAmounts((current) => ({ ...current, [key]: value }));
+    const maxValue = Math.max(1, remainingFreeStats + Math.max(0, Number(pendingAttributes[key] || 0)));
+    setAttributeAmounts((current) => ({ ...current, [key]: clamp(Number(value) || 1, 1, maxValue) }));
   }
 
   function spend(attributeKey) {
-    const amount = Math.max(1, Number(attributeAmounts[attributeKey] || 1));
-    onSpendAttributePoints?.(attributeKey, amount);
+    const currentPending = Math.max(0, Number(pendingAttributes[attributeKey] || 0));
+    const maxAdd = remainingFreeStats;
+    if (maxAdd <= 0) return;
+    const amount = clamp(Math.max(1, Number(attributeAmounts[attributeKey] || 1)), 1, maxAdd);
+    setPendingAttributes((current) => ({ ...current, [attributeKey]: currentPending + amount }));
+  }
+
+  function resetPendingAttributes() {
+    setPendingAttributes({});
+  }
+
+  async function confirmPendingAttributes() {
+    if (!hasPendingAttributes) return;
+    const allocations = Object.fromEntries(Object.entries(pendingAttributes).filter(([, value]) => Number(value) > 0));
+    await onConfirmAttributePoints?.(allocations);
+    setPendingAttributes({});
   }
 
   return (
@@ -559,19 +578,29 @@ function CharacterTab({ profile, onOpenItem, onOpenSlot, onSpendAttributePoints 
         <div className="nt-progress"><i style={{ width: `${xpPercent}%` }} /></div>
       </Panel>
       <EquipmentPanel profile={profile} onOpenItem={onOpenItem} onOpenSlot={onOpenSlot} />
-      <Panel title="Характеристики" right={<span className="nt-badge">Свободно: {freeStats}</span>}>
+      <Panel title="Характеристики" right={<span className="nt-badge">Свободно: {remainingFreeStats}</span>}>
         <div className="nt-lines">
-          {(profile.attributes || []).map((attribute) => (
-            <Row key={attribute.key || attribute.label} label={attribute.label} value={attribute.value}>
-              {freeStats > 0 ? (
-                <div className="nt-attribute-controls">
-                  <input type="number" min="1" max={freeStats} value={attributeAmounts[attribute.key] || 1} onChange={(event) => changeAttribute(attribute.key, event.target.value)} />
-                  <button type="button" onClick={() => spend(attribute.key)}>+</button>
-                </div>
-              ) : null}
-            </Row>
-          ))}
+          {(profile.attributes || []).map((attribute) => {
+            const pending = Math.max(0, Number(pendingAttributes[attribute.key] || 0));
+            const displayValue = pending > 0 ? `${attribute.value} + ${pending}` : attribute.value;
+            return (
+              <Row key={attribute.key || attribute.label} label={attribute.label} value={displayValue}>
+                {remainingFreeStats > 0 ? (
+                  <div className="nt-attribute-controls">
+                    <input type="number" min="1" max={Math.max(1, remainingFreeStats)} value={attributeAmounts[attribute.key] || 1} onChange={(event) => changeAttribute(attribute.key, event.target.value)} />
+                    <button type="button" onClick={() => spend(attribute.key)}>+</button>
+                  </div>
+                ) : null}
+              </Row>
+            );
+          })}
         </div>
+        {hasPendingAttributes ? (
+          <div className="nt-attribute-actions">
+            <button type="button" className="nt-secondary-button" onClick={resetPendingAttributes}>Сбросить</button>
+            <button type="button" className="nt-primary-button" onClick={confirmPendingAttributes}>Подтвердить</button>
+          </div>
+        ) : null}
       </Panel>
       <Panel title="Параметры"><div className="nt-lines">{(profile.parameters || []).map((row) => <Row key={row.label} label={row.label} value={row.value} />)}</div></Panel>
       <Panel title="Активные сеты">
@@ -748,7 +777,7 @@ function InfoTab({ profile }) {
   );
 }
 
-export function PlayerProfile({ profile, onSpendAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onEquipSkill, onUnequipSkill }) {
+export function PlayerProfile({ profile, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onEquipSkill, onUnequipSkill }) {
   const data = profileOrMock(profile);
   const [tab, setTab] = useState("character");
   const [modal, setModal] = useState(null);
@@ -814,7 +843,7 @@ export function PlayerProfile({ profile, onSpendAttributePoints, onSpendSkillPoi
           {TABS.map(({ id, label, icon }) => <button key={id} className={tab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon"><TabIcon type={icon} /></span><span className="nt-tab-text">{label}</span></button>)}
         </nav>
         <section className="nt-content">
-          {tab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} /> : null}
+          {tab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} /> : null}
           {tab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
           {tab === "skills" ? <SkillsTab profile={data} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
           {tab === "info" ? <InfoTab profile={data} /> : null}

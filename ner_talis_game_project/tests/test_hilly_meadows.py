@@ -169,6 +169,57 @@ class HillyMeadowsIntegrationTest(unittest.TestCase):
         self.assertTrue(any("съешьте еду или вернитесь в город" in warning.casefold() for warning in warnings))
         self.assertFalse(any("вернуться в лагерь" in warning.casefold() for warning in warnings))
 
+    def test_linked_platforms_cannot_duplicate_event_rewards(self):
+        storage, player = self.make_player_and_storage()
+        player["current_location"] = "hilly_meadows"
+        player["current_zone"] = "hilly_meadows"
+        player["active_event"] = {
+            "type": "stone_or_ore",
+            "event_id": "event-no-double-1",
+            "text": "камень",
+        }
+        storage.update_player(player)
+
+        stale_copy = storage.get_player_by_platform("telegram", "111")
+        fresh_copy = storage.get_player_by_platform("telegram", "111")
+
+        first = handle_external_location_action(storage, fresh_copy, "Осмотреть и забрать", rng=random.Random(1))
+        second = handle_external_location_action(storage, stale_copy, "Осмотреть и забрать", rng=random.Random(1))
+
+        self.assertIn("Получено:", first.text)
+        self.assertIn("повторно не выдаётся", second.text)
+        player = storage.get_player_by_platform("telegram", "111")
+        self.assertIsNone(player.get("active_event"))
+        total_items = sum(int(item.get("amount", 1) or 1) for item in player.get("inventory", []))
+        self.assertGreater(total_items, 0)
+        self.assertLessEqual(total_items, 3)
+
+    def test_linking_vk_to_telegram_profile_does_not_reapply_starter_pack(self):
+        storage, player = self.make_player_and_storage()
+        before_inventory = list(player.get("inventory", []))
+        before_equipment_ids = sorted(
+            str(item.get("id") or item.get("item_id"))
+            for item in player.get("equipment", {}).values()
+            if isinstance(item, dict)
+        )
+
+        code = storage.create_link_code(player["game_id"])
+        ok, message, linked = storage.connect_platform_by_code(code, "vk", "222")
+
+        self.assertTrue(ok, message)
+        self.assertIsNotNone(linked)
+        self.assertEqual(linked["game_id"], player["game_id"])
+        self.assertEqual(storage.get_player_by_platform("vk", "222")["game_id"], player["game_id"])
+        after = storage.get_player_by_game_id(player["game_id"])
+        after_equipment_ids = sorted(
+            str(item.get("id") or item.get("item_id"))
+            for item in after.get("equipment", {}).values()
+            if isinstance(item, dict)
+        )
+        self.assertEqual(after.get("inventory", []), before_inventory)
+        self.assertEqual(after_equipment_ids, before_equipment_ids)
+
+
     def test_camp_cooking_and_eating_restore_energy(self):
         storage, player = self.make_player_and_storage()
         player["current_location"] = "hilly_meadows"

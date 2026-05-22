@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 import random
+import socket
 import time
 import uuid
 from dataclasses import dataclass
@@ -21,6 +22,7 @@ from services.item_registry import build_inventory_item, get_item_definition_by_
 from services.inventory_service import add_inventory_item as add_inventory_stack, remove_empty_stacks_and_recalculate
 from services.pve_battle_service import BATTLE_ACTIONS, battle_buttons, create_hilly_meadows_battle, handle_battle_action
 from services.race_bonus_service import extra_alchemy_ingredient_chance_percent, search_event_weights
+from storage.event_claims import ensure_event_id
 
 
 OUTSIDE_CITY = "Выход из города"
@@ -47,6 +49,7 @@ INSPECT_AND_TAKE = "Осмотреть и забрать"
 LOOK = "Посмотреть"
 LEAVE = "Уйти"
 RETREAT = "Отступить"
+EVENT_RESOLUTION_OWNER = f"{socket.gethostname()}:{__name__}"
 def load_hilly_meadows_config() -> dict[str, Any]:
     path = resolve_project_path("data/hilly_meadows.json")
     try:
@@ -690,7 +693,7 @@ def start_search(storage: Any, player: dict[str, Any], rng: random.Random | None
                 search_timer_buttons(),
                 player.get("current_zone", "hilly_meadows"),
             )
-        return complete_active_timer(storage, player, player.get("active_timer", {}).get("id"), rng)
+        return complete_active_timer_once(storage, player, player.get("active_timer", {}).get("id"), rng)
     if not has_equipped_attack_skill(player):
         return missing_attack_skill_response(player)
 
@@ -716,8 +719,11 @@ def start_search(storage: Any, player: dict[str, Any], rng: random.Random | None
     else:
         payload = create_search_event(event_type, rng)
 
+    timer_id = new_timer_id("search")
+    if isinstance(payload, dict):
+        payload.setdefault("event_id", f"{timer_id}_event")
     timer = {
-        "id": new_timer_id("search"),
+        "id": timer_id,
         "type": "search",
         "seconds": seconds,
         "ends_at": now_ts() + seconds,
@@ -746,6 +752,39 @@ def start_search(storage: Any, player: dict[str, Any], rng: random.Random | None
         "hilly_meadows_search",
         scheduled_timer=build_timer_schedule(player, timer),
     )
+
+
+def complete_active_timer_once(storage: Any, player: dict[str, Any], timer_id: str | None = None, rng: random.Random | None = None) -> LocationResponse:
+    """Complete an expired timer only once across linked platforms/processes."""
+
+    timer = player.get("active_timer")
+    if not isinstance(timer, dict):
+        return LocationResponse("⏳ Активного таймера нет.", hilly_meadows_buttons(), player.get("current_zone", "hilly_meadows"))
+    current_timer_id = str(timer_id or timer.get("id") or "")
+    if timer_id and str(timer.get("id") or "") != current_timer_id:
+        return LocationResponse("⏳ Этот таймер уже неактуален.", hilly_meadows_buttons(), player.get("current_zone", "hilly_meadows"))
+    if timer_remaining_seconds(timer) > 0:
+        return complete_active_timer(storage, player, current_timer_id, rng)
+
+    game_id = str(player.get("game_id") or player.get("id") or "")
+    claim_method = getattr(storage, "claim_active_timer_for_delivery", None)
+    if game_id and current_timer_id and callable(claim_method):
+        claimed_player = claim_method(
+            game_id,
+            current_timer_id,
+            EVENT_RESOLUTION_OWNER,
+            claim_ttl_seconds=120,
+            platform_filter=None,
+        )
+        if not isinstance(claimed_player, dict):
+            return LocationResponse(
+                "⏳ Этот таймер уже завершён или обрабатывается с другой привязанной платформы. Повторная награда не выдаётся.",
+                hilly_meadows_buttons(),
+                player.get("current_zone", "hilly_meadows"),
+            )
+        return complete_active_timer(storage, claimed_player, current_timer_id, rng)
+
+    return complete_active_timer(storage, player, current_timer_id, rng)
 
 
 def complete_active_timer(storage: Any, player: dict[str, Any], timer_id: str | None = None, rng: random.Random | None = None) -> LocationResponse:
@@ -800,6 +839,8 @@ def complete_active_timer(storage: Any, player: dict[str, Any], timer_id: str | 
         storage.update_player(player)
         return LocationResponse(f"✅ Поиск завершён.\n\n{battle_text}", battle_buttons(player), "hilly_meadows_battle")
 
+    if isinstance(event, dict):
+        ensure_event_id(event, fallback=f"{timer.get('id')}_event")
     player["active_event"] = event
     storage.update_player(player)
     return LocationResponse(
@@ -864,6 +905,47 @@ def resolve_trap(player: dict[str, Any], rng: random.Random) -> str:
     return f"👝 Пробираясь через высокую траву, вы цепляете поясной кошель за сухую ветку. При проверке оказывается, что несколько монет пропали. Потеряно: медные монеты -{actual_loss}."
 
 
+def claim_active_event(storage: Any, player: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Claim the current active event before granting rewards.
+
+    This prevents duplicated event rewards when one linked Telegram/VK account
+    presses the same event button from both platforms.
+    """
+
+    game_id = str(player.get("game_id") or player.get("id") or "")
+    event = player.get("active_event")
+    if not game_id or not isinstance(event, dict):
+        return None, None
+
+    event_id = ensure_event_id(event)
+    claim_method = getattr(storage, "claim_active_event_for_resolution", None)
+    if callable(claim_method):
+        claimed_player = claim_method(
+            game_id,
+            event_id,
+            EVENT_RESOLUTION_OWNER,
+            claim_ttl_seconds=120,
+        )
+        if not isinstance(claimed_player, dict):
+            return None, None
+        claimed_event = claimed_player.get("active_event")
+        if not isinstance(claimed_event, dict):
+            return None, None
+        return claimed_player, claimed_event
+
+    # Legacy fallback: not fully atomic across processes, but still avoids
+    # duplicate rewards in the common in-process case.
+    return player, event
+
+
+def event_already_resolving_response(player: dict[str, Any]) -> LocationResponse:
+    return LocationResponse(
+        "Это событие уже завершено или обрабатывается с другой привязанной платформы. Награда повторно не выдаётся.",
+        hilly_meadows_buttons(),
+        player.get("current_zone", "hilly_meadows"),
+    )
+
+
 def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng: random.Random | None = None) -> LocationResponse:
     rng = rng or random.Random()
     ensure_external_fields(player)
@@ -873,6 +955,21 @@ def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng:
         return LocationResponse("Активного события нет.", hilly_meadows_buttons(), "hilly_meadows")
 
     event_type = event.get("type")
+
+    should_resolve = (
+        action in {SKIP, LEAVE, RETREAT}
+        or (event_type == "alchemy_ingredient" and action == COLLECT)
+        or (event_type == "stone_or_ore" and action == INSPECT_AND_TAKE)
+        or (event_type == "berries" and action == COLLECT)
+        or (event_type == "glint" and action == LOOK)
+    )
+    if should_resolve:
+        claimed_player, claimed_event = claim_active_event(storage, player)
+        if claimed_player is None or claimed_event is None:
+            return event_already_resolving_response(player)
+        player = claimed_player
+        event = claimed_event
+        event_type = event.get("type")
 
     if action in {SKIP, LEAVE, RETREAT}:
         player["active_event"] = None
@@ -1114,9 +1211,9 @@ def handle_external_location_action(
         if action == BACK:
             return cancel_active_timer(storage, player)
         if action == CHECK_TIMER:
-            return complete_active_timer(storage, player, active_timer.get("id"), rng)
+            return complete_active_timer_once(storage, player, active_timer.get("id"), rng)
         if timer_remaining_seconds(active_timer) <= 0:
-            return complete_active_timer(storage, player, active_timer.get("id"), rng)
+            return complete_active_timer_once(storage, player, active_timer.get("id"), rng)
         if action == BREAK_CAMP:
             return leave_camp(storage, player)
         if active_timer.get("type") != "camp_rest":

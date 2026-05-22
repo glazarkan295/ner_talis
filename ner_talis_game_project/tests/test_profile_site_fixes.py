@@ -251,6 +251,50 @@ class ProfileSiteFixesTest(unittest.TestCase):
         self.assertEqual(frontend_skills[1]["damage"], 18)
         self.assertNotIn("base_damage_formula", frontend_skills[0])
 
+
+    def test_attribute_points_can_be_confirmed_in_batch_through_private_profile_token(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["free_stat_points"] = 5
+            player["invested_stats"] = {"strength": 0, "endurance": 0}
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            response = TestClient(app).post(
+                f"/api/profile/{token}/attributes/confirm",
+                json={"allocations": {"strength": 2, "endurance": 3}},
+            )
+
+            self.assertEqual(response.status_code, 200, response.text)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(restored["free_stat_points"], 0)
+            self.assertEqual(restored["invested_stats"]["strength"], 2)
+            self.assertEqual(restored["invested_stats"]["endurance"], 3)
+
+    def test_attribute_batch_confirm_rejects_more_points_than_available(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["free_stat_points"] = 1
+            player["invested_stats"] = {"strength": 0}
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            response = TestClient(app).post(
+                f"/api/profile/{token}/attributes/confirm",
+                json={"allocations": {"strength": 2}},
+            )
+
+            self.assertEqual(response.status_code, 400)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(restored["free_stat_points"], 1)
+            self.assertEqual(restored["invested_stats"].get("strength"), 0)
+
     def test_skill_points_can_be_spent_through_private_profile_token(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
