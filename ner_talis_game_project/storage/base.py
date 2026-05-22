@@ -55,6 +55,17 @@ class PlayerStorage(Protocol):
     ) -> tuple[bool, str, dict[str, Any] | None]:
         ...
 
+
+    def claim_active_event_for_resolution(
+        self,
+        game_id: str,
+        event_id: str | None,
+        owner: str,
+        *,
+        claim_ttl_seconds: int = 120,
+    ) -> dict[str, Any] | None:
+        ...
+
     def create_site_session(
         self,
         game_id: str,

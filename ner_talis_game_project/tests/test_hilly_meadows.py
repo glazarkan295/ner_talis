@@ -114,6 +114,25 @@ class HillyMeadowsIntegrationTest(unittest.TestCase):
         self.assertIsNone(player.get("active_timer"))
         self.assertEqual(player.get("current_zone"), "hilly_meadows")
 
+    def test_zero_energy_search_uses_ten_minute_timer(self):
+        storage, player = self.make_player_and_storage()
+        player["current_location"] = "hilly_meadows"
+        player["current_zone"] = "hilly_meadows"
+        player["energy"] = 0
+        player["current_energy"] = 0
+        storage.update_player(player)
+        player = self.equip_basic_attack(storage, player)
+
+        response = handle_external_location_action(storage, player, START_SEARCH, rng=random.Random(1))
+
+        self.assertIn("Поиск начался", response.text)
+        self.assertIn("10 мин", response.text)
+        self.assertIsNotNone(response.scheduled_timer)
+        self.assertEqual(response.scheduled_timer["seconds"], 600)
+        player = storage.get_player_by_platform("telegram", "111")
+        self.assertEqual(player["active_timer"]["seconds"], 600)
+        self.assertEqual(player["energy"], 0)
+
     def test_glint_event_can_be_resolved_with_look(self):
         storage, player = self.make_player_and_storage()
         player["current_location"] = "hilly_meadows"
@@ -128,6 +147,78 @@ class HillyMeadowsIntegrationTest(unittest.TestCase):
         )
         player = storage.get_player_by_platform("telegram", "111")
         self.assertIsNone(player.get("active_event"))
+
+    def test_trap_and_energy_warning_texts_are_current(self):
+        from services.external_location_service import collect_energy_warning_messages, resolve_trap
+
+        class FixedPitRandom(random.Random):
+            def __init__(self):
+                super().__init__(1)
+                self.calls = 0
+
+            def uniform(self, _a, _b):
+                self.calls += 1
+                return 50 if self.calls == 1 else 0.005
+
+        player = {"hp": 100, "max_hp": 100, "energy": 50, "max_energy": 100}
+        trap_text = resolve_trap(player, FixedPitRandom())
+        self.assertIn("Ваши ноги запутались в высокой траве", trap_text)
+        self.assertNotIn("проваливаетесь", trap_text)
+
+        warnings = collect_energy_warning_messages(player)
+        self.assertTrue(any("съешьте еду или вернитесь в город" in warning.casefold() for warning in warnings))
+        self.assertFalse(any("вернуться в лагерь" in warning.casefold() for warning in warnings))
+
+    def test_linked_platforms_cannot_duplicate_event_rewards(self):
+        storage, player = self.make_player_and_storage()
+        player["current_location"] = "hilly_meadows"
+        player["current_zone"] = "hilly_meadows"
+        player["active_event"] = {
+            "type": "stone_or_ore",
+            "event_id": "event-no-double-1",
+            "text": "камень",
+        }
+        storage.update_player(player)
+
+        stale_copy = storage.get_player_by_platform("telegram", "111")
+        fresh_copy = storage.get_player_by_platform("telegram", "111")
+
+        first = handle_external_location_action(storage, fresh_copy, "Осмотреть и забрать", rng=random.Random(1))
+        second = handle_external_location_action(storage, stale_copy, "Осмотреть и забрать", rng=random.Random(1))
+
+        self.assertIn("Получено:", first.text)
+        self.assertIn("повторно не выдаётся", second.text)
+        player = storage.get_player_by_platform("telegram", "111")
+        self.assertIsNone(player.get("active_event"))
+        total_items = sum(int(item.get("amount", 1) or 1) for item in player.get("inventory", []))
+        self.assertGreater(total_items, 0)
+        self.assertLessEqual(total_items, 3)
+
+    def test_linking_vk_to_telegram_profile_does_not_reapply_starter_pack(self):
+        storage, player = self.make_player_and_storage()
+        before_inventory = list(player.get("inventory", []))
+        before_equipment_ids = sorted(
+            str(item.get("id") or item.get("item_id"))
+            for item in player.get("equipment", {}).values()
+            if isinstance(item, dict)
+        )
+
+        code = storage.create_link_code(player["game_id"])
+        ok, message, linked = storage.connect_platform_by_code(code, "vk", "222")
+
+        self.assertTrue(ok, message)
+        self.assertIsNotNone(linked)
+        self.assertEqual(linked["game_id"], player["game_id"])
+        self.assertEqual(storage.get_player_by_platform("vk", "222")["game_id"], player["game_id"])
+        after = storage.get_player_by_game_id(player["game_id"])
+        after_equipment_ids = sorted(
+            str(item.get("id") or item.get("item_id"))
+            for item in after.get("equipment", {}).values()
+            if isinstance(item, dict)
+        )
+        self.assertEqual(after.get("inventory", []), before_inventory)
+        self.assertEqual(after_equipment_ids, before_equipment_ids)
+
 
     def test_camp_cooking_and_eating_restore_energy(self):
         storage, player = self.make_player_and_storage()
@@ -154,7 +245,10 @@ class HillyMeadowsIntegrationTest(unittest.TestCase):
     def test_energy_time_formula_bounds(self):
         self.assertEqual(calculate_scaled_seconds(100, 100, 60, 600), 60)
         self.assertGreater(calculate_scaled_seconds(50, 100, 60, 600), 60)
-        self.assertLessEqual(calculate_scaled_seconds(0, 100, 60, 600), 600)
+        self.assertLessEqual(calculate_scaled_seconds(1, 100, 60, 600), 300)
+        self.assertEqual(calculate_scaled_seconds(0, 100, 60, 600), 600)
+        self.assertEqual(calculate_scaled_seconds(0, 100, 30, 600), 600)
+        self.assertLessEqual(calculate_scaled_seconds(1, 100, 30, 600), 300)
         self.assertEqual(CAMP_DISHES["Сытная похлёбка"]["restore_energy"], 50)
         self.assertIn("Луговой корень", CAMP_DISHES["Сытная похлёбка"]["ingredients"])
         self.assertNotIn("Съедобный корень", CAMP_DISHES["Сытная похлёбка"]["ingredients"])

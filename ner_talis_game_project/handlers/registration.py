@@ -8,6 +8,7 @@ from keyboards.reply_keyboards import (
     race_keyboard,
     start_keyboard,
 )
+from services.promo_service import redeem_promo_code
 from services.registration_service import (
     create_player,
     format_race_card,
@@ -310,3 +311,25 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         reply_markup=start_keyboard(),
     )
     return ConversationHandler.END
+
+
+async def promo_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    storage = get_storage(context)
+    external_user_id = get_external_user_id(update)
+    player = storage.get_player_by_platform(TELEGRAM_PLATFORM, external_user_id)
+    if player is None:
+        await update.message.reply_text(
+            "Сначала нужно создать персонажа. Нажми /start и выбери «Начать».",
+            reply_markup=start_keyboard(),
+        )
+        return
+
+    args = getattr(context, "args", []) or []
+    code = " ".join(str(arg) for arg in args).strip()
+    if not code:
+        await update.message.reply_text("Формат: /promo CODE")
+        return
+
+    ok, message = redeem_promo_code(storage, str(player.get("game_id")), code)
+    prefix = "✅" if ok else "⚠️"
+    await update.message.reply_text(f"{prefix} {message}")

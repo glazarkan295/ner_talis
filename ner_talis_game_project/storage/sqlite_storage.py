@@ -11,6 +11,7 @@ from typing import Any, Iterator
 
 from storage.json_storage import JsonStorage
 from storage.timer_claims import try_mark_timer_claimed
+from storage.event_claims import try_mark_active_event_claimed
 
 
 class SQLiteStorage:
@@ -39,6 +40,7 @@ class SQLiteStorage:
             "names": {},
             "link_codes": {},
             "site_sessions": {},
+            "promo_codes": {"codes": {}},
         }
 
     @contextmanager
@@ -101,6 +103,12 @@ class SQLiteStorage:
                     ON platform_links(game_id);
                 CREATE INDEX IF NOT EXISTS idx_link_codes_created_at
                     ON link_codes(created_at);
+                CREATE TABLE IF NOT EXISTS promo_codes (
+                    code TEXT PRIMARY KEY,
+                    data TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_site_sessions_expires_at
                     ON site_sessions(expires_at);
                 """
@@ -187,6 +195,11 @@ class SQLiteStorage:
                     "expires_at": row["expires_at"],
                     "used": bool(row["used"]),
                 }
+
+            promo_data = {"codes": {}}
+            for row in connection.execute("SELECT code, data FROM promo_codes"):
+                promo_data["codes"][row["code"]] = self._deserialize(row["data"])
+            data["promo_codes"] = promo_data
 
             return data
 
@@ -277,6 +290,14 @@ class SQLiteStorage:
                             1 if session.get("used") else 0,
                         ),
                     )
+
+                if "promo_codes" in data:
+                    connection.execute("DELETE FROM promo_codes")
+                    for code, promo in (data.get("promo_codes") or {}).get("codes", {}).items():
+                        connection.execute(
+                            "INSERT OR REPLACE INTO promo_codes(code, data, updated_at) VALUES (?, ?, ?)",
+                            (code, self._serialize(promo), promo.get("updated_at") or now),
+                        )
 
                 connection.execute("COMMIT")
             except Exception:
@@ -449,6 +470,31 @@ class SQLiteStorage:
                 connection.execute("ROLLBACK")
                 raise
 
+    def load_promo_data(self) -> dict[str, Any]:
+        with self._lock, self._connect() as connection:
+            data = {"codes": {}}
+            for row in connection.execute("SELECT code, data FROM promo_codes"):
+                data["codes"][row["code"]] = self._deserialize(row["data"])
+            return data
+
+    def save_promo_data(self, data: dict[str, Any]) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                connection.execute("DELETE FROM promo_codes")
+                for code, promo in (data.get("codes") or {}).items():
+                    if not isinstance(promo, dict):
+                        continue
+                    connection.execute(
+                        "INSERT OR REPLACE INTO promo_codes(code, data, updated_at) VALUES (?, ?, ?)",
+                        (code, self._serialize(promo), promo.get("updated_at") or now),
+                    )
+                connection.execute("COMMIT")
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+
 
     def claim_active_timer_for_delivery(
         self,
@@ -478,6 +524,64 @@ class SQLiteStorage:
                     str(owner),
                     claim_ttl_seconds=claim_ttl_seconds,
                     platform_filter=platform_filter,
+                    now=time.time(),
+                ):
+                    connection.execute("ROLLBACK")
+                    return None
+
+                player["game_id"] = str(game_id)
+                player["id"] = str(game_id)
+                player.setdefault("public_id", str(uuid.uuid4()))
+                player.setdefault("linked_accounts", {})
+                name = str(player.get("name") or "").casefold()
+                now_iso = datetime.now(timezone.utc).isoformat()
+                connection.execute(
+                    """
+                    UPDATE players
+                    SET public_id = ?, name_key = ?, data = ?, updated_at = ?
+                    WHERE game_id = ?
+                    """,
+                    (
+                        player["public_id"],
+                        name or None,
+                        self._serialize(player),
+                        now_iso,
+                        str(game_id),
+                    ),
+                )
+                connection.execute("COMMIT")
+                return player
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+
+
+    def claim_active_event_for_resolution(
+        self,
+        game_id: str,
+        event_id: str | None,
+        owner: str,
+        *,
+        claim_ttl_seconds: int = 120,
+    ) -> dict[str, Any] | None:
+        """Atomically claim active_event before granting any event reward."""
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT data FROM players WHERE game_id = ?",
+                    (str(game_id),),
+                ).fetchone()
+                if not row:
+                    connection.execute("ROLLBACK")
+                    return None
+
+                player = self._deserialize(row["data"])
+                if not try_mark_active_event_claimed(
+                    player,
+                    str(event_id) if event_id else None,
+                    str(owner),
+                    claim_ttl_seconds=claim_ttl_seconds,
                     now=time.time(),
                 ):
                     connection.execute("ROLLBACK")

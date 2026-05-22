@@ -14,6 +14,7 @@ from keyboards.vk_keyboards import (
     start_keyboard,
 )
 from services.city_service import CITY_BUTTONS, process_world_action
+from services.promo_service import redeem_promo_code
 from services.external_location_service import complete_active_timer
 from services.runtime_timer_scheduler import attach_timer_notification, schedule_timer_delivery
 from services.registration_service import (
@@ -110,6 +111,12 @@ class VkRegistrationBot:
 
         if lowered == "/profile" or text == "Профиль":
             self.send_profile(external_user_id, peer_id)
+            return
+
+        if lowered.startswith("/promo"):
+            parts = text.split(maxsplit=1)
+            code = parts[1].strip() if len(parts) > 1 else ""
+            self.redeem_promo(external_user_id, peer_id, code)
             return
 
         if lowered == "/link":
@@ -361,6 +368,18 @@ class VkRegistrationBot:
             f"Ссылка: {profile_url}\n\n"
             "Ссылка действует ограниченное время. Когда она истечёт, нажми «Профиль» ещё раз.",
         )
+
+    def redeem_promo(self, external_user_id: str, peer_id: int, code: str) -> None:
+        player = self.storage.get_player_by_platform(VK_PLATFORM, external_user_id)
+        if player is None:
+            self.send(peer_id, "Сначала нужно создать персонажа. Нажми /start и выбери «Начать».", start_keyboard())
+            return
+        if not code:
+            self.send(peer_id, "Формат: /promo CODE")
+            return
+        ok, message = redeem_promo_code(self.storage, str(player.get("game_id")), code)
+        prefix = "✅" if ok else "⚠️"
+        self.send(peer_id, f"{prefix} {message}")
 
     def send_link_code(self, external_user_id: str, peer_id: int) -> None:
         player = self.storage.get_player_by_platform(VK_PLATFORM, external_user_id)

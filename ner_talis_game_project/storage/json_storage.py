@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from storage.timer_claims import try_mark_timer_claimed
+from storage.event_claims import try_mark_active_event_claimed
 
 
 class JsonStorage:
@@ -276,6 +277,38 @@ class JsonStorage:
                 str(owner),
                 claim_ttl_seconds=claim_ttl_seconds,
                 platform_filter=platform_filter,
+                now=time.time(),
+            ):
+                return None
+
+            player["game_id"] = str(game_id)
+            player["id"] = str(game_id)
+            data["players"][str(game_id)] = player
+            self.rebuild_indexes(data)
+            self.save(data)
+            return player
+
+
+    def claim_active_event_for_resolution(
+        self,
+        game_id: str,
+        event_id: str | None,
+        owner: str,
+        *,
+        claim_ttl_seconds: int = 120,
+    ) -> dict[str, Any] | None:
+        """Atomically claim active_event before granting any event reward."""
+        with self._lock:
+            data = self.load()
+            player = data.get("players", {}).get(str(game_id))
+            if not isinstance(player, dict):
+                return None
+
+            if not try_mark_active_event_claimed(
+                player,
+                str(event_id) if event_id else None,
+                str(owner),
+                claim_ttl_seconds=claim_ttl_seconds,
                 now=time.time(),
             ):
                 return None

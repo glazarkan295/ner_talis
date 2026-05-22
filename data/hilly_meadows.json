@@ -3,7 +3,7 @@
   "name": "Холмистые луга",
   "type": "start_location",
   "mob_scaling_cap": 50,
-  "base_search_time_seconds": 60,
+  "base_search_time_seconds": 30,
   "max_search_time_seconds": 600,
   "base_search_energy_cost": 2,
   "min_search_energy_cost": 1,
