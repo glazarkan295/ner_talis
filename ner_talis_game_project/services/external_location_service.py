@@ -19,7 +19,7 @@ from typing import Any, Iterable
 from project_paths import resolve_project_path
 from services.derived_stats_service import calculate_energy_stats, ensure_player_resources
 from services.item_registry import build_inventory_item, get_item_definition_by_name, slugify_fallback_item_id
-from services.inventory_service import add_inventory_item as add_inventory_stack, remove_empty_stacks_and_recalculate
+from services.inventory_service import add_inventory_item as add_inventory_stack, inventory_add_result_notice, remove_empty_stacks_and_recalculate
 from services.pve_battle_service import BATTLE_ACTIONS, battle_buttons, create_location_battle, handle_battle_action
 from services.race_bonus_service import extra_alchemy_ingredient_chance_percent, search_event_weights
 from storage.event_claims import ensure_event_id
@@ -1171,7 +1171,7 @@ def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng:
         add_result = add_item(player, "Сухое бревно", amount, max_stack=20, source="Обыкновенный лес")
         player["active_event"] = None
         storage.update_player(player)
-        extra = f" Не поместилось: ×{add_result.discarded}." if getattr(add_result, "discarded", 0) else ""
+        extra = inventory_add_result_notice(add_result, "Сухое бревно")
         return LocationResponse(f"🪵 Вы собираете подходящие сухие куски дерева и складываете их в связку. Получено: Сухое бревно ×{add_result.added}.{extra}", location_buttons(location_id), location_id)
 
     if event_type == "mushrooms" and action == COLLECT_MUSHROOMS:
@@ -1180,7 +1180,7 @@ def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng:
         add_result = add_item(player, loot_name, amount, max_stack=20, source="Обыкновенный лес")
         player["active_event"] = None
         storage.update_player(player)
-        extra = f" Не поместилось: ×{add_result.discarded}." if getattr(add_result, "discarded", 0) else ""
+        extra = inventory_add_result_notice(add_result, loot_name)
         return LocationResponse(f"🍄 Вы аккуратно собираете грибы. Получено: {loot_name} ×{add_result.added}.{extra}", location_buttons(location_id), location_id)
 
     if event_type == "river" and action == GATHER_WATER:
@@ -1201,26 +1201,32 @@ def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng:
             player["money_copper"] = int(player.get("money_copper", player.get("money", 0)) or 0) + 1000
             player["money"] = player["money_copper"]
             bonus = "\n✨ Уже отходя от речушки, вы замечаете короткий блик в воде и достаёте серебряную монету. Получено: серебряная монета ×1."
+        notices = inventory_add_result_notice(clean_result, "Чистая вода")
+        if muddy_result:
+            notices += inventory_add_result_notice(muddy_result, "Мутная вода")
         player["active_event"] = None
         storage.update_player(player)
-        return LocationResponse(f"💧 Вы набираете воду в пустые банки. Получено: {', '.join(parts)}.{bonus}", location_buttons(location_id), location_id)
+        return LocationResponse(f"💧 Вы набираете воду в пустые банки. Получено: {', '.join(parts)}.{notices}{bonus}", location_buttons(location_id), location_id)
 
     if event_type == "small_burrow" and action == PUT_HAND_IN_BURROW:
         result = weighted_choice([("old_gloves", 10), ("fabric", 49), ("belt", 1), ("bite", 40)], rng)
         player["active_event"] = None
         if result == "old_gloves":
             add_result = add_item(player, "Старые перчатки", 1, item_id="old_gloves", max_stack=1, source="Обыкновенный лес")
+            extra = inventory_add_result_notice(add_result, "Старые перчатки")
             storage.update_player(player)
-            return LocationResponse(f"🧤 Нащупав что-то мягкое, вы вытаскиваете из норы пару старых перчаток. Получено: Старые перчатки ×{add_result.added}.", location_buttons(location_id), location_id)
+            return LocationResponse(f"🧤 Нащупав что-то мягкое, вы вытаскиваете из норы пару старых перчаток. Получено: Старые перчатки ×{add_result.added}.{extra}", location_buttons(location_id), location_id)
         if result == "fabric":
             amount = rng.randint(1, 3)
             add_result = add_item(player, "Куски ткани", amount, max_stack=20, source="Обыкновенный лес")
+            extra = inventory_add_result_notice(add_result, "Куски ткани")
             storage.update_player(player)
-            return LocationResponse(f"🧵 В норе оказывается старый сгнивший свёрток. Несколько кусков ткани ещё можно использовать. Получено: Куски ткани ×{add_result.added}.", location_buttons(location_id), location_id)
+            return LocationResponse(f"🧵 В норе оказывается старый сгнивший свёрток. Несколько кусков ткани ещё можно использовать. Получено: Куски ткани ×{add_result.added}.{extra}", location_buttons(location_id), location_id)
         if result == "belt":
             add_result = add_item(player, "Неплохой пояс", 1, item_id="decent_belt", max_stack=1, source="Обыкновенный лес")
+            extra = inventory_add_result_notice(add_result, "Неплохой пояс")
             storage.update_player(player)
-            return LocationResponse(f"🟫 Вы тянете руку глубже и вытаскиваете крепкий пояс. Получено: Неплохой пояс ×{add_result.added}.", location_buttons(location_id), location_id)
+            return LocationResponse(f"🟫 Вы тянете руку глубже и вытаскиваете крепкий пояс. Получено: Неплохой пояс ×{add_result.added}.{extra}", location_buttons(location_id), location_id)
         max_hp = int(player.get("max_hp") or 100)
         hp = int(player.get("hp") or max_hp)
         loss = max(1, math.ceil(max_hp * 0.10))
@@ -1239,7 +1245,9 @@ def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng:
         amount = add_result.added
         player["active_event"] = None
         storage.update_player(player)
-        extra_text = "\n🧝 Знание трав помогло найти дополнительный ингредиент." if got_extra else ""
+        extra_text = inventory_add_result_notice(add_result, loot_name)
+        if got_extra:
+            extra_text += "\n🧝 Знание трав помогло найти дополнительный ингредиент."
         return LocationResponse(f"Вы аккуратно собираете растение и убираете его в сумку. Получено: {loot_name} ×{amount}.{extra_text}", location_buttons(location_id), location_id)
 
     if event_type == "stone_or_ore" and action == INSPECT_AND_TAKE:
@@ -1247,12 +1255,13 @@ def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng:
         amount = rng.randint(1, 3) if result == "Обычный камень" else rng.randint(1, 2)
         add_result = add_item(player, result, amount)
         amount = add_result.added
+        extra = inventory_add_result_notice(add_result, result)
         player["active_event"] = None
         storage.update_player(player)
         if result == "Обычный камень":
-            text = f"Это оказался самый обычный камень. Ничего ценного, но в хозяйстве может пригодиться. Получено: {result} ×{amount}."
+            text = f"Это оказался самый обычный камень. Ничего ценного, но в хозяйстве может пригодиться. Получено: {result} ×{amount}.{extra}"
         else:
-            text = f"При осмотре вы замечаете металлические прожилки. Это не простой камень, а небольшой кусок руды. Получено: {result} ×{amount}."
+            text = f"При осмотре вы замечаете металлические прожилки. Это не простой камень, а небольшой кусок руды. Получено: {result} ×{amount}.{extra}"
         return LocationResponse(text, location_buttons(location_id), location_id)
 
     if event_type == "berries" and action == COLLECT:
@@ -1260,9 +1269,10 @@ def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng:
         amount = rng.randint(2, 5)
         add_result = add_item(player, loot_name, amount)
         amount = add_result.added
+        extra = inventory_add_result_notice(add_result, loot_name)
         player["active_event"] = None
         storage.update_player(player)
-        return LocationResponse(f"Вы собираете ягоды с нижних веток куста, стараясь не раздавить самые спелые. Получено: {loot_name} ×{amount}.", location_buttons(location_id), location_id)
+        return LocationResponse(f"Вы собираете ягоды с нижних веток куста, стараясь не раздавить самые спелые. Получено: {loot_name} ×{amount}.{extra}", location_buttons(location_id), location_id)
 
     if event_type == "glint" and action == LOOK:
         response = resolve_glint_event(player, event, rng)
@@ -1280,9 +1290,10 @@ def resolve_glint_event(player: dict[str, Any], event: dict[str, Any], rng: rand
         add_result = add_item(player, result, 1)
         if add_result.added <= 0:
             return "Поднявшись выше по склону, вы замечаете нож, воткнутый в землю. Но места в инвентаре нет, и забрать находку некуда."
+        extra = inventory_add_result_notice(add_result, result)
         if result == "Железный лом":
-            return "Поднявшись выше по склону, вы замечаете нож, воткнутый в землю. Скорее всего, кто-то пытался замедлить спуск вниз по траве, но вышло не слишком удачно.\n\nОсмотрев находку, вы понимаете, что это почти полный хлам, пригодный только на переплавку. Получено: Железный лом ×1."
-        return "Поднявшись выше по склону, вы замечаете нож, воткнутый в землю. Скорее всего, кто-то пытался замедлить спуск вниз по траве, но вышло не слишком удачно.\n\nНож в сносном состоянии, но для боя почти не годится. Его можно продать или разобрать. Получено: Старый нож ×1."
+            return f"Поднявшись выше по склону, вы замечаете нож, воткнутый в землю. Скорее всего, кто-то пытался замедлить спуск вниз по траве, но вышло не слишком удачно.\n\nОсмотрев находку, вы понимаете, что это почти полный хлам, пригодный только на переплавку. Получено: Железный лом ×1.{extra}"
+        return f"Поднявшись выше по склону, вы замечаете нож, воткнутый в землю. Скорее всего, кто-то пытался замедлить спуск вниз по траве, но вышло не слишком удачно.\n\nНож в сносном состоянии, но для боя почти не годится. Его можно продать или разобрать. Получено: Старый нож ×1.{extra}"
 
     result = weighted_choice([("copper", 75), ("silver", 2), ("nothing", 23)], rng)
     if result == "copper":
@@ -1330,7 +1341,7 @@ def cook_dish(storage: Any, player: dict[str, Any], dish_name: str, amount: int 
             cook_buttons(player),
             f"{location_id}_camp_cooking",
         )
-    extra = f"\n🎒 В доп. слот попало: ×{add_result.added_to_overflow}." if add_result.added_to_overflow else ""
+    extra = inventory_add_result_notice(add_result, dish_name)
     return LocationResponse(f"🔥 Вы готовите походное блюдо на маленьком костре.\nПолучено: {dish_name} ×{add_result.added}.{extra}", cook_buttons(player), f"{location_id}_camp_cooking")
 
 
