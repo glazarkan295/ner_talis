@@ -43,6 +43,7 @@ if "vk_api" not in sys.modules:
     sys.modules["vk_api.keyboard"] = keyboard_stub
 
 from services.registration_service import create_player, load_races
+from services.inventory_service import add_inventory_item
 from services.web_profile import PROFILE_SCOPE, create_profile_site_link
 from site_api import create_profile_api_router, equipment_modifier_totals, frontend_profile, is_inventory_item_usable
 from storage.json_storage import JsonStorage
@@ -189,6 +190,37 @@ class ProfileSiteFixesTest(unittest.TestCase):
         weapon = next(item for item in profile["inventory"] if item["id"] == "starter_wooden_staff")
 
         self.assertEqual(weapon["actions"], ["Надеть"])
+
+
+    def test_overflow_inventory_penalty_is_visible_and_affects_profile_stats(self):
+        player = self._new_player()
+        player["inventory_capacity"] = 40
+        player["inventory"] = [
+            {"id": f"regular_{index}", "name": f"Обычный предмет {index}", "amount": 1, "max_stack": 1}
+            for index in range(40)
+        ]
+        base_profile = frontend_profile(player)
+        base_dodge = int(next(row["value"] for row in base_profile["parameters"] if row["label"] == "Уклонение"))
+
+        for index in range(4):
+            add_inventory_item(
+                player,
+                {"id": f"overflow_{index}", "name": f"Лишний предмет {index}", "amount": 1, "max_stack": 1},
+                1,
+                item_id=f"overflow_{index}",
+                max_stack=1,
+            )
+
+        profile = frontend_profile(player)
+        dodge = int(next(row["value"] for row in profile["parameters"] if row["label"] == "Уклонение"))
+        overflow_items = [item for item in profile["inventory"] if item.get("overflowSlot")]
+        effect_names = [effect["name"] for effect in profile["effects"]]
+
+        self.assertEqual(len(overflow_items), 4)
+        self.assertTrue(profile["player"]["inventoryNoEscape"])
+        self.assertIn("Перегруз инвентаря", effect_names)
+        self.assertTrue(any(effect.get("kind") == "negative" for effect in profile["effects"]))
+        self.assertLess(dodge, base_dodge)
 
     def test_profile_button_link_uses_short_lived_token(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

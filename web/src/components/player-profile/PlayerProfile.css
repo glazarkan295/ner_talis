@@ -161,6 +161,7 @@ button { cursor: pointer; }
 
 .nt-lines, .nt-column-list, .nt-card-list { display: grid; grid-template-columns: 1fr; gap: 6px; }
 .nt-row {
+  position: relative;
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content max-content;
@@ -206,6 +207,22 @@ button { cursor: pointer; }
 .nt-item-art img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
 .nt-item-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8.5px; }
 .nt-item-amount { position: absolute; top: 4px; right: 5px; padding: 1px 5px; border-radius: 999px; background: rgba(0,0,0,.62); color: #d9bd81; font-size: 9px; }
+.nt-item-icon-card.overflow-slot {
+  border-color: rgba(226, 63, 52, .92) !important;
+  box-shadow: inset 0 0 0 1px rgba(226, 63, 52, .55), 0 0 18px rgba(226, 63, 52, .12);
+}
+.nt-overflow-badge {
+  position: absolute;
+  top: 4px;
+  left: 5px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(226, 63, 52, .70);
+  background: rgba(68, 10, 8, .82);
+  color: #ffd1ca;
+  font-size: 8px;
+  text-transform: uppercase;
+}
 
 .nt-card-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: 8px; }
 .nt-card-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
@@ -380,6 +397,22 @@ button { cursor: pointer; }
 }
 .nt-race-popover .nt-modal-block:first-of-type { margin-top: 6px; }
 .nt-race-popover ul { margin: 0; padding-left: 17px; color: #b9aa8a; }
+.nt-effects-popover { width: min(380px, calc(100% - 16px)); }
+.nt-effects-list { display: grid; gap: 8px; }
+.nt-effect-card {
+  border: 1px solid rgba(165,132,77,.16);
+  border-radius: 12px;
+  padding: 8px;
+  background: rgba(0,0,0,.14);
+}
+.nt-effect-card.positive { border-color: rgba(118, 190, 117, .35); }
+.nt-effect-card.negative { border-color: rgba(226, 63, 52, .42); background: rgba(60, 10, 8, .16); }
+.nt-effect-title-row { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 8px; align-items: center; }
+.nt-effect-title-row strong { color: #d9bd81; font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nt-effect-title-row span { color: #9f947f; font-size: 9px; text-transform: lowercase; }
+.nt-effect-card p { margin: 5px 0; font-size: 10px; color: #b9aa8a; line-height: 1.3; }
+.nt-effect-card ul { margin-top: 5px; }
+.nt-effect-card small { display: block; margin-top: 5px; color: #938873; font-size: 9px; }
 .nt-popover-close {
   position: absolute;
   top: 8px;

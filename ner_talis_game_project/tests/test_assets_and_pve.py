@@ -237,6 +237,38 @@ class AssetsAndPveIntegrationTest(unittest.TestCase):
         self.assertIn("Опыт: +26", rewards)
         self.assertEqual(player["experience"], 26)
 
+
+    def test_battle_reward_message_mentions_overflow_slot(self):
+        _storage, player = self.make_player_and_storage()
+        player["inventory_capacity"] = 20
+        player["inventory"] = [
+            {"id": f"regular_{index}", "name": f"Занятый слот {index}", "amount": 1, "max_stack": 1}
+            for index in range(20)
+        ]
+        battle = {
+            "return_location": "hilly_meadows",
+            "enemies": [
+                {
+                    "name": "Суслик-переросток",
+                    "level": 1,
+                    "rank": "normal",
+                    "current_hp": 0,
+                    "max_hp": 1,
+                }
+            ],
+        }
+
+        class AlwaysLootRandom(random.Random):
+            def uniform(self, a, b):
+                return a
+
+            def randint(self, a, b):
+                return a
+
+        rewards = grant_battle_rewards(player, battle, rng=AlwaysLootRandom())
+
+        self.assertIn("В доп. слот попало", rewards)
+
     def test_grant_experience_applies_human_bonus_and_level_up(self):
         _storage, player = self.make_player_and_storage()
         result = grant_experience(player, 100)

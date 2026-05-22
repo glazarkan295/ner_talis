@@ -17,7 +17,7 @@ from typing import Any
 
 from services.derived_stats_service import calculate_player_derived_stats, calculate_player_skill_raw_damage, ensure_player_resources, safe_int, soft_level
 from services.item_registry import build_inventory_item, get_item_definition_by_name
-from services.inventory_service import add_inventory_item as add_inventory_stack, recalculate_inventory_overflow
+from services.inventory_service import add_inventory_item as add_inventory_stack, inventory_add_result_notice, recalculate_inventory_overflow
 from services.progression_service import apply_death_experience_penalty, grant_experience
 from services.pve_battle_models import (
     BattleState,
@@ -810,8 +810,9 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
                 amount = rng.randint(min_amount, max_amount)
                 add_result = add_inventory_item(player, item_name, amount)
                 if add_result.added > 0:
-                    loot_lines.append(f"{item_name} ×{add_result.added}")
-                if add_result.discarded > 0:
+                    note = inventory_add_result_notice(add_result, item_name)
+                    loot_lines.append(f"{item_name} ×{add_result.added}{note}")
+                elif add_result.discarded > 0:
                     loot_lines.append(f"{item_name}: не поместилось ×{add_result.discarded}")
     group_count = max(1, len(enemies))
     xp_total = math.ceil(xp_total * max(0.55, 1 - ((group_count - 1) * 0.05)))

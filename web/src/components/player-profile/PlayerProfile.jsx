@@ -318,6 +318,55 @@ function lineParts(line) {
   return rest.length ? [label.trim(), rest.join(":").trim()] : [text, ""];
 }
 
+
+function effectSummary(effects = []) {
+  const list = Array.isArray(effects) ? effects : [];
+  if (!list.length) return "нет";
+  const positive = list.filter((effect) => effect?.kind === "positive").length;
+  const negative = list.filter((effect) => effect?.kind === "negative").length;
+  const parts = [];
+  if (positive) parts.push(`+${positive}`);
+  if (negative) parts.push(`-${negative}`);
+  const neutral = list.length - positive - negative;
+  if (neutral) parts.push(`${neutral}`);
+  return parts.length ? parts.join(" / ") : `${list.length}`;
+}
+
+function effectExpiresText(effect) {
+  if (!effect?.expiresAt) return "постоянно";
+  const date = new Date(effect.expiresAt);
+  if (Number.isNaN(date.getTime())) return String(effect.expiresAt);
+  return date.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function EffectsPopover({ effects = [], onClose }) {
+  const list = Array.isArray(effects) ? effects : [];
+  return (
+    <aside className="nt-race-popover nt-effects-popover" role="dialog" aria-label="Активные эффекты">
+      <button className="nt-popover-close" type="button" onClick={onClose} aria-label="Закрыть">×</button>
+      <div className="nt-modal-kicker">Активные эффекты</div>
+      <h3>Эффекты персонажа</h3>
+      {list.length ? (
+        <div className="nt-effects-list">
+          {list.map((effect, index) => (
+            <article className={`nt-effect-card ${effect.kind === "negative" ? "negative" : effect.kind === "positive" ? "positive" : "neutral"}`} key={effect.id || effect.name || index}>
+              <div className="nt-effect-title-row">
+                <strong>{effect.name || "Активный эффект"}</strong>
+                <span>{effect.kind === "negative" ? "штраф" : effect.kind === "positive" ? "бонус" : "эффект"}</span>
+              </div>
+              <p>{effect.description || "Описание эффекта пока не добавлено."}</p>
+              {Array.isArray(effect.modifiers) && effect.modifiers.length ? (
+                <ul>{effect.modifiers.map((modifier) => <li key={modifier.key || modifier.text}>{modifier.text}</li>)}</ul>
+              ) : null}
+              <small>Действует: {effectExpiresText(effect)}</small>
+            </article>
+          ))}
+        </div>
+      ) : <p className="nt-empty-text">Активных положительных или отрицательных эффектов нет.</p>}
+    </aside>
+  );
+}
+
 function Panel({ title, right, children, className = "" }) {
   return (
     <section className={`nt-panel ${className}`.trim()}>
@@ -529,6 +578,22 @@ function RaceRow({ profile }) {
   );
 }
 
+
+function EffectsRow({ profile }) {
+  const [open, setOpen] = useState(false);
+  const effects = Array.isArray(profile.effects) ? profile.effects : [];
+  return (
+    <div className="nt-row nt-effects-row">
+      <span>Эффекты</span>
+      <strong className="nt-race-cell">
+        <span className="nt-race-value">{effectSummary(effects)}</span>
+        <button className="nt-race-info-button" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label="Показать активные эффекты">!</button>
+      </strong>
+      {open ? <EffectsPopover effects={effects} onClose={() => setOpen(false)} /> : null}
+    </div>
+  );
+}
+
 function CharacterTab({ profile, onOpenItem, onOpenSlot, onConfirmAttributePoints }) {
   const [attributeAmounts, setAttributeAmounts] = useState({});
   const [pendingAttributes, setPendingAttributes] = useState({});
@@ -573,6 +638,7 @@ function CharacterTab({ profile, onOpenItem, onOpenSlot, onConfirmAttributePoint
           <Row label="Ветка" value={profile.player?.branch || "—"} />
           <Row label="Уровень" value={profile.player?.level || 1} />
           <Row label="Баланс" value={profile.player?.balanceText || "0 мед."} />
+          <EffectsRow profile={profile} />
         </div>
         <div className="nt-progress-label">Опыт: {xpCurrent} / {xpNext}</div>
         <div className="nt-progress"><i style={{ width: `${xpPercent}%` }} /></div>
@@ -631,9 +697,10 @@ function InventoryTab({ profile, onOpenItem }) {
         </div>
         <div className="nt-icon-grid">
           {filtered.map((item) => (
-            <button key={item.id || item.name} className={`nt-item-icon-card ${qualityClass(item.quality)}`} type="button" onClick={(event) => onOpenItem(item, null, event)}>
+            <button key={item.id || item.name} className={`nt-item-icon-card ${qualityClass(item.quality)} ${item.overflowSlot ? "overflow-slot" : ""}`.trim()} type="button" onClick={(event) => onOpenItem(item, null, event)}>
               <ItemArt item={item} />
               {item.amount > 1 ? <span className="nt-item-amount">×{item.amount}</span> : null}
+              {item.overflowSlot ? <span className="nt-overflow-badge">доп</span> : null}
               <span className="nt-item-name">{item.name}</span>
             </button>
           ))}

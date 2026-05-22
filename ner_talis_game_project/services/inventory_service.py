@@ -267,6 +267,32 @@ def add_inventory_item(
     return result
 
 
+def inventory_add_overflow_notice(result: InventoryAddResult | None, item_name: str | None = None) -> str:
+    """Return a short Russian note when new items were placed into overflow slots."""
+
+    if result is None or safe_int(getattr(result, "added_to_overflow", 0), 0) <= 0:
+        return ""
+    amount = safe_int(getattr(result, "added_to_overflow", 0), 0)
+    label = f"{item_name} ×{amount}" if item_name else f"×{amount}"
+    return f" В доп. слот попало: {label}."
+
+
+def inventory_add_discard_notice(result: InventoryAddResult | None, item_name: str | None = None) -> str:
+    """Return a short note when part of a reward did not fit into any slot."""
+
+    if result is None or safe_int(getattr(result, "discarded", 0), 0) <= 0:
+        return ""
+    amount = safe_int(getattr(result, "discarded", 0), 0)
+    label = f"{item_name} ×{amount}" if item_name else f"×{amount}"
+    return f" Не поместилось: {label}."
+
+
+def inventory_add_result_notice(result: InventoryAddResult | None, item_name: str | None = None) -> str:
+    """Return combined reward placement notes for player-facing messages."""
+
+    return inventory_add_overflow_notice(result, item_name) + inventory_add_discard_notice(result, item_name)
+
+
 def remove_empty_stacks_and_recalculate(player: dict[str, Any]) -> None:
     inventory = player.setdefault("inventory", [])
     if isinstance(inventory, list):
