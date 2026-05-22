@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import re
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -29,8 +29,19 @@ from services.derived_stats_service import (
     safe_int,
     strip_hidden_formulas,
     ensure_player_resources,
+    calculate_player_skill_raw_damage,
+    prune_expired_effects,
 )
 from services.item_registry import enrich_inventory_item
+from services.inventory_service import (
+    add_inventory_item,
+    max_overflow_slots,
+    max_regular_slots,
+    overflow_slot_count,
+    recalculate_inventory_overflow,
+    regular_slot_count,
+)
+from services.promo_service import redeem_promo_code
 from services.race_bonus_service import hp_multiplier, outgoing_damage_multiplier, stat_multiplier
 from services.web_profile import PROFILE_SCOPE
 
@@ -176,6 +187,7 @@ class SkillEquipRequest(BaseModel):
 
 class EquipItemRequest(BaseModel):
     item_id: str
+    slot_key: str | None = None
 
 
 class UnequipItemRequest(BaseModel):
@@ -189,6 +201,10 @@ class UseItemRequest(BaseModel):
 class DropItemRequest(BaseModel):
     item_id: str
     amount: int = Field(gt=0)
+
+
+class PromoRedeemRequest(BaseModel):
+    code: str
 
 
 def parse_datetime(value: Any) -> datetime | None:
@@ -369,23 +385,77 @@ def equipment_bonus(bonus_modifiers: dict[str, int] | None, key: str) -> int:
     return safe_int((bonus_modifiers or {}).get(key), 0)
 
 
+def consumable_effect_duration_seconds(item: dict[str, Any], effect_payload: dict[str, Any]) -> int:
+    for key in ("duration_seconds", "duration", "effect_duration_seconds", "buff_duration_seconds"):
+        value = effect_payload.get(key) if isinstance(effect_payload, dict) else None
+        if value is None:
+            value = item.get(key)
+        seconds = safe_int(value, 0)
+        if seconds > 0:
+            return seconds
+    # Любой расходник с баффом по умолчанию временный, чтобы бонусы не копились навсегда.
+    return 3600
+
+
+def consumable_effect_stack_rule(item: dict[str, Any], effect_payload: dict[str, Any]) -> str:
+    raw = effect_payload.get("stack_rule") if isinstance(effect_payload, dict) else None
+    raw = raw or item.get("stack_rule") or item.get("effect_stack_rule") or "refresh"
+    rule = str(raw).casefold()
+    if rule in {"replace", "refresh", "stack_to_limit"}:
+        return rule
+    return "refresh"
+
+
 def consumable_effect_from_item(item: dict[str, Any]) -> dict[str, Any] | None:
     effect_payload = item.get("use_effect") or item.get("active_effect") or item.get("consumable_effect")
     if effect_payload is None and any(field in item for field in ("stat_modifiers", "modifiers", "bonus_modifiers", "effect_modifiers", "bonuses")):
         effect_payload = item
     if effect_payload is None:
         return None
+    if not isinstance(effect_payload, dict):
+        effect_payload = {}
     totals: dict[str, int] = {}
     collect_modifiers_from_value(effect_payload, totals)
     if not totals:
         return None
+    duration_seconds = consumable_effect_duration_seconds(item, effect_payload)
+    now = datetime.now(timezone.utc)
     return {
         "id": f"effect_{item.get('id') or item.get('item_id') or item.get('name')}",
-        "name": item.get("effect_name") or item.get("name") or "Временный эффект",
+        "name": item.get("effect_name") or effect_payload.get("name") or item.get("name") or "Временный эффект",
         "source": "consumable",
         "stat_modifiers": totals,
-        "description": item.get("effect_description") or item.get("description") or "Эффект от использованного предмета.",
+        "duration_seconds": duration_seconds,
+        "expires_at": (now + timedelta(seconds=duration_seconds)).isoformat(),
+        "stack_rule": consumable_effect_stack_rule(item, effect_payload),
+        "max_stacks": max(1, safe_int(effect_payload.get("max_stacks") or item.get("max_stacks"), 1)),
+        "description": item.get("effect_description") or effect_payload.get("description") or item.get("description") or "Временный эффект от использованного предмета.",
     }
+
+
+def add_active_consumable_effect(player: dict[str, Any], effect: dict[str, Any]) -> None:
+    effects = player.setdefault("active_effects", [])
+    if not isinstance(effects, list):
+        player["active_effects"] = effects = []
+    prune_expired_effects(player)
+    effect_id = str(effect.get("id") or "")
+    rule = str(effect.get("stack_rule") or "refresh").casefold()
+    same_indexes = [index for index, active in enumerate(effects) if isinstance(active, dict) and str(active.get("id") or "") == effect_id]
+
+    if rule in {"replace", "refresh"}:
+        for index in reversed(same_indexes):
+            effects.pop(index)
+        effects.append(effect)
+        return
+
+    if rule == "stack_to_limit":
+        max_stacks = max(1, safe_int(effect.get("max_stacks"), 1))
+        if len(same_indexes) >= max_stacks:
+            effects.pop(same_indexes[0])
+        effects.append(effect)
+        return
+
+    effects.append(effect)
 
 
 def item_energy_restore(item: dict[str, Any]) -> int:
@@ -414,7 +484,10 @@ def apply_energy_restore(player: dict[str, Any], item: dict[str, Any]) -> int:
     restore = item_energy_restore(item)
     if restore <= 0:
         return 0
-    bonus_modifiers = merge_modifier_totals(equipment_modifier_totals(player), external_effect_modifier_totals(player))
+    # Use the unified derived stats service so expired effects are pruned and
+    # do not affect food/energy restoration.
+    derived = calculate_player_derived_stats(player)
+    bonus_modifiers = derived.get("bonus_modifiers", {})
     energy_stats = calculate_energy_stats(player, bonus_modifiers)
     max_energy = energy_stats["max_energy"]
     current = energy_stats["current_energy"]
@@ -668,11 +741,16 @@ def classify_profile_inventory_category(item: dict[str, Any], current_category: 
     return current_category
 
 
+DIRECTLY_USABLE_CATEGORY_MARKERS = {
+    "алхимия", "еда", "напитки", "напиток", "зелье", "зелья",
+    "potion", "food", "drink", "camp_food", "alchemy",
+}
+
+
 def is_inventory_item_usable(item: dict[str, Any]) -> bool:
-    category = str(item.get("category") or "").casefold()
     parts = _text_parts_for_category(item)
     has_effect = consumable_effect_from_item(item) is not None
-    return item_energy_restore(item) > 0 or has_effect or category == "расходники" or bool(parts & CONSUMABLE_CATEGORY_MARKERS)
+    return item_energy_restore(item) > 0 or has_effect or bool(parts & DIRECTLY_USABLE_CATEGORY_MARKERS)
 
 def normalize_item(item: dict[str, Any], default_category: str = "Прочее") -> dict[str, Any]:
     item = enrich_inventory_item(item)
@@ -697,6 +775,9 @@ def normalize_item(item: dict[str, Any], default_category: str = "Прочее")
     normalized.setdefault("enchantments", [])
     normalized.setdefault("compare", [])
     normalized.setdefault("amount", 1)
+    if normalized.get("overflow_slot"):
+        normalized["overflowSlot"] = True
+        normalized["inventoryStatus"] = "Перегруз"
     energy_restore = item_energy_restore(normalized)
     if energy_restore > 0:
         normalized["category"] = "Расходники"
@@ -715,19 +796,14 @@ def format_skill_damage(
 ) -> Any:
     if not isinstance(skill, dict):
         return None
-    formula = str(skill.get("base_damage_formula") or "")
-    generic_bonus = equipment_bonus(bonus_modifiers, "bonus_damage")
-    if skill.get("id") == "basic_attack" or "5 + player_level * 1.2" in formula:
-        damage = 5 + player_level * 1.2 + generic_bonus + equipment_bonus(bonus_modifiers, "bonus_physical_damage")
-        return max(1, ceil(damage * outgoing_damage_multiplier(player or {}, "physical")))
-    if skill.get("id") == "magic_spark" or "4 + player_level * 1.1" in formula:
-        damage = 4 + player_level * 1.1 + generic_bonus + equipment_bonus(bonus_modifiers, "bonus_magic_damage")
-        return max(1, ceil(damage * outgoing_damage_multiplier(player or {}, "magic")))
+    if player is not None:
+        result = calculate_player_skill_raw_damage(player, skill)
+        return result.get("damage")
     damage = skill.get("damage")
     if contains_formula_text(damage):
         return None
     if isinstance(damage, (int, float)):
-        return max(1, ceil(float(damage) + generic_bonus))
+        return max(1, ceil(float(damage) + equipment_bonus(bonus_modifiers, "bonus_damage")))
     return damage
 
 
@@ -780,6 +856,7 @@ def normalize_skill(
 
 
 def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
+    recalculate_inventory_overflow(player)
     derived = calculate_player_derived_stats(player)
     level = derived["level"]
     bonus_modifiers = derived.get("bonus_modifiers", {})
@@ -879,9 +956,14 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "freeSkillPoints": safe_int(player.get("free_skill_points"), 0),
             "balanceText": format_money(safe_int(player.get("money"), 0)),
             "registrationDate": format_date(player.get("created_at")),
-            "inventoryCapacity": safe_int(player.get("inventory_capacity") or player.get("max_inventory_slots") or player.get("inventory_slots"), 20),
-            "inventoryUsedSlots": len(inventory),
-            "inventoryFreeSlots": max(0, safe_int(player.get("inventory_capacity") or player.get("max_inventory_slots") or player.get("inventory_slots"), 20) - len(inventory)),
+            "inventoryCapacity": max_regular_slots(player),
+            "inventoryUsedSlots": regular_slot_count(player),
+            "inventoryFreeSlots": max(0, max_regular_slots(player) - regular_slot_count(player)),
+            "inventoryOverflowCapacity": max_overflow_slots(player),
+            "inventoryOverflowUsed": overflow_slot_count(player),
+            "inventoryOverflowFree": max(0, max_overflow_slots(player) - overflow_slot_count(player)),
+            "inventoryOverloaded": overflow_slot_count(player) > 0,
+            "inventoryNoEscape": bool(player.get("inventory_overflow_no_escape")),
             "skillEquipCapacity": safe_int(player.get("skill_equip_capacity") or player.get("max_equipped_skills"), 2),
             "skillEquipUsed": len(equipped_skills),
             "skillEquipFree": max(0, safe_int(player.get("skill_equip_capacity") or player.get("max_equipped_skills"), 2) - len(equipped_skills)),
@@ -1036,6 +1118,38 @@ def unequip_player_skill(player: dict[str, Any], skill_id: str) -> None:
     skills.setdefault(target_section, []).append(skill)
 
 
+
+
+def compatible_equipment_slot(item: dict[str, Any], requested_slot: str | None, equipment: dict[str, Any]) -> str:
+    raw_slot = str(item.get("targetSlotKey") or item.get("slotKey") or item.get("slot") or item.get("target_slot") or "").strip()
+    item_type = str(item.get("type") or item.get("subtype") or item.get("category") or "").casefold()
+    requested = str(requested_slot or "").strip()
+
+    def first_free(options: tuple[str, ...]) -> str:
+        for slot in options:
+            if not isinstance(equipment.get(slot), dict):
+                return slot
+        return options[0]
+
+    if raw_slot in {"ring1", "ring2"}:
+        allowed = (raw_slot,)
+    elif raw_slot == "ring" or "кольцо" in item_type or item_type == "ring":
+        allowed = ("ring1", "ring2")
+    elif raw_slot in {"weapon1", "weapon2"}:
+        allowed = (raw_slot,)
+    elif raw_slot in {"weapon", "main_hand", "off_hand"} or item_type in {"оружие", "weapon", "меч", "посох", "кинжал", "топор", "молот", "булава", "лук", "арбалет"}:
+        allowed = ("weapon1", "weapon2")
+    elif raw_slot:
+        allowed = (raw_slot,)
+    else:
+        raise HTTPException(status_code=400, detail="У предмета не указан слот экипировки.")
+
+    if requested:
+        if requested not in allowed:
+            raise HTTPException(status_code=400, detail="Выбранный слот не подходит для этого предмета.")
+        return requested
+    return first_free(allowed)
+
 def spend_points_on_skill(skill: dict[str, Any], modifier_id: str | None, amount: int) -> None:
     if not skill.get("upgradeable"):
         raise HTTPException(status_code=400, detail="Этот навык нельзя улучшить.")
@@ -1130,18 +1244,26 @@ def create_profile_api_router(get_storage) -> APIRouter:
         if item_index is None:
             raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
         item = inventory.pop(item_index)
-        slot_key = item.get("targetSlotKey") or item.get("slotKey") or item.get("slot")
-        if not slot_key:
+        try:
+            slot_key = compatible_equipment_slot(item, request.slot_key, equipment)
+        except HTTPException:
             inventory.insert(item_index, item)
-            raise HTTPException(status_code=400, detail="У предмета не указан слот экипировки.")
+            raise
         previous_item = equipment.get(slot_key)
         if isinstance(previous_item, dict):
             previous_item["targetSlotKey"] = slot_key
             previous_item.pop("slotKey", None)
-            inventory.append(previous_item)
+            previous_item.pop("overflow_slot", None)
+            previous_item.pop("storage_type", None)
+            previous_item.pop("inventory_status", None)
+            add_inventory_item(player, previous_item, safe_int(previous_item.get("amount"), 1))
         item["slotKey"] = slot_key
         item.pop("targetSlotKey", None)
+        item.pop("overflow_slot", None)
+        item.pop("storage_type", None)
+        item.pop("inventory_status", None)
         equipment[slot_key] = item
+        recalculate_inventory_overflow(player)
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
@@ -1156,10 +1278,30 @@ def create_profile_api_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=404, detail="В этом слоте нет предмета.")
         item["targetSlotKey"] = request.slot_key
         item.pop("slotKey", None)
-        player.setdefault("inventory", []).append(item)
+        item.pop("overflow_slot", None)
+        item.pop("storage_type", None)
+        item.pop("inventory_status", None)
+        add_inventory_item(player, item, safe_int(item.get("amount"), 1))
+        recalculate_inventory_overflow(player)
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
+
+    @router.post("/{identifier}/promo/redeem")
+    def redeem_profile_promo(identifier: str, request: PromoRedeemRequest) -> dict[str, Any]:
+        storage = get_storage()
+        player = resolve_profile_write(storage, identifier)
+        code = str(request.code or "").strip()
+        if not code:
+            raise HTTPException(status_code=400, detail="Введите промокод.")
+        ok, message = redeem_promo_code(storage, str(player.get("game_id")), code)
+        if not ok:
+            raise HTTPException(status_code=400, detail=message)
+        refreshed = storage.get_player_by_game_id(player.get("game_id")) or player
+        recalculate_inventory_overflow(refreshed)
+        sync_player_parameters_for_bots(refreshed)
+        save_player(storage, refreshed)
+        return {"ok": True, "message": message, "profile": frontend_profile(refreshed)}
 
     @router.post("/{identifier}/inventory/use")
     def use_inventory_item(identifier: str, request: UseItemRequest) -> dict[str, Any]:
@@ -1175,12 +1317,13 @@ def create_profile_api_router(get_storage) -> APIRouter:
         restored_energy = apply_energy_restore(player, item)
         effect = consumable_effect_from_item(item)
         if effect is not None:
-            player.setdefault("active_effects", []).append(effect)
+            add_active_consumable_effect(player, effect)
         amount = safe_int(item.get("amount"), 1)
         if amount > 1:
             item["amount"] = amount - 1
         else:
             inventory.pop(item_index)
+        recalculate_inventory_overflow(player)
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "restoredEnergy": restored_energy, "profile": frontend_profile(player)}
@@ -1200,6 +1343,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
             item["amount"] = amount - drop_amount
         else:
             inventory.pop(item_index)
+        recalculate_inventory_overflow(player)
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}

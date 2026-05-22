@@ -774,7 +774,7 @@ export function PlayerProfile({ profile, onSpendAttributePoints, onSpendSkillPoi
   }
 
   async function equipFromSlot(item) {
-    await onEquipItem?.(item);
+    await onEquipItem?.(item, slotModal?.slot?.key || null);
     setSlotModal(null);
   }
 

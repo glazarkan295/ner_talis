@@ -39,6 +39,7 @@ class SQLiteStorage:
             "names": {},
             "link_codes": {},
             "site_sessions": {},
+            "promo_codes": {"codes": {}},
         }
 
     @contextmanager
@@ -101,6 +102,12 @@ class SQLiteStorage:
                     ON platform_links(game_id);
                 CREATE INDEX IF NOT EXISTS idx_link_codes_created_at
                     ON link_codes(created_at);
+                CREATE TABLE IF NOT EXISTS promo_codes (
+                    code TEXT PRIMARY KEY,
+                    data TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_site_sessions_expires_at
                     ON site_sessions(expires_at);
                 """
@@ -187,6 +194,11 @@ class SQLiteStorage:
                     "expires_at": row["expires_at"],
                     "used": bool(row["used"]),
                 }
+
+            promo_data = {"codes": {}}
+            for row in connection.execute("SELECT code, data FROM promo_codes"):
+                promo_data["codes"][row["code"]] = self._deserialize(row["data"])
+            data["promo_codes"] = promo_data
 
             return data
 
@@ -277,6 +289,14 @@ class SQLiteStorage:
                             1 if session.get("used") else 0,
                         ),
                     )
+
+                if "promo_codes" in data:
+                    connection.execute("DELETE FROM promo_codes")
+                    for code, promo in (data.get("promo_codes") or {}).get("codes", {}).items():
+                        connection.execute(
+                            "INSERT OR REPLACE INTO promo_codes(code, data, updated_at) VALUES (?, ?, ?)",
+                            (code, self._serialize(promo), promo.get("updated_at") or now),
+                        )
 
                 connection.execute("COMMIT")
             except Exception:
@@ -443,6 +463,31 @@ class SQLiteStorage:
                         ) VALUES (?, ?, ?, ?, ?)
                         """,
                         (platform_key, game_id, platform, str(external_user_id), now),
+                    )
+                connection.execute("COMMIT")
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+
+    def load_promo_data(self) -> dict[str, Any]:
+        with self._lock, self._connect() as connection:
+            data = {"codes": {}}
+            for row in connection.execute("SELECT code, data FROM promo_codes"):
+                data["codes"][row["code"]] = self._deserialize(row["data"])
+            return data
+
+    def save_promo_data(self, data: dict[str, Any]) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                connection.execute("DELETE FROM promo_codes")
+                for code, promo in (data.get("codes") or {}).items():
+                    if not isinstance(promo, dict):
+                        continue
+                    connection.execute(
+                        "INSERT OR REPLACE INTO promo_codes(code, data, updated_at) VALUES (?, ?, ?)",
+                        (code, self._serialize(promo), promo.get("updated_at") or now),
                     )
                 connection.execute("COMMIT")
             except Exception:

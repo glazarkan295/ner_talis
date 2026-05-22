@@ -106,6 +106,7 @@ def _import_telegram_runtime():
         link_command,
         profile_button,
         profile_command,
+        promo_command,
         receive_name,
         receive_race,
         show_world_short,
@@ -136,6 +137,7 @@ def _import_telegram_runtime():
         "link_command": link_command,
         "profile_button": profile_button,
         "profile_command": profile_command,
+        "promo_command": promo_command,
         "receive_name": receive_name,
         "receive_race": receive_race,
         "show_world_short": show_world_short,
@@ -203,6 +205,7 @@ def build_application():
         fallbacks=[
             CommandHandler("cancel", runtime["cancel"]),
             CommandHandler("profile", runtime["profile_command"]),
+            CommandHandler("promo", runtime["promo_command"]),
             CommandHandler("site_profile", runtime["profile_site_command"]),
             CommandHandler("link", runtime["link_command"]),
             CommandHandler("connect", runtime["connect_command"]),
@@ -213,6 +216,7 @@ def build_application():
 
     application.add_handler(registration_conversation)
     application.add_handler(CommandHandler("profile", runtime["profile_command"]))
+    application.add_handler(CommandHandler("promo", runtime["promo_command"]))
     application.add_handler(CommandHandler("site_profile", runtime["profile_site_command"]))
     application.add_handler(CommandHandler("link", runtime["link_command"]))
     application.add_handler(CommandHandler("connect", runtime["connect_command"]))

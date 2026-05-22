@@ -49,3 +49,26 @@ def grant_experience(player: dict[str, Any], base_amount: int) -> dict[str, Any]
         "experience": safe_int(player.get("experience"), 0),
         "experience_to_next": safe_int(player.get("experience_to_next"), experience_to_next_level(max(1, safe_int(player.get("level"), 1)))),
     }
+
+
+def apply_death_experience_penalty(player: dict[str, Any], percent: int = 10) -> dict[str, int]:
+    """Remove a percentage of current level experience after player death.
+
+    The penalty does not lower the player's level and never drops experience below zero.
+    ``total_experience`` stays as lifetime earned experience and is not reduced.
+    """
+
+    percent = max(0, safe_int(percent, 0))
+    current = max(0, safe_int(player.get("experience"), 0))
+    lost = 0 if current <= 0 or percent <= 0 else max(1, math.ceil(current * percent / 100))
+    lost = min(current, lost)
+    player["experience"] = max(0, current - lost)
+    level = max(1, safe_int(player.get("level"), 1))
+    player["experience_to_next"] = experience_to_next_level(level)
+    player["last_death_experience_penalty"] = lost
+    return {
+        "lost": lost,
+        "percent": percent,
+        "experience": safe_int(player.get("experience"), 0),
+        "experience_to_next": safe_int(player.get("experience_to_next"), experience_to_next_level(level)),
+    }

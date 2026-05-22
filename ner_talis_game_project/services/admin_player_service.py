@@ -271,7 +271,12 @@ def add_item_to_player(
     item.setdefault("source", "admin")
     item.setdefault("created_at", datetime.now(timezone.utc).isoformat())
 
-    player.setdefault("inventory", []).append(item)
+    result = add_inventory_item(player, item, amount, default_source="admin")
     storage.update_player(player)
 
-    return True, f"Игроку {game_id} добавлен предмет {item['item_id']} x{amount}.", player
+    if result.added <= 0:
+        return False, "В инвентаре нет свободного места, предмет не добавлен.", player
+    suffix = f" В доп. слот попало: {result.added_to_overflow}." if result.added_to_overflow else ""
+    if result.discarded:
+        suffix += f" Не поместилось: {result.discarded}."
+    return True, f"Игроку {game_id} добавлен предмет {item['item_id']} x{result.added}.{suffix}", player

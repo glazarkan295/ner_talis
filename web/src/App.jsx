@@ -75,8 +75,8 @@ function App() {
         onSpendSkillPoints={(skill, modifierId, amount) => {
           return runProfileAction(() => spendSkillPoints(profileIdentifier, skill.id || skill.name, modifierId, amount));
         }}
-        onEquipItem={(item) => {
-          return runProfileAction(() => equipItem(profileIdentifier, item.id));
+        onEquipItem={(item, slotKey = null) => {
+          return runProfileAction(() => equipItem(profileIdentifier, item.id, slotKey));
         }}
         onUnequipItem={(slotKey) => {
           return runProfileAction(() => unequipItem(profileIdentifier, slotKey));
