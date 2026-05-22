@@ -708,7 +708,7 @@ def strip_hidden_formulas(value: Any) -> Any:
 
 
 CONSUMABLE_CATEGORY_MARKERS = {
-    "алхимия", "еда", "напитки", "напиток", "зелье", "зелья", "расходник", "расходники",
+    "еда", "напитки", "напиток", "зелье", "зелья", "расходник", "расходники",
     "consumable", "consumables", "potion", "food", "drink", "camp_food", "combat_item",
     "battle_item", "single_use", "one_time", "одноразовый", "боевой предмет",
 }
@@ -746,17 +746,37 @@ def classify_profile_inventory_category(item: dict[str, Any], current_category: 
 
 
 DIRECTLY_USABLE_CATEGORY_MARKERS = {
-    "алхимия", "еда", "напитки", "напиток", "зелье", "зелья",
-    "potion", "food", "drink", "camp_food", "alchemy",
+    "еда", "напитки", "напиток", "зелье", "зелья",
+    "potion", "food", "drink", "camp_food",
 }
+EQUIPMENT_CATEGORY_MARKERS = {
+    "equipment", "экипировка", "снаряжение",
+}
+EQUIPMENT_SLOT_KEYS = {
+    "helmet", "necklace", "chest", "belt", "pants", "boots", "gloves",
+    "ring", "ring1", "ring2", "weapon", "weapon1", "weapon2", "special",
+}
+
+
+def is_profile_equipment_item(item: dict[str, Any]) -> bool:
+    parts = _text_parts_for_category(item)
+    raw_slot = str(item.get("targetSlotKey") or item.get("slotKey") or item.get("slot") or item.get("target_slot") or "").casefold().strip()
+    return raw_slot in EQUIPMENT_SLOT_KEYS or bool(parts & EQUIPMENT_CATEGORY_MARKERS)
+
+
+def has_explicit_consumable_effect(item: dict[str, Any]) -> bool:
+    if not any(item.get(field) is not None for field in ("use_effect", "active_effect", "consumable_effect")):
+        return False
+    return consumable_effect_from_item(item) is not None
 
 
 def is_inventory_item_usable(item: dict[str, Any]) -> bool:
     category = str(item.get("category") or "").casefold()
     parts = _text_parts_for_category(item)
-    has_effect = consumable_effect_from_item(item) is not None
     usable_markers = CONSUMABLE_CATEGORY_MARKERS | DIRECTLY_USABLE_CATEGORY_MARKERS
-    return item_energy_restore(item) > 0 or has_effect or category == "расходники" or bool(parts & usable_markers)
+    if is_profile_equipment_item(item):
+        return False
+    return item_energy_restore(item) > 0 or has_explicit_consumable_effect(item) or category == "расходники" or bool(parts & usable_markers)
 
 def normalize_item(item: dict[str, Any], default_category: str = "Прочее") -> dict[str, Any]:
     item = enrich_inventory_item(item)
@@ -981,7 +1001,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(raw_item, dict):
             continue
         item = normalize_item(raw_item)
-        if item.get("category") in {"Снаряжение", "Оружие", "Бижутерия", "Особое"} and (item.get("targetSlotKey") or item.get("slot")):
+        if is_profile_equipment_item(item):
             item["actions"] = ["Надеть"]
         elif item.get("category") == "Расходники" or is_inventory_item_usable(item):
             item["actions"] = ["Использовать"]
