@@ -174,8 +174,8 @@ class ProfileSiteFixesTest(unittest.TestCase):
         profile = frontend_profile(player)
         skills = {skill["id"]: skill for skill in profile["skills"]["active"]}
 
-        self.assertEqual(skills["basic_attack"]["damage"], 22)
-        self.assertEqual(skills["magic_spark"]["damage"], 21)
+        self.assertEqual(skills["basic_attack"]["damage"], 25)
+        self.assertEqual(skills["magic_spark"]["damage"], 24)
 
     def test_inventory_actions_are_based_on_current_location(self):
         player = self._new_player()
@@ -247,8 +247,8 @@ class ProfileSiteFixesTest(unittest.TestCase):
         player["level"] = 10
         profile = frontend_profile(player)
         frontend_skills = profile["skills"]["active"]
-        self.assertEqual(frontend_skills[0]["damage"], 17)
-        self.assertEqual(frontend_skills[1]["damage"], 15)
+        self.assertEqual(frontend_skills[0]["damage"], 20)
+        self.assertEqual(frontend_skills[1]["damage"], 18)
         self.assertNotIn("base_damage_formula", frontend_skills[0])
 
     def test_skill_points_can_be_spent_through_private_profile_token(self):
@@ -448,3 +448,85 @@ class ProfileSiteFixesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class PromoAndEffectFixesTest(unittest.TestCase):
+    def _new_player(self):
+        races = load_races("data/races.json")
+        return create_player(
+            game_id="NT-PROMOFIX",
+            platform="telegram",
+            external_user_id="111",
+            name="Промо",
+            race_id="human",
+            races=races,
+        )
+
+    def test_consumable_buff_refreshes_instead_of_stacking_forever(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["inventory"] = [
+                {
+                    "id": "focus_food",
+                    "name": "Пища концентрации",
+                    "category": "Еда",
+                    "amount": 2,
+                    "use_effect": {"stat_modifiers": {"bonus_accuracy": 10}, "duration_seconds": 60},
+                }
+            ]
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            client = TestClient(app)
+            base_values = {row["label"]: row["value"] for row in client.get(f"/api/profile/{token}").json()["parameters"]}
+
+            first = client.post(f"/api/profile/{token}/inventory/use", json={"item_id": "focus_food"})
+            second = client.post(f"/api/profile/{token}/inventory/use", json={"item_id": "focus_food"})
+
+            self.assertEqual(first.status_code, 200, first.text)
+            self.assertEqual(second.status_code, 200, second.text)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(len(restored.get("active_effects", [])), 1)
+            self.assertIn("expires_at", restored["active_effects"][0])
+            values = {row["label"]: row["value"] for row in second.json()["profile"]["parameters"]}
+            self.assertEqual(int(values["Точность"]), int(base_values["Точность"]) + 10)
+
+    def test_promo_rewards_update_canonical_money_and_energy_fields(self):
+        import os
+        from datetime import datetime, timedelta, timezone
+        from services.promo_service import add_promo_code, redeem_promo_code
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            promo_path = Path(tmp_dir) / "promo.json"
+            old_path = os.environ.get("PROMO_CODES_PATH")
+            os.environ["PROMO_CODES_PATH"] = str(promo_path)
+            try:
+                storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+                player = self._new_player()
+                player["money"] = 10
+                player["money_copper"] = 10
+                player["energy"] = 20
+                player["current_energy"] = 20
+                player["max_energy"] = 100
+                storage.save_new_player(player, "telegram", "111")
+                add_promo_code(
+                    code="SYNC100",
+                    uses_left=1,
+                    reward={"money": 50, "energy": 30},
+                    expires_at=(datetime.now(timezone.utc) + timedelta(days=1)).replace(tzinfo=None).isoformat(),
+                )
+
+                ok, message = redeem_promo_code(storage, player["game_id"], "SYNC100")
+
+                self.assertTrue(ok, message)
+                restored = storage.get_player_by_game_id(player["game_id"])
+                self.assertEqual(restored["money"], 60)
+                self.assertEqual(restored["money_copper"], 60)
+                self.assertEqual(restored["energy"], 50)
+                self.assertEqual(restored["current_energy"], 50)
+            finally:
+                if old_path is None:
+                    os.environ.pop("PROMO_CODES_PATH", None)
+                else:
+                    os.environ["PROMO_CODES_PATH"] = old_path

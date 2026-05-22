@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import math
 import re
+from datetime import datetime, timezone
 from typing import Any
 
-from services.race_bonus_service import hp_multiplier, stat_multiplier
+from services.race_bonus_service import hp_multiplier, outgoing_damage_multiplier, stat_multiplier
 
 HIDDEN_FORMULA_KEYS = {"formula", "base_damage_formula", "damage_formula", "scaling_formula"}
 FORMULA_TEXT_MARKERS = ("player_level", "ceil(", "floor(", "log2(", "ln(", "уровень ×", "уровня ×", "уровень персонажа ×")
@@ -294,10 +295,60 @@ def equipment_modifier_totals(player: dict[str, Any]) -> dict[str, int]:
     return totals
 
 
+def parse_effect_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def is_effect_active(effect: Any, now: datetime | None = None) -> bool:
+    if not isinstance(effect, dict):
+        return True
+    expires_at = parse_effect_datetime(effect.get("expires_at"))
+    if expires_at is None:
+        return True
+    now = now or datetime.now(timezone.utc)
+    return expires_at > now
+
+
+def prune_expired_effects(player: dict[str, Any], now: datetime | None = None) -> bool:
+    now = now or datetime.now(timezone.utc)
+    changed = False
+    for field in EXTERNAL_EFFECT_FIELDS:
+        value = player.get(field)
+        if not isinstance(value, list):
+            continue
+        filtered = [effect for effect in value if is_effect_active(effect, now)]
+        if len(filtered) != len(value):
+            player[field] = filtered
+            changed = True
+    return changed
+
+
+def collect_active_external_modifiers(value: Any, totals: dict[str, int], now: datetime | None = None) -> None:
+    now = now or datetime.now(timezone.utc)
+    if isinstance(value, list):
+        for item in value:
+            collect_active_external_modifiers(item, totals, now)
+        return
+    if isinstance(value, dict) and not is_effect_active(value, now):
+        return
+    collect_modifiers_from_value(value, totals)
+
+
 def external_effect_modifier_totals(player: dict[str, Any]) -> dict[str, int]:
     totals: dict[str, int] = {}
+    now = datetime.now(timezone.utc)
     for field in EXTERNAL_EFFECT_FIELDS:
-        collect_modifiers_from_value(player.get(field), totals)
+        collect_active_external_modifiers(player.get(field), totals, now)
     return totals
 
 
@@ -356,6 +407,7 @@ def calculate_energy_stats(player: dict[str, Any], bonus_modifiers: dict[str, in
 
 
 def calculate_player_derived_stats(player: dict[str, Any]) -> dict[str, int]:
+    prune_expired_effects(player)
     level = max(1, safe_int(player.get("level"), 1))
     s_level = soft_level(level)
     bonus_modifiers = all_bonus_modifiers(player)
@@ -426,7 +478,64 @@ def calculate_player_derived_stats(player: dict[str, Any]) -> dict[str, int]:
     }
 
 
+def skill_damage_type_key(skill: dict[str, Any]) -> str:
+    raw = str(skill.get("damage_type") or skill.get("damageType") or "physical").casefold()
+    if "маг" in raw or raw == "magic":
+        return "magic"
+    if "mixed" in raw or "смеш" in raw:
+        return "mixed"
+    return "physical"
+
+
+def calculate_player_skill_raw_damage(player: dict[str, Any], skill: dict[str, Any]) -> dict[str, Any]:
+    """Calculate the same pre-defense skill damage for profile preview and PVE.
+
+    The returned damage is the raw value before target defense, hit and critical
+    checks. This is exactly what PVE uses before applying the target mitigation.
+    """
+
+    if not isinstance(skill, dict):
+        return {"damage": None, "damage_type": "physical", "name": "навыком"}
+
+    stats = calculate_player_derived_stats(player)
+    level = stats["level"]
+    damage_type = skill_damage_type_key(skill)
+    formula = str(skill.get("base_damage_formula") or skill.get("damage_formula") or "")
+    skill_id = str(skill.get("id") or "")
+    skill_name = str(skill.get("name") or "навыком")
+    damage_value = skill.get("damage")
+
+    if skill_id == "magic_spark" or "magic_spark" in formula or "магический сгусток" in skill_name.casefold():
+        base_damage = 4 + level * 1.1 + stats["intelligence"] * 0.8
+    elif skill_id == "basic_attack" or "basic_attack" in formula or "обычный удар" in skill_name.casefold():
+        base_damage = 5 + level * 1.2 + stats["strength"] * 0.8
+    elif isinstance(damage_value, (int, float)):
+        base_damage = float(damage_value)
+    elif contains_formula_text(damage_value) or contains_formula_text(formula):
+        return {"damage": None, "damage_type": damage_type, "name": skill_name}
+    else:
+        parsed = modifier_amount(damage_value)
+        base_damage = float(parsed) if parsed > 0 else 1.0
+
+    bonus_modifiers = stats.get("bonus_modifiers") or {}
+    bonus_damage = equipment_bonus(bonus_modifiers, "bonus_damage")
+    if damage_type == "magic":
+        bonus_damage += equipment_bonus(bonus_modifiers, "bonus_magic_damage")
+    elif damage_type == "physical":
+        bonus_damage += equipment_bonus(bonus_modifiers, "bonus_physical_damage")
+    elif damage_type == "mixed":
+        bonus_damage += max(
+            equipment_bonus(bonus_modifiers, "bonus_physical_damage"),
+            equipment_bonus(bonus_modifiers, "bonus_magic_damage"),
+        )
+
+    raw_damage = ceil(base_damage + bonus_damage)
+    raw_damage = ceil(raw_damage * outgoing_damage_multiplier(player, damage_type))
+    return {"damage": max(1, raw_damage), "damage_type": damage_type, "name": skill_name}
+
+
 def ensure_player_resources(player: dict[str, Any]) -> dict[str, int]:
+    prune_expired_effects(player)
     stats = calculate_player_derived_stats(player)
     for current_key, max_key in (("hp", "max_hp"), ("spirit", "max_spirit"), ("mana", "max_mana")):
         max_value = stats[max_key]

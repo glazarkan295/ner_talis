@@ -99,7 +99,7 @@ def execute_admin_command(*, text: str, storage: Any, platform: str, admin_user_
         try:
             uses_left = int(parts[2])
             reward = json.loads(_json_after_tokens(text, 3))
-            promo = add_promo_code(code=code, uses_left=uses_left, reward=reward)
+            promo = add_promo_code(code=code, uses_left=uses_left, reward=reward, storage=storage)
         except Exception as exc:
             return AdminCommandResult(True, f"Не удалось создать промокод: {exc}")
         write_admin_audit(platform=platform, admin_user_id=admin_user_id, command=text, action="promo_add", details={"code": promo["code"], "uses_left": uses_left, "reward": reward})
@@ -113,7 +113,7 @@ def execute_admin_command(*, text: str, storage: Any, platform: str, admin_user_
             items = json.loads(raw_json)
             if not isinstance(items, list):
                 return AdminCommandResult(True, "JSON должен быть массивом промокодов.")
-            imported = import_promo_codes(items)
+            imported = import_promo_codes(items, storage=storage)
         except Exception as exc:
             return AdminCommandResult(True, f"Не удалось импортировать промокоды: {exc}")
         write_admin_audit(platform=platform, admin_user_id=admin_user_id, command=text, action="promo_bulk", details={"count": imported})
@@ -123,13 +123,13 @@ def execute_admin_command(*, text: str, storage: Any, platform: str, admin_user_
         if len(parts) < 2:
             return AdminCommandResult(True, "Формат: /admin_promo_off CODE")
         code = parts[1]
-        if not deactivate_promo_code(code):
+        if not deactivate_promo_code(code, storage=storage):
             return AdminCommandResult(True, "Промокод не найден.")
         write_admin_audit(platform=platform, admin_user_id=admin_user_id, command=text, action="promo_off", details={"code": code.upper()})
         return AdminCommandResult(True, f"Промокод {code.upper()} отключён.")
 
     if command == "/admin_promo_list":
-        promos = list_promo_codes(limit=20)
+        promos = list_promo_codes(limit=20, storage=storage)
         if not promos:
             return AdminCommandResult(True, "Промокодов пока нет.")
         lines = ["Последние промокоды:"]

@@ -61,6 +61,7 @@ class PostgresStorage:
             "link_codes": {},
             "web_sessions": {},
             "site_sessions": {},
+            "promo_codes": {"codes": {}},
         }
 
     @staticmethod
@@ -152,6 +153,13 @@ class PostgresStorage:
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_platform_links_game_id ON platform_links(game_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_web_sessions_game_id ON web_sessions(game_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_web_sessions_expires_at ON web_sessions(expires_at)"))
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS promo_codes (
+                    code TEXT PRIMARY KEY,
+                    data JSONB NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """))
 
     def check_connection(self) -> bool:
         with self.engine.begin() as connection:
@@ -512,6 +520,27 @@ class PostgresStorage:
         with self.engine.begin() as connection:
             connection.execute(text("DELETE FROM web_sessions WHERE expires_at <= now()"))
 
+    def load_promo_data(self) -> dict[str, Any]:
+        with self.engine.begin() as connection:
+            rows = connection.execute(text("SELECT code, data FROM promo_codes")).mappings().all()
+        return {"codes": {row["code"]: self._loads(row["data"], {}) for row in rows}}
+
+    def save_promo_data(self, data: dict[str, Any]) -> None:
+        with self.engine.begin() as connection:
+            connection.execute(text("DELETE FROM promo_codes"))
+            for code, promo in (data.get("codes") or {}).items():
+                if not isinstance(promo, dict):
+                    continue
+                connection.execute(
+                    text("""
+                        INSERT INTO promo_codes(code, data, updated_at)
+                        VALUES (:code, CAST(:data AS jsonb), now())
+                        ON CONFLICT (code) DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+                    """),
+                    {"code": code, "data": self._dumps(promo)},
+                )
+
+
     def load_data(self) -> dict[str, Any]:
         return self.load()
 
@@ -524,6 +553,7 @@ class PostgresStorage:
             players = connection.execute(text("SELECT * FROM players")).mappings().all()
             sessions = connection.execute(text("SELECT * FROM web_sessions")).mappings().all()
             codes = connection.execute(text("SELECT * FROM link_codes")).mappings().all()
+            promos = connection.execute(text("SELECT code, data FROM promo_codes")).mappings().all()
         for row in players:
             player = self._row_to_player(row)
             if player:
@@ -538,9 +568,13 @@ class PostgresStorage:
             data["site_sessions"][row["token"]] = session
         for row in codes:
             data["link_codes"][row["code"]] = {"game_id": row["game_id"], "expires_at": row["expires_at"].isoformat()}
+        for row in promos:
+            data["promo_codes"]["codes"][row["code"]] = self._loads(row["data"], {})
         return data
 
     def save(self, data: dict[str, Any]) -> None:
         for player in (data.get("players") or {}).values():
             if isinstance(player, dict):
                 self._upsert_player(player)
+        if "promo_codes" in data:
+            self.save_promo_data(data.get("promo_codes") or {"codes": {}})
