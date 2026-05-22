@@ -44,6 +44,7 @@ if "vk_api" not in sys.modules:
 
 from services.registration_service import create_player, load_races
 from services.inventory_service import add_inventory_item
+from services.item_registry import get_item_definition_by_id, registry_item_to_inventory_item
 from services.web_profile import PROFILE_SCOPE, create_profile_site_link
 from site_api import create_profile_api_router, equipment_modifier_totals, frontend_profile, is_inventory_item_usable
 from storage.json_storage import JsonStorage
@@ -409,6 +410,43 @@ class ProfileSiteFixesTest(unittest.TestCase):
 
     def test_consumable_category_items_remain_directly_usable(self):
         self.assertTrue(is_inventory_item_usable({"id": "legacy_consumable", "name": "Старый расходник", "category": "Расходники"}))
+
+    def test_alchemy_ingredients_are_not_direct_profile_use_items(self):
+        player = self._new_player()
+        ingredient_ids = [
+            "meadow_mint",
+            "meadow_root",
+            "mountain_wormwood",
+            "silver_chamomile",
+            "yellow_clover",
+        ]
+        player["inventory"] = [
+            registry_item_to_inventory_item(get_item_definition_by_id(item_id), 1)
+            for item_id in ingredient_ids
+        ]
+
+        profile = frontend_profile(player)
+        actions_by_id = {item["id"]: item.get("actions", []) for item in profile["inventory"]}
+
+        for item_id in ingredient_ids:
+            self.assertNotIn("Использовать", actions_by_id[item_id])
+            self.assertFalse(is_inventory_item_usable(player["inventory"][ingredient_ids.index(item_id)]))
+
+    def test_forest_equipment_is_equippable_not_directly_usable(self):
+        player = self._new_player()
+        equipment_ids = ["old_gloves", "decent_belt"]
+        player["inventory"] = [
+            registry_item_to_inventory_item(get_item_definition_by_id(item_id), 1)
+            for item_id in equipment_ids
+        ]
+
+        profile = frontend_profile(player)
+        actions_by_id = {item["id"]: item.get("actions", []) for item in profile["inventory"]}
+
+        for item_id in equipment_ids:
+            self.assertIn("Надеть", actions_by_id[item_id])
+            self.assertNotIn("Использовать", actions_by_id[item_id])
+            self.assertFalse(is_inventory_item_usable(player["inventory"][equipment_ids.index(item_id)]))
 
     def test_energy_bonus_does_not_stack_into_saved_max_energy_when_food_used_twice(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
