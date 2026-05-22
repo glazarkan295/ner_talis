@@ -748,9 +748,11 @@ DIRECTLY_USABLE_CATEGORY_MARKERS = {
 
 
 def is_inventory_item_usable(item: dict[str, Any]) -> bool:
+    category = str(item.get("category") or "").casefold()
     parts = _text_parts_for_category(item)
     has_effect = consumable_effect_from_item(item) is not None
-    return item_energy_restore(item) > 0 or has_effect or bool(parts & DIRECTLY_USABLE_CATEGORY_MARKERS)
+    usable_markers = CONSUMABLE_CATEGORY_MARKERS | DIRECTLY_USABLE_CATEGORY_MARKERS
+    return item_energy_restore(item) > 0 or has_effect or category == "расходники" or bool(parts & usable_markers)
 
 def normalize_item(item: dict[str, Any], default_category: str = "Прочее") -> dict[str, Any]:
     item = enrich_inventory_item(item)
