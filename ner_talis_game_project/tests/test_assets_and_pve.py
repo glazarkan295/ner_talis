@@ -125,7 +125,7 @@ class AssetsAndPveIntegrationTest(unittest.TestCase):
         player = storage.get_player_by_platform("telegram", "111")
 
         escape = handle_external_location_action(storage, player, BATTLE_ESCAPE, rng=random.Random(3))
-        self.assertIn("отступ", escape.text.casefold())
+        self.assertIn("сбег", escape.text.casefold())
         player = storage.get_player_by_platform("telegram", "111")
         self.assertFalse(player.get("in_battle"))
 
