@@ -928,7 +928,7 @@ def format_battle_started_text(battle: dict[str, Any]) -> str:
         f"🔥 {player_state.get('current_spirit')}/{player_state.get('max_spirit')} · "
         f"✨ {player_state.get('current_mana')}/{player_state.get('max_mana')}\n"
         f"🎯 {player_state.get('accuracy')} · 🌀 {player_state.get('dodge')} · "
-        f"🛡 {player_state.get('physical_defense')} · ✨🛡 {player_state.get('magic_defense')}\n\n"
+        f"🛡 {player_state.get('physical_defense')} · ✨ {player_state.get('magic_defense')}\n\n"
         f"👹 Противники:\n{enemy_lines}"
     )
 
@@ -1108,14 +1108,6 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
     recalculate_inventory_overflow(player)
     if action == "Побег недоступен":
         return "🎒 Вы перегружены: при 4+ занятых доп. слотах нельзя сбежать от противника.", battle_buttons(player)
-    if action in {BATTLE_ESCAPE, "Отступить"}:
-        if player.get("inventory_overflow_no_escape"):
-            return "🎒 Вы перегружены: при 4+ занятых доп. слотах нельзя сбежать от противника.", battle_buttons(player)
-        player["in_battle"] = False
-        player["active_battle"] = None
-        player["active_event"] = None
-        move_player_to_battle_return_location(player, battle)
-        return f"{player_name} отступает и разрывает дистанцию. Бой завершён без награды.", []
 
     player_state = battle.setdefault("player_state", {})
     enemies = alive_enemies(battle)
@@ -1133,6 +1125,23 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
     # action.
     if battle.get("pending_skill") and not action.startswith("Цель: "):
         battle.pop("pending_skill", None)
+
+    if action in {BATTLE_ESCAPE, "Отступить"}:
+        if player.get("inventory_overflow_no_escape"):
+            return "🎒 Вы перегружены: при 4+ занятых доп. слотах нельзя сбежать от противника.", battle_buttons(player)
+        decrement_cooldowns_once_at_player_turn(battle, player_state)
+        if rng.random() < 0.4:
+            player["in_battle"] = False
+            player["active_battle"] = None
+            player["active_event"] = None
+            move_player_to_battle_return_location(player, battle)
+            return f"🏃 {player_name} находит просвет между противниками и сбегает. Бой завершён без награды.", []
+        log = [f"🏃 {player_name} пытается сбежать, но противники отрезают путь. Ход пропущен."]
+        defeated = apply_enemy_phase(player, battle, rng, log)
+        if defeated:
+            return finish_player_defeat(player, battle, log)
+        player["active_battle"] = battle
+        return format_battle_status(battle), battle_buttons(player)
 
     if action == BATTLE_POUCH:
         text, buttons = format_pouch(player, battle, 0)
