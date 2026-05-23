@@ -17,7 +17,9 @@
       "inventory_item",
       "ordinary_forest",
       "resource"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 5
   },
   {
     "id": "muddy_water",
@@ -37,7 +39,9 @@
       "inventory_item",
       "ordinary_forest",
       "resource"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 1
   },
   {
     "id": "old_gloves",
@@ -62,7 +66,9 @@
       "armor": 1,
       "physical_defense": 1
     },
-    "max_stack": 1
+    "max_stack": 1,
+    "can_sell": true,
+    "sell_price_copper": 30
   },
   {
     "id": "decent_belt",
@@ -86,7 +92,9 @@
     "stat_modifiers": {
       "bonus_max_energy": 5
     },
-    "max_stack": 1
+    "max_stack": 1,
+    "can_sell": true,
+    "sell_price_copper": 100
   },
   {
     "id": "dry_log",
@@ -106,7 +114,9 @@
       "inventory_item",
       "ordinary_forest",
       "resource"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 4
   },
   {
     "id": "fabric_pieces",
@@ -126,7 +136,9 @@
       "inventory_item",
       "ordinary_forest",
       "resource"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 6
   },
   {
     "id": "edible_forest_mushroom",
@@ -146,7 +158,9 @@
       "inventory_item",
       "ordinary_forest",
       "resource"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 4
   },
   {
     "id": "bitter_gray_mushroom",
@@ -166,7 +180,9 @@
       "inventory_item",
       "ordinary_forest",
       "resource"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 3
   },
   {
     "id": "forest_tick",
@@ -205,7 +221,9 @@
       "inventory_item",
       "ordinary_forest",
       "mob_loot"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 10
   },
   {
     "id": "deer_hide",
@@ -225,7 +243,9 @@
       "inventory_item",
       "ordinary_forest",
       "mob_loot"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 5
   },
   {
     "id": "deer_antler",
@@ -245,7 +265,9 @@
       "inventory_item",
       "ordinary_forest",
       "mob_loot"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 8
   },
   {
     "id": "strong_sinew",
@@ -265,7 +287,9 @@
       "inventory_item",
       "ordinary_forest",
       "mob_loot"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 10
   },
   {
     "id": "old_bear_trap",
@@ -304,7 +328,9 @@
       "inventory_item",
       "ordinary_forest",
       "mob_loot"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 5
   },
   {
     "id": "bear_fang",
@@ -324,7 +350,9 @@
       "inventory_item",
       "ordinary_forest",
       "mob_loot"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 9
   },
   {
     "id": "mire_trap",
@@ -363,7 +391,9 @@
       "inventory_item",
       "ordinary_forest",
       "mob_loot"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 7
   },
   {
     "id": "wolf_fang",
@@ -383,7 +413,9 @@
       "inventory_item",
       "ordinary_forest",
       "mob_loot"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 8
   },
   {
     "id": "animal_fat",
@@ -403,7 +435,9 @@
       "inventory_item",
       "ordinary_forest",
       "mob_loot"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 10
   },
   {
     "id": "bear_hide",
@@ -423,7 +457,9 @@
       "inventory_item",
       "ordinary_forest",
       "mob_loot"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 7
   },
   {
     "id": "bear_claw",
@@ -443,7 +479,9 @@
       "inventory_item",
       "ordinary_forest",
       "mob_loot"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 6
   },
   {
     "id": "boar_tusk",
@@ -463,6 +501,8 @@
       "inventory_item",
       "ordinary_forest",
       "mob_loot"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 6
   }
 ]

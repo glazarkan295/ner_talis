@@ -411,6 +411,21 @@ class ProfileSiteFixesTest(unittest.TestCase):
     def test_consumable_category_items_remain_directly_usable(self):
         self.assertTrue(is_inventory_item_usable({"id": "legacy_consumable", "name": "Старый расходник", "category": "Расходники"}))
 
+    def test_direct_use_false_hides_profile_use_action(self):
+        player = self._new_player()
+        item_ids = ["mining_pickaxe", "woodcutters_axe"]
+        player["inventory"] = [
+            registry_item_to_inventory_item(get_item_definition_by_id(item_id), 1)
+            for item_id in item_ids
+        ]
+
+        profile = frontend_profile(player)
+        actions_by_id = {item["id"]: item.get("actions", []) for item in profile["inventory"]}
+
+        for item_id in item_ids:
+            self.assertNotIn("Использовать", actions_by_id[item_id])
+            self.assertFalse(is_inventory_item_usable(player["inventory"][item_ids.index(item_id)]))
+
     def test_alchemy_ingredients_are_not_direct_profile_use_items(self):
         player = self._new_player()
         ingredient_ids = [
@@ -561,6 +576,85 @@ class ProfileSiteFixesTest(unittest.TestCase):
             )
 
             self.assertEqual(response.status_code, 401)
+
+    def test_two_handed_weapon_blocks_second_weapon_slot_in_profile(self):
+        player = self._new_player()
+
+        profile = frontend_profile(player)
+        slot_by_key = {slot["key"]: slot for slot in profile["equipmentSlots"]}
+
+        self.assertTrue(slot_by_key["weapon2"].get("blocked"))
+        self.assertIn("заблокирован", slot_by_key["weapon2"].get("blockedReason", ""))
+
+    def test_api_rejects_weapon2_when_two_handed_weapon_is_equipped(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["inventory"].append(
+                {
+                    "id": "training_dagger",
+                    "name": "Учебный кинжал",
+                    "category": "Оружие",
+                    "type": "Оружие",
+                    "subtype": "Кинжал",
+                    "slot": "weapon",
+                    "amount": 1,
+                }
+            )
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            response = TestClient(app).post(
+                f"/api/profile/{token}/equipment/equip",
+                json={"item_id": "training_dagger", "slot_key": "weapon2"},
+            )
+
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("заблокирован", response.text)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertIn("starter_wooden_staff", restored["equipment"]["weapon1"]["id"])
+            self.assertTrue(any(item.get("id") == "training_dagger" for item in restored["inventory"]))
+
+    def test_equipping_two_handed_weapon_moves_second_weapon_to_inventory(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["equipment"] = {
+                "weapon1": {"id": "iron_sword", "name": "Железный меч", "category": "Оружие", "type": "Оружие", "subtype": "Меч", "slotKey": "weapon1", "amount": 1},
+                "weapon2": {"id": "old_shield", "name": "Старый щит", "category": "Оружие", "type": "Оружие", "subtype": "Щит", "slotKey": "weapon2", "amount": 1},
+            }
+            player["inventory"] = [
+                {
+                    "id": "forest_staff",
+                    "name": "Лесной двуручный посох",
+                    "category": "Оружие",
+                    "type": "Оружие",
+                    "subtype": "Посох",
+                    "slot": "weapon",
+                    "combat": {"two_handed": True},
+                    "amount": 1,
+                }
+            ]
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            response = TestClient(app).post(
+                f"/api/profile/{token}/equipment/equip",
+                json={"item_id": "forest_staff", "slot_key": "weapon1"},
+            )
+
+            self.assertEqual(response.status_code, 200, response.text)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(restored["equipment"]["weapon1"]["id"], "forest_staff")
+            self.assertNotIn("weapon2", restored["equipment"])
+            self.assertTrue(any(item.get("id") == "old_shield" and item.get("targetSlotKey") == "weapon2" for item in restored["inventory"]))
+            profile = response.json()["profile"]
+            slot_by_key = {slot["key"]: slot for slot in profile["equipmentSlots"]}
+            self.assertTrue(slot_by_key["weapon2"].get("blocked"))
 
 
 if __name__ == "__main__":

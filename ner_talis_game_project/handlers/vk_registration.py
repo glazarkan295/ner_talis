@@ -147,7 +147,12 @@ class VkRegistrationBot:
             return
 
         existing_player = self.storage.get_player_by_platform(VK_PLATFORM, external_user_id)
-        if existing_player is not None and (existing_player.get("in_battle") or existing_player.get("active_timer") or str(existing_player.get("current_zone") or "").startswith("hilly_meadows")):
+        if existing_player is not None and (
+            existing_player.get("in_battle")
+            or existing_player.get("active_timer")
+            or existing_player.get("market_context")
+            or str(existing_player.get("current_zone") or "").startswith(("hilly_meadows", "ordinary_forest", "seldar_npc_market"))
+        ):
             self.handle_city_action(external_user_id, peer_id, text)
             return
 

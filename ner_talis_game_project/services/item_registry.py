@@ -20,6 +20,8 @@ ITEMS_REGISTRY_GLOB = "items_*.json"
 
 CATEGORY_TO_RU = {
     "camp_food": "Еда",
+    "consumable": "Расходники",
+    "consumables": "Расходники",
     "ingredients": "Ингредиенты",
     "resources": "Ресурсы",
     "currency": "Валюта",
@@ -56,6 +58,12 @@ TYPE_TO_RU = {
     "belt": "Пояс",
     "fat": "Жир",
     "event": "Событие",
+    "quiver": "Колчан",
+    "arrow_quiver": "Колчан стрел",
+    "bolt_quiver": "Колчан болтов",
+    "ammunition": "Боеприпас",
+    "arrow": "Стрела",
+    "bolt": "Болт",
 }
 
 QUALITY_TO_RU = {

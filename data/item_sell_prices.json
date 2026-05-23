@@ -1,0 +1,436 @@
+[
+  {
+    "id": "meat_flatbread",
+    "name_ru": "Лепёшка с мясом",
+    "sell_price_copper": 25,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "dried_meat",
+    "name_ru": "Сушёное мясо",
+    "sell_price_copper": 10,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "hearty_stew",
+    "name_ru": "Сытная похлёбка",
+    "sell_price_copper": 30,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "herbal_tea",
+    "name_ru": "Травяной чай",
+    "sell_price_copper": 15,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "pale_toadstool",
+    "name_ru": "Бледная поганка",
+    "sell_price_copper": 5,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "mountain_wormwood",
+    "name_ru": "Горная полынь",
+    "sell_price_copper": 3,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "bitter_gray_mushroom",
+    "name_ru": "Горький серый гриб",
+    "sell_price_copper": 3,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "coarse_flour",
+    "name_ru": "Грубая мука",
+    "sell_price_copper": 10,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "yellow_clover",
+    "name_ru": "Жёлтый клевер",
+    "sell_price_copper": 5,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "meadow_mint",
+    "name_ru": "Луговая мята",
+    "sell_price_copper": 4,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "meadow_root",
+    "name_ru": "Луговой корень",
+    "sell_price_copper": 4,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "muddy_water",
+    "name_ru": "Мутная вода",
+    "sell_price_copper": 1,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "silver_chamomile",
+    "name_ru": "Серебристая ромашка",
+    "sell_price_copper": 4,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "sweet_meadow_berry",
+    "name_ru": "Сладкая луговая ягода",
+    "sell_price_copper": 4,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "edible_mushroom",
+    "name_ru": "Съедобный гриб",
+    "sell_price_copper": 3,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "edible_root",
+    "name_ru": "Съедобный корень",
+    "sell_price_copper": 6,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "edible_forest_mushroom",
+    "name_ru": "Съедобный лесной гриб",
+    "sell_price_copper": 4,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "raw_meat",
+    "name_ru": "Сырое мясо",
+    "sell_price_copper": 5,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "tart_blue_berry",
+    "name_ru": "Терпкая синяя ягода",
+    "sell_price_copper": 4,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "clean_water",
+    "name_ru": "Чистая вода",
+    "sell_price_copper": 5,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "iron_scrap",
+    "name_ru": "Железный лом",
+    "sell_price_copper": 7,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "fabric_pieces",
+    "name_ru": "Куски ткани",
+    "sell_price_copper": 6,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "iron_ore_chunk",
+    "name_ru": "Кусок железной руды",
+    "sell_price_copper": 8,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "copper_ore_chunk",
+    "name_ru": "Кусок медной руды",
+    "sell_price_copper": 8,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "common_stone",
+    "name_ru": "Обычный камень",
+    "sell_price_copper": 3,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "dry_log",
+    "name_ru": "Сухое бревно",
+    "sell_price_copper": 4,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "bull_horn",
+    "name_ru": "Бычий рог",
+    "sell_price_copper": 6,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "wolf_fang",
+    "name_ru": "Волчий клык",
+    "sell_price_copper": 8,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "wolf_hide",
+    "name_ru": "Волчья шкура",
+    "sell_price_copper": 5,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "animal_fat",
+    "name_ru": "Жир зверя",
+    "sell_price_copper": 10,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "tough_tendon",
+    "name_ru": "Жёсткое сухожилие",
+    "sell_price_copper": 10,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "tough_sinew",
+    "name_ru": "Жёсткое сухожилие",
+    "sell_price_copper": 10,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "rabid_rabbit_tooth",
+    "name_ru": "Зуб бешеного кролика",
+    "sell_price_copper": 6,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "boar_tusk",
+    "name_ru": "Кабаний клык",
+    "sell_price_copper": 6,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "boar_hide",
+    "name_ru": "Кабанья шкура",
+    "sell_price_copper": 7,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "jackal_fang",
+    "name_ru": "Клык шакала",
+    "sell_price_copper": 6,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "gopher_claw",
+    "name_ru": "Коготок суслика",
+    "sell_price_copper": 6,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "strong_tendon",
+    "name_ru": "Крепкое сухожилие",
+    "sell_price_copper": 10,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "strong_sinew",
+    "name_ru": "Крепкое сухожилие",
+    "sell_price_copper": 10,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "meat_piece",
+    "name_ru": "Кусочек мяса",
+    "sell_price_copper": 5,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "small_hide",
+    "name_ru": "Маленькая шкура",
+    "sell_price_copper": 4,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "small_pelt",
+    "name_ru": "Маленькая шкурка",
+    "sell_price_copper": 5,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "bear_fang",
+    "name_ru": "Медвежий клык",
+    "sell_price_copper": 9,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "bear_claw",
+    "name_ru": "Медвежий коготь",
+    "sell_price_copper": 6,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "bear_hide",
+    "name_ru": "Медвежья шкура",
+    "sell_price_copper": 7,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "deer_hide",
+    "name_ru": "Оленья шкура",
+    "sell_price_copper": 5,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "sharp_tooth",
+    "name_ru": "Острый зуб",
+    "sell_price_copper": 6,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "dense_hide",
+    "name_ru": "Плотная шкура",
+    "sell_price_copper": 8,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "deer_antler",
+    "name_ru": "Рог оленя",
+    "sell_price_copper": 8,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "jackal_hide",
+    "name_ru": "Шкура шакала",
+    "sell_price_copper": 6,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "decent_belt",
+    "name_ru": "Неплохой пояс",
+    "sell_price_copper": 100,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "old_gloves",
+    "name_ru": "Старые перчатки",
+    "sell_price_copper": 30,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "old_knife",
+    "name_ru": "Старый нож",
+    "sell_price_copper": 7,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "bolt_quiver_empty",
+    "name_ru": "Пустой колчан для болтов арбалета",
+    "sell_price_copper": 10,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "arrow_quiver_empty",
+    "name_ru": "Пустой колчан для стрел лука",
+    "sell_price_copper": 10,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "bolt_for_crossbow",
+    "name_ru": "Болт для арбалета",
+    "sell_price_copper": 1,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "arrow_for_bow",
+    "name_ru": "Стрела для лука",
+    "sell_price_copper": 1,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "starter_bandana",
+    "name_ru": "Бандана",
+    "sell_price_copper": 20,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "starter_wooden_staff",
+    "name_ru": "Деревянный посох",
+    "sell_price_copper": 20,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "starter_old_boots",
+    "name_ru": "Старые сапоги",
+    "sell_price_copper": 20,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "starter_tunic",
+    "name_ru": "Туника",
+    "sell_price_copper": 20,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "starter_canvas_pants",
+    "name_ru": "Холщевые штаны",
+    "sell_price_copper": 20,
+    "currency": "copper",
+    "unit": "1 item"
+  }
+]

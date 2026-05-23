@@ -19,6 +19,13 @@ from services.derived_stats_service import calculate_player_derived_stats, calcu
 from services.item_registry import build_inventory_item, get_item_definition_by_name
 from services.inventory_service import add_inventory_item as add_inventory_stack, inventory_add_result_notice, recalculate_inventory_overflow
 from services.progression_service import apply_death_experience_penalty, grant_experience
+from services.active_skill_service import (
+    consume_skill_ammo,
+    resource_cost_with_modifiers,
+    is_skill_weapon_compatible,
+    skill_weapon_requirement_text,
+    validate_skill_ammo,
+)
 from services.pve_battle_models import (
     BattleState,
     DamageSplit,
@@ -43,6 +50,10 @@ BATTLE_DEFEND = "Защита"
 BATTLE_POUCH = "Подсумок"
 BATTLE_ESCAPE = "Сбежать"
 BATTLE_WAIT = "Ждать"
+BATTLE_POUCH_PAGE_SIZE = 8
+BATTLE_POUCH_NEXT = "Подсумок далее"
+BATTLE_POUCH_PREV = "Подсумок назад"
+BATTLE_POUCH_ITEM_PREFIX = "Предмет "
 
 # В интерфейсе боя показываются только подсумок, побег и экипированные активные навыки.
 # Обычная атака и защита оставлены как внутренние fallback-действия для старых сохранений.
@@ -123,6 +134,11 @@ HILLY_MEADOWS_MOBS = {
         "features": ["Толстая шкура"],
         "text": "На соседнем склоне пасётся огромный бык. Зверь резко поднимает голову и начинает рыть землю копытом.",
         "loot": [("Плотная шкура", 75, 1, 1), ("Сырое мясо", 80, 1, 3), ("Бычий рог", 25, 1, 1), ("Крепкое сухожилие", 25, 1, 1)],
+        "hp_base": 85,
+        "hp_per_level": 16,
+        "armor_factor": 2.6,
+        "dodge_per_level": 0.75,
+        "damage_bonus_per_level": 1.8,
     },
 }
 
@@ -187,11 +203,11 @@ ORDINARY_FOREST_MOBS = {
         "features": ["Толстая шкура"],
         "text": "Впереди трескаются ветки. Из-за стволов выходит огромный медведь, поднимается на задние лапы и тяжело рычит.",
         "loot": [("Сырое мясо", 85, 1, 3), ("Медвежья шкура", 75, 1, 1), ("Медвежий коготь", 35, 1, 1), ("Медвежий клык", 30, 1, 1), ("Жир зверя", 25, 1, 1)],
-        "hp_base": 90,
-        "hp_per_level": 16,
-        "armor_factor": 2.4,
+        "hp_base": 115,
+        "hp_per_level": 20,
+        "armor_factor": 2.8,
         "dodge_per_level": 0.7,
-        "damage_bonus_per_level": 1.3,
+        "damage_bonus_per_level": 2.0,
     },
 }
 
@@ -354,34 +370,44 @@ def choose_battle_rank(rng: random.Random, player_level: int = 1, location_id: s
     location_id = normalize_battle_location(location_id)
     roll = rng.uniform(0, 100)
     if location_id == "ordinary_forest":
-        if roll <= 72:
+        if player_level <= 3:
+            if roll <= 76:
+                return EnemyRank.NORMAL
+            if roll <= 96:
+                return EnemyRank.EMPOWERED
+            return EnemyRank.ELITE
+        if roll <= 66:
             return EnemyRank.NORMAL
-        if roll <= 94:
+        if roll <= 93:
             return EnemyRank.EMPOWERED
         return EnemyRank.ELITE
     if player_level <= 3:
         if roll <= 92:
             return EnemyRank.NORMAL
         return EnemyRank.EMPOWERED
-    if roll <= 74:
+    if roll <= 70:
         return EnemyRank.NORMAL
-    if roll <= 95:
+    if roll <= 94:
         return EnemyRank.EMPOWERED
     return EnemyRank.ELITE
 
 
-def enemy_level_for_rank(player_level: int, rank: EnemyRank, rng: random.Random, *, cap: int = 50) -> int:
+def enemy_level_for_rank(player_level: int, rank: EnemyRank, rng: random.Random, *, cap: int = 50, min_level: int = 1) -> int:
+    floor_level = max(1, min_level)
     if player_level <= 3:
         if rank == EnemyRank.NORMAL:
-            return max(1, min(cap, player_level + rng.randint(-1, 0)))
-        if rank == EnemyRank.EMPOWERED:
-            return max(1, min(cap, player_level + rng.randint(1, 2)))
-        return max(1, min(cap, player_level + rng.randint(3, 4)))
-    if rank == EnemyRank.NORMAL:
-        return max(1, min(cap, player_level + rng.randint(-1, 1)))
-    if rank == EnemyRank.EMPOWERED:
-        return max(1, min(cap, player_level + rng.randint(3, 5)))
-    return max(1, min(cap, player_level + rng.randint(7, 9)))
+            level = player_level + rng.randint(-1, 0)
+        elif rank == EnemyRank.EMPOWERED:
+            level = player_level + rng.randint(1, 2)
+        else:
+            level = player_level + rng.randint(3, 4)
+    elif rank == EnemyRank.NORMAL:
+        level = player_level + rng.randint(-1, 1)
+    elif rank == EnemyRank.EMPOWERED:
+        level = player_level + rng.randint(3, 5)
+    else:
+        level = player_level + rng.randint(7, 9)
+    return max(floor_level, min(cap, level))
 
 
 def choose_mob_key(rank: EnemyRank, rng: random.Random, player_level: int = 1, location_id: str = "hilly_meadows") -> str:
@@ -411,9 +437,7 @@ def build_enemy(mob_key: str, rank: EnemyRank, level: int, index: int, location_
     template = catalog[mob_key]
     mult = RANK_MULTIPLIERS[rank]
     base_hp = int(template.get("hp_base", 28)) + level * int(template.get("hp_per_level", 8))
-    if mob_key == "hill_bull":
-        base_hp = 70 + level * 14
-    elif mob_key == "rabid_rabbit":
+    if mob_key == "rabid_rabbit":
         base_hp = 20 + level * 6
     early_hp_multiplier = 1.0
     if level <= 3 and rank == EnemyRank.NORMAL:
@@ -467,8 +491,9 @@ def create_location_battle(player: dict[str, Any], rng: random.Random | None = N
         max_count = 1 if rank != EnemyRank.NORMAL else min(2, max_count)
     count = 1 if rank == EnemyRank.ELITE else rng.randint(min_count, max_count)
     cap = 60 if location_id == "ordinary_forest" else 50
+    min_level = 10 if location_id == "ordinary_forest" else 1
     enemies = [
-        build_enemy(mob_key, rank, enemy_level_for_rank(player_level, rank, rng, cap=cap), index + 1, location_id)
+        build_enemy(mob_key, rank, enemy_level_for_rank(player_level, rank, rng, cap=cap, min_level=min_level), index + 1, location_id)
         for index in range(count)
     ]
     battle = BattleState(
@@ -564,12 +589,15 @@ def enemy_raw_damage(enemy: dict[str, Any]) -> int:
     mult = RANK_MULTIPLIERS.get(rank, RANK_MULTIPLIERS[EnemyRank.NORMAL])
     level = max(1, safe_int(enemy.get("level"), 1))
     base = 4 + level * 2.25
-    if enemy.get("name") == "Бык":
-        base += level * 1.2
-    if enemy.get("name") == "Медведь":
-        base += level * 1.3
-    if enemy.get("name") == "Кабан":
+    name = str(enemy.get("name") or "")
+    if name == "Кабан":
         base += level * 0.7
+
+    bonus_by_name = {
+        "Бык": 1.8,
+        "Медведь": 2.0,
+    }
+    base += level * bonus_by_name.get(name, 0)
     return max(1, math.ceil(base * mult["damage"]))
 
 
@@ -596,6 +624,12 @@ def get_equipped_skill(player: dict[str, Any], action: str) -> dict[str, Any] | 
 
 
 def skill_costs(skill: dict[str, Any]) -> tuple[int, int]:
+    try:
+        spirit, mana = resource_cost_with_modifiers(skill)
+        if spirit or mana:
+            return max(0, spirit), max(0, mana)
+    except Exception:
+        pass
     spirit = safe_int(skill.get("spirit_cost") if "spirit_cost" in skill else skill.get("spiritCost"), 0)
     mana = safe_int(skill.get("mana_cost") if "mana_cost" in skill else skill.get("manaCost"), 0)
     return max(0, spirit), max(0, mana)
@@ -603,7 +637,7 @@ def skill_costs(skill: dict[str, Any]) -> tuple[int, int]:
 
 def skill_damage_type(skill: dict[str, Any]) -> DamageType:
     raw = str(skill.get("damage_type") or skill.get("damageType") or "physical").casefold()
-    if "маг" in raw or raw == "magic":
+    if "маг" in raw or raw in {"magic", "magical"}:
         return DamageType.MAGIC
     if "mixed" in raw or "смеш" in raw:
         return DamageType.MIXED
@@ -658,28 +692,94 @@ def is_combat_pouch_item(item: dict[str, Any]) -> bool:
 
 
 def pouch_items(player: dict[str, Any]) -> list[dict[str, Any]]:
+    return [entry["item"] for entry in pouch_items_with_refs(player)]
+
+
+def pouch_items_with_refs(player: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return combat pouch items with stable inventory-index references.
+
+    The battle UI uses numbered buttons instead of item names. This avoids using
+    the wrong item when two consumables share a display name but differ by id,
+    quality, effect, or future metadata.
+    """
+
     result: list[dict[str, Any]] = []
-    for item in player.get("inventory", []):
+    inventory = player.get("inventory", [])
+    if not isinstance(inventory, list):
+        return result
+    for index, item in enumerate(inventory):
         if not isinstance(item, dict):
             continue
         if is_combat_pouch_item(item):
-            result.append(item)
+            result.append({"ref": str(index), "item": item})
     return result
 
 
-def format_pouch(player: dict[str, Any]) -> tuple[str, list[list[str]]]:
-    items = pouch_items(player)
-    if not items:
+def format_pouch(player: dict[str, Any], battle: dict[str, Any] | None = None, page: int = 0) -> tuple[str, list[list[str]]]:
+    entries = pouch_items_with_refs(player)
+    if not entries:
+        if isinstance(battle, dict):
+            battle.pop("pouch_context", None)
         return "🎒 Подсумок пуст. В инвентаре нет зелий или расходников для боя.", battle_buttons(player)
-    lines = ["🎒 Подсумок", "", "Можно использовать один расходник за ход:"]
+
+    page_count = max(1, math.ceil(len(entries) / BATTLE_POUCH_PAGE_SIZE))
+    page = max(0, min(page, page_count - 1))
+    start_index = page * BATTLE_POUCH_PAGE_SIZE
+    visible = entries[start_index:start_index + BATTLE_POUCH_PAGE_SIZE]
+
+    lines = ["🎒 Подсумок", "", f"Страница {page + 1}/{page_count}. Можно использовать один расходник за ход:"]
     buttons: list[list[str]] = []
-    for item in items[:10]:
+    context_items: dict[str, str] = {}
+    current_row: list[str] = []
+    for local_index, entry in enumerate(visible, start=1):
+        item = entry["item"]
         name = str(item.get("name") or "Предмет")
         amount = safe_int(item.get("amount"), 1)
-        lines.append(f"• {name} ×{amount}")
-        buttons.append([f"Использовать: {name}"])
+        lines.append(f"{local_index}. {name} ×{amount}")
+        context_items[str(local_index)] = str(entry["ref"])
+        current_row.append(f"{BATTLE_POUCH_ITEM_PREFIX}{local_index}")
+        if len(current_row) == 2:
+            buttons.append(current_row)
+            current_row = []
+    if current_row:
+        buttons.append(current_row)
+
+    nav_row: list[str] = []
+    if page > 0:
+        nav_row.append(BATTLE_POUCH_PREV)
+    if page + 1 < page_count:
+        nav_row.append(BATTLE_POUCH_NEXT)
+    if nav_row:
+        buttons.append(nav_row)
+
+    if isinstance(battle, dict):
+        battle["pouch_context"] = {
+            "page": page,
+            "items": context_items,
+            "round_number": safe_int(battle.get("round_number"), 1),
+        }
     buttons.extend(battle_buttons(player))
     return "\n".join(lines), buttons
+
+
+def remove_inventory_item_by_ref(player: dict[str, Any], ref: str, amount: int = 1) -> dict[str, Any] | None:
+    inventory = player.setdefault("inventory", [])
+    try:
+        index = int(str(ref))
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(inventory, list) or index < 0 or index >= len(inventory):
+        return None
+    item = inventory[index]
+    if not isinstance(item, dict):
+        return None
+    current = safe_int(item.get("amount"), 1)
+    used = dict(item)
+    if current > amount:
+        item["amount"] = current - amount
+    else:
+        inventory.pop(index)
+    return used
 
 
 def remove_inventory_item_by_name(player: dict[str, Any], name: str, amount: int = 1) -> dict[str, Any] | None:
@@ -697,8 +797,27 @@ def remove_inventory_item_by_name(player: dict[str, Any], name: str, amount: int
     return None
 
 
-def use_pouch_item(player: dict[str, Any], battle: dict[str, Any], item_name: str) -> tuple[str, bool]:
-    source_item = next((item for item in player.get("inventory", []) if isinstance(item, dict) and str(item.get("name") or "") == item_name), None)
+def use_pouch_item_by_ref(player: dict[str, Any], battle: dict[str, Any], ref: str) -> tuple[str, bool]:
+    inventory = player.get("inventory", [])
+    try:
+        index = int(str(ref))
+    except (TypeError, ValueError):
+        return "🎒 Такой предмет уже недоступен. Откройте подсумок заново.", False
+    if not isinstance(inventory, list) or index < 0 or index >= len(inventory):
+        return "🎒 Такой предмет уже недоступен. Откройте подсумок заново.", False
+    source_item = inventory[index]
+    if not isinstance(source_item, dict):
+        return "🎒 Такой предмет уже недоступен. Откройте подсумок заново.", False
+    return use_pouch_item(player, battle, source_item, ref=str(index))
+
+
+def use_pouch_item(player: dict[str, Any], battle: dict[str, Any], item_name_or_item: str | dict[str, Any], *, ref: str | None = None) -> tuple[str, bool]:
+    if isinstance(item_name_or_item, dict):
+        source_item = item_name_or_item
+        item_name = str(source_item.get("name") or "Предмет")
+    else:
+        item_name = str(item_name_or_item)
+        source_item = next((item for item in player.get("inventory", []) if isinstance(item, dict) and str(item.get("name") or "") == item_name), None)
     if source_item is None:
         return "🎒 Такого предмета нет в подсумке.", False
     if not is_combat_pouch_item(source_item):
@@ -706,27 +825,29 @@ def use_pouch_item(player: dict[str, Any], battle: dict[str, Any], item_name: st
 
     player_state = battle.setdefault("player_state", {})
     restored_parts: list[str] = []
-    updated_values: dict[str, int] = {}
-    # Common consumable fields. Energy is outside combat, so combat shows only HP/spirit/mana effects.
+    effect = source_item.get("use_effect") if isinstance(source_item.get("use_effect"), dict) else {}
     for current_key, max_key, labels in (("current_hp", "max_hp", ("restore_hp", "hp_restore")), ("current_spirit", "max_spirit", ("restore_spirit", "spirit_restore")), ("current_mana", "max_mana", ("restore_mana", "mana_restore"))):
         restore = 0
         for label in labels:
             restore = max(restore, safe_int(source_item.get(label), 0))
-            effect = source_item.get("use_effect") if isinstance(source_item.get("use_effect"), dict) else {}
             restore = max(restore, safe_int(effect.get(label), 0))
         if restore <= 0:
             continue
-        before = safe_int(player_state.get(current_key), 0)
-        maximum = max(1, safe_int(player_state.get(max_key), before))
+        before = safe_int(player_state.get(current_key), safe_int(player.get(current_key.removeprefix("current_")), 0))
+        maximum = safe_int(player_state.get(max_key), safe_int(player.get(max_key.removeprefix("current_")), 0))
         after = min(maximum, before + restore)
+        player_state[current_key] = after
         actual = after - before
-        if actual:
-            updated_values[current_key] = after
+        if actual > 0:
             restored_parts.append(f"+{actual} {current_key.removeprefix('current_')}")
     if not restored_parts:
-        return f"🎒 {item_name} сейчас не даёт боевого эффекта.", False
-    remove_inventory_item_by_name(player, item_name, 1)
-    player_state.update(updated_values)
+        return "🎒 Предмет не дал боевого эффекта.", False
+
+    if ref is not None:
+        remove_inventory_item_by_ref(player, ref, 1)
+    else:
+        remove_inventory_item_by_name(player, item_name, 1)
+    sync_player_from_battle(player, battle)
     return f"🎒 {player_display_name(player)} использует {item_name}: " + ", ".join(restored_parts) + ".", True
 
 
@@ -826,6 +947,8 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
             f"Уровень повышен: {progress['level']} "
             f"(+{progress['level_ups'] * 5} очк. характеристик, +{progress['level_ups'] * 2} очк. навыков)"
         )
+    if progress.get("branch_hint"):
+        rewards.append(str(progress["branch_hint"]))
     if loot_lines:
         rewards.append("Добыча: " + ", ".join(loot_lines))
     else:
@@ -959,10 +1082,41 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         return f"Победа!\n\n{rewards}", []
 
     if action == BATTLE_POUCH:
-        return format_pouch(player)
+        text, buttons = format_pouch(player, battle, 0)
+        player["active_battle"] = battle
+        return text, buttons
+
+    if action in {BATTLE_POUCH_NEXT, BATTLE_POUCH_PREV}:
+        context = battle.get("pouch_context") if isinstance(battle.get("pouch_context"), dict) else {}
+        page = safe_int(context.get("page"), 0) + (1 if action == BATTLE_POUCH_NEXT else -1)
+        text, buttons = format_pouch(player, battle, page)
+        player["active_battle"] = battle
+        return text, buttons
+
+    if action.startswith(BATTLE_POUCH_ITEM_PREFIX):
+        context = battle.get("pouch_context") if isinstance(battle.get("pouch_context"), dict) else {}
+        context_items = context.get("items") if isinstance(context.get("items"), dict) else {}
+        local_number = action.removeprefix(BATTLE_POUCH_ITEM_PREFIX).strip().split()[0]
+        ref = context_items.get(local_number)
+        if ref is None:
+            return "🎒 Этот пункт подсумка уже устарел. Откройте подсумок заново.", battle_buttons(player)
+        decrement_cooldowns_once_at_player_turn(battle, player_state)
+        item_text, consumed = use_pouch_item_by_ref(player, battle, ref)
+        log = [item_text]
+        if consumed:
+            defeated = apply_enemy_phase(player, battle, rng, log)
+            if defeated:
+                return finish_player_defeat(player, battle, log)
+        else:
+            battle["last_turn_log"] = log
+            battle.setdefault("battle_log", []).extend(log)
+            sync_player_from_battle(player, battle)
+        player["active_battle"] = battle
+        return format_battle_status(battle), battle_buttons(player)
 
     if action.startswith("Использовать: "):
         item_name = action.removeprefix("Использовать: ").strip()
+        decrement_cooldowns_once_at_player_turn(battle, player_state)
         item_text, consumed = use_pouch_item(player, battle, item_name)
         log = [item_text]
         if consumed:
@@ -988,11 +1142,19 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         battle.pop("pending_skill", None)
 
     equipped_skill = get_equipped_skill(player, action)
+    if equipped_skill is None and action in {BATTLE_DEFEND, BATTLE_ATTACK, BATTLE_MAGIC_SPARK, BATTLE_WAIT}:
+        decrement_cooldowns_once_at_player_turn(battle, player_state)
+    if equipped_skill is not None and not is_skill_weapon_compatible(player, equipped_skill):
+        return f"⚔️ Навык «{equipped_skill.get('name')}» нельзя применить с текущим оружием. Нужно: {skill_weapon_requirement_text(equipped_skill)}.", battle_buttons(player)
     if equipped_skill is not None and target_number is None and not skill_uses_without_target(equipped_skill):
         cooldown_key = str(equipped_skill.get("id") or equipped_skill.get("name"))
         cooldowns = player_state.setdefault("cooldowns", {})
         if safe_int(cooldowns.get(cooldown_key), 0) > 0:
             return f"⏳ Навык «{equipped_skill.get('name')}» ещё на откате: {cooldowns[cooldown_key]} ход.", battle_buttons(player)
+        decrement_cooldowns_once_at_player_turn(battle, player_state)
+        ammo_ok, ammo_message = validate_skill_ammo(player, equipped_skill)
+        if not ammo_ok:
+            return f"🏹 {ammo_message}", battle_buttons(player)
         battle["pending_skill"] = equipped_skill
         player["active_battle"] = battle
         return f"🎯 Выберите противника для навыка «{equipped_skill.get('name')}».", target_buttons(battle, player)
@@ -1005,12 +1167,14 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         cooldowns = player_state.setdefault("cooldowns", {})
         if safe_int(cooldowns.get(cooldown_key), 0) > 0:
             return f"⏳ Навык «{equipped_skill.get('name')}» ещё на откате: {cooldowns[cooldown_key]} ход.", battle_buttons(player)
+        decrement_cooldowns_once_at_player_turn(battle, player_state)
+        ammo_ok, ammo_message = validate_skill_ammo(player, equipped_skill)
+        if not ammo_ok:
+            return f"🏹 {ammo_message}", battle_buttons(player)
 
     log: list[str] = []
     defending = action == BATTLE_DEFEND
     waiting = action == BATTLE_WAIT
-    if equipped_skill is None and action in {BATTLE_DEFEND, BATTLE_ATTACK, BATTLE_MAGIC_SPARK, BATTLE_WAIT}:
-        decrement_cooldowns_at_turn_start(player_state)
     if defending:
         log.append(f"{player_name} занимает защитную стойку. Входящий урон в этом ходе снижен.")
     elif waiting:
@@ -1033,6 +1197,11 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
                 return f"🔥 Не хватает духа для навыка «{equipped_skill.get('name')}». Нужно: {spirit_cost}.", battle_buttons(player)
             if mana_cost > safe_int(player_state.get("current_mana"), 0):
                 return f"✨ Не хватает маны для навыка «{equipped_skill.get('name')}». Нужно: {mana_cost}.", battle_buttons(player)
+            ammo_ok, ammo_message = consume_skill_ammo(player, equipped_skill)
+            if not ammo_ok:
+                return f"🏹 {ammo_message}", battle_buttons(player)
+            if ammo_message:
+                log.append(f"🏹 {ammo_message}")
             player_state["current_spirit"] = max(0, safe_int(player_state.get("current_spirit"), 0) - spirit_cost)
             player_state["current_mana"] = max(0, safe_int(player_state.get("current_mana"), 0) - mana_cost)
             cooldown = safe_int(equipped_skill.get("cooldown_turns") if "cooldown_turns" in equipped_skill else equipped_skill.get("cooldown"), 0)

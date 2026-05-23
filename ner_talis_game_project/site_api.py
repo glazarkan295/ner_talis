@@ -44,6 +44,7 @@ from services.inventory_service import (
 from services.promo_service import redeem_promo_code
 from services.race_bonus_service import hp_multiplier, outgoing_damage_multiplier, stat_multiplier
 from services.web_profile import PROFILE_SCOPE
+from services.active_skill_service import refresh_unlocked_active_skills, resource_cost_with_modifiers, skill_level, is_skill_weapon_compatible, skill_weapon_requirement_text
 
 FRONT_TO_BACK_STAT = {
     "strength": "strength",
@@ -117,6 +118,12 @@ ITEM_VALUE_TRANSLATIONS = {
     "dagger": "Кинжал",
     "bow": "Лук",
     "crossbow": "Арбалет",
+    "quiver": "Колчан",
+    "arrow_quiver": "Колчан стрел",
+    "bolt_quiver": "Колчан болтов",
+    "ammunition": "Боеприпас",
+    "arrow": "Стрела",
+    "bolt": "Болт",
     "mace": "Булава",
     "hammer": "Молот",
     "shield": "Щит",
@@ -711,6 +718,7 @@ CONSUMABLE_CATEGORY_MARKERS = {
     "еда", "напитки", "напиток", "зелье", "зелья", "расходник", "расходники",
     "consumable", "consumables", "potion", "food", "drink", "camp_food", "combat_item",
     "battle_item", "single_use", "one_time", "одноразовый", "боевой предмет",
+    "ammunition", "ammo", "arrow", "bolt", "боеприпас", "боеприпасы", "стрела", "стрелы", "болт", "болты",
 }
 RESOURCE_TYPE_MARKERS = {
     "ore", "wood", "tree", "herb", "flower", "mushroom", "stone", "resource", "resources",
@@ -764,6 +772,21 @@ def is_profile_equipment_item(item: dict[str, Any]) -> bool:
     return raw_slot in EQUIPMENT_SLOT_KEYS or bool(parts & EQUIPMENT_CATEGORY_MARKERS)
 
 
+def is_direct_profile_use_disabled(item: dict[str, Any]) -> bool:
+    false_values = {"0", "false", "no", "off", "disabled", "нет", "нельзя"}
+    for key in ("direct_use", "directUse", "profile_use", "profileUse", "profile_usable", "profileUsable", "can_use", "canUse", "usable"):
+        if key not in item:
+            continue
+        value = item.get(key)
+        if isinstance(value, bool):
+            return value is False
+        if isinstance(value, (int, float)):
+            return value == 0
+        if str(value).strip().casefold() in false_values:
+            return True
+    return False
+
+
 def has_explicit_consumable_effect(item: dict[str, Any]) -> bool:
     if not any(item.get(field) is not None for field in ("use_effect", "active_effect", "consumable_effect")):
         return False
@@ -776,7 +799,9 @@ def is_inventory_item_usable(item: dict[str, Any]) -> bool:
     usable_markers = CONSUMABLE_CATEGORY_MARKERS | DIRECTLY_USABLE_CATEGORY_MARKERS
     if is_profile_equipment_item(item):
         return False
-    return item_energy_restore(item) > 0 or has_explicit_consumable_effect(item) or category == "расходники" or bool(parts & usable_markers)
+    if is_direct_profile_use_disabled(item):
+        return False
+    return is_ammunition_item(item) or item_energy_restore(item) > 0 or has_explicit_consumable_effect(item) or category == "расходники" or bool(parts & usable_markers)
 
 def normalize_item(item: dict[str, Any], default_category: str = "Прочее") -> dict[str, Any]:
     item = enrich_inventory_item(item)
@@ -801,16 +826,36 @@ def normalize_item(item: dict[str, Any], default_category: str = "Прочее")
     normalized.setdefault("enchantments", [])
     normalized.setdefault("compare", [])
     normalized.setdefault("amount", 1)
+
+    raw_sell_price = normalized.get("sell_price_copper", normalized.get("sellPriceCopper"))
+    sell_price = safe_int(raw_sell_price, -1)
+    raw_can_sell = normalized.get("can_sell", normalized.get("canSell"))
+    can_sell = bool(raw_can_sell) if raw_can_sell is not None else sell_price >= 0
+    normalized["can_sell"] = can_sell
+    normalized["canSell"] = can_sell
+    if sell_price >= 0:
+        normalized["sell_price_copper"] = sell_price
+        normalized["sellPriceCopper"] = sell_price
+        normalized["sellPriceText"] = f"{sell_price} медных"
+    elif can_sell is False:
+        normalized["sellPriceText"] = "не продаётся"
+
     if normalized.get("overflow_slot"):
         normalized["overflowSlot"] = True
         normalized["inventoryStatus"] = "Перегруз"
     energy_restore = item_energy_restore(normalized)
+    stats = list(normalized.get("stats") or [])
     if energy_restore > 0:
         normalized["category"] = "Расходники"
-        stats = list(normalized.get("stats") or [])
         if not any("энерг" in str(line).casefold() for line in stats):
             stats.append(f"Восстановление энергии: +{energy_restore}")
-        normalized["stats"] = stats
+    if safe_int(normalized.get("capacity"), 0) > 0 and ("quiver" in str(normalized.get("subtype") or "").casefold() or "колчан" in str(normalized.get("type") or "").casefold()):
+        ammo_count = safe_int(normalized.get("ammo_count"), 0)
+        capacity = safe_int(normalized.get("capacity"), 0)
+        ammo_line = f"Заряжено: {ammo_count}/{capacity}"
+        if not any("заряжено" in str(line).casefold() for line in stats):
+            stats.append(ammo_line)
+    normalized["stats"] = stats
     return normalized
 
 
@@ -834,8 +879,13 @@ def format_skill_damage(
 
 
 def skill_resource_text(skill: dict[str, Any]) -> str:
-    mana = safe_float(skill.get("mana_cost") if "mana_cost" in skill else skill.get("manaCost"), 0)
-    spirit = safe_float(skill.get("spirit_cost") if "spirit_cost" in skill else skill.get("spiritCost"), 0)
+    try:
+        spirit_i, mana_i = resource_cost_with_modifiers(skill)
+        mana = safe_float(mana_i, 0)
+        spirit = safe_float(spirit_i, 0)
+    except Exception:
+        mana = safe_float(skill.get("mana_cost") if "mana_cost" in skill else skill.get("manaCost"), 0)
+        spirit = safe_float(skill.get("spirit_cost") if "spirit_cost" in skill else skill.get("spiritCost"), 0)
     parts: list[str] = []
     if mana > 0:
         parts.append(f"Мана: {mana:g}")
@@ -875,6 +925,7 @@ def normalize_skill(
         normalized["resourceText"] = skill_resource_text(skill)
     normalized["cooldownText"] = skill.get("cooldown_text") or skill_cooldown_text(skill)
     normalized["cooldown"] = safe_int(skill.get("cooldown_turns") if "cooldown_turns" in skill else skill.get("cooldown"), 0)
+    normalized["level"] = skill_level(skill)
     skill_type = str(skill.get("skill_type") or skill.get("type") or source_section or "active").lower()
     normalized.setdefault("skill_type", skill_type)
     normalized["equippable"] = bool(skill.get("equippable", skill_type not in {"passive", "пассивный"}))
@@ -955,6 +1006,7 @@ def normalize_effect_for_frontend(effect: Any) -> dict[str, Any] | None:
 
 def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
     prune_expired_effects(player)
+    refresh_unlocked_active_skills(player)
     recalculate_inventory_overflow(player)
     derived = calculate_player_derived_stats(player)
     level = derived["level"]
@@ -1003,7 +1055,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         item = normalize_item(raw_item)
         if is_profile_equipment_item(item):
             item["actions"] = ["Надеть"]
-        elif item.get("category") == "Расходники" or is_inventory_item_usable(item):
+        elif is_inventory_item_usable(item):
             item["actions"] = ["Использовать"]
         else:
             item.setdefault("actions", [])
@@ -1082,7 +1134,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         ],
         "effects": [effect for effect in (normalize_effect_for_frontend(raw_effect) for raw_effect in player.get("active_effects", [])) if effect],
         "activeSets": player.get("active_sets", []),
-        "equipmentSlots": EQUIPMENT_SLOTS,
+        "equipmentSlots": equipment_slots_for_frontend(player.get("equipment") or {}),
         "equipment": equipment,
         "inventory": inventory,
         "skills": {"active": active_skills, "equipped": equipped_skills, "passive": passive_skills},
@@ -1197,6 +1249,8 @@ def equip_player_skill(player: dict[str, Any], skill_id: str) -> None:
     skill_type = str(skill.get("skill_type") or skill.get("type") or source_section).lower()
     if skill.get("equippable") is False or skill_type in {"passive", "пассивный"}:
         raise HTTPException(status_code=400, detail="Этот навык нельзя экипировать для использования.")
+    if not is_skill_weapon_compatible(player, skill):
+        raise HTTPException(status_code=400, detail=f"Для этого навыка нужно подходящее оружие: {skill_weapon_requirement_text(skill)}.")
     source_list = skills.get(source_section)
     if isinstance(source_list, list):
         source_list.pop(index)
@@ -1219,15 +1273,209 @@ def unequip_player_skill(player: dict[str, Any], skill_id: str) -> None:
 
 
 
+TWO_HANDED_TRUE_VALUES = {"1", "true", "yes", "да", "двуручное", "двуручный", "two_handed", "two-handed", "2h"}
+
+
+def _truthy_equipment_flag(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value == 1
+    return str(value or "").strip().casefold() in TWO_HANDED_TRUE_VALUES
+
+
+def is_two_handed_equipment(item: dict[str, Any] | None) -> bool:
+    if not isinstance(item, dict):
+        return False
+    combat = item.get("combat") if isinstance(item.get("combat"), dict) else {}
+    raw_values = (
+        item.get("two_handed"),
+        item.get("twoHanded"),
+        item.get("is_two_handed"),
+        item.get("isTwoHanded"),
+        item.get("requires_two_hands"),
+        combat.get("two_handed"),
+        combat.get("twoHanded"),
+        combat.get("requires_two_hands"),
+    )
+    if any(_truthy_equipment_flag(value) for value in raw_values):
+        return True
+    hands = item.get("hands") or combat.get("hands") or item.get("hand_count") or combat.get("hand_count")
+    if safe_int(hands, 0) >= 2:
+        return True
+    text = " ".join(str(item.get(key) or "") for key in ("name", "type", "subtype", "description", "slot", "slotKey", "targetSlotKey")).casefold()
+    return "двуруч" in text or "two-handed" in text or "two handed" in text or "two_handed" in text
+
+
+def equipment_weapon_token(item: dict[str, Any] | None) -> str:
+    if not isinstance(item, dict):
+        return ""
+    values = (
+        item.get("weapon_type"),
+        item.get("weaponType"),
+        item.get("subtype"),
+        item.get("type"),
+        item.get("category"),
+        item.get("id"),
+        item.get("item_id"),
+        item.get("name"),
+    )
+    text = " ".join(str(value or "") for value in values).casefold()
+    if "crossbow" in text or "арбалет" in text:
+        return "crossbow"
+    if "bow" in text or "лук" in text:
+        return "bow"
+    if "staff" in text or "посох" in text:
+        return "staff"
+    if "sword" in text or "меч" in text:
+        return "sword"
+    if "dagger" in text or "кинжал" in text:
+        return "dagger"
+    if "axe" in text or "топор" in text:
+        return "axe"
+    if "hammer" in text or "mace" in text or "молот" in text or "булава" in text:
+        return "hammer"
+    if "shield" in text or "щит" in text:
+        return "shield"
+    return ""
+
+
+def quiver_kind(item: dict[str, Any] | None) -> str:
+    if not isinstance(item, dict):
+        return ""
+    item_id = str(item.get("id") or item.get("item_id") or "").strip()
+    raw = " ".join(str(item.get(key) or "") for key in ("quiver_type", "subtype", "type", "slot", "targetSlotKey", "name")).casefold()
+    if item_id == "arrow_quiver_empty" or "arrow_quiver" in raw or "стрел" in raw:
+        return "arrow_quiver"
+    if item_id == "bolt_quiver_empty" or "bolt_quiver" in raw or "болт" in raw:
+        return "bolt_quiver"
+    return "quiver" if "колчан" in raw or "quiver" in raw else ""
+
+
+def is_quiver_item(item: dict[str, Any] | None) -> bool:
+    return bool(quiver_kind(item))
+
+
+def required_weapon_for_quiver(item: dict[str, Any] | None) -> str:
+    kind = quiver_kind(item)
+    if kind == "arrow_quiver":
+        return "bow"
+    if kind == "bolt_quiver":
+        return "crossbow"
+    return ""
+
+
+def is_matching_quiver_for_weapon(item: dict[str, Any] | None, weapon: dict[str, Any] | None) -> bool:
+    required = required_weapon_for_quiver(item)
+    return bool(required and equipment_weapon_token(weapon) == required)
+
+
+def quiver_equip_error(item: dict[str, Any] | None, equipment: dict[str, Any]) -> str:
+    required = required_weapon_for_quiver(item)
+    if required == "bow":
+        return "Колчан для стрел можно надеть во второй оружейный слот только если в первом слоте экипирован лук."
+    if required == "crossbow":
+        return "Колчан для болтов можно надеть во второй оружейный слот только если в первом слоте экипирован арбалет."
+    return "Колчан можно надеть только во второй оружейный слот при подходящем оружии в первом слоте."
+
+
+def weapon2_has_ranged_quiver_mode(equipment: dict[str, Any] | None) -> bool:
+    if not isinstance(equipment, dict):
+        return False
+    weapon1 = equipment.get("weapon1")
+    return isinstance(weapon1, dict) and equipment_weapon_token(weapon1) in {"bow", "crossbow"}
+
+
+def weapon2_restricted_by_two_handed_ranged(equipment: dict[str, Any] | None) -> bool:
+    if not isinstance(equipment, dict):
+        return False
+    weapon1 = equipment.get("weapon1")
+    return isinstance(weapon1, dict) and is_two_handed_equipment(weapon1) and equipment_weapon_token(weapon1) in {"bow", "crossbow"}
+
+
+def weapon2_blocking_item(equipment: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(equipment, dict):
+        return None
+    weapon1 = equipment.get("weapon1")
+    if isinstance(weapon1, dict) and is_two_handed_equipment(weapon1) and equipment_weapon_token(weapon1) not in {"bow", "crossbow"}:
+        return weapon1
+    return None
+
+
+def weapon2_blocked_reason(equipment: dict[str, Any] | None) -> str:
+    item = weapon2_blocking_item(equipment)
+    if not item:
+        return ""
+    return f"Второй оружейный слот заблокирован: {item.get('name') or 'двуручное оружие'} занимает обе руки."
+
+
+def equipment_slots_for_frontend(equipment: dict[str, Any] | None) -> list[dict[str, Any]]:
+    slots = deepcopy(EQUIPMENT_SLOTS)
+    reason = weapon2_blocked_reason(equipment)
+    if reason:
+        for slot in slots:
+            if slot.get("key") == "weapon2":
+                slot["blocked"] = True
+                slot["blockedBy"] = "weapon1"
+                slot["blockedReason"] = reason
+                slot["label"] = "Оружие 2"
+                slot["statusLabel"] = "заблокировано"
+                break
+        return slots
+    if weapon2_has_ranged_quiver_mode(equipment):
+        weapon1 = (equipment or {}).get("weapon1") if isinstance(equipment, dict) else None
+        weapon_token = equipment_weapon_token(weapon1)
+        for slot in slots:
+            if slot.get("key") == "weapon2":
+                slot["label"] = "Оружие 2 / Колчан"
+                slot["statusLabel"] = "только колчан"
+                slot["restricted"] = True
+                slot["restrictedReason"] = "Во второй слот можно надеть только подходящий колчан."
+                slot["expectedQuiver"] = "arrow_quiver" if weapon_token == "bow" else "bolt_quiver"
+                break
+    return slots
+
+
+def prepare_item_for_inventory_from_slot(item: dict[str, Any], slot_key: str) -> dict[str, Any]:
+    item = deepcopy(item)
+    item["targetSlotKey"] = slot_key
+    item.pop("slotKey", None)
+    item.pop("overflow_slot", None)
+    item.pop("storage_type", None)
+    item.pop("inventory_status", None)
+    return item
+
+
 def compatible_equipment_slot(item: dict[str, Any], requested_slot: str | None, equipment: dict[str, Any]) -> str:
     raw_slot = str(item.get("targetSlotKey") or item.get("slotKey") or item.get("slot") or item.get("target_slot") or "").strip()
     item_type = str(item.get("type") or item.get("subtype") or item.get("category") or "").casefold()
     requested = str(requested_slot or "").strip()
+    is_two_handed = is_two_handed_equipment(item)
+    weapon2_blocked = weapon2_blocking_item(equipment) is not None
+    weapon2_ranged_restricted = weapon2_restricted_by_two_handed_ranged(equipment) or weapon2_has_ranged_quiver_mode(equipment)
+    is_quiver = is_quiver_item(item)
+
+    def ensure_quiver_allowed() -> str:
+        if requested and requested != "weapon2":
+            raise HTTPException(status_code=400, detail="Колчан можно экипировать только во второй оружейный слот.")
+        weapon1 = equipment.get("weapon1") if isinstance(equipment, dict) else None
+        if not is_matching_quiver_for_weapon(item, weapon1):
+            raise HTTPException(status_code=400, detail=quiver_equip_error(item, equipment))
+        if isinstance(equipment.get("weapon2"), dict) and not requested:
+            return "weapon2"
+        return "weapon2"
+
+    if is_quiver:
+        return ensure_quiver_allowed()
 
     def first_free(options: tuple[str, ...]) -> str:
         for slot in options:
+            if slot == "weapon2" and (weapon2_blocked or weapon2_ranged_restricted):
+                continue
             if not isinstance(equipment.get(slot), dict):
                 return slot
+        if "weapon1" in options:
+            return "weapon1"
         return options[0]
 
     if raw_slot in {"ring1", "ring2"}:
@@ -1235,29 +1483,124 @@ def compatible_equipment_slot(item: dict[str, Any], requested_slot: str | None, 
     elif raw_slot == "ring" or "кольцо" in item_type or item_type == "ring":
         allowed = ("ring1", "ring2")
     elif raw_slot in {"weapon1", "weapon2"}:
-        allowed = (raw_slot,)
+        allowed = ("weapon1",) if is_two_handed else (raw_slot,)
     elif raw_slot in {"weapon", "main_hand", "off_hand"} or item_type in {"оружие", "weapon", "меч", "посох", "кинжал", "топор", "молот", "булава", "лук", "арбалет"}:
-        allowed = ("weapon1", "weapon2")
+        allowed = ("weapon1",) if is_two_handed else ("weapon1", "weapon2")
+    elif raw_slot in {"arrow_quiver", "bolt_quiver"}:
+        raise HTTPException(status_code=400, detail="Колчаны теперь экипируются во второй оружейный слот при подходящем оружии в первом слоте.")
     elif raw_slot:
         allowed = (raw_slot,)
     else:
         raise HTTPException(status_code=400, detail="У предмета не указан слот экипировки.")
 
     if requested:
+        if requested == "weapon2" and weapon2_blocked:
+            raise HTTPException(status_code=400, detail=weapon2_blocked_reason(equipment))
+        if requested == "weapon2" and weapon2_ranged_restricted:
+            raise HTTPException(status_code=400, detail="Во второй слот при луке или арбалете можно надеть только подходящий колчан.")
+        if is_two_handed and requested == "weapon2":
+            raise HTTPException(status_code=400, detail="Двуручное оружие можно надеть только в первый оружейный слот: второй слот оно блокирует.")
         if requested not in allowed:
             raise HTTPException(status_code=400, detail="Выбранный слот не подходит для этого предмета.")
         return requested
     return first_free(allowed)
 
+
+def unequip_incompatible_weapon2(player: dict[str, Any], previous_slot: str | None = None) -> None:
+    equipment = player.setdefault("equipment", {})
+    weapon2 = equipment.get("weapon2")
+    if not isinstance(weapon2, dict):
+        return
+    weapon1 = equipment.get("weapon1")
+    should_unequip = False
+    if is_quiver_item(weapon2):
+        should_unequip = not is_matching_quiver_for_weapon(weapon2, weapon1)
+    elif weapon2_blocking_item(equipment) is not None or weapon2_restricted_by_two_handed_ranged(equipment):
+        should_unequip = True
+    if should_unequip:
+        returned = prepare_item_for_inventory_from_slot(weapon2, "weapon2")
+        add_inventory_item(player, returned, safe_int(returned.get("amount"), 1))
+        equipment.pop("weapon2", None)
+
+AMMO_LOAD_RULES = {
+    "arrow_for_bow": {
+        "quiver_slot": "weapon2",
+        "quiver_kind": "arrow_quiver",
+        "quiver_item_id": "arrow_quiver_empty",
+        "ammo_item_id": "arrow_for_bow",
+        "ammo_name": "стрел",
+        "capacity": 30,
+        "missing_message": "Сначала экипируйте колчан для стрел.",
+    },
+    "bolt_for_crossbow": {
+        "quiver_slot": "weapon2",
+        "quiver_kind": "bolt_quiver",
+        "quiver_item_id": "bolt_quiver_empty",
+        "ammo_item_id": "bolt_for_crossbow",
+        "ammo_name": "болтов",
+        "capacity": 20,
+        "missing_message": "Сначала экипируйте колчан для болтов.",
+    },
+}
+
+
+def item_identity(item: dict[str, Any] | None) -> str:
+    if not isinstance(item, dict):
+        return ""
+    return str(item.get("id") or item.get("item_id") or "").strip()
+
+
+def is_ammunition_item(item: dict[str, Any] | None) -> bool:
+    item_id = item_identity(item)
+    if item_id in AMMO_LOAD_RULES:
+        return True
+    text = " ".join(str(item.get(key) or "") for key in ("type", "subtype", "category", "name") if isinstance(item, dict)).casefold()
+    return "боеприп" in text or "ammunition" in text
+
+
+def load_ammo_into_equipped_quiver(player: dict[str, Any], item: dict[str, Any], amount: int) -> tuple[int, str]:
+    item_id = item_identity(item)
+    rule = AMMO_LOAD_RULES.get(item_id)
+    if not rule:
+        raise HTTPException(status_code=400, detail="Этот боеприпас нельзя загрузить в колчан.")
+    equipment = player.setdefault("equipment", {})
+    quiver = equipment.get(rule["quiver_slot"])
+    if not isinstance(quiver, dict) or quiver_kind(quiver) != rule.get("quiver_kind"):
+        raise HTTPException(status_code=400, detail=rule["missing_message"])
+    quiver.setdefault("ammo_item_id", rule["ammo_item_id"])
+    if str(quiver.get("ammo_item_id") or "") != rule["ammo_item_id"]:
+        raise HTTPException(status_code=400, detail="Этот боеприпас не подходит к экипированному колчану.")
+    capacity = max(1, safe_int(quiver.get("capacity") or rule["capacity"], rule["capacity"]))
+    current = max(0, safe_int(quiver.get("ammo_count"), 0))
+    free = max(0, capacity - current)
+    if free <= 0:
+        raise HTTPException(status_code=400, detail="Колчан уже заполнен.")
+    loaded = min(max(1, safe_int(amount, 1)), free)
+    quiver["capacity"] = capacity
+    quiver["ammo_count"] = current + loaded
+    quiver["ammo_item_id"] = rule["ammo_item_id"]
+    return loaded, f"В колчан загружено: {rule['ammo_name']} ×{loaded}."
+
+
+def remove_inventory_amount_at_index(inventory: list[Any], index: int, amount: int) -> None:
+    item = inventory[index]
+    current = max(1, safe_int(item.get("amount"), 1)) if isinstance(item, dict) else 1
+    amount = max(1, safe_int(amount, 1))
+    if current > amount:
+        item["amount"] = current - amount
+    else:
+        inventory.pop(index)
+
+
 def spend_points_on_skill(skill: dict[str, Any], modifier_id: str | None, amount: int) -> None:
     if not skill.get("upgradeable"):
         raise HTTPException(status_code=400, detail="Этот навык нельзя улучшить.")
 
-    skill["level"] = safe_int(skill.get("level"), 0) + amount
     modifiers = skill.get("modifiers")
     target_modifier = str(modifier_id or "main").strip()
     if not isinstance(modifiers, list) or not modifiers:
         if target_modifier in {"", "main"}:
+            skill["level"] = safe_int(skill.get("level"), 0) + amount
             return
         raise HTTPException(status_code=400, detail="Модификатор навыка не найден.")
 
@@ -1272,6 +1615,7 @@ def spend_points_on_skill(skill: dict[str, Any], modifier_id: str | None, amount
         if target_modifier in modifier_keys:
             level_key = "level" if "level" in modifier or "points" not in modifier else "points"
             modifier[level_key] = safe_int(modifier.get(level_key), 0) + amount
+            skill["level"] = skill_level(skill)
             return
 
     raise HTTPException(status_code=400, detail="Модификатор навыка не найден.")
@@ -1330,6 +1674,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
         for stat_key, amount in normalized_allocations.items():
             invested_stats[stat_key] = safe_int(invested_stats.get(stat_key), 0) + amount
         player["free_stat_points"] = free_points - total_amount
+        refresh_unlocked_active_skills(player)
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
@@ -1346,6 +1691,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=404, detail="Навык не найден.")
         spend_points_on_skill(skill, request.modifier_id, request.amount)
         player["free_skill_points"] = free_points - request.amount
+        refresh_unlocked_active_skills(player)
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
@@ -1383,18 +1729,22 @@ def create_profile_api_router(get_storage) -> APIRouter:
             raise
         previous_item = equipment.get(slot_key)
         if isinstance(previous_item, dict):
-            previous_item["targetSlotKey"] = slot_key
-            previous_item.pop("slotKey", None)
-            previous_item.pop("overflow_slot", None)
-            previous_item.pop("storage_type", None)
-            previous_item.pop("inventory_status", None)
+            previous_item = prepare_item_for_inventory_from_slot(previous_item, slot_key)
             add_inventory_item(player, previous_item, safe_int(previous_item.get("amount"), 1))
+        if is_two_handed_equipment(item):
+            blocked_second_weapon = equipment.get("weapon2")
+            if isinstance(blocked_second_weapon, dict):
+                blocked_second_weapon = prepare_item_for_inventory_from_slot(blocked_second_weapon, "weapon2")
+                add_inventory_item(player, blocked_second_weapon, safe_int(blocked_second_weapon.get("amount"), 1))
+                equipment.pop("weapon2", None)
         item["slotKey"] = slot_key
         item.pop("targetSlotKey", None)
         item.pop("overflow_slot", None)
         item.pop("storage_type", None)
         item.pop("inventory_status", None)
         equipment[slot_key] = item
+        if slot_key == "weapon1":
+            unequip_incompatible_weapon2(player, slot_key)
         recalculate_inventory_overflow(player)
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
@@ -1408,11 +1758,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
         item = equipment.pop(request.slot_key, None)
         if not isinstance(item, dict):
             raise HTTPException(status_code=404, detail="В этом слоте нет предмета.")
-        item["targetSlotKey"] = request.slot_key
-        item.pop("slotKey", None)
-        item.pop("overflow_slot", None)
-        item.pop("storage_type", None)
-        item.pop("inventory_status", None)
+        item = prepare_item_for_inventory_from_slot(item, request.slot_key)
         add_inventory_item(player, item, safe_int(item.get("amount"), 1))
         recalculate_inventory_overflow(player)
         sync_player_parameters_for_bots(player)
@@ -1446,15 +1792,18 @@ def create_profile_api_router(get_storage) -> APIRouter:
         item = inventory[item_index]
         if not is_inventory_item_usable(item):
             raise HTTPException(status_code=400, detail="Этот предмет нельзя использовать напрямую из профиля.")
+        if is_ammunition_item(item):
+            loaded, message = load_ammo_into_equipped_quiver(player, item, safe_int(item.get("amount"), 1))
+            remove_inventory_amount_at_index(inventory, item_index, loaded)
+            recalculate_inventory_overflow(player)
+            sync_player_parameters_for_bots(player)
+            save_player(storage, player)
+            return {"ok": True, "message": message, "loadedAmmo": loaded, "profile": frontend_profile(player)}
         restored_energy = apply_energy_restore(player, item)
         effect = consumable_effect_from_item(item)
         if effect is not None:
             add_active_consumable_effect(player, effect)
-        amount = safe_int(item.get("amount"), 1)
-        if amount > 1:
-            item["amount"] = amount - 1
-        else:
-            inventory.pop(item_index)
+        remove_inventory_amount_at_index(inventory, item_index, 1)
         recalculate_inventory_overflow(player)
         sync_player_parameters_for_bots(player)
         save_player(storage, player)

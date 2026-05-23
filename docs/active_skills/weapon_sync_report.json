@@ -1,0 +1,1150 @@
+{
+  "supported_weapon_types": [
+    "sword",
+    "dagger",
+    "staff",
+    "axe",
+    "hammer",
+    "bow",
+    "shield",
+    "crossbow"
+  ],
+  "weapon_usage_counts": {
+    "any": 36,
+    "axe": 18,
+    "bow": 3,
+    "crossbow": 3,
+    "dagger": 18,
+    "hammer": 12,
+    "shield": 6,
+    "staff": 43,
+    "sword": 23
+  },
+  "equipment_usage_counts": {
+    "heavy_armor": 3,
+    "medium_armor": 1
+  },
+  "changed_skills": [
+    {
+      "id": "neutral_basic_strike",
+      "name": "Обычный удар",
+      "old_weapon_requirements": [
+        "any_melee",
+        "unarmed"
+      ],
+      "new_weapon_requirements": [
+        "sword",
+        "dagger",
+        "staff",
+        "axe",
+        "hammer"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "any_melee",
+        "unarmed"
+      ]
+    },
+    {
+      "id": "neutral_magic_clot",
+      "name": "Магический сгусток",
+      "old_weapon_requirements": [
+        "any",
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "neutral_guard",
+      "name": "Простая защита",
+      "old_weapon_requirements": [
+        "any",
+        "shield"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": []
+    },
+    {
+      "id": "spirit_power_strike",
+      "name": "Сильный удар",
+      "old_weapon_requirements": [
+        "any_melee"
+      ],
+      "new_weapon_requirements": [
+        "sword",
+        "dagger",
+        "staff",
+        "axe",
+        "hammer"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "any_melee"
+      ]
+    },
+    {
+      "id": "spirit_precise_thrust",
+      "name": "Точный выпад",
+      "old_weapon_requirements": [
+        "sword",
+        "spear",
+        "dagger"
+      ],
+      "new_weapon_requirements": [
+        "sword",
+        "staff",
+        "dagger"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "spear"
+      ]
+    },
+    {
+      "id": "spirit_guard_stance",
+      "name": "Защитная стойка",
+      "old_weapon_requirements": [
+        "any",
+        "shield"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": []
+    },
+    {
+      "id": "spirit_parry",
+      "name": "Парирование",
+      "old_weapon_requirements": [
+        "sword",
+        "dagger",
+        "spear",
+        "axe"
+      ],
+      "new_weapon_requirements": [
+        "sword",
+        "dagger",
+        "staff",
+        "axe"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "spear"
+      ]
+    },
+    {
+      "id": "spirit_quick_dash",
+      "name": "Боевой рывок",
+      "old_weapon_requirements": [
+        "any_melee"
+      ],
+      "new_weapon_requirements": [
+        "sword",
+        "dagger",
+        "staff",
+        "axe",
+        "hammer"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "any_melee"
+      ]
+    },
+    {
+      "id": "spirit_sweeping_cut",
+      "name": "Широкий взмах",
+      "old_weapon_requirements": [
+        "sword",
+        "axe",
+        "staff",
+        "spear"
+      ],
+      "new_weapon_requirements": [
+        "sword",
+        "axe",
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "spear"
+      ]
+    },
+    {
+      "id": "spirit_low_sweep",
+      "name": "Подсечка",
+      "old_weapon_requirements": [
+        "staff",
+        "spear",
+        "axe",
+        "unarmed"
+      ],
+      "new_weapon_requirements": [
+        "staff",
+        "axe"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "spear",
+        "unarmed"
+      ]
+    },
+    {
+      "id": "spirit_crushing_break",
+      "name": "Дробящий пролом",
+      "old_weapon_requirements": [
+        "hammer",
+        "axe",
+        "spear"
+      ],
+      "new_weapon_requirements": [
+        "hammer",
+        "axe",
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "spear"
+      ]
+    },
+    {
+      "id": "spirit_breakthrough",
+      "name": "Прорыв обороны",
+      "old_weapon_requirements": [
+        "sword",
+        "hammer",
+        "axe",
+        "spear"
+      ],
+      "new_weapon_requirements": [
+        "sword",
+        "hammer",
+        "axe",
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "spear"
+      ]
+    },
+    {
+      "id": "spirit_unbroken_stance",
+      "name": "Стойка несломленного",
+      "old_weapon_requirements": [
+        "any",
+        "shield"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": []
+    },
+    {
+      "id": "spirit_hunter_mark",
+      "name": "Метка охотника",
+      "old_weapon_requirements": [
+        "bow",
+        "crossbow",
+        "spear",
+        "dagger"
+      ],
+      "new_weapon_requirements": [
+        "bow",
+        "crossbow",
+        "staff",
+        "dagger"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "spear"
+      ]
+    },
+    {
+      "id": "spirit_execution_thrust",
+      "name": "Смертельный выпад",
+      "old_weapon_requirements": [
+        "sword",
+        "spear",
+        "dagger"
+      ],
+      "new_weapon_requirements": [
+        "sword",
+        "staff",
+        "dagger"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "spear"
+      ]
+    },
+    {
+      "id": "spirit_colossus_blow",
+      "name": "Удар колосса",
+      "old_weapon_requirements": [
+        "hammer",
+        "axe",
+        "two_handed_sword"
+      ],
+      "new_weapon_requirements": [
+        "hammer",
+        "axe",
+        "sword"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "two_handed_sword"
+      ]
+    },
+    {
+      "id": "spirit_bastion_guard",
+      "name": "Бастион",
+      "old_weapon_requirements": [
+        "shield",
+        "heavy_armor"
+      ],
+      "new_weapon_requirements": [
+        "shield"
+      ],
+      "equipment_requirements": [
+        "heavy_armor"
+      ],
+      "removed_or_replaced": [
+        "heavy_armor"
+      ]
+    },
+    {
+      "id": "mana_spark",
+      "name": "Искра маны",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "any"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_fire_arrow",
+      "name": "Огненная стрела",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "any"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_ice_shard",
+      "name": "Ледяной осколок",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "any"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_small_barrier",
+      "name": "Малый барьер",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "any"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_healing_thread",
+      "name": "Целебная нить",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "any"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_weakening_mark",
+      "name": "Ослабляющая метка",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "any"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_lightning_prick",
+      "name": "Укол молнии",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "any"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_stone_skin",
+      "name": "Каменная кожа",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "any"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_cleanse",
+      "name": "Очищение",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "any"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_water_mist",
+      "name": "Водяная дымка",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "any"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_fire_ring",
+      "name": "Огненное кольцо",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_ice_chain",
+      "name": "Ледяная цепь",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "any"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_arcane_shield",
+      "name": "Магический щит",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "any"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_chain_lightning",
+      "name": "Цепная молния",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_poison_dissolve",
+      "name": "Растворение яда",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "any"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_mind_focus",
+      "name": "Сосредоточение разума",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "any"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_shadow_needle",
+      "name": "Теневая игла",
+      "old_weapon_requirements": [
+        "staff",
+        "focus",
+        "dagger"
+      ],
+      "new_weapon_requirements": [
+        "staff",
+        "dagger"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_earth_prison",
+      "name": "Земляная клетка",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_mending_wave",
+      "name": "Восстанавливающая волна",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_seal_suppression",
+      "name": "Печать подавления",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_mirror_barrier",
+      "name": "Зеркальный барьер",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_mana_burst",
+      "name": "Всплеск маны",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_elemental_storm",
+      "name": "Стихийный шквал",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_life_seal",
+      "name": "Печать жизни",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_warding_dome",
+      "name": "Купол оберега",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "mana_rift_formula",
+      "name": "Формула разлома",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "char_str_50_force_push",
+      "name": "Силовой толчок",
+      "old_weapon_requirements": [
+        "any_melee",
+        "shield",
+        "unarmed"
+      ],
+      "new_weapon_requirements": [
+        "sword",
+        "dagger",
+        "staff",
+        "axe",
+        "hammer",
+        "shield"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "any_melee",
+        "unarmed"
+      ]
+    },
+    {
+      "id": "char_str_100_heavy_crack",
+      "name": "Тяжёлый раскол",
+      "old_weapon_requirements": [
+        "hammer",
+        "axe",
+        "two_handed_sword"
+      ],
+      "new_weapon_requirements": [
+        "hammer",
+        "axe",
+        "sword"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "two_handed_sword"
+      ]
+    },
+    {
+      "id": "char_str_250_brutal_pressure",
+      "name": "Грубое давление",
+      "old_weapon_requirements": [
+        "any_melee"
+      ],
+      "new_weapon_requirements": [
+        "sword",
+        "dagger",
+        "staff",
+        "axe",
+        "hammer"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "any_melee"
+      ]
+    },
+    {
+      "id": "char_str_500_titan_swing",
+      "name": "Титанический замах",
+      "old_weapon_requirements": [
+        "hammer",
+        "axe",
+        "two_handed_sword"
+      ],
+      "new_weapon_requirements": [
+        "hammer",
+        "axe",
+        "sword"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "two_handed_sword"
+      ]
+    },
+    {
+      "id": "char_str_1000_giant_pressure",
+      "name": "Давление великана",
+      "old_weapon_requirements": [
+        "any_melee",
+        "shield"
+      ],
+      "new_weapon_requirements": [
+        "sword",
+        "dagger",
+        "staff",
+        "axe",
+        "hammer",
+        "shield"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "any_melee"
+      ]
+    },
+    {
+      "id": "char_str_2500_rift_strength",
+      "name": "Разломная сила",
+      "old_weapon_requirements": [
+        "two_handed_sword",
+        "hammer",
+        "axe"
+      ],
+      "new_weapon_requirements": [
+        "sword",
+        "hammer",
+        "axe"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "two_handed_sword"
+      ]
+    },
+    {
+      "id": "char_end_50_short_wall",
+      "name": "Короткий заслон",
+      "old_weapon_requirements": [
+        "any",
+        "shield"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": []
+    },
+    {
+      "id": "char_end_250_hard_body",
+      "name": "Непробиваемый корпус",
+      "old_weapon_requirements": [
+        "medium_armor",
+        "heavy_armor",
+        "shield"
+      ],
+      "new_weapon_requirements": [
+        "shield"
+      ],
+      "equipment_requirements": [
+        "medium_armor",
+        "heavy_armor"
+      ],
+      "removed_or_replaced": [
+        "medium_armor",
+        "heavy_armor"
+      ]
+    },
+    {
+      "id": "char_end_2500_still_fortress",
+      "name": "Неподвижная крепость",
+      "old_weapon_requirements": [
+        "shield",
+        "heavy_armor"
+      ],
+      "new_weapon_requirements": [
+        "shield"
+      ],
+      "equipment_requirements": [
+        "heavy_armor"
+      ],
+      "removed_or_replaced": [
+        "heavy_armor"
+      ]
+    },
+    {
+      "id": "char_agi_100_reply_lunge",
+      "name": "Ответный выпад",
+      "old_weapon_requirements": [
+        "sword",
+        "dagger",
+        "spear"
+      ],
+      "new_weapon_requirements": [
+        "sword",
+        "dagger",
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "spear"
+      ]
+    },
+    {
+      "id": "char_agi_1000_breathless_series",
+      "name": "Серия без дыхания",
+      "old_weapon_requirements": [
+        "dagger",
+        "sword",
+        "unarmed"
+      ],
+      "new_weapon_requirements": [
+        "dagger",
+        "sword"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "unarmed"
+      ]
+    },
+    {
+      "id": "char_agi_2500_vanishing_dash",
+      "name": "Исчезающий рывок",
+      "old_weapon_requirements": [
+        "dagger",
+        "sword",
+        "spear"
+      ],
+      "new_weapon_requirements": [
+        "dagger",
+        "sword",
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "spear"
+      ]
+    },
+    {
+      "id": "char_per_100_arcane_lock",
+      "name": "Магическая фиксация",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "char_int_50_amplified_formula",
+      "name": "Усиленная формула",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "char_int_100_arcane_analysis",
+      "name": "Магический разбор",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "char_int_250_spell_weaving",
+      "name": "Переплетение чар",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "char_int_500_mana_acceleration",
+      "name": "Разгон маны",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "char_int_1000_spell_architecture",
+      "name": "Архитектура заклинания",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "char_int_2500_rift_formula_special",
+      "name": "Предельная формула",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "char_wis_50_quiet_restore",
+      "name": "Тихое восстановление",
+      "old_weapon_requirements": [
+        "any",
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "any"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "char_wis_100_purifying_gesture",
+      "name": "Очищающий жест",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "char_wis_250_wise_ward",
+      "name": "Мудрый заслон",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "char_wis_500_deep_flow",
+      "name": "Глубокий поток",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "char_wis_1000_thread_of_fate",
+      "name": "Нить судьбы",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    },
+    {
+      "id": "char_wis_2500_world_peace",
+      "name": "Покой мира",
+      "old_weapon_requirements": [
+        "staff",
+        "focus"
+      ],
+      "new_weapon_requirements": [
+        "staff"
+      ],
+      "equipment_requirements": [],
+      "removed_or_replaced": [
+        "focus"
+      ]
+    }
+  ],
+  "invalid_weapon_tokens_after_sync": [],
+  "multiple_weapon_types_allowed": true,
+  "weapon_requirement_mode": "any_of",
+  "multi_weapon_skills_count": 28
+}

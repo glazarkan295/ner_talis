@@ -11,7 +11,9 @@
       "icon": "assets/items/ordinary_forest/ingredients/pale_toadstool.png",
       "icon_1024": "assets_1024/items/ordinary_forest/ingredients/pale_toadstool.png",
       "icon_256": "assets_256/items/ordinary_forest/ingredients/pale_toadstool.png",
-      "description": "Ядовитый ингредиент; не использовать в базовых лагерных блюдах."
+      "description": "Ядовитый ингредиент; не использовать в базовых лагерных блюдах.",
+      "can_sell": true,
+      "sell_price_copper": 5
     },
     {
       "item_id": "muddy_water",
@@ -23,7 +25,9 @@
       "icon": "assets/items/ordinary_forest/ingredients/muddy_water.png",
       "icon_1024": "assets_1024/items/ordinary_forest/ingredients/muddy_water.png",
       "icon_256": "assets_256/items/ordinary_forest/ingredients/muddy_water.png",
-      "description": "Не используется в базовых лагерных блюдах без правила очистки или кипячения."
+      "description": "Не используется в базовых лагерных блюдах без правила очистки или кипячения.",
+      "can_sell": true,
+      "sell_price_copper": 1
     },
     {
       "item_id": "old_gloves",
@@ -36,7 +40,9 @@
       "icon_1024": "assets_1024/items/ordinary_forest/equipment/old_gloves.png",
       "icon_256": "assets_256/items/ordinary_forest/equipment/old_gloves.png",
       "description": "Обычная стартовая экипировка; зачарование нельзя.",
-      "equipment_slot": "gloves"
+      "equipment_slot": "gloves",
+      "can_sell": true,
+      "sell_price_copper": 30
     },
     {
       "item_id": "decent_belt",
@@ -49,7 +55,9 @@
       "icon_1024": "assets_1024/items/ordinary_forest/equipment/decent_belt.png",
       "icon_256": "assets_256/items/ordinary_forest/equipment/decent_belt.png",
       "description": "Редкая находка ранней локации; возможен малый бонус к энергии или переносимому весу; зачарование нельзя.",
-      "equipment_slot": "belt"
+      "equipment_slot": "belt",
+      "can_sell": true,
+      "sell_price_copper": 100
     },
     {
       "item_id": "dry_log",
@@ -61,7 +69,9 @@
       "icon": "assets/items/ordinary_forest/resources/dry_log.png",
       "icon_1024": "assets_1024/items/ordinary_forest/resources/dry_log.png",
       "icon_256": "assets_256/items/ordinary_forest/resources/dry_log.png",
-      "description": "Ресурс дерева, добывается 1–3 штуки."
+      "description": "Ресурс дерева, добывается 1–3 штуки.",
+      "can_sell": true,
+      "sell_price_copper": 4
     },
     {
       "item_id": "fabric_pieces",
@@ -73,7 +83,9 @@
       "icon": "assets/items/ordinary_forest/resources/fabric_pieces.png",
       "icon_1024": "assets_1024/items/ordinary_forest/resources/fabric_pieces.png",
       "icon_256": "assets_256/items/ordinary_forest/resources/fabric_pieces.png",
-      "description": "Старые куски ткани, 1–3 штуки."
+      "description": "Старые куски ткани, 1–3 штуки.",
+      "can_sell": true,
+      "sell_price_copper": 6
     },
     {
       "item_id": "edible_forest_mushroom",
@@ -85,7 +97,9 @@
       "icon": "assets/items/ordinary_forest/ingredients/edible_forest_mushroom.png",
       "icon_1024": "assets_1024/items/ordinary_forest/ingredients/edible_forest_mushroom.png",
       "icon_256": "assets_256/items/ordinary_forest/ingredients/edible_forest_mushroom.png",
-      "description": "Пищевой ингредиент; может использоваться в «Сытной похлёбке»."
+      "description": "Пищевой ингредиент; может использоваться в «Сытной похлёбке».",
+      "can_sell": true,
+      "sell_price_copper": 4
     },
     {
       "item_id": "bitter_gray_mushroom",
@@ -97,7 +111,9 @@
       "icon": "assets/items/ordinary_forest/ingredients/bitter_gray_mushroom.png",
       "icon_1024": "assets_1024/items/ordinary_forest/ingredients/bitter_gray_mushroom.png",
       "icon_256": "assets_256/items/ordinary_forest/ingredients/bitter_gray_mushroom.png",
-      "description": "Алхимический ингредиент."
+      "description": "Алхимический ингредиент.",
+      "can_sell": true,
+      "sell_price_copper": 3
     },
     {
       "item_id": "forest_tick",
@@ -121,7 +137,9 @@
       "icon": "assets/items/ordinary_forest/trophies/tough_sinew.png",
       "icon_1024": "assets_1024/items/ordinary_forest/trophies/tough_sinew.png",
       "icon_256": "assets_256/items/ordinary_forest/trophies/tough_sinew.png",
-      "description": "Звериный трофей."
+      "description": "Звериный трофей.",
+      "can_sell": true,
+      "sell_price_copper": 10
     },
     {
       "item_id": "deer_hide",
@@ -133,7 +151,9 @@
       "icon": "assets/items/ordinary_forest/trophies/deer_hide.png",
       "icon_1024": "assets_1024/items/ordinary_forest/trophies/deer_hide.png",
       "icon_256": "assets_256/items/ordinary_forest/trophies/deer_hide.png",
-      "description": "Звериный трофей."
+      "description": "Звериный трофей.",
+      "can_sell": true,
+      "sell_price_copper": 5
     },
     {
       "item_id": "deer_antler",
@@ -145,7 +165,9 @@
       "icon": "assets/items/ordinary_forest/trophies/deer_antler.png",
       "icon_1024": "assets_1024/items/ordinary_forest/trophies/deer_antler.png",
       "icon_256": "assets_256/items/ordinary_forest/trophies/deer_antler.png",
-      "description": "Звериный трофей."
+      "description": "Звериный трофей.",
+      "can_sell": true,
+      "sell_price_copper": 8
     },
     {
       "item_id": "strong_sinew",
@@ -157,7 +179,9 @@
       "icon": "assets/items/ordinary_forest/trophies/strong_sinew.png",
       "icon_1024": "assets_1024/items/ordinary_forest/trophies/strong_sinew.png",
       "icon_256": "assets_256/items/ordinary_forest/trophies/strong_sinew.png",
-      "description": "Звериный трофей."
+      "description": "Звериный трофей.",
+      "can_sell": true,
+      "sell_price_copper": 10
     },
     {
       "item_id": "old_bear_trap",
@@ -181,7 +205,9 @@
       "icon": "assets/items/ordinary_forest/trophies/wolf_hide.png",
       "icon_1024": "assets_1024/items/ordinary_forest/trophies/wolf_hide.png",
       "icon_256": "assets_256/items/ordinary_forest/trophies/wolf_hide.png",
-      "description": "Звериный трофей."
+      "description": "Звериный трофей.",
+      "can_sell": true,
+      "sell_price_copper": 5
     },
     {
       "item_id": "bear_fang",
@@ -193,7 +219,9 @@
       "icon": "assets/items/ordinary_forest/trophies/bear_fang.png",
       "icon_1024": "assets_1024/items/ordinary_forest/trophies/bear_fang.png",
       "icon_256": "assets_256/items/ordinary_forest/trophies/bear_fang.png",
-      "description": "Звериный трофей."
+      "description": "Звериный трофей.",
+      "can_sell": true,
+      "sell_price_copper": 9
     },
     {
       "item_id": "mire_trap",
@@ -217,7 +245,9 @@
       "icon": "assets/items/ordinary_forest/trophies/boar_hide.png",
       "icon_1024": "assets_1024/items/ordinary_forest/trophies/boar_hide.png",
       "icon_256": "assets_256/items/ordinary_forest/trophies/boar_hide.png",
-      "description": "Звериный трофей."
+      "description": "Звериный трофей.",
+      "can_sell": true,
+      "sell_price_copper": 7
     },
     {
       "item_id": "wolf_fang",
@@ -229,7 +259,9 @@
       "icon": "assets/items/ordinary_forest/trophies/wolf_fang.png",
       "icon_1024": "assets_1024/items/ordinary_forest/trophies/wolf_fang.png",
       "icon_256": "assets_256/items/ordinary_forest/trophies/wolf_fang.png",
-      "description": "Звериный трофей."
+      "description": "Звериный трофей.",
+      "can_sell": true,
+      "sell_price_copper": 8
     },
     {
       "item_id": "animal_fat",
@@ -241,7 +273,9 @@
       "icon": "assets/items/ordinary_forest/trophies/animal_fat.png",
       "icon_1024": "assets_1024/items/ordinary_forest/trophies/animal_fat.png",
       "icon_256": "assets_256/items/ordinary_forest/trophies/animal_fat.png",
-      "description": "Звериный трофей."
+      "description": "Звериный трофей.",
+      "can_sell": true,
+      "sell_price_copper": 10
     },
     {
       "item_id": "bear_hide",
@@ -253,7 +287,9 @@
       "icon": "assets/items/ordinary_forest/trophies/bear_hide.png",
       "icon_1024": "assets_1024/items/ordinary_forest/trophies/bear_hide.png",
       "icon_256": "assets_256/items/ordinary_forest/trophies/bear_hide.png",
-      "description": "Звериный трофей."
+      "description": "Звериный трофей.",
+      "can_sell": true,
+      "sell_price_copper": 7
     },
     {
       "item_id": "bear_claw",
@@ -265,7 +301,9 @@
       "icon": "assets/items/ordinary_forest/trophies/bear_claw.png",
       "icon_1024": "assets_1024/items/ordinary_forest/trophies/bear_claw.png",
       "icon_256": "assets_256/items/ordinary_forest/trophies/bear_claw.png",
-      "description": "Звериный трофей."
+      "description": "Звериный трофей.",
+      "can_sell": true,
+      "sell_price_copper": 6
     },
     {
       "item_id": "boar_tusk",
@@ -277,7 +315,9 @@
       "icon": "assets/items/ordinary_forest/trophies/boar_tusk.png",
       "icon_1024": "assets_1024/items/ordinary_forest/trophies/boar_tusk.png",
       "icon_256": "assets_256/items/ordinary_forest/trophies/boar_tusk.png",
-      "description": "Звериный трофей."
+      "description": "Звериный трофей.",
+      "can_sell": true,
+      "sell_price_copper": 6
     }
   ]
 }
