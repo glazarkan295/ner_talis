@@ -38,6 +38,8 @@ START_SEARCH = "Начать поиск"
 SET_CAMP = "Разбить лагерь"
 COOK_FOOD = "Приготовить еду"
 EAT_FOOD = "Съесть еду"
+SHORT_COOK_FOOD = "Готовка"
+SHORT_EAT_FOOD = "Еда"
 BREAK_CAMP = "Свернуть лагерь"
 BACK_TO_CAMP = "⬅️ В лагерь"
 CHECK_TIMER = "Проверить таймер"
@@ -156,6 +158,8 @@ EXTERNAL_LOCATION_BUTTONS = frozenset(
         SET_CAMP,
         COOK_FOOD,
         EAT_FOOD,
+        SHORT_COOK_FOOD,
+        SHORT_EAT_FOOD,
         BREAK_CAMP,
         BACK_TO_CAMP,
         CHECK_TIMER,
@@ -182,6 +186,10 @@ EXTERNAL_LOCATION_BUTTONS = frozenset(
         *(f"Съесть: {dish_name}" for dish_name in CAMP_DISHES),
         *(f"Съесть: {dish_name} ×1" for dish_name in CAMP_DISHES),
         *(f"Съесть: {dish_name} ×10" for dish_name in CAMP_DISHES),
+        *(f"Готовить {index} ×1" for index, _dish_name in enumerate(CAMP_DISHES, start=1)),
+        *(f"Готовить {index} ×10" for index, _dish_name in enumerate(CAMP_DISHES, start=1)),
+        *(f"Есть {index} ×1" for index, _dish_name in enumerate(CAMP_DISHES, start=1)),
+        *(f"Есть {index} ×10" for index, _dish_name in enumerate(CAMP_DISHES, start=1)),
     }
 )
 
@@ -323,17 +331,24 @@ def event_choice_buttons(event_type: str) -> list[list[str]]:
 def camp_buttons() -> list[list[str]]:
     return [
         [PROFILE_BUTTON],
-        [COOK_FOOD, EAT_FOOD],
+        [SHORT_COOK_FOOD, SHORT_EAT_FOOD],
         [BREAK_CAMP],
     ]
 
 
+def camp_dish_name_by_index(index: int) -> str | None:
+    dishes = list(CAMP_DISHES.keys())
+    if 1 <= index <= len(dishes):
+        return dishes[index - 1]
+    return None
+
+
 def cook_buttons(player: dict[str, Any] | None = None) -> list[list[str]]:
     rows: list[list[str]] = []
-    for dish_name in CAMP_DISHES:
-        row = [f"Приготовить: {dish_name} ×1"]
+    for index, dish_name in enumerate(CAMP_DISHES, start=1):
+        row = [f"Готовить {index} ×1"]
         if player is not None and available_craft_count(player, dish_name) >= 10:
-            row.append(f"Приготовить: {dish_name} ×10")
+            row.append(f"Готовить {index} ×10")
         rows.append(row)
     rows.append([BACK_TO_CAMP])
     return rows
@@ -341,14 +356,14 @@ def cook_buttons(player: dict[str, Any] | None = None) -> list[list[str]]:
 
 def eat_buttons(player: dict[str, Any]) -> list[list[str]]:
     rows: list[list[str]] = []
-    for name in CAMP_DISHES:
+    for index, name in enumerate(CAMP_DISHES, start=1):
         count = get_item_count(player, name)
         if count <= 0:
             continue
-        if count > 10:
-            rows.append([f"Съесть: {name} ×1", f"Съесть: {name} ×10"])
+        if count >= 10:
+            rows.append([f"Есть {index} ×1", f"Есть {index} ×10"])
         else:
-            rows.append([f"Съесть: {name} ×1"])
+            rows.append([f"Есть {index} ×1"])
     rows.append([BACK_TO_CAMP])
     return rows
 
@@ -1316,12 +1331,12 @@ def show_cooking_menu(storage: Any, player: dict[str, Any]) -> LocationResponse:
     player["current_zone"] = f"{location_id}_camp_cooking"
     player["location_id"] = player["current_zone"]
     storage.update_player(player)
-    recipe_lines = ["🔥 Готовка в лагере", "", "Выберите простое лагерное блюдо:"]
-    for dish_name, data in CAMP_DISHES.items():
+    recipe_lines = ["🔥 Готовка в лагере", "", "Выберите блюдо по номеру на кнопке:"]
+    for index, (dish_name, data) in enumerate(CAMP_DISHES.items(), start=1):
         ingredients = "; ".join(f"{name} ×{amount}" for name, amount in data["ingredients"].items())
         can_craft = available_craft_count(player, dish_name)
         mark = "✅" if can_craft > 0 else "❌"
-        recipe_lines.append(f"{mark} {dish_name}: {ingredients}. ⚡ Энергия +{data['restore_energy']}. Можно приготовить: {can_craft}.")
+        recipe_lines.append(f"{index}. {mark} {dish_name}: {ingredients}. ⚡ Энергия +{data['restore_energy']}. Можно приготовить: {can_craft}.")
     return LocationResponse("\n".join(recipe_lines), cook_buttons(player), f"{location_id}_camp_cooking")
 
 
@@ -1355,11 +1370,11 @@ def show_eating_menu(storage: Any, player: dict[str, Any]) -> LocationResponse:
     storage.update_player(player)
     lines = ["🍽 Еда в лагере", ""]
     has_food = False
-    for dish_name, data in CAMP_DISHES.items():
+    for index, (dish_name, data) in enumerate(CAMP_DISHES.items(), start=1):
         count = get_item_count(player, dish_name)
         if count > 0:
             has_food = True
-            lines.append(f"• {dish_name} ×{count} — восстановит {data['restore_energy']} энергии")
+            lines.append(f"{index}. {dish_name} ×{count} — восстановит {data['restore_energy']} энергии")
     if not has_food:
         lines.append("В инвентаре нет готовых лагерных блюд.")
     return LocationResponse("\n".join(lines), eat_buttons(player), f"{location_id}_camp_eating")
@@ -1412,6 +1427,23 @@ def _parse_name_amount(payload: str) -> tuple[str, int]:
     except ValueError:
         amount = 1
     return name.strip(), max(1, amount)
+
+
+def _parse_numbered_camp_action(action: str, prefix: str) -> tuple[str | None, int]:
+    tail = str(action or "").removeprefix(prefix).strip()
+    if "×" in tail:
+        raw_index, raw_amount = tail.rsplit("×", 1)
+    else:
+        raw_index, raw_amount = tail, "1"
+    try:
+        index = int(raw_index.strip())
+    except ValueError:
+        return None, 1
+    try:
+        amount = int(raw_amount.strip())
+    except ValueError:
+        amount = 1
+    return camp_dish_name_by_index(index), max(1, amount)
 
 
 def _is_equipped_skill_action(player: dict[str, Any], action: str) -> bool:
@@ -1531,9 +1563,9 @@ def handle_external_location_action(
         return enter_camp(storage, player)
     if action == BREAK_CAMP:
         return leave_camp(storage, player)
-    if action == COOK_FOOD:
+    if action in {COOK_FOOD, SHORT_COOK_FOOD}:
         return show_cooking_menu(storage, player)
-    if action == EAT_FOOD:
+    if action in {EAT_FOOD, SHORT_EAT_FOOD}:
         return show_eating_menu(storage, player)
     if action == BACK_TO_CAMP:
         location_id = current_location_id(player)
@@ -1551,6 +1583,14 @@ def handle_external_location_action(
     if action.startswith("Съесть: "):
         payload = action.removeprefix("Съесть: ").strip()
         dish_name, amount = _parse_name_amount(payload)
+        if dish_name in CAMP_DISHES:
+            return eat_dish(storage, player, dish_name, amount)
+    if action.startswith("Готовить "):
+        dish_name, amount = _parse_numbered_camp_action(action, "Готовить")
+        if dish_name in CAMP_DISHES:
+            return cook_dish(storage, player, dish_name, amount)
+    if action.startswith("Есть "):
+        dish_name, amount = _parse_numbered_camp_action(action, "Есть")
         if dish_name in CAMP_DISHES:
             return eat_dish(storage, player, dish_name, amount)
     if action in {COLLECT, SKIP, INSPECT_AND_TAKE, LOOK, LEAVE, RETREAT, COLLECT_TREE, COLLECT_MUSHROOMS, GATHER_WATER, PUT_HAND_IN_BURROW}:
