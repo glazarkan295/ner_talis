@@ -38,17 +38,20 @@ from services.market_service import market_buy_buttons
 
 
 class VkKeyboardLimitsTest(unittest.TestCase):
-    def test_market_buy_keyboard_is_packed_for_vk_limits(self):
+    def test_market_buy_keyboard_uses_short_readable_number_buttons(self):
         shared_buttons = market_buy_buttons()
-        self.assertGreater(len(shared_buttons), VK_MAX_ROWS)
+        self.assertLessEqual(len(shared_buttons), VK_MAX_ROWS)
 
         fitted = _fit_vk_button_rows(shared_buttons)
 
         self.assertLessEqual(len(fitted), VK_MAX_ROWS)
-        self.assertTrue(all(len(row) <= VK_MAX_BUTTONS_PER_ROW for row in fitted))
+        self.assertTrue(all(len(row) <= 2 for row in fitted[:-1]))
         flat = [button for row in fitted for button in row]
-        self.assertIn("Простое зелье лечения", flat)
+        self.assertIn("Купить 1", flat)
+        self.assertIn("Купить 16", flat)
+        self.assertIn("Покупка далее", flat)
         self.assertIn("Назад на рынок", flat)
+        self.assertNotIn("Простое зелье лечения", flat)
         make_keyboard(shared_buttons)
 
 

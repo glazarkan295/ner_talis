@@ -459,7 +459,7 @@ function RaceInfoPopover({ profile, onClose }) {
   );
 }
 
-function ItemModal({ item, slotKey, position, onClose, onEquipItem, onUnequipItem, onUseItem, onRequestDrop }) {
+function ItemModal({ item, slotKey, position, onClose, onEquipItem, onUnequipItem, onUseItem, onRequestDrop, onRequestSell }) {
   if (!item) return null;
   const actions = item.actions || [];
   const itemStats = statLines(item);
@@ -491,6 +491,7 @@ function ItemModal({ item, slotKey, position, onClose, onEquipItem, onUnequipIte
           {actions.includes("Надеть") || (!slotKey && itemSlot(item)) ? <button type="button" onClick={() => onEquipItem?.(item)}>Надеть</button> : null}
           {actions.includes("Снять") || slotKey ? <button type="button" onClick={() => onUnequipItem?.(slotKey || itemSlot(item), item)}>Снять</button> : null}
           {actions.includes("Использовать") ? <button type="button" onClick={() => onUseItem?.(item)}>Использовать</button> : null}
+          {!slotKey && actions.includes("Продать") ? <button type="button" onClick={() => onRequestSell?.(item)}>Продать</button> : null}
           {!slotKey ? <button className="nt-danger" type="button" onClick={() => onRequestDrop?.(item)}>Выбросить</button> : null}
           <button className="nt-secondary" type="button" onClick={onClose}>Закрыть</button>
         </footer>
@@ -521,6 +522,40 @@ function DropItemModal({ item, position, onClose, onConfirm }) {
         </label>
         <footer className="nt-modal-actions">
           <button className="nt-danger" type="button" onClick={submit}>Выбросить</button>
+          <button className="nt-secondary" type="button" onClick={onClose}>Отмена</button>
+        </footer>
+      </article>
+    </div>
+  );
+}
+
+function SellItemModal({ item, position, onClose, onConfirm }) {
+  const maxAmount = Math.max(1, Number(item?.amount || 1));
+  const [amount, setAmount] = useState(1);
+  const sellPriceText = itemSellPriceText(item);
+  if (!item) return null;
+
+  function submit() {
+    onConfirm?.(item, clamp(Number(amount) || 1, 1, maxAmount));
+  }
+
+  return (
+    <div className="nt-modal-layer" onMouseDown={onClose}>
+      <article className="nt-modal nt-small-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
+        <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
+        <div className="nt-modal-kicker">Продажа на рынке</div>
+        <h3>{item.name}</h3>
+        <p>Введите количество продаваемых предметов.</p>
+        <div className="nt-modal-grid">
+          <span>Доступно</span><strong>×{maxAmount}</strong>
+          {sellPriceText ? <><span>Цена за 1</span><strong>{sellPriceText}</strong></> : null}
+        </div>
+        <label className="nt-field-label">
+          <span>Количество</span>
+          <input type="number" min="1" max={maxAmount} value={amount} onChange={(event) => setAmount(event.target.value)} autoFocus />
+        </label>
+        <footer className="nt-modal-actions">
+          <button type="button" onClick={submit}>Продать</button>
           <button className="nt-secondary" type="button" onClick={onClose}>Отмена</button>
         </footer>
       </article>
@@ -723,6 +758,7 @@ function InventoryTab({ profile, onOpenItem }) {
   return (
     <div className="nt-stack">
       <Panel title="Инвентарь" right={<span className="nt-badge">Свободно: {freeSlots} / {capacity}</span>}>
+        {profile.market?.sellFromProfile ? <p className="nt-market-sell-hint">Вы на рынке в разделе продажи: откройте предмет и нажмите «Продать».</p> : null}
         <div className="nt-toolbar">
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск предмета" />
           <div className="nt-category-row">{INVENTORY_CATEGORIES.map((item) => <button key={item} className={category === item ? "active" : ""} type="button" onClick={() => setCategory(item)}>{item}</button>)}</div>
@@ -876,12 +912,13 @@ function InfoTab({ profile }) {
   );
 }
 
-export function PlayerProfile({ profile, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onEquipSkill, onUnequipSkill }) {
+export function PlayerProfile({ profile, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill }) {
   const data = profileOrMock(profile);
   const [tab, setTab] = useState("character");
   const [modal, setModal] = useState(null);
   const [slotModal, setSlotModal] = useState(null);
   const [dropModal, setDropModal] = useState(null);
+  const [sellModal, setSellModal] = useState(null);
   const background = data.assets?.background || "/assets/profile/backgrounds/1.png";
 
   const equipmentBySlot = data.equipment || {};
@@ -928,8 +965,18 @@ export function PlayerProfile({ profile, onSpendAttributePoints, onConfirmAttrib
     setModal(null);
   }
 
+  async function sellAndClose(item, amount) {
+    await onSellItem?.(item, amount);
+    setSellModal(null);
+    setModal(null);
+  }
+
   function requestDrop(item) {
     setDropModal({ item, position: modal?.position || null });
+  }
+
+  function requestSell(item) {
+    setSellModal({ item, position: modal?.position || null });
   }
 
   return (
@@ -949,8 +996,9 @@ export function PlayerProfile({ profile, onSpendAttributePoints, onConfirmAttrib
           {tab === "info" ? <InfoTab profile={data} /> : null}
         </section>
       </div>
-      <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRequestDrop={requestDrop} />
+      <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRequestDrop={requestDrop} onRequestSell={requestSell} />
       <DropItemModal item={dropModal?.item} position={dropModal?.position} onClose={() => setDropModal(null)} onConfirm={dropAndClose} />
+      <SellItemModal item={sellModal?.item} position={sellModal?.position} onClose={() => setSellModal(null)} onConfirm={sellAndClose} />
       <SlotItemsModal slot={slotModal?.slot} items={slotModal?.items || []} selectedItem={slotModal?.selectedItem} position={slotModal?.position} onSelectItem={(item) => setSlotModal((current) => ({ ...current, selectedItem: item }))} onClose={() => setSlotModal(null)} onEquipItem={equipFromSlot} />
     </main>
   );
