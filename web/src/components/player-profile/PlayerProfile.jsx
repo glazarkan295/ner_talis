@@ -657,6 +657,7 @@ function CharacterTab({ profile, onOpenItem, onOpenSlot, onConfirmAttributePoint
     if (!hasPendingAttributes) return;
     const allocations = Object.fromEntries(Object.entries(pendingAttributes).filter(([, value]) => Number(value) > 0));
     await onConfirmAttributePoints?.(allocations);
+    // Clear staged points only after the API action really succeeds.
     setPendingAttributes({});
   }
 

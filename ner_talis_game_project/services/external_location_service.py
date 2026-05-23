@@ -101,6 +101,7 @@ CAMP_DISHES = HILLY_MEADOWS_CONFIG.get("camp_recipes") or {
 EDIBLE_BERRIES = {"Сладкая луговая ягода", "Терпкая синяя ягода", "Любая съедобная ягода"}
 INGREDIENT_ALIASES = {
     "Съедобный гриб": ["Съедобный гриб", "Съедобный лесной гриб"],
+    "Съедобный лесной гриб": ["Съедобный лесной гриб", "Съедобный гриб"],
 }
 
 LOCATION_RESOURCE_NAMES = {
@@ -531,14 +532,20 @@ def hp_pair(player: dict[str, Any]) -> tuple[int, int]:
     return max(0, hp), max(1, max_hp)
 
 
+def ingredient_count(player: dict[str, Any], name: str) -> int:
+    if name == "Любая съедобная ягода":
+        return sum(get_item_count(player, berry) for berry in EDIBLE_BERRIES)
+    aliases = INGREDIENT_ALIASES.get(name)
+    if aliases:
+        return sum(get_item_count(player, alias) for alias in aliases)
+    return get_item_count(player, name)
+
+
 def available_craft_count(player: dict[str, Any], dish_name: str) -> int:
     dish = CAMP_DISHES[dish_name]
     counts: list[int] = []
     for ingredient, amount in dish["ingredients"].items():
-        if ingredient == "Любая съедобная ягода":
-            available = sum(get_item_count(player, berry) for berry in EDIBLE_BERRIES)
-        else:
-            available = get_item_count(player, ingredient)
+        available = ingredient_count(player, ingredient)
         counts.append(available // max(1, amount))
     return min(counts) if counts else 0
 
@@ -636,12 +643,7 @@ def get_item_count(player: dict[str, Any], name: str) -> int:
 
 
 def has_ingredient(player: dict[str, Any], name: str, amount: int) -> bool:
-    if name == "Любая съедобная ягода":
-        return sum(get_item_count(player, berry) for berry in EDIBLE_BERRIES) >= amount
-    aliases = INGREDIENT_ALIASES.get(name)
-    if aliases:
-        return sum(get_item_count(player, alias) for alias in aliases) >= amount
-    return get_item_count(player, name) >= amount
+    return ingredient_count(player, name) >= amount
 
 
 def consume_ingredient(player: dict[str, Any], name: str, amount: int) -> bool:
@@ -733,7 +735,7 @@ def enter_fortress(storage: Any, player: dict[str, Any]) -> LocationResponse:
 
 def enter_camp(storage: Any, player: dict[str, Any]) -> LocationResponse:
     ensure_external_fields(player)
-    location_id = current_location_id(player)
+    location_id = current_location_id(player, default="")
     if location_id not in EXPLORATION_LOCATION_IDS:
         return LocationResponse("Лагерь можно разбить только в обычной внешней локации.", outside_city_buttons(), player.get("current_zone", "outside_city_crossroads"))
     if player.get("active_event"):
@@ -1470,7 +1472,14 @@ def handle_external_location_action(
     ensure_external_fields(player)
 
     if player.get("in_battle"):
-        if action in BATTLE_ACTIONS or action.startswith("Цель: ") or action.startswith("Использовать: ") or _is_equipped_skill_action(player, action):
+        if (
+            action in BATTLE_ACTIONS
+            or action in {"Подсумок далее", "Подсумок назад"}
+            or action.startswith("Предмет ")
+            or action.startswith("Цель: ")
+            or action.startswith("Использовать: ")
+            or _is_equipped_skill_action(player, action)
+        ):
             text, buttons = handle_battle_action(player, action, rng)
             storage.update_player(player)
             location_id = current_location_id(player)

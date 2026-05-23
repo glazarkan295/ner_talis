@@ -307,8 +307,10 @@ def _item_name(item: dict[str, Any]) -> str:
 def _is_sell_protected(item: dict[str, Any]) -> bool:
     if bool(item.get("equipped") or item.get("is_equipped")):
         return True
-    if bool(item.get("quest_item") or item.get("locked") or item.get("protected") or item.get("bound_on_receive")):
+    if bool(item.get("quest_item") or item.get("locked") or item.get("protected")):
         return True
+    # bound_on_receive blocks player trading, but NPC selling is controlled by
+    # can_sell/sell_price_copper. Starter gear is bound but still sellable.
     if item.get("can_sell") is False:
         return True
     return False

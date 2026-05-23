@@ -762,7 +762,8 @@ EQUIPMENT_CATEGORY_MARKERS = {
 }
 EQUIPMENT_SLOT_KEYS = {
     "helmet", "necklace", "chest", "belt", "pants", "boots", "gloves",
-    "ring", "ring1", "ring2", "weapon", "weapon1", "weapon2", "special",
+    "ring", "ring1", "ring2", "weapon", "weapon1", "weapon2",
+    "main_hand", "off_hand", "special",
 }
 
 
@@ -1436,14 +1437,29 @@ def equipment_slots_for_frontend(equipment: dict[str, Any] | None) -> list[dict[
     return slots
 
 
+def _strip_inventory_storage_markers(item: dict[str, Any]) -> None:
+    for key in (
+        "overflow_slot",
+        "storage_type",
+        "inventory_status",
+        "overflowSlot",
+        "inventoryStatus",
+    ):
+        item.pop(key, None)
+
+
 def prepare_item_for_inventory_from_slot(item: dict[str, Any], slot_key: str) -> dict[str, Any]:
     item = deepcopy(item)
     item["targetSlotKey"] = slot_key
     item.pop("slotKey", None)
-    item.pop("overflow_slot", None)
-    item.pop("storage_type", None)
-    item.pop("inventory_status", None)
+    _strip_inventory_storage_markers(item)
     return item
+
+
+def _add_inventory_item_or_raise(player: dict[str, Any], item: dict[str, Any], amount: int, detail: str) -> None:
+    result = add_inventory_item(player, item, amount)
+    if safe_int(getattr(result, "discarded", 0), 0) > 0 or safe_int(getattr(result, "added", 0), 0) < amount:
+        raise HTTPException(status_code=400, detail=detail)
 
 
 def compatible_equipment_slot(item: dict[str, Any], requested_slot: str | None, equipment: dict[str, Any]) -> str:
@@ -1506,7 +1522,12 @@ def compatible_equipment_slot(item: dict[str, Any], requested_slot: str | None, 
     return first_free(allowed)
 
 
-def unequip_incompatible_weapon2(player: dict[str, Any], previous_slot: str | None = None) -> None:
+def unequip_incompatible_weapon2(
+    player: dict[str, Any],
+    previous_slot: str | None = None,
+    *,
+    fail_on_discard: bool = False,
+) -> None:
     equipment = player.setdefault("equipment", {})
     weapon2 = equipment.get("weapon2")
     if not isinstance(weapon2, dict):
@@ -1519,7 +1540,17 @@ def unequip_incompatible_weapon2(player: dict[str, Any], previous_slot: str | No
         should_unequip = True
     if should_unequip:
         returned = prepare_item_for_inventory_from_slot(weapon2, "weapon2")
-        add_inventory_item(player, returned, safe_int(returned.get("amount"), 1))
+        amount = safe_int(returned.get("amount"), 1)
+        if fail_on_discard:
+            _add_inventory_item_or_raise(
+                player,
+                returned,
+                amount,
+                "Нельзя снять или заменить оружие: во втором слоте находится несовместимый предмет, "
+                "а в инвентаре и доп. слотах нет места, чтобы безопасно убрать его.",
+            )
+        else:
+            add_inventory_item(player, returned, amount)
         equipment.pop("weapon2", None)
 
 AMMO_LOAD_RULES = {
@@ -1716,6 +1747,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
     def equip_inventory_item(identifier: str, request: EquipItemRequest) -> dict[str, Any]:
         storage = get_storage()
         player = resolve_profile_write(storage, identifier)
+        original_player = deepcopy(player)
         inventory = player.setdefault("inventory", [])
         equipment = player.setdefault("equipment", {})
         item_index = next((index for index, item in enumerate(inventory) if isinstance(item, dict) and str(item.get("id") or item.get("item_id")) == request.item_id), None)
@@ -1724,29 +1756,38 @@ def create_profile_api_router(get_storage) -> APIRouter:
         item = inventory.pop(item_index)
         try:
             slot_key = compatible_equipment_slot(item, request.slot_key, equipment)
+            previous_item = equipment.get(slot_key)
+            if isinstance(previous_item, dict):
+                previous_item = prepare_item_for_inventory_from_slot(previous_item, slot_key)
+                _add_inventory_item_or_raise(
+                    player,
+                    previous_item,
+                    safe_int(previous_item.get("amount"), 1),
+                    "Нельзя заменить экипировку: в инвентаре и доп. слотах нет места для снятого предмета.",
+                )
+            if is_two_handed_equipment(item):
+                blocked_second_weapon = equipment.get("weapon2")
+                if isinstance(blocked_second_weapon, dict):
+                    blocked_second_weapon = prepare_item_for_inventory_from_slot(blocked_second_weapon, "weapon2")
+                    _add_inventory_item_or_raise(
+                        player,
+                        blocked_second_weapon,
+                        safe_int(blocked_second_weapon.get("amount"), 1),
+                        "Нельзя надеть двуручное оружие: в инвентаре и доп. слотах нет места для предмета из второго оружейного слота.",
+                    )
+                    equipment.pop("weapon2", None)
+            item["slotKey"] = slot_key
+            item.pop("targetSlotKey", None)
+            _strip_inventory_storage_markers(item)
+            equipment[slot_key] = item
+            if slot_key == "weapon1":
+                unequip_incompatible_weapon2(player, slot_key, fail_on_discard=True)
+            recalculate_inventory_overflow(player)
+            sync_player_parameters_for_bots(player)
         except HTTPException:
-            inventory.insert(item_index, item)
+            player.clear()
+            player.update(original_player)
             raise
-        previous_item = equipment.get(slot_key)
-        if isinstance(previous_item, dict):
-            previous_item = prepare_item_for_inventory_from_slot(previous_item, slot_key)
-            add_inventory_item(player, previous_item, safe_int(previous_item.get("amount"), 1))
-        if is_two_handed_equipment(item):
-            blocked_second_weapon = equipment.get("weapon2")
-            if isinstance(blocked_second_weapon, dict):
-                blocked_second_weapon = prepare_item_for_inventory_from_slot(blocked_second_weapon, "weapon2")
-                add_inventory_item(player, blocked_second_weapon, safe_int(blocked_second_weapon.get("amount"), 1))
-                equipment.pop("weapon2", None)
-        item["slotKey"] = slot_key
-        item.pop("targetSlotKey", None)
-        item.pop("overflow_slot", None)
-        item.pop("storage_type", None)
-        item.pop("inventory_status", None)
-        equipment[slot_key] = item
-        if slot_key == "weapon1":
-            unequip_incompatible_weapon2(player, slot_key)
-        recalculate_inventory_overflow(player)
-        sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
 
@@ -1754,14 +1795,27 @@ def create_profile_api_router(get_storage) -> APIRouter:
     def unequip_inventory_item(identifier: str, request: UnequipItemRequest) -> dict[str, Any]:
         storage = get_storage()
         player = resolve_profile_write(storage, identifier)
+        original_player = deepcopy(player)
         equipment = player.setdefault("equipment", {})
         item = equipment.pop(request.slot_key, None)
         if not isinstance(item, dict):
             raise HTTPException(status_code=404, detail="В этом слоте нет предмета.")
-        item = prepare_item_for_inventory_from_slot(item, request.slot_key)
-        add_inventory_item(player, item, safe_int(item.get("amount"), 1))
-        recalculate_inventory_overflow(player)
-        sync_player_parameters_for_bots(player)
+        try:
+            item = prepare_item_for_inventory_from_slot(item, request.slot_key)
+            _add_inventory_item_or_raise(
+                player,
+                item,
+                safe_int(item.get("amount"), 1),
+                "Нельзя снять предмет: в инвентаре и доп. слотах нет места. Предмет остался экипированным.",
+            )
+            if request.slot_key == "weapon1":
+                unequip_incompatible_weapon2(player, request.slot_key, fail_on_discard=True)
+            recalculate_inventory_overflow(player)
+            sync_player_parameters_for_bots(player)
+        except HTTPException:
+            player.clear()
+            player.update(original_player)
+            raise
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile(player)}
 

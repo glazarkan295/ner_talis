@@ -88,6 +88,20 @@ class HillyMeadowsIntegrationTest(unittest.TestCase):
         self.assertIsNotNone(response.scheduled_timer)
         self.assertIn([BACK], response.buttons)
 
+    def test_world_back_button_in_external_location_does_not_open_market(self):
+        storage, player = self.make_player_and_storage()
+        process_world_action(storage, player, OUTSIDE_CITY, "telegram")
+        player = storage.get_player_by_platform("telegram", "111")
+        process_world_action(storage, player, HILLY_MEADOWS, "telegram")
+        player = storage.get_player_by_platform("telegram", "111")
+
+        response = process_world_action(storage, player, BACK, "telegram")
+
+        self.assertIn("Холмистые луга", response.text)
+        updated = storage.get_player_by_platform("telegram", "111")
+        self.assertEqual(updated.get("current_zone"), "hilly_meadows")
+        self.assertFalse(str(updated.get("current_zone") or "").startswith("seldar_npc_market"))
+
     def test_search_spends_energy_and_creates_or_resolves_event(self):
         storage, player = self.make_player_and_storage()
         handle_external_location_action(storage, player, OUTSIDE_CITY)
