@@ -39,6 +39,11 @@ from services.inventory_service import (
     regular_slot_count,
 )
 from services.promo_service import redeem_promo_code
+from services.market_service import (
+    is_item_sellable_from_profile,
+    is_profile_market_sell_enabled,
+    sell_item_from_profile,
+)
 from services.web_profile import PROFILE_SCOPE
 from services.active_skill_service import refresh_unlocked_active_skills, resource_cost_with_modifiers, skill_level, is_skill_weapon_compatible, skill_weapon_requirement_text
 
@@ -206,6 +211,11 @@ class UseItemRequest(BaseModel):
 
 
 class DropItemRequest(BaseModel):
+    item_id: str
+    amount: int = Field(gt=0)
+
+
+class SellItemRequest(BaseModel):
     item_id: str
     amount: int = Field(gt=0)
 
@@ -902,6 +912,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         equipment[slot_key] = item
 
     inventory = []
+    market_sell_enabled = is_profile_market_sell_enabled(player)
     for raw_item in player.get("inventory", []):
         if not isinstance(raw_item, dict):
             continue
@@ -912,6 +923,11 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             item["actions"] = ["Использовать"]
         else:
             item.setdefault("actions", [])
+        if market_sell_enabled and is_item_sellable_from_profile(player, str(item.get("id") or item.get("item_id") or "")):
+            item.setdefault("actions", [])
+            if "Продать" not in item["actions"]:
+                item["actions"].append("Продать")
+            item["marketSellAvailable"] = True
         inventory.append(item)
 
     skills = player.get("skills", {}) if isinstance(player.get("skills"), dict) else {}
@@ -990,6 +1006,10 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         "equipmentSlots": equipment_slots_for_frontend(player.get("equipment") or {}),
         "equipment": equipment,
         "inventory": inventory,
+        "market": {
+            "sellFromProfile": market_sell_enabled,
+            "sellButtonLabel": "Продать",
+        },
         "skills": {"active": active_skills, "equipped": equipped_skills, "passive": passive_skills},
         "information": {
             "achievements": player.get("achievements", []),
@@ -1714,6 +1734,22 @@ def create_profile_api_router(get_storage) -> APIRouter:
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "restoredEnergy": restored_energy, "profile": frontend_profile(player)}
+
+    @router.post("/{identifier}/inventory/sell")
+    def sell_inventory_item(identifier: str, request: SellItemRequest) -> dict[str, Any]:
+        storage = get_storage()
+        player = resolve_profile_write(storage, identifier)
+        if not is_profile_market_sell_enabled(player):
+            raise HTTPException(status_code=400, detail="Продажа через профиль доступна только в разделе продажи на рынке.")
+        result = sell_item_from_profile(storage, player, request.item_id, request.amount)
+        if "Продано:" not in result.text:
+            raise HTTPException(status_code=400, detail=result.text)
+        refreshed = storage.get_player_by_game_id(player.get("game_id")) or player
+        recalculate_inventory_overflow(refreshed)
+        sync_player_parameters_for_bots(refreshed)
+        save_player(storage, refreshed)
+        return {"ok": True, "message": result.text, "profile": frontend_profile(refreshed)}
+
 
     @router.post("/{identifier}/inventory/drop")
     def drop_inventory_item(identifier: str, request: DropItemRequest) -> dict[str, Any]:

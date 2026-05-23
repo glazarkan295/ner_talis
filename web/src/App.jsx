@@ -3,6 +3,7 @@ import { PlayerProfile } from "./components/player-profile";
 import "./components/player-profile/PlayerProfile.css";
 import {
   dropItem,
+  sellItem,
   equipItem,
   equipSkill,
   getProfileIdentifierFromUrl,
@@ -42,6 +43,14 @@ function App() {
   useEffect(() => {
     reloadProfile();
   }, [reloadProfile]);
+
+  useEffect(() => {
+    if (!profile?.market?.sellFromProfile) return undefined;
+    const intervalId = window.setInterval(() => {
+      reloadProfile();
+    }, 8000);
+    return () => window.clearInterval(intervalId);
+  }, [profile?.market?.sellFromProfile, reloadProfile]);
 
   async function runProfileAction(action) {
     try {
@@ -92,6 +101,9 @@ function App() {
         }}
         onDropItem={(item, amount) => {
           return runProfileAction(() => dropItem(profileIdentifier, item.id, amount));
+        }}
+        onSellItem={(item, amount) => {
+          return runProfileAction(() => sellItem(profileIdentifier, item.id, amount));
         }}
         onEquipSkill={(skill) => {
           return runProfileAction(() => equipSkill(profileIdentifier, skill.id || skill.name));

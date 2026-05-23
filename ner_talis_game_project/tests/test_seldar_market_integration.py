@@ -55,7 +55,7 @@ class SeldarMarketIntegrationTest(unittest.TestCase):
             result = process_world_action(storage, player, "2", "telegram")
 
         self.assertIn("Куплено: Чистая вода ×2", result.text)
-        self.assertIn("Чистая вода", sum(result.buttons, []))
+        self.assertIn("Купить 4", sum(result.buttons, []))
         updated = storage.get_player_by_game_id("NT-MARKET")
         self.assertEqual(updated["money_copper"], 970)
         self.assertEqual(updated.get("current_zone"), "seldar_npc_market_buy")
@@ -169,7 +169,8 @@ class SeldarMarketIntegrationTest(unittest.TestCase):
         result = process_world_action(storage, player, "2", "telegram")
 
         self.assertIn("Продано: Чистая вода ×2", result.text)
-        self.assertIn("Чистая вода ×1", sum(result.buttons, []))
+        self.assertIn("Продать 1", sum(result.buttons, []))
+        self.assertIn("Чистая вода ×1", result.text)
         updated = storage.get_player_by_game_id("NT-MARKET")
         self.assertEqual(updated["money_copper"], 1010)
         self.assertEqual(updated.get("current_zone"), "seldar_npc_market_sell")
@@ -177,6 +178,28 @@ class SeldarMarketIntegrationTest(unittest.TestCase):
         self.assertEqual(updated["inventory"][0]["amount"], 1)
         names = [item.display_name for item in load_market_items()]
         self.assertEqual(names.count("Чистая вода"), 1)
+
+
+    def test_market_lists_use_short_numbered_buttons(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+        player["inventory"] = [{"id": "clean_water", "name": "Чистая вода", "amount": 3, "can_sell": True, "sell_price_copper": 5}]
+        storage.update_player(player)
+
+        process_world_action(storage, player, "Рынок", "telegram")
+        buy_result = process_world_action(storage, player, "Купить", "telegram")
+        self.assertIn("1. Простое зелье лечения", buy_result.text)
+        self.assertIn("Купить 1", sum(buy_result.buttons, []))
+        self.assertNotIn("Простое зелье лечения", sum(buy_result.buttons, []))
+        card = process_world_action(storage, player, "Купить 4", "telegram")
+        self.assertIn("Чистая вода", card.text)
+
+        process_world_action(storage, player, "Назад на рынок", "telegram")
+        sell_result = process_world_action(storage, player, "Продать", "telegram")
+        self.assertIn("1. Чистая вода ×3", sell_result.text)
+        self.assertEqual(sum(sell_result.buttons, []), ["Продать 1", "Назад на рынок"])
+        sell_card = process_world_action(storage, player, "Продать 1", "telegram")
+        self.assertIn("Цена продажи", sell_card.text)
 
     def test_buy_rejects_when_inventory_and_overflow_cannot_fit_full_quantity(self):
         tmp, storage, player = self.make_storage_player()

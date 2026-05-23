@@ -40,6 +40,11 @@ MARKET_EXIT_TO_TRADE_DISTRICT = "Торговый квартал"
 LEGACY_MARKET_EXIT_TO_PAVILION = "Торговый павильон"
 OPEN_PAVILION_SITE = "🌐 Открыть торговый павильон"
 BACK_TO_CENTRAL = "⬅️ Центральная площадь"
+MARKET_BUY_PAGE_NEXT = "Покупка далее"
+MARKET_BUY_PAGE_PREV = "Покупка назад"
+MARKET_SELL_PAGE_NEXT = "Продажа далее"
+MARKET_SELL_PAGE_PREV = "Продажа назад"
+MARKET_LIST_PAGE_SIZE = 16
 
 MARKET_ACTIONS = frozenset({
     MARKET_ENTRY,
@@ -49,6 +54,10 @@ MARKET_ACTIONS = frozenset({
     MARKET_BACK_TO_MAIN,
     MARKET_EXIT_TO_TRADE_DISTRICT,
     LEGACY_MARKET_EXIT_TO_PAVILION,
+    MARKET_BUY_PAGE_NEXT,
+    MARKET_BUY_PAGE_PREV,
+    MARKET_SELL_PAGE_NEXT,
+    MARKET_SELL_PAGE_PREV,
 })
 MARKET_DATA_PATH = project_path("data", "seldar_market.json")
 SELL_PRICES_PATH = project_path("data", "item_sell_prices.json")
@@ -72,6 +81,32 @@ class MarketItem:
 
 def _chunk_buttons(labels: list[str], row_size: int = 2) -> list[list[str]]:
     return [labels[index:index + row_size] for index in range(0, len(labels), row_size)]
+
+
+def _clamped_page(total_items: int, page: int, page_size: int = MARKET_LIST_PAGE_SIZE) -> int:
+    if total_items <= 0:
+        return 0
+    max_page = max(0, (total_items - 1) // page_size)
+    return max(0, min(page, max_page))
+
+
+def _page_slice(items: list[Any], page: int, page_size: int = MARKET_LIST_PAGE_SIZE) -> tuple[int, int, int, list[Any]]:
+    page = _clamped_page(len(items), page, page_size)
+    start = page * page_size
+    end = min(len(items), start + page_size)
+    return page, start, end, items[start:end]
+
+
+def _parse_numbered_action(action: str, prefix: str) -> int | None:
+    text = str(action or "").strip()
+    marker = f"{prefix} "
+    if not text.startswith(marker):
+        return None
+    raw_number = text[len(marker):].strip()
+    if not raw_number.isdigit():
+        return None
+    number = int(raw_number)
+    return number if number > 0 else None
 
 
 def market_main_buttons() -> list[list[str]]:
@@ -179,9 +214,39 @@ def market_item_by_id(item_id: str) -> MarketItem | None:
     return None
 
 
-def market_buy_buttons() -> list[list[str]]:
-    labels = [item.display_name for item in load_market_items()]
-    return _chunk_buttons(labels, 1) + market_list_back_buttons()
+def market_item_by_number(number: int | None) -> MarketItem | None:
+    if number is None:
+        return None
+    items = load_market_items()
+    index = number - 1
+    if 0 <= index < len(items):
+        return items[index]
+    return None
+
+
+def sell_entry_by_number(player: dict[str, Any], number: int | None) -> dict[str, Any] | None:
+    if number is None:
+        return None
+    entries = sellable_inventory_entries(player)
+    index = number - 1
+    if 0 <= index < len(entries):
+        return entries[index]
+    return None
+
+
+def market_buy_buttons(page: int = 0) -> list[list[str]]:
+    items = load_market_items()
+    page, start, end, _page_items = _page_slice(items, page)
+    labels = [f"{MARKET_BUY} {index}" for index in range(start + 1, end + 1)]
+    rows = _chunk_buttons(labels, 2)
+    nav = []
+    if page > 0:
+        nav.append(MARKET_BUY_PAGE_PREV)
+    if end < len(items):
+        nav.append(MARKET_BUY_PAGE_NEXT)
+    if nav:
+        rows.append(nav)
+    return rows + market_list_back_buttons()
 
 
 def _money(player: dict[str, Any]) -> int:
@@ -218,38 +283,81 @@ def open_market(player: dict[str, Any]) -> MarketResult:
     return MarketResult(text, market_main_buttons(), MARKET_MAIN_ZONE)
 
 
-def open_buy_list(player: dict[str, Any]) -> MarketResult:
+def open_buy_list(player: dict[str, Any], page: int | None = None) -> MarketResult:
+    items = load_market_items()
+    context = player.get("market_context") if isinstance(player.get("market_context"), dict) else {}
+    page_value = safe_int(page if page is not None else context.get("page"), 0)
+    page_value, start, end, page_items = _page_slice(items, page_value)
     _set_zone(player, MARKET_BUY_ZONE)
-    _set_context(player, mode="buy_list")
-    text = (
-        "🛒 Покупка у NPC\n\n"
-        "Все цены указаны в медных монетах за 1 единицу товара.\n"
-        "Выберите товар:"
-    )
-    return MarketResult(text, market_buy_buttons(), MARKET_BUY_ZONE)
+    _set_context(player, mode="buy_list", page=page_value)
+    if not items:
+        return MarketResult(
+            "🛒 Покупка у NPC\n\nСейчас у торговца нет товаров.",
+            market_list_back_buttons(),
+            MARKET_BUY_ZONE,
+        )
+    lines = [
+        "🛒 Покупка у NPC",
+        "",
+        "Все цены указаны в медных монетах за 1 единицу товара.",
+        f"Страница {page_value + 1} из {max(1, (len(items) - 1) // MARKET_LIST_PAGE_SIZE + 1)}.",
+        "Выберите товар: нажмите короткую кнопку с номером товара:",
+        "",
+    ]
+    for offset, item in enumerate(page_items, start=start + 1):
+        lines.append(f"{offset}. {item.display_name} — {item.buy_price_copper} медных")
+    return MarketResult("\n".join(lines), market_buy_buttons(page_value), MARKET_BUY_ZONE)
 
 
-def open_sell_list(player: dict[str, Any]) -> MarketResult:
+def market_sell_buttons(player: dict[str, Any], page: int = 0) -> list[list[str]]:
+    entries = sellable_inventory_entries(player)
+    page, start, end, _page_entries = _page_slice(entries, page)
+    labels = [f"{MARKET_SELL} {index}" for index in range(start + 1, end + 1)]
+    rows = _chunk_buttons(labels, 2)
+    nav = []
+    if page > 0:
+        nav.append(MARKET_SELL_PAGE_PREV)
+    if end < len(entries):
+        nav.append(MARKET_SELL_PAGE_NEXT)
+    if nav:
+        rows.append(nav)
+    return rows + market_list_back_buttons()
+
+
+def open_sell_list(player: dict[str, Any], page: int | None = None) -> MarketResult:
     _set_zone(player, MARKET_SELL_ZONE)
     sellable = sellable_inventory_entries(player)
-    _set_context(player, mode="sell_list")
+    context = player.get("market_context") if isinstance(player.get("market_context"), dict) else {}
+    page_value = safe_int(page if page is not None else context.get("page"), 0)
+    page_value, start, _end, page_entries = _page_slice(sellable, page_value)
+    _set_context(player, mode="sell_list", page=page_value)
     if not sellable:
         return MarketResult(
             "💰 Продажа NPC\n\nВ инвентаре нет предметов, которые можно продать NPC-рынку.",
             market_list_back_buttons(),
             MARKET_SELL_ZONE,
         )
-    labels = [entry["label"] for entry in sellable]
+    lines = [
+        "💰 Продажа NPC",
+        "",
+        "Выберите предмет из инвентаря для продажи. Экипированные, квестовые и защищённые предметы не показываются.",
+        f"Страница {page_value + 1} из {max(1, (len(sellable) - 1) // MARKET_LIST_PAGE_SIZE + 1)}.",
+        "Выберите предмет: нажмите короткую кнопку с номером предмета:",
+        "",
+    ]
+    for offset, entry in enumerate(page_entries, start=start + 1):
+        lines.append(f"{offset}. {entry['name']} ×{entry['quantity']} — {entry['price']} медных/ед.")
     return MarketResult(
-        "💰 Продажа NPC\n\nВыберите предмет из инвентаря для продажи. Экипированные, квестовые и защищённые предметы не показываются.",
-        _chunk_buttons(labels, 1) + market_list_back_buttons(),
+        "\n".join(lines),
+        market_sell_buttons(player, page_value),
         MARKET_SELL_ZONE,
     )
 
 
 def show_buy_card(player: dict[str, Any], item: MarketItem) -> MarketResult:
     _set_zone(player, MARKET_BUY_ZONE)
-    _set_context(player, mode="buy_card", item_id=item.item_id)
+    context = player.get("market_context") if isinstance(player.get("market_context"), dict) else {}
+    _set_context(player, mode="buy_card", item_id=item.item_id, page=safe_int(context.get("page"), 0))
     text = (
         f"{item.display_name}\n"
         f"Описание: {item.description}\n"
@@ -261,7 +369,8 @@ def show_buy_card(player: dict[str, Any], item: MarketItem) -> MarketResult:
 
 def ask_buy_quantity(player: dict[str, Any], item: MarketItem) -> MarketResult:
     _set_zone(player, MARKET_BUY_ZONE)
-    _set_context(player, mode="buy_quantity", item_id=item.item_id)
+    context = player.get("market_context") if isinstance(player.get("market_context"), dict) else {}
+    _set_context(player, mode="buy_quantity", item_id=item.item_id, page=safe_int(context.get("page"), 0))
     return MarketResult(
         f"Введите количество товара, которое хотите купить.\n\nТовар: {item.display_name}\nЦена за 1 единицу: {item.buy_price_copper} медных",
         [[MARKET_BACK]],
@@ -400,7 +509,8 @@ def sell_entry_by_label(player: dict[str, Any], label: str) -> dict[str, Any] | 
 
 def show_sell_card(player: dict[str, Any], entry: dict[str, Any]) -> MarketResult:
     _set_zone(player, MARKET_SELL_ZONE)
-    _set_context(player, mode="sell_card", item_id=entry["item_id"])
+    context = player.get("market_context") if isinstance(player.get("market_context"), dict) else {}
+    _set_context(player, mode="sell_card", item_id=entry["item_id"], page=safe_int(context.get("page"), 0))
     text = (
         f"{entry['name']}\n"
         f"Описание: {entry['description']}\n"
@@ -412,7 +522,8 @@ def show_sell_card(player: dict[str, Any], entry: dict[str, Any]) -> MarketResul
 
 def ask_sell_quantity(player: dict[str, Any], entry: dict[str, Any]) -> MarketResult:
     _set_zone(player, MARKET_SELL_ZONE)
-    _set_context(player, mode="sell_quantity", item_id=entry["item_id"])
+    context = player.get("market_context") if isinstance(player.get("market_context"), dict) else {}
+    _set_context(player, mode="sell_quantity", item_id=entry["item_id"], page=safe_int(context.get("page"), 0))
     return MarketResult(
         f"Введите количество предметов, которое хотите продать.\n\nПредмет: {entry['name']}\nДоступно: {entry['quantity']}\nЦена за 1 единицу: {entry['price']} медных",
         [[MARKET_BACK]],
@@ -474,6 +585,28 @@ def _parse_positive_int(raw: str) -> int | None:
     return result if result > 0 else None
 
 
+def is_profile_market_sell_enabled(player: dict[str, Any]) -> bool:
+    context = player.get("market_context") if isinstance(player.get("market_context"), dict) else {}
+    mode = str(context.get("mode") or "")
+    zone = str(player.get("current_zone") or player.get("location_id") or "")
+    return zone == MARKET_SELL_ZONE and mode in {"sell_list", "sell_card", "sell_quantity"}
+
+
+def is_item_sellable_from_profile(player: dict[str, Any], item_id: str) -> bool:
+    if not is_profile_market_sell_enabled(player):
+        return False
+    return _entry_by_id(player, item_id) is not None
+
+
+def sell_item_from_profile(storage: Any, player: dict[str, Any], item_id: str, quantity: int) -> MarketResult:
+    if not is_profile_market_sell_enabled(player):
+        return MarketResult("Продажа через профиль доступна только когда игрок находится на рынке в разделе продажи.", [], str(player.get("current_zone") or ""))
+    entry = _entry_by_id(player, item_id)
+    if not entry:
+        return MarketResult("Этот предмет сейчас нельзя продать на рынке.", [], MARKET_SELL_ZONE)
+    return handle_sell_quantity(storage, player, entry, str(quantity))
+
+
 def handle_market_action(storage: Any, player: dict[str, Any], action: str) -> MarketResult:
     action = str(action or "").strip()
     context = player.get("market_context") if isinstance(player.get("market_context"), dict) else {}
@@ -489,11 +622,23 @@ def handle_market_action(storage: Any, player: dict[str, Any], action: str) -> M
         storage.update_player(player)
         return result
 
+    if action in {MARKET_BUY_PAGE_NEXT, MARKET_BUY_PAGE_PREV}:
+        delta = 1 if action == MARKET_BUY_PAGE_NEXT else -1
+        result = open_buy_list(player, safe_int(context.get("page"), 0) + delta)
+        storage.update_player(player)
+        return result
+
+    if action in {MARKET_SELL_PAGE_NEXT, MARKET_SELL_PAGE_PREV}:
+        delta = 1 if action == MARKET_SELL_PAGE_NEXT else -1
+        result = open_sell_list(player, safe_int(context.get("page"), 0) + delta)
+        storage.update_player(player)
+        return result
+
     if action == MARKET_BACK:
         if mode in {"buy_card", "buy_quantity"}:
-            result = open_buy_list(player)
+            result = open_buy_list(player, safe_int(context.get("page"), 0))
         elif mode in {"sell_card", "sell_quantity"}:
-            result = open_sell_list(player)
+            result = open_sell_list(player, safe_int(context.get("page"), 0))
         elif mode in {"buy_list", "sell_list"}:
             result = open_market(player)
         elif mode == "main":
@@ -543,14 +688,18 @@ def handle_market_action(storage: Any, player: dict[str, Any], action: str) -> M
         return handle_sell_quantity(storage, player, entry, action)
 
     if mode == "buy_list" or is_market_context(player):
-        item = market_item_by_display_name(action)
+        item = market_item_by_number(_parse_numbered_action(action, MARKET_BUY))
+        if not item:
+            item = market_item_by_display_name(action)
         if item:
             result = show_buy_card(player, item)
             storage.update_player(player)
             return result
 
     if mode == "sell_list" or is_market_context(player):
-        entry = sell_entry_by_label(player, action)
+        entry = sell_entry_by_number(player, _parse_numbered_action(action, MARKET_SELL))
+        if not entry:
+            entry = sell_entry_by_label(player, action)
         if entry:
             result = show_sell_card(player, entry)
             storage.update_player(player)
