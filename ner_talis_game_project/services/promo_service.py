@@ -12,6 +12,7 @@ from typing import Any, Iterator
 from project_paths import resolve_project_path
 from services.derived_stats_service import calculate_energy_stats
 from services.inventory_service import add_inventory_item, recalculate_inventory_overflow
+from services.item_registry import build_inventory_item
 
 try:  # POSIX file lock for JSON fallback storage.
     import fcntl  # type: ignore
@@ -158,6 +159,37 @@ def list_promo_codes(limit: int = 20, storage: Any | None = None) -> list[dict[s
     return promos[:max(1, limit)]
 
 
+def _promo_reward_inventory_item(item: dict[str, Any], amount: int) -> dict[str, Any]:
+    """Build a real inventory item for a promo reward.
+
+    Admin/promo JSON usually stores only {"item_id": "...", "amount": N}.
+    Without registry enrichment such rewards turn into bare technical stacks with
+    no Russian name, icon, stack size, sell price or use effect.  Start from the
+    canonical item registry, then let explicit promo JSON fields override it so
+    special event rewards can still customize the item.
+    """
+
+    item_id = str(item.get("item_id") or item.get("id") or "").strip()
+    item_name = str(item.get("name") or item.get("name_ru") or item_id or "promo_item").strip()
+
+    if item_id:
+        prepared = build_inventory_item(item_name or item_id, amount, item_id=item_id)
+    else:
+        prepared = build_inventory_item(item_name, amount)
+
+    for key, value in item.items():
+        if key == "amount" or value is None:
+            continue
+        prepared[key] = value
+
+    if item_id:
+        prepared["id"] = item_id
+        prepared["item_id"] = item_id
+    prepared["amount"] = amount
+    prepared.setdefault("source", "promo_code")
+    return prepared
+
+
 def apply_reward_to_player(player: dict[str, Any], reward: dict[str, Any]) -> dict[str, Any]:
     money_reward = int(reward.get("money_copper", reward.get("money", 0)) or 0)
     if money_reward:
@@ -181,8 +213,9 @@ def apply_reward_to_player(player: dict[str, Any], reward: dict[str, Any]) -> di
         player["free_skill_points"] = int(player.get("free_skill_points", 0)) + int(reward.get("free_skill_points") or 0)
     for item in reward.get("items") or []:
         if isinstance(item, dict):
-            amount = int(item.get("amount", 1) or 1)
-            add_inventory_item(player, {**item, "source": "promo_code"}, amount, default_source="promo_code")
+            amount = max(1, int(item.get("amount", 1) or 1))
+            prepared_item = _promo_reward_inventory_item(item, amount)
+            add_inventory_item(player, prepared_item, amount, default_source="promo_code")
     recalculate_inventory_overflow(player)
     return player
 
