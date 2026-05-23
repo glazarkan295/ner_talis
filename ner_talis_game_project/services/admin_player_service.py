@@ -14,6 +14,8 @@ from typing import Any
 from game_data.starter_items import get_starter_equipment
 from game_data.starter_skills import get_starter_skills
 from project_paths import resolve_project_path
+from services.inventory_service import add_inventory_item
+from services.item_registry import build_inventory_item
 from services.registration_service import DEFAULT_CRAFTING_LEVELS, load_races
 
 STAT_KEYS = ("strength", "dexterity", "endurance", "intelligence", "wisdom", "perception")
@@ -262,12 +264,21 @@ def add_item_to_player(
 
     backup_player(player, "before_add_item")
 
-    item = dict(item_data or {})
+    if item_data:
+        item = dict(item_data)
+    else:
+        # Simple admin commands should use the same item registry as loot, market
+        # and camp crafting. Otherwise /admin_add_item dried_meat would create
+        # a bare technical item named "dried_meat" without Russian name, icon,
+        # stack size, sale price or use effect.
+        item = build_inventory_item(item_id, amount, item_id=item_id)
+
     item.setdefault("instance_id", f"adm-{uuid.uuid4().hex}")
     item.setdefault("item_id", item_id)
-    item.setdefault("name", item.get("item_id", item_id))
+    item.setdefault("id", item.get("item_id", item_id))
+    item.setdefault("name", item.get("name_ru") or item.get("item_id", item_id))
     item["amount"] = amount
-    item.setdefault("quality", quality)
+    item["quality"] = quality or item.get("quality") or "обычный"
     item.setdefault("source", "admin")
     item.setdefault("created_at", datetime.now(timezone.utc).isoformat())
 
