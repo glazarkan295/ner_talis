@@ -57,7 +57,14 @@ BATTLE_POUCH_ITEM_PREFIX = "Предмет "
 
 # В интерфейсе боя показываются только подсумок, побег и экипированные активные навыки.
 # Обычная атака и защита оставлены как внутренние fallback-действия для старых сохранений.
-BATTLE_ACTIONS = frozenset({BATTLE_POUCH, BATTLE_ESCAPE, BATTLE_WAIT, "Отступить"})
+BATTLE_ACTIONS = frozenset({
+    BATTLE_POUCH,
+    BATTLE_POUCH_NEXT,
+    BATTLE_POUCH_PREV,
+    BATTLE_ESCAPE,
+    BATTLE_WAIT,
+    "Отступить",
+})
 
 
 def base_battle_buttons(player: dict[str, Any] | None = None) -> list[list[str]]:

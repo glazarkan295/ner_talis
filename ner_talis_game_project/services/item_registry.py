@@ -129,6 +129,21 @@ def load_all_item_definitions() -> list[dict[str, Any]]:
             if item_id:
                 seen_ids.add(item_id)
             definitions.append(item)
+
+    # Starter gear lives in Python game-data, not in data/items_*.json.
+    # Include it in runtime lookups so old saved starter items can be enriched
+    # with sale prices/icons and can appear in NPC sell lists.
+    try:
+        from game_data.starter_items import STARTER_ITEMS
+    except Exception:
+        STARTER_ITEMS = []
+    for item in STARTER_ITEMS:
+        item_id = str(item.get("id") or item.get("item_id") or "").strip()
+        if item_id and item_id in seen_ids:
+            continue
+        if item_id:
+            seen_ids.add(item_id)
+        definitions.append(item)
     return definitions
 
 
@@ -142,7 +157,7 @@ def _indexes(path: str | Path | None = None) -> tuple[dict[str, dict[str, Any]],
         if item_id:
             by_id[item_id] = item
         if item_name:
-            by_name[item_name.casefold()] = item
+            by_name.setdefault(item_name.casefold(), item)
     return by_id, by_name
 
 

@@ -99,6 +99,8 @@ class ActiveSkillsMultiWeaponIntegrationTest(unittest.TestCase):
         storage = MemoryStorage()
         player = self.make_player()
         player["level"] = 10
+        process_world_action(storage, player, "Ратуша", "telegram")
+        player = storage.player
         process_world_action(storage, player, ORDER_STONE, "telegram")
         player = storage.player
         process_world_action(storage, player, CHOOSE_MANA_BRANCH, "telegram")

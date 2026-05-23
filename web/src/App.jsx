@@ -52,8 +52,10 @@ function App() {
       } else {
         await reloadProfile();
       }
+      return payload;
     } catch (requestError) {
       setError(requestError.message || "Действие не выполнено.");
+      throw requestError;
     }
   }
 
