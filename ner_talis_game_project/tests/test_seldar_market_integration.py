@@ -59,6 +59,33 @@ class SeldarMarketIntegrationTest(unittest.TestCase):
         self.assertEqual(updated["money_copper"], 970)
         self.assertTrue(any(item.get("id") == "clean_water" and item.get("amount") == 2 for item in updated["inventory"]))
 
+    def test_back_from_market_main_exits_to_trade_district(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+
+        process_world_action(storage, player, "Рынок", "telegram")
+        result = process_world_action(storage, player, "Назад", "telegram")
+
+        self.assertIn("Торговый квартал", result.text)
+        self.assertNotIn("Рынок Торгового квартала", result.text)
+        updated = storage.get_player_by_game_id("NT-MARKET")
+        self.assertEqual(updated.get("current_zone"), "seldar_trade_district")
+        self.assertNotIn("market_context", updated)
+
+    def test_back_from_market_buy_list_exits_to_trade_district(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+
+        process_world_action(storage, player, "Рынок", "telegram")
+        process_world_action(storage, player, "Купить", "telegram")
+        result = process_world_action(storage, player, "Назад", "telegram")
+
+        self.assertIn("Торговый квартал", result.text)
+        self.assertNotIn("Рынок Торгового квартала", result.text)
+        updated = storage.get_player_by_game_id("NT-MARKET")
+        self.assertEqual(updated.get("current_zone"), "seldar_trade_district")
+        self.assertNotIn("market_context", updated)
+
     def test_sell_inventory_item_does_not_add_to_market_assortment(self):
         tmp, storage, player = self.make_storage_player()
         self.addCleanup(tmp.cleanup)
