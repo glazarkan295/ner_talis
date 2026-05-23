@@ -19,6 +19,7 @@ from services.external_location_service import (
 from services.market_service import (
     MARKET_ACTIONS,
     MARKET_ENTRY,
+    MARKET_ZONE_PREFIX,
     handle_market_action,
     is_market_context,
     market_main_buttons,
@@ -622,6 +623,30 @@ def process_branch_choice_action(storage: Any, player: dict[str, Any], action: s
     return WorldActionResult(text, order_stone_buttons(player))
 
 
+def _is_external_location_state(player: dict[str, Any]) -> bool:
+    """Return True when the player is already outside the city flow.
+
+    This keeps shared labels such as ``Назад`` under the external-location
+    handler while a player is searching, camping, fighting or standing at the
+    outside crossroads, but still lets the market handler own its own ``Назад``
+    button inside the NPC market.
+    """
+    values = {
+        str(player.get("current_city") or ""),
+        str(player.get("current_zone") or ""),
+        str(player.get("location_id") or ""),
+        str(player.get("current_location") or ""),
+    }
+    if "outside_seldar" in values:
+        return True
+    external_prefixes = (
+        "outside_city_crossroads",
+        "hilly_meadows",
+        "ordinary_forest",
+        "fortress_in_gorge",
+    )
+    return any(value.startswith(external_prefixes) for value in values if value)
+
 def process_world_action(
     storage: Any,
     player: dict[str, Any],
@@ -630,12 +655,38 @@ def process_world_action(
 ) -> WorldActionResult:
     """Processes city, market, battle and external-location actions.
 
-    Battle input stays the highest priority. Market state is checked before
-    generic external-location buttons because both flows use the text
-    ``Назад``. Without this ordering, market back buttons are interpreted as
-    external-location actions and move the player to the wrong screen.
+    Battle input stays the highest priority. Explicit city navigation can
+    break stale market context, external-location state keeps ownership of its
+    own buttons, and the market still owns its local ``Назад`` when the player
+    is actually inside the NPC market.
     """
     if player.get("in_battle"):
+        response = handle_external_location_action(storage, player, action)
+        return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
+
+    # Explicit city navigation must be able to break out of a stale market
+    # context. Otherwise old keyboards or an interrupted market flow can route
+    # trade-district buttons back into ``handle_market_action`` where unknown
+    # actions fall back to the market main screen. ``Рынок`` remains the only
+    # city action that intentionally enters the market state machine.
+    #
+    # External-location labels such as "Выход из города" and "Назад" are not
+    # handled here even if they are also listed in CITY_ACTIONS/CITY_BUTTONS:
+    # they belong to the external-location state machine and must keep showing
+    # the real location buttons instead of the generic gate keyboard.
+    if action in CITY_ACTIONS and action != MARKET_ENTRY and action not in EXTERNAL_LOCATION_BUTTONS:
+        player.pop("market_context", None)
+        response = get_city_response(action)
+        updated_player = apply_city_transition(storage, player, response)
+        text = build_response_text(
+            storage=storage,
+            player=updated_player,
+            response=response,
+            platform=platform,
+        )
+        return WorldActionResult(text=text, buttons=response.buttons)
+
+    if action in EXTERNAL_LOCATION_BUTTONS and _is_external_location_state(player):
         response = handle_external_location_action(storage, player, action)
         return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
 
@@ -723,6 +774,8 @@ def apply_city_transition(
     player["current_city"] = "seldar"
     player["current_zone"] = response.zone_id
     player["location_id"] = response.zone_id
+    if not str(response.zone_id).startswith(MARKET_ZONE_PREFIX):
+        player.pop("market_context", None)
     storage.update_player(player)
     return player
 
