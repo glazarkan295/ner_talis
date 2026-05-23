@@ -537,10 +537,39 @@ def order_stone_text(player: dict[str, Any]) -> str:
     )
 
 
+
+def _current_zone_id(player: dict[str, Any]) -> str:
+    return str(player.get("current_zone") or player.get("location_id") or "").strip()
+
+
+def _branch_gate_response(player: dict[str, Any], action: str) -> WorldActionResult | None:
+    zone = _current_zone_id(player)
+    if zone in {"seldar_town_hall", "seldar_town_hall_order_stone"} or (not zone and action == ORDER_STONE):
+        return None
+    return WorldActionResult(
+        "🪨 К Распорядительному камню нельзя обратиться отсюда. "
+        "Сначала перейдите в Селдар → Верхний квартал → Ратуша.",
+        central_square_buttons(),
+    )
+
+
+def _order_stone_interaction_allowed(player: dict[str, Any], action: str) -> bool:
+    zone = _current_zone_id(player)
+    if action == ORDER_STONE:
+        return zone in {"", "seldar_town_hall", "seldar_town_hall_order_stone"}
+    return zone == "seldar_town_hall_order_stone"
+
 def process_branch_choice_action(storage: Any, player: dict[str, Any], action: str) -> WorldActionResult | None:
     if action not in BRANCH_CHOICE_ACTIONS:
         return None
     ensure_active_skill_fields(player)
+
+    gate_response = _branch_gate_response(player, action)
+    if gate_response is not None or not _order_stone_interaction_allowed(player, action):
+        return gate_response or WorldActionResult(
+            "🪨 Сначала подойдите к Распорядительному камню в Ратуше и только потом прикладывайте амулет.",
+            town_hall_buttons(),
+        )
 
     if action == ORDER_STONE:
         player["current_city"] = "seldar"
@@ -599,19 +628,24 @@ def process_world_action(
     action: str,
     platform: str,
 ) -> WorldActionResult:
-    """Processes city and external-location actions from Telegram/VK.
+    """Processes city, market, battle and external-location actions.
 
-    City navigation stays in this module; external exploration is delegated to
-    services.external_location_service. Both paths update the same player
-    profile and return ready-to-send text/buttons.
+    Battle input stays the highest priority. Market state is checked before
+    generic external-location buttons because both flows use the text
+    ``Назад``. Without this ordering, market back buttons are interpreted as
+    external-location actions and move the player to the wrong screen.
     """
-    if player.get("in_battle") or action in EXTERNAL_LOCATION_BUTTONS:
+    if player.get("in_battle"):
         response = handle_external_location_action(storage, player, action)
         return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
 
-    if action in MARKET_ACTIONS or is_market_context(player):
+    if action == MARKET_ENTRY or is_market_context(player):
         response = handle_market_action(storage, player, action)
         return WorldActionResult(text=response.text, buttons=response.buttons)
+
+    if action in EXTERNAL_LOCATION_BUTTONS:
+        response = handle_external_location_action(storage, player, action)
+        return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
 
     branch_response = process_branch_choice_action(storage, player, action)
     if branch_response is not None:
