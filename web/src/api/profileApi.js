@@ -136,6 +136,13 @@ export function unequipSkill(identifier, skillId) {
 }
 
 
+export function sellItem(identifier, itemId, amount) {
+  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/inventory/sell`, {
+    method: "POST",
+    body: JSON.stringify({ item_id: itemId, amount }),
+  });
+}
+
 export function dropItem(identifier, itemId, amount) {
   return requestJson(`/api/profile/${encodeURIComponent(identifier)}/inventory/drop`, {
     method: "POST",

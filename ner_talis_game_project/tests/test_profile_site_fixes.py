@@ -408,6 +408,74 @@ class ProfileSiteFixesTest(unittest.TestCase):
             restored = storage.get_player_by_game_id(player["game_id"])
             self.assertEqual(restored["inventory"][0]["amount"], 3)
 
+    def test_market_sell_mode_adds_profile_sell_action_and_exit_removes_it(self):
+        player = self._new_player()
+        player["current_zone"] = "seldar_npc_market_sell"
+        player["location_id"] = "seldar_npc_market_sell"
+        player["market_context"] = {"mode": "sell_list"}
+        player["inventory"] = [{"id": "clean_water", "name": "Чистая вода", "amount": 3, "can_sell": True, "sell_price_copper": 5}]
+
+        profile = frontend_profile(player)
+        water = next(item for item in profile["inventory"] if item["id"] == "clean_water")
+        self.assertTrue(profile["market"]["sellFromProfile"])
+        self.assertIn("Продать", water.get("actions", []))
+
+        player["current_zone"] = "seldar_trade_district"
+        player["location_id"] = "seldar_trade_district"
+        player.pop("market_context", None)
+        profile = frontend_profile(player)
+        water = next(item for item in profile["inventory"] if item["id"] == "clean_water")
+        self.assertFalse(profile["market"]["sellFromProfile"])
+        self.assertNotIn("Продать", water.get("actions", []))
+
+    def test_market_sell_endpoint_sells_profile_item_quantity(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["money"] = 100
+            player["money_copper"] = 100
+            player["current_zone"] = "seldar_npc_market_sell"
+            player["location_id"] = "seldar_npc_market_sell"
+            player["market_context"] = {"mode": "sell_list"}
+            player["inventory"] = [{"id": "clean_water", "name": "Чистая вода", "amount": 3, "can_sell": True, "sell_price_copper": 5}]
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            response = TestClient(app).post(
+                f"/api/profile/{token}/inventory/sell",
+                json={"item_id": "clean_water", "amount": 2},
+            )
+
+            self.assertEqual(response.status_code, 200, response.text)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(restored["money_copper"], 110)
+            self.assertEqual(restored["inventory"][0]["amount"], 1)
+            payload = response.json()
+            self.assertIn("Продано: Чистая вода ×2", payload["message"])
+            water = next(item for item in payload["profile"]["inventory"] if item["id"] == "clean_water")
+            self.assertIn("Продать", water.get("actions", []))
+
+    def test_market_sell_endpoint_rejects_outside_market_sell_mode(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["inventory"] = [{"id": "clean_water", "name": "Чистая вода", "amount": 3, "can_sell": True, "sell_price_copper": 5}]
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            response = TestClient(app).post(
+                f"/api/profile/{token}/inventory/sell",
+                json={"item_id": "clean_water", "amount": 1},
+            )
+
+            self.assertEqual(response.status_code, 400)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(restored["inventory"][0]["amount"], 3)
+
     def test_consumable_category_items_remain_directly_usable(self):
         self.assertTrue(is_inventory_item_usable({"id": "legacy_consumable", "name": "Старый расходник", "category": "Расходники"}))
 
