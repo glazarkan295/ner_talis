@@ -2,17 +2,36 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from services.active_skill_service import (
+    BRANCH_LABELS,
+    choose_active_skill_branch,
+    ensure_active_skill_fields,
+    has_identification_amulet,
+    player_branch,
+    refresh_unlocked_active_skills,
+)
 from services.external_location_service import (
     EXTERNAL_LOCATION_BUTTONS,
     LEGACY_OUTSIDE_CITY,
     OUTSIDE_CITY,
     handle_external_location_action,
 )
+from services.market_service import (
+    MARKET_ACTIONS,
+    MARKET_ENTRY,
+    handle_market_action,
+    is_market_context,
+    market_main_buttons,
+)
 
 
 CENTRAL_SQUARE = "Центральная площадь"
 BACK_TO_CENTRAL = "⬅️ Центральная площадь"
 OPEN_PAVILION_SITE = "🌐 Открыть торговый павильон"
+ORDER_STONE = "Распорядительный камень"
+APPLY_ID_AMULET = "Приложить идентификационный амулет"
+CHOOSE_SPIRIT_BRANCH = "Выбрать Ветвь Духа"
+CHOOSE_MANA_BRANCH = "Выбрать Ветвь Маны"
 
 
 @dataclass(frozen=True)
@@ -102,6 +121,26 @@ def upper_buttons() -> list[list[str]]:
         ["Ратуша", "Жилой район"],
         [BACK_TO_CENTRAL],
     ]
+
+
+def town_hall_buttons() -> list[list[str]]:
+    return [
+        [ORDER_STONE],
+        ["Верхний квартал", BACK_TO_CENTRAL],
+    ]
+
+
+def order_stone_buttons(player: dict[str, Any]) -> list[list[str]]:
+    ensure_active_skill_fields(player)
+    if player_branch(player):
+        return [["Ратуша"], [BACK_TO_CENTRAL]]
+    if int(player.get("level") or 1) < 10 or not has_identification_amulet(player):
+        return [["Ратуша"], [BACK_TO_CENTRAL]]
+    return [[APPLY_ID_AMULET], ["Ратуша", BACK_TO_CENTRAL]]
+
+
+def branch_choice_buttons() -> list[list[str]]:
+    return [[CHOOSE_SPIRIT_BRANCH], [CHOOSE_MANA_BRANCH], ["Ратуша", BACK_TO_CENTRAL]]
 
 
 def gates_buttons() -> list[list[str]]:
@@ -270,11 +309,14 @@ TRADE_GUILD_TEXT = """⚖️ Торговая гильдия
 • контракты;
 • кредиты под проценты."""
 
-NPC_MARKET_TEXT = """🛒 Рынок
+NPC_MARKET_TEXT = """🛒 Рынок Торгового квартала
 
-Покупка и продажа у NPC: расходники, предметы, ингредиенты, простые материалы и товары города.
+Безопасная NPC-покупка и NPC-продажа базовых товаров: расходники, ингредиенты, инструменты, колчаны, боеприпасы, простая экипировка и дешёвые материалы.
 
-Полная торговая логика будет подключена отдельным модулем экономики."""
+Доступные действия:
+• Купить
+• Продать
+• Назад"""
 
 AUCTION_TEXT = """🏷 Аукцион
 
@@ -382,7 +424,8 @@ TOWN_HALL_TEXT = """🏛 Ратуша
 • купить или продать участок;
 • создать клан;
 • получить грамоты и городские награды;
-• посмотреть и оплатить долги, штрафы и кредиты."""
+• посмотреть и оплатить долги, штрафы и кредиты;
+• подойти к Распорядительному камню для выбора ветви активных навыков после 10 уровня."""
 
 HOUSING_TEXT = """🏡 Жилой район
 
@@ -442,7 +485,7 @@ CITY_ACTIONS: dict[str, CityResponse] = {
     "Работа на складе": CityResponse(TAVERN_WORK_STORAGE_TEXT, tavern_buttons(), "seldar_tavern_storage_work"),
     "Торговый квартал": CityResponse(TRADE_TEXT, trade_buttons(), "seldar_trade_district"),
     "Торговая гильдия": CityResponse(TRADE_GUILD_TEXT, trade_buttons(), "seldar_trade_guild"),
-    "Рынок": CityResponse(NPC_MARKET_TEXT, trade_buttons(), "seldar_npc_market"),
+    MARKET_ENTRY: CityResponse(NPC_MARKET_TEXT, market_main_buttons(), "seldar_npc_market"),
     "Аукцион": CityResponse(AUCTION_TEXT, trade_buttons(), "seldar_auction"),
     "Торговый представитель": CityResponse(TRADE_REPRESENTATIVE_TEXT, trade_buttons(), "seldar_trade_representative"),
     "Торговый павильон": CityResponse(PAVILION_TEXT, pavilion_buttons(), "seldar_trade_pavilion", True),
@@ -455,7 +498,7 @@ CITY_ACTIONS: dict[str, CityResponse] = {
     "Алхимическая мастерская": CityResponse(ALCHEMY_WORKSHOP_TEXT, craft_buttons(), "seldar_alchemy_workshop"),
     "Мастерская чародея": CityResponse(ENCHANTER_TEXT, craft_buttons(), "seldar_enchanter_workshop"),
     "Верхний квартал": CityResponse(UPPER_TEXT, upper_buttons(), "seldar_upper_district"),
-    "Ратуша": CityResponse(TOWN_HALL_TEXT, upper_buttons(), "seldar_town_hall"),
+    "Ратуша": CityResponse(TOWN_HALL_TEXT, town_hall_buttons(), "seldar_town_hall"),
     "Жилой район": CityResponse(HOUSING_TEXT, upper_buttons(), "seldar_residential_district"),
     "Городские ворота": CityResponse(GATES_TEXT, gates_buttons(), "seldar_city_gates"),
     LEGACY_OUTSIDE_CITY: CityResponse(LEAVE_CITY_TEXT, gates_buttons(), "outside_city_crossroads"),
@@ -463,7 +506,91 @@ CITY_ACTIONS: dict[str, CityResponse] = {
     "Объявления": CityResponse(ANNOUNCEMENTS_TEXT, central_square_buttons(), "seldar_announcements"),
 }
 
-CITY_BUTTONS = frozenset(CITY_ACTIONS.keys()) | EXTERNAL_LOCATION_BUTTONS
+BRANCH_CHOICE_ACTIONS = frozenset({ORDER_STONE, APPLY_ID_AMULET, CHOOSE_SPIRIT_BRANCH, CHOOSE_MANA_BRANCH})
+CITY_BUTTONS = frozenset(CITY_ACTIONS.keys()) | BRANCH_CHOICE_ACTIONS | EXTERNAL_LOCATION_BUTTONS | MARKET_ACTIONS
+
+
+def order_stone_text(player: dict[str, Any]) -> str:
+    ensure_active_skill_fields(player)
+    branch = player_branch(player)
+    if branch:
+        return (
+            "🪨 Распорядительный камень\n\n"
+            f"Вы уже закрепили свою ветвь: {BRANCH_LABELS[branch]}. "
+            "Сменить её обычным способом нельзя."
+        )
+    if int(player.get("level") or 1) < 10:
+        return (
+            "🪨 Распорядительный камень\n\n"
+            "Камень остаётся холодным. Похоже, сначала нужно окрепнуть до 10 уровня. "
+            "Это откроет только выбор ветви, а не сами активные навыки напрямую."
+        )
+    if not has_identification_amulet(player):
+        return (
+            "🪨 Распорядительный камень\n\n"
+            "Камень не реагирует. Нужен идентификационный амулет — без него он не сможет определить владельца."
+        )
+    return (
+        "🪨 Распорядительный камень\n\n"
+        "Холодная грань камня едва заметно светится. Ваш идентификационный амулет отзывается слабым теплом. "
+        "Можно приложить амулет и выбрать путь развития активных навыков."
+    )
+
+
+def process_branch_choice_action(storage: Any, player: dict[str, Any], action: str) -> WorldActionResult | None:
+    if action not in BRANCH_CHOICE_ACTIONS:
+        return None
+    ensure_active_skill_fields(player)
+
+    if action == ORDER_STONE:
+        player["current_city"] = "seldar"
+        player["current_zone"] = "seldar_town_hall_order_stone"
+        player["location_id"] = "seldar_town_hall_order_stone"
+        refresh_unlocked_active_skills(player)
+        storage.update_player(player)
+        return WorldActionResult(order_stone_text(player), order_stone_buttons(player))
+
+    if action == APPLY_ID_AMULET:
+        if player_branch(player):
+            return WorldActionResult(order_stone_text(player), order_stone_buttons(player))
+        if int(player.get("level") or 1) < 10 or not has_identification_amulet(player):
+            return WorldActionResult(order_stone_text(player), order_stone_buttons(player))
+        player["current_city"] = "seldar"
+        player["current_zone"] = "seldar_town_hall_order_stone"
+        player["location_id"] = "seldar_town_hall_order_stone"
+        storage.update_player(player)
+        text = (
+            "Вы прикладываете идентификационный амулет к холодной грани Распорядительного камня. "
+            "Внутри камня вспыхивают две тусклые жилы: одна отзывается тяжёлым дыханием тела и оружия, "
+            "другая — ровным потоком маны.\n\n"
+            "Ветвь Духа — путь оружия, стойкости, рывков, ударов, парирования и боевой воли. Навыки тратят очки духа.\n\n"
+            "Ветвь Маны — путь заклинаний, барьеров, лечения, стихий, контроля и магической поддержки. Навыки тратят очки маны."
+        )
+        return WorldActionResult(text, branch_choice_buttons())
+
+    branch = "spirit" if action == CHOOSE_SPIRIT_BRANCH else "mana"
+    try:
+        result = choose_active_skill_branch(player, branch)
+    except ValueError as exc:
+        message = str(exc)
+        if "already" in message or "level" in message or "amulet" in message:
+            text = order_stone_text(player)
+        else:
+            text = "Сейчас нельзя выбрать ветвь активных навыков."
+        storage.update_player(player)
+        return WorldActionResult(text, order_stone_buttons(player))
+
+    storage.update_player(player)
+    label = result["branch_label"]
+    added = int(result.get("added_skills") or 0)
+    text = (
+        f"✅ Вы выбрали {label}.\n\n"
+        "Теперь вторая ветвь закрыта для постоянного развития. "
+        "Сами активные навыки открываются не за уровень, а по требованиям ветви, предыдущих навыков, "
+        "модификаторов, вложенных характеристик, оружия, книг, наставников, свитков, квестов, событий или особых условий.\n\n"
+        f"Открыто навыков ветви: {added}."
+    )
+    return WorldActionResult(text, order_stone_buttons(player))
 
 
 def process_world_action(
@@ -481,6 +608,14 @@ def process_world_action(
     if player.get("in_battle") or action in EXTERNAL_LOCATION_BUTTONS:
         response = handle_external_location_action(storage, player, action)
         return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
+
+    if action in MARKET_ACTIONS or is_market_context(player):
+        response = handle_market_action(storage, player, action)
+        return WorldActionResult(text=response.text, buttons=response.buttons)
+
+    branch_response = process_branch_choice_action(storage, player, action)
+    if branch_response is not None:
+        return branch_response
 
     response = get_city_response(action)
     updated_player = apply_city_transition(storage, player, response)

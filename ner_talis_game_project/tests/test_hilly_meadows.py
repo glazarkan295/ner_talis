@@ -249,8 +249,10 @@ class HillyMeadowsIntegrationTest(unittest.TestCase):
         self.assertEqual(calculate_scaled_seconds(0, 100, 60, 600), 600)
         self.assertEqual(calculate_scaled_seconds(0, 100, 30, 600), 600)
         self.assertLessEqual(calculate_scaled_seconds(1, 100, 30, 600), 300)
-        self.assertEqual(CAMP_DISHES["Сытная похлёбка"]["restore_energy"], 50)
+        self.assertEqual(CAMP_DISHES["Сытная похлёбка"]["restore_energy"], 40)
         self.assertIn("Луговой корень", CAMP_DISHES["Сытная похлёбка"]["ingredients"])
+        self.assertIn("Съедобный лесной гриб", CAMP_DISHES["Сытная похлёбка"]["ingredients"])
+        self.assertNotIn("Съедобный гриб", CAMP_DISHES["Сытная похлёбка"]["ingredients"])
         self.assertNotIn("Съедобный корень", CAMP_DISHES["Сытная похлёбка"]["ingredients"])
 
 

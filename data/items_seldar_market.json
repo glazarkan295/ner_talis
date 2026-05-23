@@ -1,0 +1,367 @@
+[
+  {
+    "id": "simple_healing_potion",
+    "name": "Простое зелье лечения",
+    "name_ru": "Простое зелье лечения",
+    "category": "consumables",
+    "type": "consumable",
+    "subtype": "potion",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Расходник для боя. Восстанавливает 30 жизней.",
+    "can_sell": true,
+    "sell_price_copper": 35,
+    "icon": "/assets/items/seldar_market/simple_healing_potion.png",
+    "use_effect": {
+      "hp_restore": 30
+    },
+    "stats": [
+      "Восстановление HP: 30"
+    ]
+  },
+  {
+    "id": "mining_pickaxe",
+    "name": "Шахтёрская кирка",
+    "name_ru": "Шахтёрская кирка",
+    "category": "consumables",
+    "type": "tool",
+    "subtype": "pickaxe",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Расходник-инструмент для добычи руд. Имеет 10 использований.",
+    "direct_use": false,
+    "can_sell": true,
+    "sell_price_copper": 35,
+    "icon": "/assets/items/seldar_market/mining_pickaxe.png",
+    "uses_left": 10,
+    "max_uses": 10,
+    "stats": [
+      "Использований: 10"
+    ]
+  },
+  {
+    "id": "woodcutters_axe",
+    "name": "Топор дровосека",
+    "name_ru": "Топор дровосека",
+    "category": "consumables",
+    "type": "tool",
+    "subtype": "axe",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Расходник-инструмент для добычи брёвен. Имеет 10 использований.",
+    "direct_use": false,
+    "can_sell": true,
+    "sell_price_copper": 30,
+    "icon": "/assets/items/seldar_market/woodcutters_axe.png",
+    "uses_left": 10,
+    "max_uses": 10,
+    "stats": [
+      "Использований: 10"
+    ]
+  },
+  {
+    "id": "ordinary_leather_helmet",
+    "name": "Обычный кожаный шлем",
+    "name_ru": "Обычный кожаный шлем",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "helmet",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Обычный кожаный шлем. Базовая ранняя кожаная экипировка без зачарований.",
+    "can_sell": true,
+    "sell_price_copper": 100,
+    "icon": "/assets/items/seldar_market/ordinary_leather_helmet.png",
+    "slot": "helmet",
+    "targetSlotKey": "helmet",
+    "slotKey": "helmet",
+    "item_class": "equipment",
+    "enchant_slots": 0,
+    "can_enchant": false,
+    "stat_modifiers": {
+      "armor": 2,
+      "magic_armor": 1
+    },
+    "stats": [
+      "Броня: +2"
+    ]
+  },
+  {
+    "id": "ordinary_leather_chest",
+    "name": "Обычный кожаный нагрудник",
+    "name_ru": "Обычный кожаный нагрудник",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "chest",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Обычный кожаный нагрудник. Базовая ранняя кожаная экипировка без зачарований.",
+    "can_sell": true,
+    "sell_price_copper": 150,
+    "icon": "/assets/items/seldar_market/ordinary_leather_chest.png",
+    "slot": "chest",
+    "targetSlotKey": "chest",
+    "slotKey": "chest",
+    "item_class": "equipment",
+    "enchant_slots": 0,
+    "can_enchant": false,
+    "stat_modifiers": {
+      "armor": 5,
+      "magic_armor": 2,
+      "bonus_hp": 8
+    },
+    "stats": [
+      "Броня: +5"
+    ]
+  },
+  {
+    "id": "ordinary_leather_boots",
+    "name": "Обычные кожаные ботинки",
+    "name_ru": "Обычные кожаные ботинки",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "boots",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Обычные кожаные ботинки. Базовая ранняя кожаная экипировка без зачарований.",
+    "can_sell": true,
+    "sell_price_copper": 100,
+    "icon": "/assets/items/seldar_market/ordinary_leather_boots.png",
+    "slot": "boots",
+    "targetSlotKey": "boots",
+    "slotKey": "boots",
+    "item_class": "equipment",
+    "enchant_slots": 0,
+    "can_enchant": false,
+    "stat_modifiers": {
+      "armor": 2,
+      "bonus_dodge": 2
+    },
+    "stats": [
+      "Броня: +2"
+    ]
+  },
+  {
+    "id": "ordinary_leather_gloves",
+    "name": "Обычные кожаные перчатки",
+    "name_ru": "Обычные кожаные перчатки",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "gloves",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Обычные кожаные перчатки. Базовая ранняя кожаная экипировка без зачарований.",
+    "can_sell": true,
+    "sell_price_copper": 125,
+    "icon": "/assets/items/seldar_market/ordinary_leather_gloves.png",
+    "slot": "gloves",
+    "targetSlotKey": "gloves",
+    "slotKey": "gloves",
+    "item_class": "equipment",
+    "enchant_slots": 0,
+    "can_enchant": false,
+    "stat_modifiers": {
+      "armor": 2,
+      "bonus_accuracy": 1
+    },
+    "stats": [
+      "Броня: +2"
+    ]
+  },
+  {
+    "id": "ordinary_leather_belt",
+    "name": "Обычный кожаный пояс",
+    "name_ru": "Обычный кожаный пояс",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "belt",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Обычный кожаный пояс. Базовая ранняя кожаная экипировка без зачарований.",
+    "can_sell": true,
+    "sell_price_copper": 115,
+    "icon": "/assets/items/seldar_market/ordinary_leather_belt.png",
+    "slot": "belt",
+    "targetSlotKey": "belt",
+    "slotKey": "belt",
+    "item_class": "equipment",
+    "enchant_slots": 0,
+    "can_enchant": false,
+    "stat_modifiers": {
+      "armor": 1,
+      "bonus_max_energy": 3
+    },
+    "stats": [
+      "Броня: +1"
+    ]
+  },
+  {
+    "id": "ordinary_leather_pants",
+    "name": "Обычные кожаные штаны",
+    "name_ru": "Обычные кожаные штаны",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "pants",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Обычные кожаные штаны. Базовая ранняя кожаная экипировка без зачарований.",
+    "can_sell": true,
+    "sell_price_copper": 150,
+    "icon": "/assets/items/seldar_market/ordinary_leather_pants.png",
+    "slot": "pants",
+    "targetSlotKey": "pants",
+    "slotKey": "pants",
+    "item_class": "equipment",
+    "enchant_slots": 0,
+    "can_enchant": false,
+    "stat_modifiers": {
+      "armor": 4,
+      "bonus_spirit": 2
+    },
+    "stats": [
+      "Броня: +4"
+    ]
+  },
+  {
+    "id": "glass_diamond",
+    "name": "Стекляшки: Алмаз",
+    "name_ru": "Стекляшки: Алмаз",
+    "category": "resources",
+    "type": "gem_imitation",
+    "subtype": "glass_gem",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Дешёвая имитация драгоценного камня. Подходит для дешёвой бижутерии, но не держит полноценные сильные зачарования.",
+    "can_sell": true,
+    "sell_price_copper": 200,
+    "icon": "/assets/items/seldar_market/glass_diamond.png",
+    "integration_tags": [
+      "inventory_item",
+      "glass_gem"
+    ]
+  },
+  {
+    "id": "glass_ruby",
+    "name": "Стекляшки: Рубин",
+    "name_ru": "Стекляшки: Рубин",
+    "category": "resources",
+    "type": "gem_imitation",
+    "subtype": "glass_gem",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Дешёвая имитация драгоценного камня. Подходит для дешёвой бижутерии, но не держит полноценные сильные зачарования.",
+    "can_sell": true,
+    "sell_price_copper": 200,
+    "icon": "/assets/items/seldar_market/glass_ruby.png",
+    "integration_tags": [
+      "inventory_item",
+      "glass_gem"
+    ]
+  },
+  {
+    "id": "glass_sapphire",
+    "name": "Стекляшки: Сапфир",
+    "name_ru": "Стекляшки: Сапфир",
+    "category": "resources",
+    "type": "gem_imitation",
+    "subtype": "glass_gem",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Дешёвая имитация драгоценного камня. Подходит для дешёвой бижутерии, но не держит полноценные сильные зачарования.",
+    "can_sell": true,
+    "sell_price_copper": 200,
+    "icon": "/assets/items/seldar_market/glass_sapphire.png",
+    "integration_tags": [
+      "inventory_item",
+      "glass_gem"
+    ]
+  },
+  {
+    "id": "glass_emerald",
+    "name": "Стекляшки: Изумруд",
+    "name_ru": "Стекляшки: Изумруд",
+    "category": "resources",
+    "type": "gem_imitation",
+    "subtype": "glass_gem",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Дешёвая имитация драгоценного камня. Подходит для дешёвой бижутерии, но не держит полноценные сильные зачарования.",
+    "can_sell": true,
+    "sell_price_copper": 200,
+    "icon": "/assets/items/seldar_market/glass_emerald.png",
+    "integration_tags": [
+      "inventory_item",
+      "glass_gem"
+    ]
+  },
+  {
+    "id": "glass_aquamarine",
+    "name": "Стекляшки: Аквамарин",
+    "name_ru": "Стекляшки: Аквамарин",
+    "category": "resources",
+    "type": "gem_imitation",
+    "subtype": "glass_gem",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Дешёвая имитация драгоценного камня. Подходит для дешёвой бижутерии, но не держит полноценные сильные зачарования.",
+    "can_sell": true,
+    "sell_price_copper": 200,
+    "icon": "/assets/items/seldar_market/glass_aquamarine.png",
+    "integration_tags": [
+      "inventory_item",
+      "glass_gem"
+    ]
+  },
+  {
+    "id": "glass_topaz",
+    "name": "Стекляшки: Топаз",
+    "name_ru": "Стекляшки: Топаз",
+    "category": "resources",
+    "type": "gem_imitation",
+    "subtype": "glass_gem",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Дешёвая имитация драгоценного камня. Подходит для дешёвой бижутерии, но не держит полноценные сильные зачарования.",
+    "can_sell": true,
+    "sell_price_copper": 200,
+    "icon": "/assets/items/seldar_market/glass_topaz.png",
+    "integration_tags": [
+      "inventory_item",
+      "glass_gem"
+    ]
+  },
+  {
+    "id": "glass_amethyst",
+    "name": "Стекляшки: Аметист",
+    "name_ru": "Стекляшки: Аметист",
+    "category": "resources",
+    "type": "gem_imitation",
+    "subtype": "glass_gem",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Дешёвая имитация драгоценного камня. Подходит для дешёвой бижутерии, но не держит полноценные сильные зачарования.",
+    "can_sell": true,
+    "sell_price_copper": 200,
+    "icon": "/assets/items/seldar_market/glass_amethyst.png",
+    "integration_tags": [
+      "inventory_item",
+      "glass_gem"
+    ]
+  }
+]

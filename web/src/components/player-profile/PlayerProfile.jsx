@@ -22,6 +22,8 @@ const DEFAULT_SLOTS = [
   { key: "ring2", label: "Кольцо 2" },
   { key: "weapon1", label: "Оружие 1" },
   { key: "weapon2", label: "Оружие 2" },
+  { key: "arrow_quiver", label: "Колчан стрел" },
+  { key: "bolt_quiver", label: "Колчан болтов" },
   { key: "special", label: "Особый слот" },
 ];
 
@@ -215,6 +217,21 @@ function itemSlot(item) {
   return item?.targetSlotKey || item?.slotKey || item?.slot || item?.target_slot || "";
 }
 
+function itemSellPriceText(item) {
+  const text = item?.sellPriceText ?? item?.sell_price_text ?? item?.sellPriceFormatted ?? item?.sell_price_formatted;
+  if (text) return text;
+
+  const canSell = item?.canSell ?? item?.can_sell;
+  if (canSell === false) return "не продаётся";
+
+  const rawPrice = item?.sellPriceCopper ?? item?.sell_price_copper ?? item?.sellPrice ?? item?.sell_price;
+  if (rawPrice === undefined || rawPrice === null || rawPrice === "") return "";
+
+  const price = Number(rawPrice);
+  if (!Number.isFinite(price) || price < 0) return "";
+  return `${price} медных`;
+}
+
 function compactSlotName(slotKey = "") {
   const map = {
     helmet: "Шлем",
@@ -228,6 +245,8 @@ function compactSlotName(slotKey = "") {
     ring2: "Кольцо 2",
     weapon1: "Оружие 1",
     weapon2: "Оружие 2",
+    arrow_quiver: "Колчан стрел",
+    bolt_quiver: "Колчан болтов",
     special: "Особый слот",
   };
   return map[slotKey] || slotKey || "—";
@@ -444,6 +463,7 @@ function ItemModal({ item, slotKey, position, onClose, onEquipItem, onUnequipIte
   if (!item) return null;
   const actions = item.actions || [];
   const itemStats = statLines(item);
+  const sellPriceText = itemSellPriceText(item);
   return (
     <div className="nt-modal-layer" onMouseDown={onClose}>
       <article className={`nt-modal ${qualityClass(item.quality)}`} style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
@@ -460,6 +480,7 @@ function ItemModal({ item, slotKey, position, onClose, onEquipItem, onUnequipIte
           <span>Тип</span><strong>{item.type || item.category || "—"}</strong>
           <span>Слот</span><strong>{compactSlotName(slotKey || itemSlot(item))}</strong>
           <span>Количество</span><strong>×{item.amount || 1}</strong>
+          {sellPriceText ? <><span>Цена продажи</span><strong>{sellPriceText}</strong></> : null}
         </div>
         <p>{item.description || "Описание предмета пока не добавлено."}</p>
         {itemStats.length ? <div className="nt-modal-block"><h4>Свойства</h4><StatLines lines={itemStats} /></div> : null}
@@ -550,12 +571,22 @@ function EquipmentPanel({ profile, onOpenItem, onOpenSlot }) {
   return (
     <Panel title="Экипировка">
       <div className="nt-equipment-grid">
-        {slots.slice(0, 12).map((slot) => {
+        {slots.map((slot) => {
           const item = equipment[slot.key];
+          const blocked = Boolean(slot.blocked) && !item;
+          const slotClass = [`nt-equip-slot`, item ? qualityClass(item.quality) : "empty", blocked ? "blocked" : ""].filter(Boolean).join(" ");
           return (
-            <button key={slot.key} className={`nt-equip-slot ${item ? qualityClass(item.quality) : "empty"}`} type="button" onClick={(event) => item ? onOpenItem(item, slot.key, event) : onOpenSlot(slot, event)}>
-              <ItemArt item={item} fallback="+" className="nt-equip-art" />
-              <span className="nt-equip-label">{item?.name || slot.label}</span>
+            <button
+              key={slot.key}
+              className={slotClass}
+              type="button"
+              disabled={blocked}
+              title={blocked ? slot.blockedReason || "Слот заблокирован" : undefined}
+              onClick={(event) => item ? onOpenItem(item, slot.key, event) : onOpenSlot(slot, event)}
+            >
+              <ItemArt item={item} fallback={blocked ? "×" : "+"} className="nt-equip-art" />
+              {blocked ? <span className="nt-slot-blocked-badge">блок</span> : null}
+              <span className="nt-equip-label">{item?.name || slot.statusLabel || slot.label}</span>
             </button>
           );
         })}
@@ -860,6 +891,7 @@ export function PlayerProfile({ profile, onSpendAttributePoints, onConfirmAttrib
   }
 
   function openSlot(slot, event = null) {
+    if (slot?.blocked) return;
     const items = inventory.filter((item) => {
       const target = itemSlot(item);
       if (target === slot.key) return true;

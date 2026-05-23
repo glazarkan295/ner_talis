@@ -1,0 +1,103 @@
+{
+  "enabled": true,
+  "version": "2026-05-23",
+  "rule": "Стрелы и болты не хранятся россыпью для применения навыков. Для лука нужен экипированный колчан для стрел, для арбалета — экипированный колчан для болтов. Боеприпасы должны быть загружены в подходящий колчан.",
+  "slots": {
+    "arrow_quiver": {
+      "slot_name": "Колчан для стрел",
+      "compatible_weapon_type": "bow",
+      "quiver_item_id": "arrow_quiver_empty",
+      "quiver_name": "Пустой колчан для стрел лука",
+      "loaded_ammo_item_id": "arrow_for_bow",
+      "loaded_ammo_name": "Стрела для лука",
+      "base_capacity": 30,
+      "aliases": [
+        "arrow_quiver",
+        "Колчан для стрел",
+        "Пустой колчан для стрел лука"
+      ]
+    },
+    "bolt_quiver": {
+      "slot_name": "Колчан для болтов",
+      "compatible_weapon_type": "crossbow",
+      "quiver_item_id": "bolt_quiver_empty",
+      "quiver_name": "Пустой колчан для болтов арбалета",
+      "loaded_ammo_item_id": "bolt_for_crossbow",
+      "loaded_ammo_name": "Болт для арбалета",
+      "base_capacity": 20,
+      "aliases": [
+        "bolt_quiver",
+        "Колчан для болтов",
+        "Пустой колчан для болтов арбалета"
+      ]
+    }
+  },
+  "item_templates": [
+    {
+      "id": "arrow_quiver_empty",
+      "name": "Пустой колчан для стрел лука",
+      "type": "ammo_container",
+      "slot": "arrow_quiver",
+      "compatible_ammo": "arrow_for_bow",
+      "compatible_weapon": "bow",
+      "base_capacity": 30,
+      "description": "Специальный колчан для хранения стрел. Без него нельзя использовать навыки с луком."
+    },
+    {
+      "id": "bolt_quiver_empty",
+      "name": "Пустой колчан для болтов арбалета",
+      "type": "ammo_container",
+      "slot": "bolt_quiver",
+      "compatible_ammo": "bolt_for_crossbow",
+      "compatible_weapon": "crossbow",
+      "base_capacity": 20,
+      "description": "Специальный колчан для хранения болтов. Без него нельзя использовать навыки с арбалетом."
+    },
+    {
+      "id": "arrow_for_bow",
+      "name": "Стрела для лука",
+      "type": "ammunition",
+      "stored_in": "arrow_quiver",
+      "description": "Боеприпас для лука. Для применения навыка должна быть загружена в колчан для стрел."
+    },
+    {
+      "id": "bolt_for_crossbow",
+      "name": "Болт для арбалета",
+      "type": "ammunition",
+      "stored_in": "bolt_quiver",
+      "description": "Боеприпас для арбалета. Для применения навыка должен быть загружен в колчан для болтов."
+    }
+  ],
+  "storage_rules": {
+    "ammo_must_be_loaded_in_quiver_for_combat": true,
+    "loose_ammo_can_exist_in_inventory": true,
+    "loose_ammo_cannot_be_spent_by_ranged_skills": true,
+    "empty_quiver_can_be_equipped": true,
+    "empty_quiver_blocks_ranged_skill_until_loaded": true,
+    "reload_is_separate_inventory_action": true,
+    "reload_action_spends_turn_in_combat": false,
+    "reload_note": "По умолчанию загрузка стрел/болтов в колчан считается внебоевым действием инвентаря. Если позже нужна тактика в бою, можно сделать перезарядку отдельным действием."
+  },
+  "messages": {
+    "missing_arrow_quiver": "Для навыков с луком нужен колчан для стрел.",
+    "missing_bolt_quiver": "Для навыков с арбалетом нужен колчан для болтов.",
+    "missing_arrow_in_quiver": "В колчане нет нужного количества стрел.",
+    "missing_bolt_in_quiver": "В колчане нет нужного количества болтов.",
+    "wrong_quiver": "Эти боеприпасы нельзя хранить в выбранном колчане.",
+    "quiver_full": "В колчане больше нет места."
+  },
+  "integration_fields": {
+    "player_equipment": [
+      "equipped_quivers.arrow_quiver",
+      "equipped_quivers.bolt_quiver"
+    ],
+    "quiver_state": [
+      "item_id",
+      "slot",
+      "capacity",
+      "ammo_item_id",
+      "ammo_count"
+    ],
+    "skill_field": "ammo_requirements.requirements_by_weapon.<weapon>.quiver_requirement"
+  }
+}

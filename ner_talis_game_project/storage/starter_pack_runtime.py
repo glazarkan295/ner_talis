@@ -31,6 +31,12 @@ STARTER_EXTRA_FIELDS = {
     "spirit",
     "mana",
     "branch",
+    "skill_branch",
+    "branch_choice_hint_sent",
+    "branch_chosen_at",
+    "branch_choice_place",
+    "has_identification_amulet",
+    "unlocked_skill_sources",
     "skill_equip_capacity",
     "storage",
     "equipment",
@@ -113,8 +119,22 @@ def ensure_starter_pack(player: dict[str, Any]) -> bool:
     """Ensure a profile has starter gear and current starter skills exactly once."""
     changed = False
 
+    branch_changed = False
+    if "skill_branch" not in player:
+        player["skill_branch"] = None
+        branch_changed = True
+    if "branch_choice_hint_sent" not in player:
+        player["branch_choice_hint_sent"] = False
+        branch_changed = True
+    if "has_identification_amulet" not in player:
+        player["has_identification_amulet"] = True
+        branch_changed = True
+    if "unlocked_skill_sources" not in player:
+        player["unlocked_skill_sources"] = []
+        branch_changed = True
+
     if player.get("starter_pack_applied"):
-        return sync_starter_skill_definitions(player)
+        return sync_starter_skill_definitions(player) or branch_changed
 
     if not isinstance(player.get("equipment"), dict) or not player.get("equipment"):
         player["equipment"] = get_starter_equipment()

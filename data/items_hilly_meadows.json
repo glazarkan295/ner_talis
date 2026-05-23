@@ -15,7 +15,9 @@
       "food",
       "energy_restore"
     ],
-    "energy_restore": 7
+    "energy_restore": 7,
+    "can_sell": true,
+    "sell_price_copper": 10
   },
   {
     "id": "herbal_tea",
@@ -33,7 +35,9 @@
       "food",
       "energy_restore"
     ],
-    "energy_restore": 20
+    "energy_restore": 20,
+    "can_sell": true,
+    "sell_price_copper": 15
   },
   {
     "id": "meat_flatbread",
@@ -51,7 +55,9 @@
       "food",
       "energy_restore"
     ],
-    "energy_restore": 35
+    "energy_restore": 35,
+    "can_sell": true,
+    "sell_price_copper": 25
   },
   {
     "id": "hearty_stew",
@@ -69,7 +75,9 @@
       "food",
       "energy_restore"
     ],
-    "energy_restore": 50
+    "energy_restore": 40,
+    "can_sell": true,
+    "sell_price_copper": 30
   },
   {
     "id": "clean_water",
@@ -86,7 +94,9 @@
       "inventory_item",
       "ingredient"
     ],
-    "alchemy_type": "liquid"
+    "alchemy_type": "liquid",
+    "can_sell": true,
+    "sell_price_copper": 5
   },
   {
     "id": "coarse_flour",
@@ -103,7 +113,9 @@
       "inventory_item",
       "ingredient"
     ],
-    "alchemy_type": "powder"
+    "alchemy_type": "powder",
+    "can_sell": true,
+    "sell_price_copper": 10
   },
   {
     "id": "edible_mushroom",
@@ -120,7 +132,9 @@
       "inventory_item",
       "ingredient"
     ],
-    "alchemy_type": "mushroom"
+    "alchemy_type": "mushroom",
+    "can_sell": true,
+    "sell_price_copper": 3
   },
   {
     "id": "edible_root",
@@ -137,7 +151,9 @@
       "inventory_item",
       "ingredient"
     ],
-    "alchemy_type": "herb"
+    "alchemy_type": "herb",
+    "can_sell": true,
+    "sell_price_copper": 6
   },
   {
     "id": "raw_meat",
@@ -153,7 +169,9 @@
     "integration_tags": [
       "inventory_item",
       "ingredient"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 5
   },
   {
     "id": "meadow_mint",
@@ -171,7 +189,9 @@
       "ingredient",
       "alchemy"
     ],
-    "alchemy_type": "herb"
+    "alchemy_type": "herb",
+    "can_sell": true,
+    "sell_price_copper": 4
   },
   {
     "id": "meadow_root",
@@ -189,7 +209,9 @@
       "ingredient",
       "alchemy"
     ],
-    "alchemy_type": "herb"
+    "alchemy_type": "herb",
+    "can_sell": true,
+    "sell_price_copper": 4
   },
   {
     "id": "mountain_wormwood",
@@ -207,7 +229,9 @@
       "ingredient",
       "alchemy"
     ],
-    "alchemy_type": "herb"
+    "alchemy_type": "herb",
+    "can_sell": true,
+    "sell_price_copper": 3
   },
   {
     "id": "silver_chamomile",
@@ -225,7 +249,9 @@
       "ingredient",
       "alchemy"
     ],
-    "alchemy_type": "herb"
+    "alchemy_type": "herb",
+    "can_sell": true,
+    "sell_price_copper": 4
   },
   {
     "id": "sweet_meadow_berry",
@@ -241,7 +267,9 @@
     "integration_tags": [
       "inventory_item",
       "ingredient"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 4
   },
   {
     "id": "tart_blue_berry",
@@ -257,7 +285,9 @@
     "integration_tags": [
       "inventory_item",
       "ingredient"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 4
   },
   {
     "id": "yellow_clover",
@@ -275,7 +305,9 @@
       "ingredient",
       "alchemy"
     ],
-    "alchemy_type": "herb"
+    "alchemy_type": "herb",
+    "can_sell": true,
+    "sell_price_copper": 5
   },
   {
     "id": "common_stone",
@@ -292,7 +324,9 @@
       "inventory_item",
       "resource",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 3
   },
   {
     "id": "copper_ore_chunk",
@@ -309,7 +343,9 @@
       "inventory_item",
       "resource",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 8
   },
   {
     "id": "iron_ore_chunk",
@@ -326,7 +362,9 @@
       "inventory_item",
       "resource",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 8
   },
   {
     "id": "iron_scrap",
@@ -343,7 +381,9 @@
       "inventory_item",
       "resource",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 7
   },
   {
     "id": "copper_coin",
@@ -390,7 +430,8 @@
     "source_location": "hilly_meadows_blik",
     "integration_tags": [],
     "can_dismantle": true,
-    "can_sell": true
+    "can_sell": true,
+    "sell_price_copper": 7
   },
   {
     "id": "bull_horn",
@@ -407,7 +448,9 @@
       "inventory_item",
       "trophy",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 6
   },
   {
     "id": "dense_hide",
@@ -424,7 +467,9 @@
       "inventory_item",
       "trophy",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 8
   },
   {
     "id": "gopher_claw",
@@ -441,7 +486,9 @@
       "inventory_item",
       "trophy",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 6
   },
   {
     "id": "jackal_fang",
@@ -458,7 +505,9 @@
       "inventory_item",
       "trophy",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 6
   },
   {
     "id": "jackal_hide",
@@ -475,7 +524,9 @@
       "inventory_item",
       "trophy",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 6
   },
   {
     "id": "meat_piece",
@@ -492,7 +543,9 @@
       "inventory_item",
       "trophy",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 5
   },
   {
     "id": "rabid_rabbit_tooth",
@@ -509,7 +562,9 @@
       "inventory_item",
       "trophy",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 6
   },
   {
     "id": "sharp_tooth",
@@ -526,7 +581,9 @@
       "inventory_item",
       "trophy",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 6
   },
   {
     "id": "small_hide",
@@ -543,7 +600,9 @@
       "inventory_item",
       "trophy",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 4
   },
   {
     "id": "small_pelt",
@@ -560,7 +619,9 @@
       "inventory_item",
       "trophy",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 5
   },
   {
     "id": "strong_tendon",
@@ -577,7 +638,9 @@
       "inventory_item",
       "trophy",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 10
   },
   {
     "id": "tough_tendon",
@@ -594,6 +657,8 @@
       "inventory_item",
       "trophy",
       "crafting_material"
-    ]
+    ],
+    "can_sell": true,
+    "sell_price_copper": 10
   }
 ]

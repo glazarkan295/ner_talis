@@ -225,26 +225,20 @@ def run_telegram_bot() -> None:
 
 
 
-def recover_runtime_timers(telegram_application: Any) -> None:
-    """Restore real-time search/rest notifications after app restart."""
-    bot_data = getattr(telegram_application, "bot_data", None)
-    if not isinstance(bot_data, dict):
-        return
+def _timer_worker_interval_seconds() -> int:
+    return int(os.getenv("TIMER_RECOVERY_INTERVAL_SECONDS", "30") or 30)
 
-    storage = bot_data.get("storage")
-    if storage is None:
-        return
+
+def recover_telegram_runtime_timers(telegram_application: Any, storage: Any) -> int:
+    """Recover Telegram timer notifications without depending on VK modules."""
 
     from services.runtime_timer_scheduler import recover_saved_timers, start_persistent_timer_worker
 
     try:
         from keyboards.reply_keyboards import make_keyboard as telegram_keyboard
-        from keyboards.vk_keyboards import make_keyboard as vk_keyboard
-        from vk_api.utils import get_random_id
-        import vk_api
     except ModuleNotFoundError:
-        # Local smoke tests may run without optional bot dependencies.
-        return
+        logger.warning("Telegram timer recovery skipped: telegram keyboard dependencies are unavailable")
+        return 0
 
     def send_telegram(_platform: str, target_id: str, response: Any) -> None:
         asyncio.run(
@@ -256,9 +250,7 @@ def recover_runtime_timers(telegram_application: Any) -> None:
             )
         )
 
-    timer_worker_interval = int(os.getenv("TIMER_RECOVERY_INTERVAL_SECONDS", "30") or 30)
-
-    telegram_count = recover_saved_timers(
+    recovered = recover_saved_timers(
         storage=storage,
         send_callback=send_telegram,
         platform_filter="telegram",
@@ -268,33 +260,73 @@ def recover_runtime_timers(telegram_application: Any) -> None:
         storage=storage,
         send_callback=send_telegram,
         platform_filter="telegram",
-        interval_seconds=timer_worker_interval,
+        interval_seconds=_timer_worker_interval_seconds(),
     )
+    return recovered
 
+
+def recover_vk_runtime_timers(storage: Any) -> int:
+    """Recover VK timer notifications independently from Telegram recovery."""
+
+    if not os.getenv("VK_GROUP_TOKEN"):
+        return 0
+
+    from services.runtime_timer_scheduler import recover_saved_timers, start_persistent_timer_worker
+
+    try:
+        from keyboards.vk_keyboards import make_keyboard as vk_keyboard
+        from vk_api.utils import get_random_id
+        import vk_api
+    except ModuleNotFoundError:
+        logger.warning("VK timer recovery skipped: vk_api dependencies are unavailable")
+        return 0
+
+    vk_api_client = vk_api.VkApi(token=require_env("VK_GROUP_TOKEN")).get_api()
+
+    def send_vk(_platform: str, target_id: str, response: Any) -> None:
+        vk_api_client.messages.send(
+            peer_id=int(target_id),
+            message=response.text,
+            random_id=get_random_id(),
+            keyboard=vk_keyboard(response.buttons),
+        )
+
+    recovered = recover_saved_timers(
+        storage=storage,
+        send_callback=send_vk,
+        platform_filter="vk",
+        schedule_future=True,
+    )
+    start_persistent_timer_worker(
+        storage=storage,
+        send_callback=send_vk,
+        platform_filter="vk",
+        interval_seconds=_timer_worker_interval_seconds(),
+    )
+    return recovered
+
+
+def recover_runtime_timers(telegram_application: Any) -> None:
+    """Restore real-time search/rest notifications after app restart."""
+    bot_data = getattr(telegram_application, "bot_data", None)
+    if not isinstance(bot_data, dict):
+        return
+
+    storage = bot_data.get("storage")
+    if storage is None:
+        return
+
+    telegram_count = 0
     vk_count = 0
-    if os.getenv("VK_GROUP_TOKEN"):
-        vk_api_client = vk_api.VkApi(token=require_env("VK_GROUP_TOKEN")).get_api()
+    try:
+        telegram_count = recover_telegram_runtime_timers(telegram_application, storage)
+    except Exception:
+        logger.error("Telegram timer recovery failed:\n%s", redact_sensitive_text(traceback.format_exc()))
 
-        def send_vk(_platform: str, target_id: str, response: Any) -> None:
-            vk_api_client.messages.send(
-                peer_id=int(target_id),
-                message=response.text,
-                random_id=get_random_id(),
-                keyboard=vk_keyboard(response.buttons),
-            )
-
-        vk_count = recover_saved_timers(
-            storage=storage,
-            send_callback=send_vk,
-            platform_filter="vk",
-            schedule_future=True,
-        )
-        start_persistent_timer_worker(
-            storage=storage,
-            send_callback=send_vk,
-            platform_filter="vk",
-            interval_seconds=timer_worker_interval,
-        )
+    try:
+        vk_count = recover_vk_runtime_timers(storage)
+    except Exception:
+        logger.error("VK timer recovery failed:\n%s", redact_sensitive_text(traceback.format_exc()))
 
     if telegram_count or vk_count:
         logger.info(

@@ -15,13 +15,32 @@ def normalize_env_value(name: str, value: str | Path | None, default: str | None
     return raw
 
 
+def is_production_environment() -> bool:
+    value = normalize_env_value("APP_ENV", os.getenv("APP_ENV"), "development").casefold()
+    return value in {"prod", "production", "timeweb"}
+
+
+def allow_json_storage_in_production() -> bool:
+    value = normalize_env_value("ALLOW_JSON_STORAGE_IN_PRODUCTION", os.getenv("ALLOW_JSON_STORAGE_IN_PRODUCTION"), "false").casefold()
+    return value in {"1", "true", "yes", "on", "да"}
+
+
 def normalize_backend(value: str | None) -> str:
     backend = normalize_env_value("STORAGE_BACKEND", value, "sqlite").casefold()
     if backend in {"postgres", "postgresql"}:
         if not os.getenv("DATABASE_URL"):
             raise RuntimeError("Для STORAGE_BACKEND=postgres нужно указать DATABASE_URL.")
         return "postgres"
-    if backend in {"sqlite", "json"}:
+    if backend == "json":
+        if is_production_environment() and not allow_json_storage_in_production():
+            raise RuntimeError(
+                "STORAGE_BACKEND=json нельзя использовать в production: "
+                "данные игроков и промокодов могут потеряться или получить гонки. "
+                "Используйте STORAGE_BACKEND=postgres, либо явно задайте "
+                "ALLOW_JSON_STORAGE_IN_PRODUCTION=true только для временного ручного запуска."
+            )
+        return "json"
+    if backend == "sqlite":
         return backend
     raise RuntimeError("Некорректный STORAGE_BACKEND. Допустимые значения: postgres, sqlite, json.")
 
@@ -33,7 +52,8 @@ def create_storage(default_json_path: str | Path | None = None) -> Any:
         STORAGE_BACKEND=postgres
         DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DB_NAME
 
-    Для локальной разработки доступны SQLite и JSON.
+    Для локальной разработки доступны SQLite и JSON. JSON заблокирован в
+    production, если явно не включить ALLOW_JSON_STORAGE_IN_PRODUCTION=true.
     """
     backend = normalize_backend(os.getenv("STORAGE_BACKEND", "sqlite"))
 

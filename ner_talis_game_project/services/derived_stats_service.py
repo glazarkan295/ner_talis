@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from services.race_bonus_service import hp_multiplier, outgoing_damage_multiplier, stat_multiplier
+from services.active_skill_service import skill_level, skill_modifier_multiplier, skill_profile_power
 
 HIDDEN_FORMULA_KEYS = {"formula", "base_damage_formula", "damage_formula", "scaling_formula"}
 FORMULA_TEXT_MARKERS = ("player_level", "ceil(", "floor(", "log2(", "ln(", "уровень ×", "уровня ×", "уровень персонажа ×")
@@ -480,7 +481,7 @@ def calculate_player_derived_stats(player: dict[str, Any]) -> dict[str, int]:
 
 def skill_damage_type_key(skill: dict[str, Any]) -> str:
     raw = str(skill.get("damage_type") or skill.get("damageType") or "physical").casefold()
-    if "маг" in raw or raw == "magic":
+    if "маг" in raw or raw in {"magic", "magical"}:
         return "magic"
     if "mixed" in raw or "смеш" in raw:
         return "mixed"
@@ -505,9 +506,16 @@ def calculate_player_skill_raw_damage(player: dict[str, Any], skill: dict[str, A
     skill_name = str(skill.get("name") or "навыком")
     damage_value = skill.get("damage")
 
-    if skill_id == "magic_spark" or "magic_spark" in formula or "магический сгусток" in skill_name.casefold():
+    attribute_profile = skill.get("attribute_profile") if isinstance(skill.get("attribute_profile"), dict) else {}
+    if attribute_profile:
+        profile_power = skill_profile_power(stats, attribute_profile)
+        role_coefficient = float(skill.get("role_coefficient") or 0.5)
+        base_damage = profile_power + soft_level(level) * role_coefficient
+        base_damage *= 1 + math.log(skill_level(skill) + 1) * 0.12
+        base_damage *= skill_modifier_multiplier(skill)
+    elif skill_id in {"magic_spark", "neutral_magic_clot"} or "magic_spark" in formula or "магический сгусток" in skill_name.casefold():
         base_damage = 4 + level * 1.1 + stats["intelligence"] * 0.8
-    elif skill_id == "basic_attack" or "basic_attack" in formula or "обычный удар" in skill_name.casefold():
+    elif skill_id in {"basic_attack", "neutral_basic_strike"} or "basic_attack" in formula or "обычный удар" in skill_name.casefold():
         base_damage = 5 + level * 1.2 + stats["strength"] * 0.8
     elif isinstance(damage_value, (int, float)):
         base_damage = float(damage_value)

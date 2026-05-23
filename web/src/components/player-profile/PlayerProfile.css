@@ -483,3 +483,26 @@ button { cursor: pointer; }
   .nt-attribute-actions { justify-content: stretch; }
   .nt-attribute-actions button { flex: 1; }
 }
+
+.nt-equip-slot.blocked {
+  position: relative;
+  cursor: not-allowed;
+  opacity: .86;
+  border-color: rgba(210, 54, 45, .82);
+  background: linear-gradient(180deg, rgba(62, 14, 12, .56), rgba(13, 7, 7, .66));
+  box-shadow: inset 0 0 0 1px rgba(210, 54, 45, .38), 0 0 16px rgba(210, 54, 45, .12);
+}
+.nt-equip-slot.blocked:hover { transform: none; border-color: rgba(210, 54, 45, .82); }
+.nt-equip-slot.blocked .nt-equip-art { color: #ffb7ae; }
+.nt-slot-blocked-badge {
+  position: absolute;
+  top: 4px;
+  left: 5px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(226, 63, 52, .70);
+  background: rgba(68, 10, 8, .86);
+  color: #ffd1ca;
+  font-size: 8px;
+  text-transform: uppercase;
+}
