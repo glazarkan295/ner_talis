@@ -16,7 +16,7 @@ from dataclasses import asdict
 from typing import Any
 
 from services.derived_stats_service import calculate_player_derived_stats, calculate_player_skill_raw_damage, ensure_player_resources, safe_int, soft_level
-from services.item_registry import build_inventory_item, get_item_definition_by_name
+from services.item_registry import build_inventory_item, get_item_definition_by_id, get_item_definition_by_name
 from services.inventory_service import add_inventory_item as add_inventory_stack, inventory_add_result_notice, recalculate_inventory_overflow
 from services.progression_service import apply_death_experience_penalty, grant_experience
 from services.active_skill_service import (
@@ -223,6 +223,42 @@ BATTLE_MOB_CATALOGS = {
     "ordinary_forest": ORDINARY_FOREST_MOBS,
 }
 
+BATTLE_LOOT_ITEM_IDS = {
+    "hilly_meadows": {
+        "Маленькая шкура": "small_hide",
+        "Кусочек мяса": "meat_piece",
+        "Острый зуб": "sharp_tooth",
+        "Коготок суслика": "gopher_claw",
+        "Шкура шакала": "jackal_hide",
+        "Клык шакала": "jackal_fang",
+        "Жёсткое сухожилие": "tough_tendon",
+        "Сырое мясо": "raw_meat",
+        "Маленькая шкурка": "small_pelt",
+        "Зуб бешеного кролика": "rabid_rabbit_tooth",
+        "Плотная шкура": "dense_hide",
+        "Бычий рог": "bull_horn",
+        "Крепкое сухожилие": "strong_tendon",
+    },
+    "ordinary_forest": {
+        "Сырое мясо": "raw_meat",
+        "Волчья шкура": "wolf_hide",
+        "Волчий клык": "wolf_fang",
+        "Жёсткое сухожилие": "tough_sinew",
+        "Оленья шкура": "deer_hide",
+        "Рог оленя": "deer_antler",
+        "Крепкое сухожилие": "strong_sinew",
+        "Кабанья шкура": "boar_hide",
+        "Кабаний клык": "boar_tusk",
+        "Жир зверя": "animal_fat",
+        "Медвежья шкура": "bear_hide",
+        "Медвежий коготь": "bear_claw",
+        "Медвежий клык": "bear_fang",
+    },
+}
+
+
+def battle_loot_item_id(location_id: str | None, item_name: str) -> str | None:
+    return BATTLE_LOOT_ITEM_IDS.get(normalize_battle_location(location_id), {}).get(item_name)
 
 
 def player_display_name(player: dict[str, Any] | None) -> str:
@@ -918,7 +954,8 @@ def format_battle_status(battle: dict[str, Any]) -> str:
 def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: random.Random) -> str:
     enemies = battle.get("enemies", [])
     player_level = max(1, safe_int(player.get("level"), 1))
-    catalog = mob_catalog(battle_return_location(battle))
+    reward_location_id = battle_return_location(battle)
+    catalog = mob_catalog(reward_location_id)
     xp_total = 0
     loot_lines: list[str] = []
     for enemy in enemies:
@@ -936,7 +973,8 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
         for item_name, chance, min_amount, max_amount in catalog.get(template_key, {}).get("loot", []):
             if rng.uniform(0, 100) <= chance:
                 amount = rng.randint(min_amount, max_amount)
-                add_result = add_inventory_item(player, item_name, amount)
+                item_id = battle_loot_item_id(reward_location_id, item_name)
+                add_result = add_inventory_item(player, item_name, amount, item_id=item_id)
                 if add_result.added > 0:
                     note = inventory_add_result_notice(add_result, item_name)
                     loot_lines.append(f"{item_name} ×{add_result.added}{note}")
@@ -963,11 +1001,12 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
     return "\n".join(rewards)
 
 
-def add_inventory_item(player: dict[str, Any], item_name: str, amount: int):
+def add_inventory_item(player: dict[str, Any], item_name: str, amount: int, *, item_id: str | None = None):
     if amount <= 0:
         return add_inventory_stack(player, item_name, 0)
-    definition = get_item_definition_by_name(item_name)
-    inventory_item = build_inventory_item(item_name, amount)
+    definition = get_item_definition_by_id(item_id or "") if item_id else None
+    definition = definition or get_item_definition_by_name(item_name)
+    inventory_item = build_inventory_item(item_name, amount, item_id=item_id)
     inventory_item["category"] = "Добыча"
     inventory_item["source"] = "Добыча с мобов"
     if definition:
@@ -1087,6 +1126,13 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         move_player_to_battle_return_location(player, battle)
         rewards = grant_battle_rewards(player, battle, rng)
         return f"Победа!\n\n{rewards}", []
+
+    # If a player selected a skill and then presses any other battle button,
+    # cancel the stale target prompt. This prevents a later «Цель: N» click from
+    # firing an old skill after opening the pouch, waiting, or choosing another
+    # action.
+    if battle.get("pending_skill") and not action.startswith("Цель: "):
+        battle.pop("pending_skill", None)
 
     if action == BATTLE_POUCH:
         text, buttons = format_pouch(player, battle, 0)

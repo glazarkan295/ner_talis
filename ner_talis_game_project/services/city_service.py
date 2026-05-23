@@ -16,8 +16,13 @@ from services.external_location_service import (
     OUTSIDE_CITY,
     handle_external_location_action,
 )
+from services.web_profile import create_profile_site_link
 from services.market_service import (
     MARKET_ACTIONS,
+    MARKET_BACK,
+    MARKET_BACK_TO_MAIN,
+    MARKET_BUY,
+    MARKET_SELL,
     MARKET_ENTRY,
     MARKET_ZONE_PREFIX,
     handle_market_action,
@@ -33,6 +38,7 @@ ORDER_STONE = "Распорядительный камень"
 APPLY_ID_AMULET = "Приложить идентификационный амулет"
 CHOOSE_SPIRIT_BRANCH = "Выбрать Ветвь Духа"
 CHOOSE_MANA_BRANCH = "Выбрать Ветвь Маны"
+PROFILE_BUTTON = "Профиль"
 
 
 @dataclass(frozen=True)
@@ -55,7 +61,7 @@ def central_square_buttons() -> list[list[str]]:
         ["Портовый квартал", "Торговый квартал"],
         ["Ремесленный квартал", "Верхний квартал"],
         ["Городские ворота", "Объявления"],
-        ["Профиль"],
+        [PROFILE_BUTTON],
     ]
 
 
@@ -538,20 +544,28 @@ def order_stone_text(player: dict[str, Any]) -> str:
     )
 
 
-
 def _current_zone_id(player: dict[str, Any]) -> str:
     return str(player.get("current_zone") or player.get("location_id") or "").strip()
 
 
 def _branch_gate_response(player: dict[str, Any], action: str) -> WorldActionResult | None:
     zone = _current_zone_id(player)
-    if zone in {"seldar_town_hall", "seldar_town_hall_order_stone"} or (not zone and action == ORDER_STONE):
-        return None
-    return WorldActionResult(
-        "🪨 К Распорядительному камню нельзя обратиться отсюда. "
-        "Сначала перейдите в Селдар → Верхний квартал → Ратуша.",
-        central_square_buttons(),
-    )
+    if zone not in {"seldar_town_hall", "seldar_town_hall_order_stone"} and not (not zone and action == ORDER_STONE):
+        return WorldActionResult(
+            "🪨 К Распорядительному камню нельзя обратиться отсюда. "
+            "Сначала перейдите в Селдар → Верхний квартал → Ратуша.",
+            central_square_buttons(),
+        )
+
+    if action == ORDER_STONE and int(player.get("level") or 1) < 10:
+        return WorldActionResult(
+            "🪨 Распорядительный камень\n\n"
+            "Вы пришли рано: камень остаётся холодным. "
+            "Сначала нужно окрепнуть до 10 уровня, и только потом он позволит выбрать ветвь развития.",
+            town_hall_buttons(),
+        )
+
+    return None
 
 
 def _order_stone_interaction_allowed(player: dict[str, Any], action: str) -> bool:
@@ -560,14 +574,20 @@ def _order_stone_interaction_allowed(player: dict[str, Any], action: str) -> boo
         return zone in {"", "seldar_town_hall", "seldar_town_hall_order_stone"}
     return zone == "seldar_town_hall_order_stone"
 
+
 def process_branch_choice_action(storage: Any, player: dict[str, Any], action: str) -> WorldActionResult | None:
     if action not in BRANCH_CHOICE_ACTIONS:
         return None
     ensure_active_skill_fields(player)
+    player.pop("market_context", None)
 
     gate_response = _branch_gate_response(player, action)
-    if gate_response is not None or not _order_stone_interaction_allowed(player, action):
-        return gate_response or WorldActionResult(
+    if gate_response is not None:
+        storage.update_player(player)
+        return gate_response
+    if not _order_stone_interaction_allowed(player, action):
+        storage.update_player(player)
+        return WorldActionResult(
             "🪨 Сначала подойдите к Распорядительному камню в Ратуше и только потом прикладывайте амулет.",
             town_hall_buttons(),
         )
@@ -647,33 +667,71 @@ def _is_external_location_state(player: dict[str, Any]) -> bool:
     )
     return any(value.startswith(external_prefixes) for value in values if value)
 
+
+def _market_should_own_back(player: dict[str, Any], action: str) -> bool:
+    """Return True when the shared ``Назад`` button belongs to the market."""
+    return action == MARKET_BACK and is_market_context(player) and not _is_external_location_state(player)
+
+
+def _market_should_handle_action(player: dict[str, Any], action: str) -> bool:
+    """Return True when input should stay inside the NPC market state machine.
+
+    The market may own item names and typed quantities while its context is
+    active, but it must not intercept explicit city, branch-choice or
+    external-location buttons such as ``Выход из города`` and
+    ``Распорядительный камень``.
+    """
+    if action == MARKET_ENTRY:
+        return True
+    if not is_market_context(player) or _is_external_location_state(player):
+        return False
+    if action in BRANCH_CHOICE_ACTIONS:
+        return False
+    if action in EXTERNAL_LOCATION_BUTTONS and not _market_should_own_back(player, action):
+        return False
+    if action in CITY_ACTIONS and action != MARKET_ENTRY and action not in {MARKET_BUY, MARKET_SELL, MARKET_BACK, MARKET_BACK_TO_MAIN}:
+        return False
+    return True
+
+
+def _external_should_handle_action(player: dict[str, Any], action: str) -> bool:
+    if action not in EXTERNAL_LOCATION_BUTTONS:
+        return False
+    return not _market_should_own_back(player, action)
+
+
 def process_world_action(
     storage: Any,
     player: dict[str, Any],
     action: str,
     platform: str,
 ) -> WorldActionResult:
-    """Processes city, market, battle and external-location actions.
+    """Processes city, market, battle, branch and external-location actions.
 
-    Battle input stays the highest priority. Explicit city navigation can
-    break stale market context, external-location state keeps ownership of its
-    own buttons, and the market still owns its local ``Назад`` when the player
-    is actually inside the NPC market.
+    Priority rules are intentionally strict: explicit city/branch/external
+    buttons must be able to break stale market context, while item names,
+    quantities and the market-local ``Назад`` stay inside the market.
     """
     if player.get("in_battle"):
         response = handle_external_location_action(storage, player, action)
         return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
 
-    # Explicit city navigation must be able to break out of a stale market
-    # context. Otherwise old keyboards or an interrupted market flow can route
-    # trade-district buttons back into ``handle_market_action`` where unknown
-    # actions fall back to the market main screen. ``Рынок`` remains the only
-    # city action that intentionally enters the market state machine.
-    #
-    # External-location labels such as "Выход из города" and "Назад" are not
-    # handled here even if they are also listed in CITY_ACTIONS/CITY_BUTTONS:
-    # they belong to the external-location state machine and must keep showing
-    # the real location buttons instead of the generic gate keyboard.
+    if action == PROFILE_BUTTON:
+        try:
+            profile_url = create_profile_site_link(storage, player, platform)
+            text = (
+                "🌐 Профиль на сайте готов.\n\n"
+                f"Ссылка: {profile_url}\n\n"
+                "Она привязана к вашему единому игровому ID и действует ограниченное время."
+            )
+        except Exception:
+            text = "Профиль сейчас недоступен. Попробуйте ещё раз позже."
+        return WorldActionResult(text=text, buttons=central_square_buttons())
+
+    # Explicit city navigation breaks stale market context. ``Рынок`` is the
+    # only city button that intentionally enters the market state machine.
+    # External-location labels are handled below so ``Выход из города`` cannot
+    # be swallowed by stale market context.
     if action in CITY_ACTIONS and action != MARKET_ENTRY and action not in EXTERNAL_LOCATION_BUTTONS:
         player.pop("market_context", None)
         response = get_city_response(action)
@@ -686,21 +744,24 @@ def process_world_action(
         )
         return WorldActionResult(text=text, buttons=response.buttons)
 
-    if action in EXTERNAL_LOCATION_BUTTONS and _is_external_location_state(player):
-        response = handle_external_location_action(storage, player, action)
-        return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
-
-    if action == MARKET_ENTRY or is_market_context(player):
-        response = handle_market_action(storage, player, action)
-        return WorldActionResult(text=response.text, buttons=response.buttons)
-
-    if action in EXTERNAL_LOCATION_BUTTONS:
-        response = handle_external_location_action(storage, player, action)
-        return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
-
+    # Branch-choice buttons must never be handled by the market. This prevents
+    # stale market_context from teleporting the Order Stone flow back to the
+    # NPC market.
     branch_response = process_branch_choice_action(storage, player, action)
     if branch_response is not None:
         return branch_response
+
+    # External-location buttons also break stale market context. The only
+    # exception is the shared ``Назад`` label while the player is actually in
+    # a market screen, where it belongs to the market card/list flow.
+    if _external_should_handle_action(player, action):
+        player.pop("market_context", None)
+        response = handle_external_location_action(storage, player, action)
+        return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
+
+    if _market_should_handle_action(player, action):
+        response = handle_market_action(storage, player, action)
+        return WorldActionResult(text=response.text, buttons=response.buttons)
 
     response = get_city_response(action)
     updated_player = apply_city_transition(storage, player, response)
