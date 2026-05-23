@@ -7,7 +7,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from services.city_service import CITY_ACTIONS, process_world_action
+from services.city_service import CITY_ACTIONS, ORDER_STONE, process_world_action
 from services.external_location_service import OUTSIDE_CITY, HILLY_MEADOWS, COMMON_FOREST, FORTRESS_IN_GORGE
 from services.market_service import MARKET_ENTRY
 from services.registration_service import create_player, load_races
@@ -113,6 +113,59 @@ class ButtonRoutingIntegrityTest(unittest.TestCase):
                 updated = storage.get_player_by_game_id("NT-BUTTONS")
                 self.assertEqual(updated.get("current_zone"), expected_zone)
                 self.assertNotIn("market_context", updated)
+
+    def test_external_and_order_stone_buttons_break_stale_market_context(self):
+        storage, player = self.make_storage_player()
+        player["current_city"] = "seldar"
+        player["current_zone"] = "seldar_city_gates"
+        player["location_id"] = "seldar_city_gates"
+        player["market_context"] = {"mode": "main"}
+        storage.update_player(player)
+
+        result = process_world_action(storage, player, OUTSIDE_CITY, "telegram")
+
+        self.assert_known_response(result)
+        self.assertIn(HILLY_MEADOWS, flat_buttons(result.buttons))
+        updated = storage.get_player_by_game_id("NT-BUTTONS")
+        self.assertEqual(updated.get("current_zone"), "outside_city_crossroads")
+        self.assertNotIn("market_context", updated)
+
+        storage, player = self.make_storage_player()
+        player["level"] = 9
+        player["current_city"] = "seldar"
+        player["current_zone"] = "seldar_town_hall"
+        player["location_id"] = "seldar_town_hall"
+        player["market_context"] = {"mode": "main"}
+        storage.update_player(player)
+
+        result = process_world_action(storage, player, ORDER_STONE, "telegram")
+
+        self.assert_known_response(result)
+        self.assertIn("Вы пришли рано", result.text)
+        updated = storage.get_player_by_game_id("NT-BUTTONS")
+        self.assertEqual(updated.get("current_zone"), "seldar_town_hall")
+        self.assertNotIn("market_context", updated)
+
+    def test_market_buy_sell_buttons_work_through_vk_route(self):
+        storage, player = self.make_storage_player()
+
+        process_world_action(storage, player, MARKET_ENTRY, "vk")
+        player = storage.get_player_by_game_id("NT-BUTTONS")
+        buy_result = process_world_action(storage, player, "Купить", "vk")
+        self.assert_known_response(buy_result)
+        self.assertIn("Покупка у NPC", buy_result.text)
+        self.assertIn("Назад на рынок", flat_buttons(buy_result.buttons))
+        updated = storage.get_player_by_game_id("NT-BUTTONS")
+        self.assertEqual(updated.get("market_context", {}).get("mode"), "buy_list")
+
+        process_world_action(storage, updated, MARKET_ENTRY, "vk")
+        player = storage.get_player_by_game_id("NT-BUTTONS")
+        sell_result = process_world_action(storage, player, "Продать", "vk")
+        self.assert_known_response(sell_result)
+        self.assertIn("Продажа NPC", sell_result.text)
+        self.assertIn("Назад на рынок", flat_buttons(sell_result.buttons))
+        updated = storage.get_player_by_game_id("NT-BUTTONS")
+        self.assertEqual(updated.get("market_context", {}).get("mode"), "sell_list")
 
     def test_market_entry_still_opens_market_from_city(self):
         storage, player = self.make_storage_player()

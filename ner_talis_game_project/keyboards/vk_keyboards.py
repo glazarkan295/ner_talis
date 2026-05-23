@@ -14,12 +14,64 @@ from services.city_service import (
 )
 
 ButtonRows = list[list[str]]
+VK_MAX_ROWS = 10
+VK_MAX_BUTTONS_PER_ROW = 4
+VK_MAX_BUTTONS = VK_MAX_ROWS * VK_MAX_BUTTONS_PER_ROW
+
+
+def _fit_vk_button_rows(buttons: ButtonRows) -> ButtonRows:
+    """Fit arbitrary game keyboards into VK reply-keyboard limits.
+
+    Telegram can display long one-column lists, but VK rejects keyboards with
+    too many lines. Market buy/sell lists are the most visible case: the
+    shared service returns one item per row, so VK users could press
+    ``Купить``/``Продать`` and then fail to receive the list keyboard.
+    """
+    cleaned: list[list[str]] = []
+    for row in buttons or []:
+        labels = [str(label).strip() for label in row if str(label).strip()]
+        if labels:
+            cleaned.append(labels[:VK_MAX_BUTTONS_PER_ROW])
+
+    if len(cleaned) <= VK_MAX_ROWS and all(len(row) <= VK_MAX_BUTTONS_PER_ROW for row in cleaned):
+        return cleaned
+
+    flattened = [label for row in cleaned for label in row]
+    if len(flattened) > VK_MAX_BUTTONS:
+        # Keep navigation actions visible when truncation is unavoidable.
+        priority_labels = {
+            "Назад",
+            "Назад на рынок",
+            "В город",
+            "Вернуться в город",
+            "Вернуться к воротам",
+            "Торговый квартал",
+            "Сбежать",
+            "Подсумок",
+            "Подсумок далее",
+            "Подсумок назад",
+            "Профиль",
+            "Свернуть лагерь",
+        }
+        priority_tail = []
+        seen_priority = set()
+        for label in flattened:
+            if label in priority_labels and label not in seen_priority:
+                priority_tail.append(label)
+                seen_priority.add(label)
+        head_limit = max(0, VK_MAX_BUTTONS - len(priority_tail))
+        flattened = flattened[:head_limit] + priority_tail[:VK_MAX_BUTTONS - head_limit]
+
+    return [
+        flattened[index:index + VK_MAX_BUTTONS_PER_ROW]
+        for index in range(0, len(flattened), VK_MAX_BUTTONS_PER_ROW)
+    ][:VK_MAX_ROWS]
 
 
 def make_keyboard(buttons: ButtonRows) -> str:
     keyboard = VkKeyboard(one_time=False, inline=False)
 
-    for row_index, row in enumerate(buttons):
+    for row_index, row in enumerate(_fit_vk_button_rows(buttons)):
         if row_index > 0:
             keyboard.add_line()
 

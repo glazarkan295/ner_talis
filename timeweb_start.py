@@ -118,6 +118,29 @@ def get_app_port() -> int:
         raise RuntimeError(f"APP_PORT/PORT должен быть целым числом, получено: {raw_port!r}") from exc
 
 
+def get_bool_env(name: str, default: bool = False) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    return str(raw_value).strip().casefold() in {"1", "true", "yes", "on", "да"}
+
+
+def site_enabled() -> bool:
+    return get_bool_env("ENABLE_SITE", True)
+
+
+def telegram_enabled() -> bool:
+    return get_bool_env("ENABLE_TELEGRAM", True)
+
+
+def vk_enabled() -> bool:
+    return get_bool_env("ENABLE_VK", True)
+
+
+def bots_enabled() -> bool:
+    return telegram_enabled() or vk_enabled()
+
+
 def start_fastapi_site() -> threading.Thread:
     """Starts FastAPI in a background thread via uvicorn."""
 
@@ -178,9 +201,21 @@ def main() -> None:
     load_env_file_if_possible()
     configure_safe_logging()
 
-    # Timeweb проверяет HTTP-порт. Поэтому сайт стартует первым: /health
-    # должен отвечать даже если PostgreSQL временно недоступен или неверно задан.
-    start_fastapi_site()
+    if site_enabled():
+        # Timeweb проверяет HTTP-порт. Поэтому сайт стартует первым: /health
+        # должен отвечать даже если PostgreSQL временно недоступен или неверно задан.
+        start_fastapi_site()
+    else:
+        logger.info("FastAPI site is disabled by ENABLE_SITE=false")
+
+    if not bots_enabled():
+        if not site_enabled():
+            raise RuntimeError("Все части приложения отключены: ENABLE_SITE=false, ENABLE_TELEGRAM=false, ENABLE_VK=false")
+        init_storage()
+        APP_STATE["status"] = "running"
+        logger.info("Telegram/VK disabled; keeping site-only process alive")
+        while True:
+            time.sleep(3600)
 
     retry_seconds = max(5, int(os.getenv("APP_RESTART_RETRY_SECONDS", "30")))
     while True:

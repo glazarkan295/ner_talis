@@ -7,8 +7,6 @@ JSON without a separate data file.
 
 from __future__ import annotations
 
-import math
-import re
 from copy import deepcopy
 from datetime import datetime, timezone, timedelta
 from typing import Any
@@ -19,15 +17,14 @@ from pydantic import BaseModel, Field
 from services.derived_stats_service import (
     calculate_player_derived_stats,
     calculate_energy_stats,
+    ceil,
     collect_modifiers_from_value,
-    contains_formula_text,
     equipment_bonus,
     equipment_modifier_totals,
     equipment_stat_bonus,
     external_effect_modifier_totals,
     merge_modifier_totals,
     safe_int,
-    strip_hidden_formulas,
     ensure_player_resources,
     calculate_player_skill_raw_damage,
     prune_expired_effects,
@@ -42,7 +39,6 @@ from services.inventory_service import (
     regular_slot_count,
 )
 from services.promo_service import redeem_promo_code
-from services.race_bonus_service import hp_multiplier, outgoing_damage_multiplier, stat_multiplier
 from services.web_profile import PROFILE_SCOPE
 from services.active_skill_service import refresh_unlocked_active_skills, resource_cost_with_modifiers, skill_level, is_skill_weapon_compatible, skill_weapon_requirement_text
 
@@ -230,19 +226,6 @@ def parse_datetime(value: Any) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def ceil(value: float) -> int:
-    return int(math.ceil(value))
-
-
-def safe_int(value: Any, default: int = 0) -> int:
-    if value is None:
-        return default
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
 def safe_float(value: Any, default: float = 0.0) -> float:
     if value is None:
         return default
@@ -250,150 +233,6 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
-
-
-def effective_stat(player: dict[str, Any], stat_key: str, bonus_modifiers: dict[str, int] | None = None) -> int:
-    base = safe_int((player.get("stats") or {}).get(stat_key), 0)
-    invested = safe_int((player.get("invested_stats") or {}).get(stat_key), 0)
-    bonus = safe_int((player.get("stat_bonuses") or {}).get(stat_key), 0)
-    if bonus_modifiers:
-        bonus += equipment_stat_bonus(bonus_modifiers, stat_key)
-    invested_total = (base + invested) * stat_multiplier(player, stat_key)
-    return int(math.floor(1000 * math.log(1 + invested_total / 1000) + bonus))
-
-
-def equipment_stat_bonus(equipment_modifiers: dict[str, int], stat_key: str) -> int:
-    bonus_key = STAT_EQUIPMENT_BONUS_KEYS.get(stat_key, f"bonus_{stat_key}")
-    fallback_key = f"bonus_{stat_key}"
-    total = safe_int(equipment_modifiers.get(bonus_key), 0)
-    if fallback_key != bonus_key:
-        total += safe_int(equipment_modifiers.get(fallback_key), 0)
-    return total
-
-
-def parse_item_stat_modifier(line: Any) -> tuple[str, int] | None:
-    if not isinstance(line, str):
-        return None
-    text = line.strip()
-    if not text or contains_formula_text(text):
-        return None
-    if ":" in text:
-        label, value = text.split(":", 1)
-    else:
-        match = re.match(r"([+-]?\s*\d+(?:[.,]\d+)?)\s*(?:к\s+)?(.+)$", text, flags=re.IGNORECASE)
-        if not match:
-            return None
-        value, label = match.groups()
-    modifier_key = normalize_modifier_key(label)
-    if not modifier_key:
-        return None
-    match = re.search(r"([+-]?)\s*(\d+(?:[.,]\d+)?)", value)
-    if not match:
-        return None
-    sign = -1 if match.group(1) == "-" else 1
-    amount = int(float(match.group(2).replace(",", ".")))
-    return modifier_key, sign * amount
-
-
-def normalize_modifier_key(key: Any) -> str | None:
-    raw_key = str(key or "").strip()
-    if not raw_key:
-        return None
-    folded = raw_key.casefold()
-    if folded in ITEM_STAT_LABEL_TO_MODIFIER:
-        return ITEM_STAT_LABEL_TO_MODIFIER[folded]
-    snake_key = folded.replace("-", "_").replace(" ", "_").replace(".", "")
-    normalized = MODIFIER_KEY_ALIASES.get(snake_key, snake_key)
-    if normalized in KNOWN_MODIFIER_KEYS:
-        return normalized
-    return None
-
-
-def modifier_amount(value: Any) -> int:
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, (int, float)):
-        return int(value)
-    if isinstance(value, str):
-        if contains_formula_text(value):
-            return 0
-        match = re.search(r"([+-]?)\s*(\d+(?:[.,]\d+)?)", value)
-        if match:
-            sign = -1 if match.group(1) == "-" else 1
-            return sign * int(float(match.group(2).replace(",", ".")))
-    return safe_int(value, 0)
-
-
-def add_modifier(totals: dict[str, int], key: Any, value: Any) -> None:
-    normalized_key = normalize_modifier_key(key)
-    if not normalized_key:
-        return
-    totals[normalized_key] = safe_int(totals.get(normalized_key), 0) + modifier_amount(value)
-
-
-def collect_modifiers_from_value(value: Any, totals: dict[str, int]) -> None:
-    if isinstance(value, dict):
-        explicit_fields = ("stat_modifiers", "modifiers", "bonus_modifiers", "effect_modifiers", "bonuses")
-        has_explicit_modifiers = any(isinstance(value.get(field), (dict, list)) for field in explicit_fields)
-
-        for field in explicit_fields:
-            nested = value.get(field)
-            if isinstance(nested, (dict, list)):
-                collect_modifiers_from_value(nested, totals)
-
-        text_fields = ("properties", "enchantments", "effects") if has_explicit_modifiers else ("stats", "properties", "enchantments", "effects")
-        for field in text_fields:
-            nested = value.get(field)
-            if isinstance(nested, (dict, list)):
-                collect_modifiers_from_value(nested, totals)
-
-        skipped_fields = set(explicit_fields) | {"stats", "properties", "enchantments", "effects"}
-        for key, nested_value in value.items():
-            if key in skipped_fields:
-                continue
-            if isinstance(nested_value, (int, float, str)):
-                add_modifier(totals, key, nested_value)
-        return
-
-    if isinstance(value, list):
-        for nested in value:
-            collect_modifiers_from_value(nested, totals)
-        return
-
-    parsed = parse_item_stat_modifier(value)
-    if parsed is not None:
-        key, amount = parsed
-        add_modifier(totals, key, amount)
-
-
-def equipment_modifier_totals(player: dict[str, Any]) -> dict[str, int]:
-    totals: dict[str, int] = {}
-    equipment = player.get("equipment") or {}
-    if not isinstance(equipment, dict):
-        return totals
-    for raw_item in equipment.values():
-        if isinstance(raw_item, dict):
-            collect_modifiers_from_value(raw_item, totals)
-    return totals
-
-
-def external_effect_modifier_totals(player: dict[str, Any]) -> dict[str, int]:
-    totals: dict[str, int] = {}
-    for field in EXTERNAL_EFFECT_FIELDS:
-        collect_modifiers_from_value(player.get(field), totals)
-    return totals
-
-
-def merge_modifier_totals(*sources: dict[str, int]) -> dict[str, int]:
-    totals: dict[str, int] = {}
-    for source in sources:
-        for key, value in (source or {}).items():
-            add_modifier(totals, key, value)
-    return totals
-
-
-def equipment_bonus(bonus_modifiers: dict[str, int] | None, key: str) -> int:
-    return safe_int((bonus_modifiers or {}).get(key), 0)
 
 
 def consumable_effect_duration_seconds(item: dict[str, Any], effect_payload: dict[str, Any]) -> int:
@@ -514,9 +353,6 @@ def apply_energy_restore(player: dict[str, Any], item: dict[str, Any]) -> int:
         player.pop("energy_warning_10_sent", None)
     return new_value - current
 
-
-def soft_level(level: int) -> int:
-    return int(math.floor(10 * math.log2(max(1, level) + 1)))
 
 
 def format_money(copper: int) -> str:
@@ -1034,11 +870,27 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
     current_energy = derived["current_energy"]
 
     attributes = []
+    derived_stat_values = {
+        "strength": derived["strength"],
+        "endurance": derived["endurance"],
+        "dexterity": derived["dexterity"],
+        "perception": derived["perception"],
+        "intelligence": derived["intelligence"],
+        "wisdom": derived["wisdom"],
+    }
     for front_key, back_key, label, description in ATTRIBUTE_META:
         base = safe_int((player.get("stats") or {}).get(back_key), 0)
         invested = safe_int((player.get("invested_stats") or {}).get(back_key), 0)
         bonus = safe_int((player.get("stat_bonuses") or {}).get(back_key), 0) + equipment_stat_bonus(bonus_modifiers, back_key)
-        attributes.append({"key": front_key, "label": label, "value": int(math.floor((base + invested) * stat_multiplier(player, back_key) + bonus)), "description": description})
+        attributes.append({
+            "key": front_key,
+            "label": label,
+            "value": derived_stat_values[back_key],
+            "base": base,
+            "invested": invested,
+            "bonus": bonus,
+            "description": description,
+        })
 
     equipment = {}
     for slot_key, raw_item in (player.get("equipment") or {}).items():

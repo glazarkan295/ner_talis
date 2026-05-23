@@ -124,6 +124,18 @@ def get_bool_env(name: str, default: bool = False) -> bool:
     return value in {"1", "true", "yes", "on", "да"}
 
 
+def telegram_enabled() -> bool:
+    return get_bool_env("ENABLE_TELEGRAM", True)
+
+
+def vk_enabled() -> bool:
+    return get_bool_env("ENABLE_VK", True)
+
+
+def site_enabled() -> bool:
+    return get_bool_env("ENABLE_SITE", True)
+
+
 def get_int_env(name: str, default: int) -> int:
     raw_value = os.getenv(name)
     if raw_value is None:
@@ -318,15 +330,17 @@ def recover_runtime_timers(telegram_application: Any) -> None:
 
     telegram_count = 0
     vk_count = 0
-    try:
-        telegram_count = recover_telegram_runtime_timers(telegram_application, storage)
-    except Exception:
-        logger.error("Telegram timer recovery failed:\n%s", redact_sensitive_text(traceback.format_exc()))
+    if telegram_enabled():
+        try:
+            telegram_count = recover_telegram_runtime_timers(telegram_application, storage)
+        except Exception:
+            logger.error("Telegram timer recovery failed:\n%s", redact_sensitive_text(traceback.format_exc()))
 
-    try:
-        vk_count = recover_vk_runtime_timers(storage)
-    except Exception:
-        logger.error("VK timer recovery failed:\n%s", redact_sensitive_text(traceback.format_exc()))
+    if vk_enabled():
+        try:
+            vk_count = recover_vk_runtime_timers(storage)
+        except Exception:
+            logger.error("VK timer recovery failed:\n%s", redact_sensitive_text(traceback.format_exc()))
 
     if telegram_count or vk_count:
         logger.info(
@@ -336,16 +350,29 @@ def recover_runtime_timers(telegram_application: Any) -> None:
         )
 
 def run_bots() -> None:
-    """Запускает Telegram и VK из единой точки входа.
+    """Запускает включённые части Telegram/VK из единой точки входа.
 
-    Раздельных режимов запуска больше нет: проект всегда поднимает оба бота.
-    Telegram-бот работает в основном потоке, потому что python-telegram-bot
-    управляет своим event loop и обработчиками остановки процесса.
-    VK-бот работает параллельно в фоновом потоке.
+    По умолчанию, как и раньше, запускаются оба бота. Для отладки и временных
+    продакшен-режимов можно отключать части через ENABLE_TELEGRAM/ENABLE_VK.
     """
+    use_telegram = telegram_enabled()
+    use_vk = vk_enabled()
+
+    if not use_telegram and not use_vk:
+        logger.warning("Telegram и VK отключены переменными ENABLE_TELEGRAM=false и ENABLE_VK=false")
+        return
+
+    if not use_telegram:
+        logger.info("Telegram bot is disabled by ENABLE_TELEGRAM=false; starting VK only")
+        run_vk_bot()
+        return
+
     telegram_application = build_telegram_bot_application()
     recover_runtime_timers(telegram_application)
-    start_vk_thread()
+    if use_vk:
+        start_vk_thread()
+    else:
+        logger.info("VK bot is disabled by ENABLE_VK=false")
     run_telegram_application(telegram_application)
 
 
@@ -353,10 +380,13 @@ def main() -> None:
     load_project_env()
     configure_safe_logging()
 
-    # Единый запуск требует сразу все переменные для обоих ботов.
-    require_env("TELEGRAM_BOT_TOKEN")
-    require_env("VK_GROUP_TOKEN")
-    require_int_env("VK_GROUP_ID")
+    if telegram_enabled():
+        require_env("TELEGRAM_BOT_TOKEN")
+    if vk_enabled():
+        require_env("VK_GROUP_TOKEN")
+        require_int_env("VK_GROUP_ID")
+    if not telegram_enabled() and not vk_enabled() and not site_enabled():
+        raise RuntimeError("Все части приложения отключены: ENABLE_TELEGRAM=false, ENABLE_VK=false, ENABLE_SITE=false")
 
     run_bots()
 
