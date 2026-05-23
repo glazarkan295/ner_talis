@@ -88,6 +88,60 @@ class SeldarMarketIntegrationTest(unittest.TestCase):
         self.assertEqual(updated.get("current_zone"), "seldar_trade_district")
         self.assertNotIn("market_context", updated)
 
+    def test_central_square_button_leaves_stale_market_context(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+
+        process_world_action(storage, player, "Рынок", "telegram")
+        result = process_world_action(storage, player, "⬅️ Центральная площадь", "telegram")
+
+        self.assertIn("Центральная площадь Селдара", result.text)
+        self.assertNotIn("Рынок Торгового квартала", result.text)
+        updated = storage.get_player_by_game_id("NT-MARKET")
+        self.assertEqual(updated.get("current_zone"), "seldar_central_square")
+        self.assertNotIn("market_context", updated)
+
+    def test_plain_central_square_button_leaves_stale_market_context(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+
+        process_world_action(storage, player, "Рынок", "telegram")
+        result = process_world_action(storage, player, "Центральная площадь", "telegram")
+
+        self.assertIn("Центральная площадь Селдара", result.text)
+        updated = storage.get_player_by_game_id("NT-MARKET")
+        self.assertEqual(updated.get("current_zone"), "seldar_central_square")
+        self.assertNotIn("market_context", updated)
+
+    def test_trade_district_buttons_ignore_stale_market_context(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+
+        trade_buttons = {
+            "⬅️ Центральная площадь": "seldar_central_square",
+            "Центральная площадь": "seldar_central_square",
+            "Торговый квартал": "seldar_trade_district",
+            "Торговая гильдия": "seldar_trade_guild",
+            "Аукцион": "seldar_auction",
+            "Торговый представитель": "seldar_trade_representative",
+            "Торговый павильон": "seldar_trade_pavilion",
+        }
+
+        for action, expected_zone in trade_buttons.items():
+            with self.subTest(action=action):
+                player["current_city"] = "seldar"
+                player["current_zone"] = "seldar_npc_market"
+                player["location_id"] = "seldar_npc_market"
+                player["market_context"] = {"mode": "main"}
+                storage.update_player(player)
+
+                result = process_world_action(storage, player, action, "telegram")
+
+                self.assertNotIn("Выберите действие", result.text)
+                updated = storage.get_player_by_game_id("NT-MARKET")
+                self.assertEqual(updated.get("current_zone"), expected_zone)
+                self.assertNotIn("market_context", updated)
+
     def test_back_to_market_from_buy_list_returns_market_main(self):
         tmp, storage, player = self.make_storage_player()
         self.addCleanup(tmp.cleanup)
