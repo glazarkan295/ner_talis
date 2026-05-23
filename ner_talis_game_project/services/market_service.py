@@ -36,7 +36,8 @@ MARKET_BUY = "Купить"
 MARKET_SELL = "Продать"
 MARKET_BACK = "Назад"
 MARKET_BACK_TO_MAIN = "Назад на рынок"
-MARKET_EXIT_TO_PAVILION = "Торговый павильон"
+MARKET_EXIT_TO_TRADE_DISTRICT = "Торговый квартал"
+LEGACY_MARKET_EXIT_TO_PAVILION = "Торговый павильон"
 OPEN_PAVILION_SITE = "🌐 Открыть торговый павильон"
 BACK_TO_CENTRAL = "⬅️ Центральная площадь"
 
@@ -46,7 +47,8 @@ MARKET_ACTIONS = frozenset({
     MARKET_SELL,
     MARKET_BACK,
     MARKET_BACK_TO_MAIN,
-    MARKET_EXIT_TO_PAVILION,
+    MARKET_EXIT_TO_TRADE_DISTRICT,
+    LEGACY_MARKET_EXIT_TO_PAVILION,
 })
 MARKET_DATA_PATH = project_path("data", "seldar_market.json")
 SELL_PRICES_PATH = project_path("data", "item_sell_prices.json")
@@ -73,7 +75,7 @@ def _chunk_buttons(labels: list[str], row_size: int = 2) -> list[list[str]]:
 
 
 def market_main_buttons() -> list[list[str]]:
-    return [[MARKET_BUY, MARKET_SELL], [MARKET_EXIT_TO_PAVILION]]
+    return [[MARKET_BUY, MARKET_SELL], [MARKET_EXIT_TO_TRADE_DISTRICT]]
 
 
 def market_list_back_buttons() -> list[list[str]]:
@@ -105,11 +107,11 @@ def is_market_context(player: dict[str, Any]) -> bool:
 
 def leave_market(player: dict[str, Any]) -> MarketResult:
     _clear_context(player)
-    _set_zone(player, "seldar_trade_pavilion")
+    _set_zone(player, "seldar_trade_district")
     return MarketResult(
-        "🏪 Торговый павильон\n\nВы вышли с рынка в Торговый павильон Селдара. Здесь игроки арендуют торговые места и управляют продажей товаров через сайт.",
-        [[OPEN_PAVILION_SITE], ["Торговый квартал", BACK_TO_CENTRAL]],
-        "seldar_trade_pavilion",
+        "💰 Торговый квартал\n\nВы вышли с рынка в Торговый квартал Селдара. Здесь можно перейти в Торговую гильдию, Торговый павильон, аукцион или к торговому представителю.",
+        [["Торговая гильдия", LEGACY_MARKET_EXIT_TO_PAVILION], [MARKET_ENTRY, "Аукцион"], ["Торговый представитель"], [BACK_TO_CENTRAL]],
+        "seldar_trade_district",
     )
 
 
@@ -477,7 +479,7 @@ def handle_market_action(storage: Any, player: dict[str, Any], action: str) -> M
     context = player.get("market_context") if isinstance(player.get("market_context"), dict) else {}
     mode = str(context.get("mode") or "")
 
-    if action == MARKET_EXIT_TO_PAVILION:
+    if action in {MARKET_EXIT_TO_TRADE_DISTRICT, LEGACY_MARKET_EXIT_TO_PAVILION}:
         result = leave_market(player)
         storage.update_player(player)
         return result
@@ -492,7 +494,9 @@ def handle_market_action(storage: Any, player: dict[str, Any], action: str) -> M
             result = open_buy_list(player)
         elif mode in {"sell_card", "sell_quantity"}:
             result = open_sell_list(player)
-        elif mode in {"buy_list", "sell_list", "main"}:
+        elif mode in {"buy_list", "sell_list"}:
+            result = open_market(player)
+        elif mode == "main":
             result = leave_market(player)
         else:
             result = leave_market(player)
