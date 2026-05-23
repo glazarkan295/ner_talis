@@ -59,6 +59,33 @@ def _item_identifier(item: dict[str, Any]) -> str:
     return str(item.get("id") or item.get("item_id") or slugify_fallback_item_id(str(item.get("name") or "item")))
 
 
+def _is_stackable_item(item: dict[str, Any]) -> bool:
+    """Return True when this inventory entry may share a stack.
+
+    Older admin/system-issued entries could have a unique ``id`` but the same
+    ``item_id`` as a registry stackable item.  Using ``id`` as the stack key for
+    those entries created phantom extra slots instead of filling the existing
+    stack.  Non-stackable equipment still keeps per-instance identity.
+    """
+
+    if not isinstance(item, dict):
+        return False
+    if item.get("stackable") is True:
+        return True
+    max_stack = safe_int(item.get("max_stack") or item.get("stack_size"), 1)
+    return max_stack > 1
+
+
+def _stack_identifier(item: dict[str, Any]) -> str:
+    """Canonical key used only for merging stackable inventory entries."""
+
+    if _is_stackable_item(item):
+        item_id = item.get("item_id")
+        if item_id:
+            return str(item_id)
+    return _item_identifier(item)
+
+
 def _prepare_item(item: dict[str, Any], amount: int | None = None, *, default_source: str | None = None, default_category: str | None = None) -> dict[str, Any]:
     prepared = dict(item)
     if amount is not None:
@@ -108,6 +135,61 @@ def rebalance_overflow_slots(player: dict[str, Any]) -> None:
             _apply_storage_markers(item, overflow=False)
 
 
+def normalize_inventory_stacks(player: dict[str, Any]) -> None:
+    """Merge old duplicate stack entries and drop empty phantom stacks.
+
+    This is intentionally conservative: only entries that are explicitly
+    stackable or have ``max_stack > 1`` are merged by ``item_id``.  Equipment and
+    other one-off instances are left untouched.
+    """
+
+    inventory = player.setdefault("inventory", [])
+    if not isinstance(inventory, list):
+        player["inventory"] = []
+        return
+
+    normalized: list[Any] = []
+    stack_by_key: dict[str, dict[str, Any]] = {}
+    for entry in inventory:
+        if not isinstance(entry, dict):
+            normalized.append(entry)
+            continue
+        amount = safe_int(entry.get("amount"), 1)
+        if amount <= 0:
+            continue
+        if not _is_stackable_item(entry):
+            normalized.append(entry)
+            continue
+        key = _stack_identifier(entry)
+        existing = stack_by_key.get(key)
+        if existing is None:
+            entry["amount"] = amount
+            if entry.get("item_id"):
+                entry["id"] = str(entry.get("item_id"))
+            normalized.append(entry)
+            stack_by_key[key] = entry
+            continue
+        existing["amount"] = safe_int(existing.get("amount"), 0) + amount
+        for meta_key in (
+            "icon",
+            "asset_icon",
+            "category",
+            "type",
+            "subtype",
+            "quality",
+            "max_stack",
+            "stackable",
+            "source",
+            "sell_price_copper",
+            "energy_restore",
+            "use_effect",
+        ):
+            if existing.get(meta_key) is None and entry.get(meta_key) is not None:
+                existing[meta_key] = entry.get(meta_key)
+
+    inventory[:] = normalized
+
+
 def recalculate_inventory_overflow(player: dict[str, Any]) -> dict[str, int | bool]:
     """Refresh overload counters and the derived active penalty effect."""
 
@@ -115,6 +197,8 @@ def recalculate_inventory_overflow(player: dict[str, Any]) -> dict[str, int | bo
     if not isinstance(inventory, list):
         inventory = []
         player["inventory"] = inventory
+
+    normalize_inventory_stacks(player)
 
     rebalance_overflow_slots(player)
     overflow_used = overflow_slot_count(player)
@@ -198,9 +282,13 @@ def add_inventory_item(
     if default_category:
         prepared.setdefault("category", default_category)
 
-    canonical_id = _item_identifier(prepared)
-    prepared["id"] = canonical_id
-    prepared["item_id"] = canonical_id
+    canonical_id = _stack_identifier(prepared)
+    if _is_stackable_item(prepared):
+        prepared["item_id"] = canonical_id
+        prepared["id"] = canonical_id
+    else:
+        prepared.setdefault("item_id", canonical_id)
+        prepared.setdefault("id", canonical_id)
     max_stack_value = max(1, safe_int(prepared.get("max_stack"), max_stack or 999))
     prepared["max_stack"] = max_stack_value
 
@@ -213,7 +301,7 @@ def add_inventory_item(
     for existing in inventory:
         if not isinstance(existing, dict):
             continue
-        if _item_identifier(existing) != canonical_id:
+        if _stack_identifier(existing) != canonical_id:
             continue
         current = max(0, safe_int(existing.get("amount"), 1))
         free = max_stack_value - current
@@ -250,8 +338,12 @@ def add_inventory_item(
 
         new_item = dict(prepared)
         new_item["amount"] = added
-        new_item["id"] = canonical_id
-        new_item["item_id"] = canonical_id
+        if _is_stackable_item(new_item):
+            new_item["id"] = canonical_id
+            new_item["item_id"] = canonical_id
+        else:
+            new_item.setdefault("id", canonical_id)
+            new_item.setdefault("item_id", canonical_id)
         _apply_storage_markers(new_item, overflow=use_overflow)
         inventory.append(new_item)
         if use_overflow:

@@ -264,6 +264,7 @@ def add_item_to_player(
 
     backup_player(player, "before_add_item")
 
+    explicit_source = item_data is not None and item_data.get("source") is not None
     if item_data:
         item = dict(item_data)
     else:
@@ -279,7 +280,8 @@ def add_item_to_player(
     item.setdefault("name", item.get("name_ru") or item.get("item_id", item_id))
     item["amount"] = amount
     item["quality"] = quality or item.get("quality") or "обычный"
-    item.setdefault("source", "admin")
+    if not explicit_source:
+        item["source"] = "admin"
     item.setdefault("created_at", datetime.now(timezone.utc).isoformat())
 
     result = add_inventory_item(player, item, amount, default_source="admin")

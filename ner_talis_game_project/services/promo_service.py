@@ -12,7 +12,7 @@ from typing import Any, Iterator
 from project_paths import resolve_project_path
 from services.derived_stats_service import calculate_energy_stats
 from services.inventory_service import add_inventory_item, recalculate_inventory_overflow
-from services.item_registry import build_inventory_item
+from services.item_registry import get_item_definition_by_id, registry_item_to_inventory_item, slugify_fallback_item_id
 
 try:  # POSIX file lock for JSON fallback storage.
     import fcntl  # type: ignore
@@ -172,10 +172,28 @@ def _promo_reward_inventory_item(item: dict[str, Any], amount: int) -> dict[str,
     item_id = str(item.get("item_id") or item.get("id") or "").strip()
     item_name = str(item.get("name") or item.get("name_ru") or item_id or "promo_item").strip()
 
-    if item_id:
-        prepared = build_inventory_item(item_name or item_id, amount, item_id=item_id)
+    explicit_source = item.get("source") is not None
+    definition = get_item_definition_by_id(item_id) if item_id else None
+    if definition is not None:
+        prepared = registry_item_to_inventory_item(definition, amount)
     else:
-        prepared = build_inventory_item(item_name, amount)
+        # Do not fall back from a mistyped item_id to a registry lookup by name:
+        # that would attach another item's stats/effects/icons to an unknown id.
+        fallback_id = item_id or slugify_fallback_item_id(item_name or "promo_item")
+        prepared = {
+            "id": fallback_id,
+            "item_id": fallback_id,
+            "name": item_name or fallback_id,
+            "name_ru": item_name or fallback_id,
+            "category": "Ресурсы",
+            "type": "Материал",
+            "quality": "обычный",
+            "amount": amount,
+            "max_stack": 999,
+            "stackable": True,
+            "source": "promo_code",
+            "actions": [],
+        }
 
     for key, value in item.items():
         if key == "amount" or value is None:
@@ -186,7 +204,8 @@ def _promo_reward_inventory_item(item: dict[str, Any], amount: int) -> dict[str,
         prepared["id"] = item_id
         prepared["item_id"] = item_id
     prepared["amount"] = amount
-    prepared.setdefault("source", "promo_code")
+    if not explicit_source:
+        prepared["source"] = "promo_code"
     return prepared
 
 
@@ -213,7 +232,9 @@ def apply_reward_to_player(player: dict[str, Any], reward: dict[str, Any]) -> di
         player["free_skill_points"] = int(player.get("free_skill_points", 0)) + int(reward.get("free_skill_points") or 0)
     for item in reward.get("items") or []:
         if isinstance(item, dict):
-            amount = max(1, int(item.get("amount", 1) or 1))
+            amount = int(item.get("amount", 1) or 0)
+            if amount <= 0:
+                continue
             prepared_item = _promo_reward_inventory_item(item, amount)
             add_inventory_item(player, prepared_item, amount, default_source="promo_code")
     recalculate_inventory_overflow(player)

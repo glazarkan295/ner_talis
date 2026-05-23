@@ -126,6 +126,73 @@ class PromoCodeCreationTest(unittest.TestCase):
             self.assertEqual(stack["sell_price_copper"], 10)
             self.assertEqual(load_promo_data(storage)["codes"]["SQLMEAT"]["uses_left"], 0)
 
+    def test_promo_zero_and_negative_item_amounts_are_not_upgraded_to_one(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.environ["PROMO_CODES_PATH"] = str(Path(tmp_dir) / "promo_codes.json")
+            os.environ["ADMIN_AUDIT_LOG_PATH"] = str(Path(tmp_dir) / "admin_audit.log")
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            game_id = self._make_player(storage)
+
+            execute_admin_command(
+                text='/admin_promo_add EMPTYITEMS 1 {"items":[{"item_id":"dried_meat","amount":0},{"item_id":"small_potion","amount":-3}]}',
+                storage=storage,
+                platform="telegram",
+                admin_user_id="999",
+            )
+
+            ok, message = redeem_promo_code(storage, game_id, "EMPTYITEMS")
+
+            self.assertTrue(ok, message)
+            player = storage.get_player_by_game_id(game_id)
+            self.assertFalse(any(item.get("item_id") == "dried_meat" for item in player["inventory"] if isinstance(item, dict)))
+            self.assertFalse(any(item.get("item_id") == "small_potion" for item in player["inventory"] if isinstance(item, dict)))
+
+    def test_promo_custom_fallback_keeps_promo_source(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.environ["PROMO_CODES_PATH"] = str(Path(tmp_dir) / "promo_codes.json")
+            os.environ["ADMIN_AUDIT_LOG_PATH"] = str(Path(tmp_dir) / "admin_audit.log")
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            game_id = self._make_player(storage)
+
+            execute_admin_command(
+                text='/admin_promo_add CUSTOM 1 {"items":[{"item_id":"unknown_promo_item","name":"Особый жетон","amount":2}]}',
+                storage=storage,
+                platform="telegram",
+                admin_user_id="999",
+            )
+            ok, message = redeem_promo_code(storage, game_id, "CUSTOM")
+
+            self.assertTrue(ok, message)
+            player = storage.get_player_by_game_id(game_id)
+            stack = next(item for item in player["inventory"] if item.get("item_id") == "unknown_promo_item")
+            self.assertEqual(stack["source"], "promo_code")
+            self.assertEqual(stack["name"], "Особый жетон")
+            self.assertEqual(stack["amount"], 2)
+
+    def test_promo_mistyped_item_id_does_not_enrich_from_matching_name(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.environ["PROMO_CODES_PATH"] = str(Path(tmp_dir) / "promo_codes.json")
+            os.environ["ADMIN_AUDIT_LOG_PATH"] = str(Path(tmp_dir) / "admin_audit.log")
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            game_id = self._make_player(storage)
+
+            execute_admin_command(
+                text='/admin_promo_add TYPO 1 {"items":[{"item_id":"dried_meat_typo","name":"Сушёное мясо","amount":1}]}',
+                storage=storage,
+                platform="telegram",
+                admin_user_id="999",
+            )
+            ok, message = redeem_promo_code(storage, game_id, "TYPO")
+
+            self.assertTrue(ok, message)
+            player = storage.get_player_by_game_id(game_id)
+            stack = next(item for item in player["inventory"] if item.get("item_id") == "dried_meat_typo")
+            self.assertEqual(stack["name"], "Сушёное мясо")
+            self.assertEqual(stack["source"], "promo_code")
+            self.assertNotEqual(stack.get("max_stack"), 20)
+            self.assertNotIn("energy_restore", stack)
+            self.assertNotIn("sell_price_copper", stack)
+
 
 if __name__ == "__main__":
     unittest.main()
