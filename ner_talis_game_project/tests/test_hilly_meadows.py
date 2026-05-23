@@ -12,6 +12,8 @@ from services.city_service import CITY_BUTTONS, process_world_action
 from services.external_location_service import (
     CAMP_DISHES,
     HILLY_MEADOWS,
+    cook_buttons,
+    eat_buttons,
     OUTSIDE_CITY,
     SEARCH_ENERGY_COST,
     START_SEARCH,
@@ -233,6 +235,47 @@ class HillyMeadowsIntegrationTest(unittest.TestCase):
         self.assertEqual(after.get("inventory", []), before_inventory)
         self.assertEqual(after_equipment_ids, before_equipment_ids)
 
+
+
+    def test_camp_food_buttons_are_short_and_numbered_for_mobile(self):
+        storage, player = self.make_player_and_storage()
+        player["current_location"] = "hilly_meadows"
+        player["current_zone"] = "hilly_meadows"
+        add_item(player, "Сырое мясо", 10)
+        storage.update_player(player)
+
+        camp = handle_external_location_action(storage, player, "Разбить лагерь")
+        self.assertIn(["Готовка", "Еда"], camp.buttons)
+        self.assertNotIn(["Приготовить еду", "Съесть еду"], camp.buttons)
+
+        player = storage.get_player_by_platform("telegram", "111")
+        cooking = handle_external_location_action(storage, player, "Готовка")
+        flat_cooking = [button for row in cooking.buttons for button in row]
+        self.assertIn("1. ✅ Сушёное мясо", cooking.text)
+        self.assertIn("Готовить 1 ×1", flat_cooking)
+        self.assertIn("Готовить 1 ×10", flat_cooking)
+        self.assertTrue(all(not button.startswith("Приготовить:") for button in flat_cooking))
+        self.assertTrue(all(len(button) <= 14 or button == "⬅️ В лагерь" for button in flat_cooking))
+
+        cooked = handle_external_location_action(storage, storage.get_player_by_platform("telegram", "111"), "Готовить 1 ×10")
+        self.assertIn("Получено: Сушёное мясо ×10", cooked.text)
+
+        player = storage.get_player_by_platform("telegram", "111")
+        player["energy"] = 20
+        player["current_energy"] = 20
+        storage.update_player(player)
+        eating = handle_external_location_action(storage, player, "Еда")
+        flat_eating = [button for row in eating.buttons for button in row]
+        self.assertIn("1. Сушёное мясо ×10", eating.text)
+        self.assertIn("Есть 1 ×1", flat_eating)
+        self.assertIn("Есть 1 ×10", flat_eating)
+        self.assertTrue(all(not button.startswith("Съесть:") for button in flat_eating))
+        self.assertTrue(all(len(button) <= 14 or button == "⬅️ В лагерь" for button in flat_eating))
+
+        eaten = handle_external_location_action(storage, storage.get_player_by_platform("telegram", "111"), "Есть 1 ×10")
+        self.assertIn("Энергия восстановлена", eaten.text)
+        player = storage.get_player_by_platform("telegram", "111")
+        self.assertEqual(player["energy"], 90)
 
     def test_camp_cooking_and_eating_restore_energy(self):
         storage, player = self.make_player_and_storage()
