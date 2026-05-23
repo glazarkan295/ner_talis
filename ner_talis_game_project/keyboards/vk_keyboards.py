@@ -52,6 +52,9 @@ def _fit_vk_button_rows(buttons: ButtonRows) -> ButtonRows:
             "Подсумок назад",
             "Профиль",
             "Свернуть лагерь",
+            "⬅️ В лагерь",
+            "Готовка",
+            "Еда",
         }
         priority_tail = []
         seen_priority = set()
