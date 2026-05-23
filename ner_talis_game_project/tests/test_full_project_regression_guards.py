@@ -50,7 +50,7 @@ if "vk_api.keyboard" not in sys.modules:
 from keyboards.vk_keyboards import VK_MAX_BUTTONS_PER_ROW, VK_MAX_ROWS, _fit_vk_button_rows
 from services.city_service import process_world_action
 from services.derived_stats_service import calculate_player_derived_stats
-from services.pve_battle_service import BATTLE_POUCH, create_location_battle, grant_battle_rewards, handle_battle_action
+from services.pve_battle_service import BATTLE_ESCAPE, BATTLE_POUCH, create_location_battle, format_battle_started_text, grant_battle_rewards, handle_battle_action
 from site_api import frontend_profile
 
 
@@ -119,6 +119,74 @@ class FullProjectRegressionGuardsTest(unittest.TestCase):
         handle_battle_action(player, BATTLE_POUCH, random.Random(3))
 
         self.assertNotIn("pending_skill", player["active_battle"])
+
+
+    def test_battle_start_text_uses_plain_magic_defense_icon(self):
+        battle = {
+            "battle_log": ["Тестовая стычка."],
+            "round_number": 1,
+            "player_name": "Боец",
+            "player_state": {
+                "current_hp": 100,
+                "max_hp": 100,
+                "current_spirit": 30,
+                "max_spirit": 30,
+                "current_mana": 20,
+                "max_mana": 20,
+                "accuracy": 10,
+                "dodge": 5,
+                "physical_defense": 7,
+                "magic_defense": 9,
+            },
+            "enemies": [],
+        }
+
+        text = format_battle_started_text(battle)
+
+        self.assertIn("🛡 7 · ✨ 9", text)
+        self.assertNotIn("✨🛡 9", text)
+
+    def test_pve_escape_succeeds_with_forty_percent_chance(self):
+        player = {
+            "game_id": "NT-ESCAPE",
+            "name": "Беглец",
+            "level": 10,
+            "stats": {"strength": 20, "endurance": 20, "dexterity": 20, "perception": 20, "intelligence": 10, "wisdom": 10},
+            "inventory": [],
+            "equipment": {},
+            "in_battle": True,
+        }
+        battle, _ = create_location_battle(player, random.Random(2), "hilly_meadows")
+        player["active_battle"] = battle
+
+        text, buttons = handle_battle_action(player, BATTLE_ESCAPE, random.Random(3))
+
+        self.assertIn("сбегает", text.casefold())
+        self.assertFalse(player.get("in_battle"))
+        self.assertIsNone(player.get("active_battle"))
+        self.assertEqual(buttons, [])
+
+    def test_pve_escape_failure_skips_player_turn_and_enemies_act(self):
+        player = {
+            "game_id": "NT-ESCAPE-FAIL",
+            "name": "Беглец",
+            "level": 10,
+            "stats": {"strength": 20, "endurance": 20, "dexterity": 20, "perception": 20, "intelligence": 10, "wisdom": 10},
+            "inventory": [],
+            "equipment": {},
+            "in_battle": True,
+        }
+        battle, _ = create_location_battle(player, random.Random(2), "hilly_meadows")
+        start_round = battle.get("round_number", 1)
+        player["active_battle"] = battle
+
+        text, buttons = handle_battle_action(player, BATTLE_ESCAPE, random.Random(0))
+
+        self.assertIn("Ход пропущен", text)
+        self.assertTrue(player.get("in_battle"))
+        self.assertIsInstance(player.get("active_battle"), dict)
+        self.assertEqual(player["active_battle"].get("round_number"), start_round + 1)
+        self.assertTrue(buttons)
 
     def test_battle_duplicate_loot_names_are_granted_by_location_item_id(self):
         hilly_player = {"game_id": "NT-HILLY", "level": 1, "inventory": [], "equipment": {}}
