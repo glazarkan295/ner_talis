@@ -88,6 +88,16 @@ def is_market_context(player: dict[str, Any]) -> bool:
     return bool(player.get("market_context")) or zone.startswith(MARKET_ZONE_PREFIX)
 
 
+def leave_market(player: dict[str, Any]) -> MarketResult:
+    _clear_context(player)
+    _set_zone(player, "seldar_trade_district")
+    return MarketResult(
+        "💰 Торговый квартал\n\nВы вернулись с рынка в Торговый квартал.",
+        [["Торговая гильдия", "Торговый павильон"], ["Рынок", "Аукцион"], ["Торговый представитель"], ["⬅️ Центральная площадь"]],
+        "seldar_trade_district",
+    )
+
+
 @lru_cache(maxsize=1)
 def load_market_items() -> list[MarketItem]:
     if not MARKET_DATA_PATH.exists():
@@ -181,8 +191,8 @@ def _inventory_item_from_market(item: MarketItem, amount: int) -> dict[str, Any]
 
 
 def open_market(player: dict[str, Any]) -> MarketResult:
-    _clear_context(player)
     _set_zone(player, MARKET_MAIN_ZONE)
+    _set_context(player, mode="main")
     text = (
         "🛒 Рынок Торгового квартала\n\n"
         "Здесь можно безопасно покупать базовые товары у NPC и продавать лишние предметы.\n\n"
@@ -459,16 +469,8 @@ def handle_market_action(storage: Any, player: dict[str, Any], action: str) -> M
             result = open_buy_list(player)
         elif mode in {"sell_card", "sell_quantity"}:
             result = open_sell_list(player)
-        elif mode in {"buy_list", "sell_list"}:
-            result = open_market(player)
         else:
-            _clear_context(player)
-            _set_zone(player, "seldar_trade_district")
-            result = MarketResult(
-                "💰 Торговый квартал\n\nВы вернулись с рынка в Торговый квартал.",
-                [["Торговая гильдия", "Торговый павильон"], ["Рынок", "Аукцион"], ["Торговый представитель"], ["⬅️ Центральная площадь"]],
-                "seldar_trade_district",
-            )
+            result = leave_market(player)
         storage.update_player(player)
         return result
 
