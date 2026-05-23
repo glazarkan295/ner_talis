@@ -35,8 +35,19 @@ MARKET_ENTRY = "Рынок"
 MARKET_BUY = "Купить"
 MARKET_SELL = "Продать"
 MARKET_BACK = "Назад"
+MARKET_BACK_TO_MAIN = "Назад на рынок"
+MARKET_EXIT_TO_PAVILION = "Торговый павильон"
+OPEN_PAVILION_SITE = "🌐 Открыть торговый павильон"
+BACK_TO_CENTRAL = "⬅️ Центральная площадь"
 
-MARKET_ACTIONS = frozenset({MARKET_ENTRY, MARKET_BUY, MARKET_SELL, MARKET_BACK})
+MARKET_ACTIONS = frozenset({
+    MARKET_ENTRY,
+    MARKET_BUY,
+    MARKET_SELL,
+    MARKET_BACK,
+    MARKET_BACK_TO_MAIN,
+    MARKET_EXIT_TO_PAVILION,
+})
 MARKET_DATA_PATH = project_path("data", "seldar_market.json")
 SELL_PRICES_PATH = project_path("data", "item_sell_prices.json")
 
@@ -62,7 +73,11 @@ def _chunk_buttons(labels: list[str], row_size: int = 2) -> list[list[str]]:
 
 
 def market_main_buttons() -> list[list[str]]:
-    return [[MARKET_BUY, MARKET_SELL], [MARKET_BACK]]
+    return [[MARKET_BUY, MARKET_SELL], [MARKET_EXIT_TO_PAVILION]]
+
+
+def market_list_back_buttons() -> list[list[str]]:
+    return [[MARKET_BACK_TO_MAIN]]
 
 
 def market_card_buttons(confirm_label: str) -> list[list[str]]:
@@ -90,11 +105,11 @@ def is_market_context(player: dict[str, Any]) -> bool:
 
 def leave_market(player: dict[str, Any]) -> MarketResult:
     _clear_context(player)
-    _set_zone(player, "seldar_trade_district")
+    _set_zone(player, "seldar_trade_pavilion")
     return MarketResult(
-        "💰 Торговый квартал\n\nВы вернулись с рынка в Торговый квартал.",
-        [["Торговая гильдия", "Торговый павильон"], ["Рынок", "Аукцион"], ["Торговый представитель"], ["⬅️ Центральная площадь"]],
-        "seldar_trade_district",
+        "🏪 Торговый павильон\n\nВы вышли с рынка в Торговый павильон Селдара. Здесь игроки арендуют торговые места и управляют продажей товаров через сайт.",
+        [[OPEN_PAVILION_SITE], ["Торговый квартал", BACK_TO_CENTRAL]],
+        "seldar_trade_pavilion",
     )
 
 
@@ -164,7 +179,7 @@ def market_item_by_id(item_id: str) -> MarketItem | None:
 
 def market_buy_buttons() -> list[list[str]]:
     labels = [item.display_name for item in load_market_items()]
-    return _chunk_buttons(labels, 1) + [[MARKET_BACK]]
+    return _chunk_buttons(labels, 1) + market_list_back_buttons()
 
 
 def _money(player: dict[str, Any]) -> int:
@@ -219,13 +234,13 @@ def open_sell_list(player: dict[str, Any]) -> MarketResult:
     if not sellable:
         return MarketResult(
             "💰 Продажа NPC\n\nВ инвентаре нет предметов, которые можно продать NPC-рынку.",
-            [[MARKET_BACK]],
+            market_list_back_buttons(),
             MARKET_SELL_ZONE,
         )
     labels = [entry["label"] for entry in sellable]
     return MarketResult(
         "💰 Продажа NPC\n\nВыберите предмет из инвентаря для продажи. Экипированные, квестовые и защищённые предметы не показываются.",
-        _chunk_buttons(labels, 1) + [[MARKET_BACK]],
+        _chunk_buttons(labels, 1) + market_list_back_buttons(),
         MARKET_SELL_ZONE,
     )
 
@@ -293,16 +308,15 @@ def handle_buy_quantity(storage: Any, player: dict[str, Any], item: MarketItem, 
             player[key] = simulated[key]
     refund = npc_purchase_refund_amount(player, total_price)
     _set_money(player, balance - total_price + refund)
-    _clear_context(player)
-    _set_zone(player, MARKET_MAIN_ZONE)
-    storage.update_player(player)
 
     notice = inventory_add_result_notice(result, item.display_name)
     refund_text = f" Возврат золота: +{refund} медных." if refund else ""
+    list_result = open_buy_list(player)
+    storage.update_player(player)
     return MarketResult(
-        f"Куплено: {item.display_name} ×{quantity}. Потрачено: {total_price} медных.{refund_text}{notice}",
-        market_main_buttons(),
-        MARKET_MAIN_ZONE,
+        f"Куплено: {item.display_name} ×{quantity}. Потрачено: {total_price} медных.{refund_text}{notice}\n\nВыберите следующий товар:",
+        list_result.buttons,
+        list_result.zone_id,
     )
 
 
@@ -441,13 +455,12 @@ def handle_sell_quantity(storage: Any, player: dict[str, Any], entry: dict[str, 
     remove_empty_stacks_and_recalculate(player)
     total = quantity * safe_int(entry.get("price"), 0)
     _set_money(player, _money(player) + total)
-    _clear_context(player)
-    _set_zone(player, MARKET_MAIN_ZONE)
+    list_result = open_sell_list(player)
     storage.update_player(player)
     return MarketResult(
-        f"Продано: {entry['name']} ×{quantity}. Получено: {total} медных.",
-        market_main_buttons(),
-        MARKET_MAIN_ZONE,
+        f"Продано: {entry['name']} ×{quantity}. Получено: {total} медных.\n\n{list_result.text}",
+        list_result.buttons,
+        list_result.zone_id,
     )
 
 
@@ -464,11 +477,23 @@ def handle_market_action(storage: Any, player: dict[str, Any], action: str) -> M
     context = player.get("market_context") if isinstance(player.get("market_context"), dict) else {}
     mode = str(context.get("mode") or "")
 
+    if action == MARKET_EXIT_TO_PAVILION:
+        result = leave_market(player)
+        storage.update_player(player)
+        return result
+
+    if action == MARKET_BACK_TO_MAIN:
+        result = open_market(player)
+        storage.update_player(player)
+        return result
+
     if action == MARKET_BACK:
         if mode in {"buy_card", "buy_quantity"}:
             result = open_buy_list(player)
         elif mode in {"sell_card", "sell_quantity"}:
             result = open_sell_list(player)
+        elif mode in {"buy_list", "sell_list", "main"}:
+            result = leave_market(player)
         else:
             result = leave_market(player)
         storage.update_player(player)
