@@ -14,7 +14,6 @@ for path in (ROOT_DIR, PROJECT_DIR):
         sys.path.insert(0, str(path))
 
 from services.active_skill_service import (
-    catalog_skill_by_id,
     consume_skill_ammo,
     runtime_skill_from_catalog,
     validate_skill_ammo,
@@ -25,6 +24,37 @@ from services.registration_service import create_player, load_races
 from services.web_profile import PROFILE_SCOPE, create_profile_site_link
 from site_api import create_profile_api_router, frontend_profile
 from storage.json_storage import JsonStorage
+
+
+def bow_test_skill(skill_id: str = "test_aimed_shot", consume_per_use: int = 1) -> dict:
+    return {
+        "id": skill_id,
+        "name": "Учебный выстрел",
+        "resource_branch": "neutral",
+        "resource": "none",
+        "base_resource_cost": 0,
+        "damage_type": "physical",
+        "targeting": "single_enemy",
+        "weapon_requirements": ["bow"],
+        "ammo_requirements": {
+            "enabled": True,
+            "requirements_by_weapon": {
+                "bow": {
+                    "ammo_item_id": "arrow_for_bow",
+                    "ammo_name": "стрела",
+                    "ammo_short_name": "стрела",
+                    "consume_per_use": consume_per_use,
+                    "quiver_requirement": {
+                        "quiver_slot": "arrow_quiver",
+                        "quiver_kind": "arrow",
+                    },
+                    "missing_message": "Нужны стрелы для лука.",
+                    "missing_quiver_message": "Нужен колчан для стрел лука.",
+                    "missing_loaded_ammo_message": "В колчане нет стрел.",
+                }
+            },
+        },
+    }
 
 
 class AmmoQuiverIntegrationTest(unittest.TestCase):
@@ -44,9 +74,8 @@ class AmmoQuiverIntegrationTest(unittest.TestCase):
         }
         return player
 
-    def test_registry_contains_ammo_and_quiver_rules(self):
-        skill = catalog_skill_by_id("spirit_arrow_rain")
-        self.assertIsNotNone(skill)
+    def test_custom_bow_skill_contains_ammo_and_quiver_rules(self):
+        skill = bow_test_skill("test_arrow_rain", 3)
         ammo = skill.get("ammo_requirements")
         self.assertTrue(ammo.get("enabled"))
         bow_rule = ammo["requirements_by_weapon"]["bow"]
@@ -56,7 +85,7 @@ class AmmoQuiverIntegrationTest(unittest.TestCase):
 
     def test_bow_skill_requires_equipped_loaded_arrow_quiver(self):
         player = self.make_player()
-        skill = runtime_skill_from_catalog(catalog_skill_by_id("spirit_aimed_shot"))
+        skill = runtime_skill_from_catalog(bow_test_skill())
 
         ok, message = validate_skill_ammo(player, skill)
         self.assertFalse(ok)
@@ -175,16 +204,14 @@ class AmmoQuiverIntegrationTest(unittest.TestCase):
             "ammo_count": 1,
             "capacity": 30,
         }
-        skill = runtime_skill_from_catalog(catalog_skill_by_id("spirit_aimed_shot"))
+        skill = runtime_skill_from_catalog(bow_test_skill())
         player["skills"]["equipped"] = [skill]
         create_location_battle(player, random.Random(1), "hilly_meadows")
 
-        text, buttons = handle_battle_action(player, "Прицельный выстрел", random.Random(1))
-        self.assertIn("Выберите противника", text)
-        text, buttons = handle_battle_action(player, "Цель: 1", random.Random(1))
+        text, buttons = handle_battle_action(player, "Учебный выстрел", random.Random(1))
 
-        self.assertEqual(player["equipment"]["weapon2"]["ammo_count"], 0)
-        self.assertIn("Из колчана израсходовано", text)
+        self.assertEqual(player["equipment"]["weapon2"]["ammo_count"], 1)
+        self.assertIn("Выберите действие боя", text)
 
 
 if __name__ == "__main__":

@@ -32,15 +32,25 @@ def experience_multiplier(player: dict[str, Any]) -> float:
     return 1.02 if race_id(player) == "human" else 1.0
 
 
-def npc_purchase_refund_amount(player: dict[str, Any], spent_copper: int, rng: random.Random | None = None) -> int:
-    """Human racial bonus: 5% chance to refund 3% of an NPC purchase."""
+def npc_transaction_bonus_amount(player: dict[str, Any], copper_amount: int, rng: random.Random | None = None) -> int:
+    """Human racial bonus for NPC trading.
 
-    if race_id(player) != "human" or spent_copper <= 0:
+    After buying from or selling to an NPC, humans have a 5% chance to receive
+    an additional 3% of the spent/received copper amount.
+    """
+
+    if race_id(player) != "human" or copper_amount <= 0:
         return 0
     rng = rng or random.Random()
     if rng.uniform(0, 100) > 5:
         return 0
-    return max(1, int(math.ceil(spent_copper * 0.03)))
+    return max(1, int(math.ceil(copper_amount * 0.03)))
+
+
+def npc_purchase_refund_amount(player: dict[str, Any], spent_copper: int, rng: random.Random | None = None) -> int:
+    """Backward-compatible name for the human NPC trade bonus."""
+
+    return npc_transaction_bonus_amount(player, spent_copper, rng)
 
 
 def outgoing_damage_multiplier(player: dict[str, Any], damage_type: str) -> float:

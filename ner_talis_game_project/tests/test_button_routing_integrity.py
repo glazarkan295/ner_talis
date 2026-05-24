@@ -141,9 +141,9 @@ class ButtonRoutingIntegrityTest(unittest.TestCase):
         result = process_world_action(storage, player, ORDER_STONE, "telegram")
 
         self.assert_known_response(result)
-        self.assertIn("Вы пришли рано", result.text)
+        self.assertIn("отключена", result.text)
         updated = storage.get_player_by_game_id("NT-BUTTONS")
-        self.assertEqual(updated.get("current_zone"), "seldar_town_hall")
+        self.assertEqual(updated.get("current_zone"), "seldar_town_hall_order_stone")
         self.assertNotIn("market_context", updated)
 
     def test_market_buy_sell_buttons_work_through_vk_route(self):

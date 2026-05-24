@@ -43,6 +43,7 @@ TYPE_TO_RU = {
     "stone": "Камень",
     "ore": "Руда",
     "scrap": "Лом",
+    "flower": "Цветы",
     "coin": "Монета",
     "knife": "Нож",
     "hide": "Шкура",
@@ -75,6 +76,55 @@ QUALITY_TO_RU = {
     "mythic": "мифический",
     "divine": "божественный",
 }
+
+
+ITEM_SPECIFIC_TYPE_RU = {
+    "fabric_pieces": "Хлам",
+    "old_knife": "Хлам",
+    "iron_scrap": "Хлам",
+    "small_pelt": "Шкура",
+}
+
+ITEM_SPECIFIC_STACK_LIMITS = {
+    "clean_water": 20,
+    "muddy_water": 20,
+    "old_knife": 20,
+    "iron_scrap": 20,
+}
+
+STACK_40_SUBTYPES = {"berry", "herb", "flower", "root", "mushroom", "ягоды", "ягода", "трава", "травы", "цветы", "цветок", "корень", "корни", "гриб", "грибы"}
+STACK_10_SUBTYPES = {"stone", "ore", "wood", "камень", "камни", "руда", "руды", "дерево", "древесина"}
+STACK_30_SUBTYPES = {"fang", "tooth", "tendon", "claw", "клык", "клыки", "зуб", "зубы", "сухожилие", "сухожилия", "коготь", "когти"}
+NON_STACKABLE_CATEGORIES = {"снаряжение", "оружие", "бижутерия", "equipment", "weapon", "weapons", "jewelry", "jewellery"}
+
+
+def inventory_stack_limit_from_definition(item: dict[str, Any]) -> int:
+    """Return the gameplay stack size limit for a registry item."""
+
+    item_id = str(item.get("id") or item.get("item_id") or "").strip()
+    if item_id in ITEM_SPECIFIC_STACK_LIMITS:
+        return ITEM_SPECIFIC_STACK_LIMITS[item_id]
+
+    category = str(item.get("category") or "").casefold()
+    item_class = str(item.get("item_class") or "").casefold()
+    type_value = str(item.get("type") or "").casefold()
+    subtype = str(item.get("subtype") or "").casefold()
+    slot = str(item.get("slot") or item.get("equipment_slot") or item.get("targetSlotKey") or item.get("slotKey") or "").strip()
+
+    if slot or category in NON_STACKABLE_CATEGORIES or item_class in NON_STACKABLE_CATEGORIES or type_value in NON_STACKABLE_CATEGORIES:
+        return 1
+    if subtype in STACK_40_SUBTYPES or type_value in STACK_40_SUBTYPES:
+        return 40
+    if subtype in STACK_10_SUBTYPES or type_value in STACK_10_SUBTYPES:
+        return 10
+    if subtype in STACK_30_SUBTYPES or type_value in STACK_30_SUBTYPES:
+        return 30
+
+    raw = item.get("max_stack", item.get("stack_size"))
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return 20 if item.get("stackable") else 1
 
 
 def _public_icon_path(icon: str | None) -> str | None:
@@ -189,8 +239,7 @@ def registry_item_to_inventory_item(definition: dict[str, Any], amount: int = 1)
     category = CATEGORY_TO_RU.get(str(item.get("category") or "").casefold(), item.get("category") or "Прочее")
     subtype = TYPE_TO_RU.get(str(item.get("subtype") or "").casefold(), item.get("subtype") or "Предмет")
     quality = QUALITY_TO_RU.get(str(item.get("quality") or "").casefold(), item.get("quality") or "обычный")
-    max_stack = int(item.get("stack_size") or item.get("max_stack") or (20 if item.get("stackable") else 1))
-    max_stack = max(1, max_stack)
+    max_stack = inventory_stack_limit_from_definition(item)
     result = {
         **item,
         "id": item_id,
@@ -198,8 +247,8 @@ def registry_item_to_inventory_item(definition: dict[str, Any], amount: int = 1)
         "name": name,
         "name_ru": name,
         "category": category,
-        "type": subtype,
-        "subtype": subtype,
+        "type": ITEM_SPECIFIC_TYPE_RU.get(item_id, subtype),
+        "subtype": ITEM_SPECIFIC_TYPE_RU.get(item_id, subtype),
         "quality": quality,
         "amount": max(1, int(amount or 1)),
         "max_stack": max_stack,
@@ -231,7 +280,7 @@ def build_inventory_item(name: str, amount: int = 1, *, item_id: str | None = No
         "type": "Материал",
         "quality": "обычный",
         "amount": max(1, int(amount or 1)),
-        "max_stack": max(1, int(max_stack or 999)),
+        "max_stack": max(1, int(max_stack or 20)),
         "source": "Нер-Талис",
         "actions": [],
     }

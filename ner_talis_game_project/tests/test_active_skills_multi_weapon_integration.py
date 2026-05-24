@@ -9,9 +9,11 @@ for path in (ROOT_DIR, PROJECT_DIR):
         sys.path.insert(0, str(path))
 
 from services.active_skill_service import (
+    catalog_skill_by_id,
     load_active_skill_counts,
     load_active_skill_registry,
-    is_skill_weapon_compatible,
+    normalize_starter_only_skills,
+    refresh_unlocked_active_skills,
 )
 from services.city_service import (
     APPLY_ID_AMULET,
@@ -34,33 +36,31 @@ class MemoryStorage:
         self.player = player
 
 
-class ActiveSkillsMultiWeaponIntegrationTest(unittest.TestCase):
+class ActiveSkillBranchesRemovedTest(unittest.TestCase):
     def make_player(self):
         races = load_races("data/races.json")
         return create_player("NT-SKILLTEST", "telegram", "111", "Навык", "human", races)
 
-    def test_registry_and_multi_weapon_report_are_integrated(self):
+    def test_external_active_skill_catalog_is_not_runtime_integrated(self):
         registry = load_active_skill_registry()
         counts = load_active_skill_counts()
-        self.assertEqual(counts["total_skills"], 94)
-        self.assertEqual(len(registry["skills"]), 94)
-        self.assertEqual(counts["direct_player_level_unlocks"], 0)
-        self.assertEqual(counts["multi_weapon_skills"], 28)
-        self.assertEqual(counts["weapon_requirement_mode"], "any_of")
-        self.assertEqual((counts.get("weapon_sync") or {}).get("invalid_weapon_tokens"), 0)
+        self.assertIsInstance(registry, dict)
+        self.assertIsInstance(counts, dict)
+        self.assertIsNone(catalog_skill_by_id("spirit_power_strike"))
 
-    def test_level_10_sends_branch_choice_hint_but_does_not_open_branch_skills(self):
+    def test_level_10_does_not_send_branch_hint_or_grant_branch_skills(self):
         player = self.make_player()
         player["level"] = 9
         player["experience"] = 899
         result = grant_experience(player, 1)
         self.assertEqual(player["level"], 10)
-        self.assertTrue(player["branch_choice_hint_sent"])
-        self.assertIn("Распорядительного камня", result["branch_hint"])
+        self.assertEqual(player.get("free_skill_points"), 2)
+        self.assertFalse(player.get("branch_choice_hint_sent"))
+        self.assertIsNone(result["branch_hint"])
         self.assertIsNone(player.get("skill_branch"))
-        self.assertEqual(len(player["skills"]["active"]), 2)
+        self.assertEqual({skill["id"] for skill in player["skills"]["active"]}, {"basic_attack", "magic_spark"})
 
-    def test_order_stone_selects_branch_and_grants_branch_starter_skills(self):
+    def test_order_stone_no_longer_starts_spirit_mana_branch_choice(self):
         storage = MemoryStorage()
         player = self.make_player()
         player["level"] = 10
@@ -70,47 +70,50 @@ class ActiveSkillsMultiWeaponIntegrationTest(unittest.TestCase):
         player = storage.player
 
         response = process_world_action(storage, player, ORDER_STONE, "telegram")
-        self.assertIn(APPLY_ID_AMULET, response.buttons[0])
+        self.assertIn("отключена", response.text)
+        self.assertNotIn(APPLY_ID_AMULET, sum(response.buttons, []))
         player = storage.player
 
         response = process_world_action(storage, player, APPLY_ID_AMULET, "telegram")
-        self.assertIn(CHOOSE_SPIRIT_BRANCH, response.buttons[0])
-        self.assertIn(CHOOSE_MANA_BRANCH, response.buttons[1])
-        player = storage.player
+        self.assertIn("отключена", response.text)
+        self.assertNotIn(CHOOSE_SPIRIT_BRANCH, sum(response.buttons, []))
+        self.assertNotIn(CHOOSE_MANA_BRANCH, sum(response.buttons, []))
 
         response = process_world_action(storage, player, CHOOSE_SPIRIT_BRANCH, "telegram")
-        self.assertIn("Вы выбрали Ветвь Духа", response.text)
-        self.assertEqual(player["skill_branch"], "spirit")
-        self.assertEqual(player["branch"], "Ветвь Духа")
-        skill_names = {skill["name"] for skill in player["skills"]["active"]}
-        self.assertIn("Сильный удар", skill_names)
-        self.assertIn("Прицельный выстрел", skill_names)
+        self.assertIn("отключена", response.text)
+        self.assertIsNone(player.get("skill_branch"))
+        self.assertEqual({skill["id"] for skill in player["skills"]["active"]}, {"basic_attack", "magic_spark"})
 
-    def test_weapon_requirements_use_any_of_with_project_weapon_types(self):
+    def test_old_branch_skills_are_removed_but_starter_skills_remain(self):
         player = self.make_player()
-        registry = load_active_skill_registry()
-        power_strike = next(skill for skill in registry["skills"] if skill["id"] == "spirit_power_strike")
-        aimed_shot = next(skill for skill in registry["skills"] if skill["id"] == "spirit_aimed_shot")
-        self.assertIn("staff", power_strike["weapon_requirements"])
-        self.assertTrue(is_skill_weapon_compatible(player, power_strike))
-        self.assertFalse(is_skill_weapon_compatible(player, aimed_shot))
+        player["skill_branch"] = "spirit"
+        player["branch"] = "Ветвь Духа"
+        player["branch_choice_hint_sent"] = True
+        player["skills"]["active"].append({"id": "spirit_power_strike", "name": "Сильный удар"})
+        player["skills"]["equipped"] = [
+            {"id": "spirit_power_strike", "name": "Сильный удар"},
+            {"id": "magic_spark", "name": "Магический сгусток"},
+        ]
 
-    def test_profile_and_damage_preview_use_integrated_branch_skill_formula(self):
-        storage = MemoryStorage()
+        changed = normalize_starter_only_skills(player)
+        self.assertTrue(changed)
+        self.assertIsNone(player.get("skill_branch"))
+        self.assertEqual(player.get("branch"), "Без ветви")
+        self.assertFalse(player.get("branch_choice_hint_sent"))
+        self.assertEqual({skill["id"] for skill in player["skills"]["active"]}, {"basic_attack", "magic_spark"})
+        self.assertEqual([skill["id"] for skill in player["skills"]["equipped"]], ["magic_spark"])
+
+    def test_starter_skill_damage_and_profile_preview_still_work(self):
         player = self.make_player()
-        player["level"] = 10
-        process_world_action(storage, player, "Ратуша", "telegram")
-        player = storage.player
-        process_world_action(storage, player, ORDER_STONE, "telegram")
-        player = storage.player
-        process_world_action(storage, player, CHOOSE_MANA_BRANCH, "telegram")
-        player = storage.player
-        mana_spark = next(skill for skill in player["skills"]["active"] if skill["id"] == "mana_spark")
-        damage = calculate_player_skill_raw_damage(player, mana_spark)
+        magic_spark = next(skill for skill in player["skills"]["active"] if skill["id"] == "magic_spark")
+        damage = calculate_player_skill_raw_damage(player, magic_spark)
         self.assertGreater(damage["damage"], 0)
         self.assertEqual(damage["damage_type"], "magic")
+        refresh_unlocked_active_skills(player)
         profile = frontend_profile(player)
-        profile_skill = next(skill for skill in profile["skills"]["active"] if skill["id"] == "mana_spark")
+        ids = {skill["id"] for skill in profile["skills"]["active"]}
+        self.assertEqual(ids, {"basic_attack", "magic_spark"})
+        profile_skill = next(skill for skill in profile["skills"]["active"] if skill["id"] == "magic_spark")
         self.assertEqual(profile_skill["damage"], damage["damage"])
         self.assertIn("Мана:", profile_skill["resourceText"])
 

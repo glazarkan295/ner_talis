@@ -13,6 +13,7 @@ from typing import Any
 
 from game_data.starter_items import get_starter_equipment
 from game_data.starter_skills import get_starter_skills
+from services.active_skill_service import normalize_starter_only_skills
 
 STARTER_EXTRA_FIELDS = {
     "main_platform",
@@ -120,10 +121,13 @@ def ensure_starter_pack(player: dict[str, Any]) -> bool:
     changed = False
 
     branch_changed = False
-    if "skill_branch" not in player:
+    if player.get("skill_branch") is not None:
         player["skill_branch"] = None
         branch_changed = True
-    if "branch_choice_hint_sent" not in player:
+    if player.get("branch") not in {None, "Без ветви", "Ветви отключены"}:
+        player["branch"] = "Без ветви"
+        branch_changed = True
+    if player.get("branch_choice_hint_sent"):
         player["branch_choice_hint_sent"] = False
         branch_changed = True
     if "has_identification_amulet" not in player:
@@ -134,7 +138,7 @@ def ensure_starter_pack(player: dict[str, Any]) -> bool:
         branch_changed = True
 
     if player.get("starter_pack_applied"):
-        return sync_starter_skill_definitions(player) or branch_changed
+        return sync_starter_skill_definitions(player) or normalize_starter_only_skills(player) or branch_changed
 
     if not isinstance(player.get("equipment"), dict) or not player.get("equipment"):
         player["equipment"] = get_starter_equipment()
@@ -146,7 +150,7 @@ def ensure_starter_pack(player: dict[str, Any]) -> bool:
         player["skills"] = get_starter_skills()
         changed = True
     else:
-        changed = sync_starter_skill_definitions(player) or changed
+        changed = sync_starter_skill_definitions(player) or normalize_starter_only_skills(player) or changed
 
     player["starter_pack_applied"] = True
     return True

@@ -702,7 +702,6 @@ function CharacterTab({ profile, onOpenItem, onOpenSlot, onConfirmAttributePoint
         <div className="nt-lines">
           <Row label="Имя" value={profile.player?.nickname || "—"} />
           <RaceRow profile={profile} />
-          <Row label="Ветка" value={profile.player?.branch || "—"} />
           <Row label="Уровень" value={profile.player?.level || 1} />
           <Row label="Баланс" value={profile.player?.balanceText || "0 мед."} />
           <EffectsRow profile={profile} />
@@ -874,10 +873,10 @@ function SkillsTab({ profile, onSpendSkillPoints, onEquipSkill, onUnequipSkill }
   const emptySlots = Math.max(0, equipCapacity - equipUsed);
   return (
     <div className="nt-stack">
-      <Panel title="Развитие" right={<span className="nt-badge">Свободно: {freePoints}</span>}>
+      <Panel title="Навыки">
         <div className="nt-lines">
-          <Row label="Свободные очки навыков" value={freePoints} />
-          <Row label="Ветвь развития" value={profile.player?.branch || "—"} />
+          <Row label="Развитие ветвей" value="отключено" />
+          <Row label="Доступно" value="стартовые навыки" />
         </div>
       </Panel>
       <Panel title="Экипированные" right={<span className="nt-badge">{equipUsed} / {equipCapacity}</span>}>
@@ -891,7 +890,7 @@ function SkillsTab({ profile, onSpendSkillPoints, onEquipSkill, onUnequipSkill }
           ))}
         </div>
       </Panel>
-      <Panel title="Активные навыки"><div className="nt-skills-list">{active.length ? active.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Активных навыков пока нет.</p>}</div></Panel>
+      <Panel title="Стартовые навыки"><div className="nt-skills-list">{active.length ? active.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Стартовых навыков пока нет.</p>}</div></Panel>
       <Panel title="Пассивные навыки"><div className="nt-skills-list">{passive.length ? passive.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Пассивных навыков пока нет.</p>}</div></Panel>
       <ModifierHelpModal modifier={modifierHelp?.modifier} position={modifierHelp?.position} onClose={() => setModifierHelp(null)} />
       <SkillUpgradeModal skill={upgradeSkill?.skill} freePoints={freePoints} position={upgradeSkill?.position} onClose={() => setUpgradeSkill(null)} onSpendSkillPoints={onSpendSkillPoints} />

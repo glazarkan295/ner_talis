@@ -438,11 +438,11 @@ def calculate_player_derived_stats(player: dict[str, Any]) -> dict[str, int]:
     max_spirit = ceil(20 + endurance * 1.2 + strength * 1.0 + dexterity * 0.7 + s_level * 1.2 + bonus_spirit)
     max_mana = ceil(20 + intelligence * 1.6 + wisdom * 1.3 + s_level * 1.2 + bonus_mana)
     physical_defense = ceil(armor * 1.5 + endurance * 0.9 + strength * 0.6 + dexterity * 0.2 + bonus_physical_defense)
-    if magic_armor > 0:
-        magic_armor_component = magic_armor * 1.5
-    else:
-        magic_armor_component = armor * 0.8
-    magic_defense = ceil(magic_armor_component + wisdom * 0.9 + intelligence * 0.6 + endurance * 0.2 + bonus_magic_defense)
+    # Магическая защита теперь строится от общей брони, эффективной мудрости,
+    # интеллекта, выносливости и прямого бонуса магической защиты.
+    # Отдельная ``magic_armor`` остаётся отображаемым/бонусным параметром, но не
+    # подменяет формулу защиты в бою и профиле.
+    magic_defense = ceil(armor * 1.5 + wisdom * 0.9 + intelligence * 0.6 + endurance * 0.2 + bonus_magic_defense)
     accuracy = ceil(perception * 1.8 + dexterity * 1.1 + s_level * 0.7 + bonus_accuracy)
     dodge = ceil(dexterity * 1.8 + perception * 0.9 + wisdom * 0.3 + s_level * 0.5 + bonus_dodge)
     crit_stat = ceil(perception * 1.5 + dexterity * 0.8 + wisdom * 0.2 + s_level * 0.2 + bonus_crit_chance)

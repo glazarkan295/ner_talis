@@ -1,34 +1,25 @@
-"""Active-skill registry and branch-choice helpers for Ner-Talis.
+"""Starter-skill helpers for Ner-Talis.
 
-This module integrates the external active skill catalog into the runtime
-profile/battle systems.  The catalog remains data-driven in
-``data/active_skills_registry.json``; player profiles store only learned skills.
+The old branch-based active-skill catalog and Spirit/Mana choice flow are
+disabled.  Runtime gameplay keeps only the two neutral starter skills while
+retaining small compatibility helpers for older profiles and imports.
 """
 
 from __future__ import annotations
 
-import json
 import math
 from copy import deepcopy
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
-from project_paths import project_path
-
-REGISTRY_FILE = project_path("data", "active_skills_registry.json")
-COUNTS_FILE = project_path("data", "active_skills_counts.json")
-BRANCH_MESSAGES_FILE = project_path("data", "branch_choice_messages.json")
-
-BRANCH_LABELS = {
-    "spirit": "Ветвь Духа",
-    "mana": "Ветвь Маны",
-}
-
-BRANCH_BUTTONS = {
-    "spirit": "Выбрать Ветвь Духа",
-    "mana": "Выбрать Ветвь Маны",
-}
+# Full active-skill branch integration is intentionally disabled.
+# Only the two starter neutral skills remain available to players.
+ACTIVE_SKILL_BRANCH_INTEGRATION_ENABLED = False
+STARTER_SKILL_IDS = {"basic_attack", "magic_spark"}
+STARTER_SKILL_NAMES = {"Обычный удар", "Магический сгусток"}
+DISABLED_BRANCH_TEXT = (
+    "Система ветвей активных навыков сейчас отключена. "
+    "Доступны только стартовые действия: «Обычный удар» и «Магический сгусток»."
+)
 
 RUS_TO_BACK_ATTRIBUTE = {
     "Сила": "strength",
@@ -63,39 +54,33 @@ PROFILE_ATTRIBUTE_KEYS = {
 }
 
 
-def _load_json(path: Path, default: Any) -> Any:
-    try:
-        with path.open("r", encoding="utf-8") as file:
-            return json.load(file)
-    except FileNotFoundError:
-        return deepcopy(default)
-
-
 def load_active_skill_registry() -> dict[str, Any]:
-    return _load_json(REGISTRY_FILE, {"skills": [], "counts": {}})
+    """Compatibility stub: branch catalog files are no longer part of runtime."""
+    return {"skills": [], "counts": {}}
 
 
 def load_active_skill_counts() -> dict[str, Any]:
-    return _load_json(COUNTS_FILE, {})
+    """Compatibility stub: branch catalog files are no longer part of runtime."""
+    return {}
 
 
 def load_branch_choice_messages() -> dict[str, Any]:
-    return _load_json(BRANCH_MESSAGES_FILE, {})
+    """Compatibility stub for removed branch-choice messages."""
+    return {}
 
 
 def all_catalog_skills() -> list[dict[str, Any]]:
-    registry = load_active_skill_registry()
-    skills = registry.get("skills")
-    return skills if isinstance(skills, list) else []
+    """Return runtime catalog skills.
+
+    The branch-based active skill catalog is no longer integrated into the
+    game runtime.  Keep this function for compatibility with old imports, but
+    never expose branch skills or unlock them automatically.
+    """
+    return []
 
 
 def catalog_skill_by_id(skill_id: str) -> dict[str, Any] | None:
-    target = str(skill_id or "")
-    if not target:
-        return None
-    for skill in all_catalog_skills():
-        if isinstance(skill, dict) and str(skill.get("id") or "") == target:
-            return skill
+    """Compatibility stub for the removed active-skill registry."""
     return None
 
 
@@ -141,15 +126,59 @@ def get_modifier_level(player: dict[str, Any], skill_id: str, modifier_name: str
 
 
 def player_branch(player: dict[str, Any]) -> str | None:
-    branch = player.get("skill_branch") or player.get("active_skill_branch")
-    if branch in {"spirit", "mana"}:
-        return str(branch)
-    legacy = str(player.get("branch") or "").casefold()
-    if "дух" in legacy:
-        return "spirit"
-    if "ман" in legacy:
-        return "mana"
+    """Branch development is disabled; no runtime profile has a branch."""
     return None
+
+
+def normalize_starter_only_skills(player: dict[str, Any]) -> bool:
+    """Remove disabled branch skills while preserving starter skills.
+
+    Older profiles may still contain skills granted by the removed Spirit/Mana
+    branch system.  Keeping them in ``equipped`` would let the battle router use
+    disabled actions, so we strip every non-starter active/equipped skill.
+    """
+    skills = player.get("skills")
+    if not isinstance(skills, dict):
+        return False
+
+    changed = False
+    for section in ("active", "equipped"):
+        values = skills.get(section)
+        if not isinstance(values, list):
+            skills[section] = []
+            changed = True
+            continue
+        kept = []
+        for skill in values:
+            if not isinstance(skill, dict):
+                changed = True
+                continue
+            skill_id = str(skill.get("id") or "")
+            skill_name = str(skill.get("name") or "")
+            if skill_id in STARTER_SKILL_IDS or skill_name in STARTER_SKILL_NAMES:
+                kept.append(skill)
+            else:
+                changed = True
+        if kept != values:
+            skills[section] = kept
+            changed = True
+
+    # Passive skills are not part of the removed active-branch integration.
+    if not isinstance(skills.get("passive"), list):
+        skills["passive"] = []
+        changed = True
+
+    for field in ("skill_branch", "active_skill_branch", "branch_chosen_at", "branch_choice_place"):
+        if player.get(field) is not None:
+            player[field] = None
+            changed = True
+    if player.get("branch") not in {None, "Без ветви", "Ветви отключены"}:
+        player["branch"] = "Без ветви"
+        changed = True
+    if player.get("branch_choice_hint_sent"):
+        player["branch_choice_hint_sent"] = False
+        changed = True
+    return changed
 
 
 def has_identification_amulet(player: dict[str, Any]) -> bool:
@@ -162,21 +191,33 @@ def has_identification_amulet(player: dict[str, Any]) -> bool:
 
 
 def ensure_active_skill_fields(player: dict[str, Any]) -> bool:
+    """Keep only compatibility skill containers and starter skills.
+
+    The old Spirit/Mana branch fields are neutralized instead of being removed
+    abruptly, so older stored profiles can still be loaded safely.
+    """
     changed = False
-    if "skill_branch" not in player:
-        player["skill_branch"] = player_branch(player)
+    if player.get("skill_branch") is not None:
+        player["skill_branch"] = None
         changed = True
-    if "branch_choice_hint_sent" not in player:
+    if player.get("active_skill_branch") is not None:
+        player["active_skill_branch"] = None
+        changed = True
+    if player.get("branch") not in {None, "Без ветви", "Ветви отключены"}:
+        player["branch"] = "Без ветви"
+        changed = True
+    if player.get("branch_choice_hint_sent"):
         player["branch_choice_hint_sent"] = False
+        changed = True
+    if player.get("branch_chosen_at") is not None:
+        player["branch_chosen_at"] = None
+        changed = True
+    if player.get("branch_choice_place") is not None:
+        player["branch_choice_place"] = None
         changed = True
     if "has_identification_amulet" not in player:
         player["has_identification_amulet"] = True
         changed = True
-    if not player.get("branch") or player.get("branch") == "Ветвь не выбрана":
-        branch = player_branch(player)
-        if branch:
-            player["branch"] = BRANCH_LABELS[branch]
-            changed = True
     skills = player.setdefault("skills", {})
     if not isinstance(skills, dict):
         player["skills"] = skills = {"active": [], "passive": [], "equipped": []}
@@ -185,7 +226,7 @@ def ensure_active_skill_fields(player: dict[str, Any]) -> bool:
         if not isinstance(skills.get(section), list):
             skills[section] = []
             changed = True
-    return changed
+    return normalize_starter_only_skills(player) or changed
 
 
 def _modifier_id(name: str, index: int) -> str:
@@ -429,18 +470,9 @@ def check_skill_requirement(player: dict[str, Any], requirement: dict[str, Any])
 
 
 def can_unlock_catalog_skill(player: dict[str, Any], skill: dict[str, Any]) -> bool:
-    branch = str(skill.get("resource_branch") or "")
-    if branch == "neutral":
-        return False
-    player_current_branch = player_branch(player)
-    allowed = set(skill.get("allowed_branches") or [])
-    if allowed and player_current_branch not in allowed:
-        return False
-    unlock = skill.get("unlock") if isinstance(skill.get("unlock"), dict) else {}
-    for requirement in unlock.get("requirements", []) if isinstance(unlock.get("requirements"), list) else []:
-        if not check_skill_requirement(player, requirement):
-            return False
-    return True
+    """Automatic catalog unlocks are disabled."""
+    return False
+
 
 
 
@@ -549,64 +581,26 @@ def consume_skill_ammo(player: dict[str, Any], skill: dict[str, Any]) -> tuple[b
     ammo_name = str(requirement.get("ammo_short_name") or requirement.get("ammo_name") or "боеприпас")
     return True, f"Из колчана израсходовано: {ammo_name} ×{need}."
 def refresh_unlocked_active_skills(player: dict[str, Any]) -> int:
-    """Add newly available active skills according to branch/requirements."""
+    """Compatibility no-op for the removed branch active-skill integration."""
     ensure_active_skill_fields(player)
-    added = 0
-    for skill in all_catalog_skills():
-        if not isinstance(skill, dict):
-            continue
-        if can_unlock_catalog_skill(player, skill):
-            added += 1 if add_skill_to_player(player, skill) else 0
-    return added
+    return 0
 
 
 def can_choose_active_skill_branch_here(player: dict[str, Any]) -> bool:
-    return (
-        str(player.get("current_city") or "") == "seldar"
-        and str(player.get("current_zone") or "") == "seldar_town_hall_order_stone"
-        and int(player.get("level") or 1) >= 10
-        and player_branch(player) is None
-        and has_identification_amulet(player)
-    )
+    return False
 
 
 def choose_active_skill_branch(player: dict[str, Any], branch: str) -> dict[str, Any]:
     ensure_active_skill_fields(player)
-    if branch not in BRANCH_LABELS:
-        raise ValueError("unknown branch")
-    if player_branch(player):
-        raise ValueError("branch already chosen")
-    if int(player.get("level") or 1) < 10:
-        raise ValueError("level is too low")
-    if not has_identification_amulet(player):
-        raise ValueError("missing identification amulet")
-    if str(player.get("current_city") or "") != "seldar" or str(player.get("current_zone") or "") != "seldar_town_hall_order_stone":
-        raise ValueError("branch choice is available only at the Order Stone")
-    player["skill_branch"] = branch
-    player["branch"] = BRANCH_LABELS[branch]
-    player["branch_chosen_at"] = datetime.now(timezone.utc).isoformat()
-    player["branch_choice_place"] = "seldar_town_hall_order_stone"
-    added = refresh_unlocked_active_skills(player)
-    return {"branch": branch, "branch_label": BRANCH_LABELS[branch], "added_skills": added}
+    raise ValueError("active skill branches are disabled")
 
 
 def branch_hint_text() -> str:
-    messages = load_branch_choice_messages()
-    hint = messages.get("level_10_branch_hint") if isinstance(messages, dict) else None
-    if isinstance(hint, dict) and hint.get("text"):
-        return str(hint["text"])
-    return (
-        "Вы достигли 10 уровня.\n\n"
-        "Теперь вам доступен выбор ветви активных навыков: Ветвь Духа или Ветвь Маны.\n"
-        "Вернитесь в Селдар, перейдите в Верхний квартал, зайдите в Ратушу и найдите Распорядительный камень."
-    )
+    return DISABLED_BRANCH_TEXT
 
 
 def maybe_mark_branch_hint(player: dict[str, Any]) -> str | None:
     ensure_active_skill_fields(player)
-    if int(player.get("level") or 1) >= 10 and player_branch(player) is None and not player.get("branch_choice_hint_sent"):
-        player["branch_choice_hint_sent"] = True
-        return branch_hint_text()
     return None
 
 
