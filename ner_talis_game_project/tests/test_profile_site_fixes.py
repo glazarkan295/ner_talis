@@ -96,6 +96,14 @@ class ProfileSiteFixesTest(unittest.TestCase):
         self.assertNotIn("legacy_focus", skill_ids)
         self.assertEqual(skill_ids, {"basic_attack", "magic_spark"})
 
+    def test_frontend_profile_exposes_free_skill_points(self):
+        player = self._new_player()
+        player["free_skill_points"] = 7
+
+        profile = frontend_profile(player)
+
+        self.assertEqual(profile["player"]["freeSkillPoints"], 7)
+
     def test_equipped_items_change_final_parameters(self):
         player = self._new_player()
 
