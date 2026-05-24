@@ -6,7 +6,6 @@ import math
 from typing import Any
 
 from services.race_bonus_service import experience_multiplier
-from services.active_skill_service import maybe_mark_branch_hint
 
 
 def safe_int(value: Any, default: int = 0) -> int:
@@ -43,7 +42,7 @@ def grant_experience(player: dict[str, Any], base_amount: int) -> dict[str, Any]
         player["free_skill_points"] = safe_int(player.get("free_skill_points"), 0) + 2
         level_ups += 1
 
-    branch_hint = maybe_mark_branch_hint(player) if level_ups else None
+    branch_hint = None
     return {
         "gained": gained,
         "level_ups": level_ups,
@@ -55,23 +54,28 @@ def grant_experience(player: dict[str, Any], base_amount: int) -> dict[str, Any]
 
 
 def apply_death_experience_penalty(player: dict[str, Any], percent: int = 10) -> dict[str, int]:
-    """Remove a percentage of current level experience after player death.
+    """Remove a percentage of the level's required experience after death.
 
-    The penalty does not lower the player's level and never drops experience below zero.
-    ``total_experience`` stays as lifetime earned experience and is not reduced.
+    Default death penalty is 10% of the maximum experience available on the
+    player's current level, not 10% of the currently filled progress bar. The
+    penalty never lowers the player's level and never drops current experience
+    below zero. ``total_experience`` stays as lifetime earned experience and is
+    not reduced.
     """
 
     percent = max(0, safe_int(percent, 0))
     current = max(0, safe_int(player.get("experience"), 0))
-    lost = 0 if current <= 0 or percent <= 0 else max(1, math.ceil(current * percent / 100))
+    level = max(1, safe_int(player.get("level"), 1))
+    required = experience_to_next_level(level)
+    lost = 0 if current <= 0 or percent <= 0 else max(1, math.ceil(required * percent / 100))
     lost = min(current, lost)
     player["experience"] = max(0, current - lost)
-    level = max(1, safe_int(player.get("level"), 1))
-    player["experience_to_next"] = experience_to_next_level(level)
+    player["experience_to_next"] = required
     player["last_death_experience_penalty"] = lost
     return {
         "lost": lost,
         "percent": percent,
+        "base_experience": required,
         "experience": safe_int(player.get("experience"), 0),
-        "experience_to_next": safe_int(player.get("experience_to_next"), experience_to_next_level(level)),
+        "experience_to_next": safe_int(player.get("experience_to_next"), required),
     }

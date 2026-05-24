@@ -7,7 +7,7 @@
     "item_class": "ingredients",
     "quality": "common",
     "stackable": true,
-    "stack_size": 20,
+    "stack_size": 40,
     "icon": "assets/items/ordinary_forest/ingredients/pale_toadstool.png",
     "icon_256": "assets_256/items/ordinary_forest/ingredients/pale_toadstool.png",
     "icon_1024": "assets_1024/items/ordinary_forest/ingredients/pale_toadstool.png",
@@ -19,7 +19,8 @@
       "resource"
     ],
     "can_sell": true,
-    "sell_price_copper": 5
+    "sell_price_copper": 5,
+    "max_stack": 40
   },
   {
     "id": "muddy_water",
@@ -41,7 +42,8 @@
       "resource"
     ],
     "can_sell": true,
-    "sell_price_copper": 1
+    "sell_price_copper": 1,
+    "max_stack": 20
   },
   {
     "id": "old_gloves",
@@ -104,7 +106,7 @@
     "item_class": "resources",
     "quality": "common",
     "stackable": true,
-    "stack_size": 20,
+    "stack_size": 10,
     "icon": "assets/items/ordinary_forest/resources/dry_log.png",
     "icon_256": "assets_256/items/ordinary_forest/resources/dry_log.png",
     "icon_1024": "assets_1024/items/ordinary_forest/resources/dry_log.png",
@@ -116,13 +118,14 @@
       "resource"
     ],
     "can_sell": true,
-    "sell_price_copper": 4
+    "sell_price_copper": 4,
+    "max_stack": 10
   },
   {
     "id": "fabric_pieces",
     "name_ru": "Куски ткани",
     "category": "resources",
-    "subtype": "fabric",
+    "subtype": "junk",
     "item_class": "resources",
     "quality": "common",
     "stackable": true,
@@ -148,7 +151,7 @@
     "item_class": "ingredients",
     "quality": "common",
     "stackable": true,
-    "stack_size": 20,
+    "stack_size": 40,
     "icon": "assets/items/ordinary_forest/ingredients/edible_forest_mushroom.png",
     "icon_256": "assets_256/items/ordinary_forest/ingredients/edible_forest_mushroom.png",
     "icon_1024": "assets_1024/items/ordinary_forest/ingredients/edible_forest_mushroom.png",
@@ -160,7 +163,8 @@
       "resource"
     ],
     "can_sell": true,
-    "sell_price_copper": 4
+    "sell_price_copper": 4,
+    "max_stack": 40
   },
   {
     "id": "bitter_gray_mushroom",
@@ -170,7 +174,7 @@
     "item_class": "ingredients",
     "quality": "common",
     "stackable": true,
-    "stack_size": 20,
+    "stack_size": 40,
     "icon": "assets/items/ordinary_forest/ingredients/bitter_gray_mushroom.png",
     "icon_256": "assets_256/items/ordinary_forest/ingredients/bitter_gray_mushroom.png",
     "icon_1024": "assets_1024/items/ordinary_forest/ingredients/bitter_gray_mushroom.png",
@@ -182,7 +186,8 @@
       "resource"
     ],
     "can_sell": true,
-    "sell_price_copper": 3
+    "sell_price_copper": 3,
+    "max_stack": 40
   },
   {
     "id": "forest_tick",
@@ -211,7 +216,7 @@
     "item_class": "trophies",
     "quality": "common",
     "stackable": true,
-    "stack_size": 20,
+    "stack_size": 30,
     "icon": "assets/items/ordinary_forest/trophies/tough_sinew.png",
     "icon_256": "assets_256/items/ordinary_forest/trophies/tough_sinew.png",
     "icon_1024": "assets_1024/items/ordinary_forest/trophies/tough_sinew.png",
@@ -223,7 +228,8 @@
       "mob_loot"
     ],
     "can_sell": true,
-    "sell_price_copper": 10
+    "sell_price_copper": 10,
+    "max_stack": 30
   },
   {
     "id": "deer_hide",
@@ -277,7 +283,7 @@
     "item_class": "trophies",
     "quality": "common",
     "stackable": true,
-    "stack_size": 20,
+    "stack_size": 30,
     "icon": "assets/items/ordinary_forest/trophies/strong_sinew.png",
     "icon_256": "assets_256/items/ordinary_forest/trophies/strong_sinew.png",
     "icon_1024": "assets_1024/items/ordinary_forest/trophies/strong_sinew.png",
@@ -289,7 +295,8 @@
       "mob_loot"
     ],
     "can_sell": true,
-    "sell_price_copper": 10
+    "sell_price_copper": 10,
+    "max_stack": 30
   },
   {
     "id": "old_bear_trap",
@@ -340,7 +347,7 @@
     "item_class": "trophies",
     "quality": "common",
     "stackable": true,
-    "stack_size": 20,
+    "stack_size": 30,
     "icon": "assets/items/ordinary_forest/trophies/bear_fang.png",
     "icon_256": "assets_256/items/ordinary_forest/trophies/bear_fang.png",
     "icon_1024": "assets_1024/items/ordinary_forest/trophies/bear_fang.png",
@@ -352,7 +359,8 @@
       "mob_loot"
     ],
     "can_sell": true,
-    "sell_price_copper": 9
+    "sell_price_copper": 9,
+    "max_stack": 30
   },
   {
     "id": "mire_trap",
@@ -403,7 +411,7 @@
     "item_class": "trophies",
     "quality": "common",
     "stackable": true,
-    "stack_size": 20,
+    "stack_size": 30,
     "icon": "assets/items/ordinary_forest/trophies/wolf_fang.png",
     "icon_256": "assets_256/items/ordinary_forest/trophies/wolf_fang.png",
     "icon_1024": "assets_1024/items/ordinary_forest/trophies/wolf_fang.png",
@@ -415,7 +423,8 @@
       "mob_loot"
     ],
     "can_sell": true,
-    "sell_price_copper": 8
+    "sell_price_copper": 8,
+    "max_stack": 30
   },
   {
     "id": "animal_fat",
@@ -469,7 +478,7 @@
     "item_class": "trophies",
     "quality": "common",
     "stackable": true,
-    "stack_size": 20,
+    "stack_size": 30,
     "icon": "assets/items/ordinary_forest/trophies/bear_claw.png",
     "icon_256": "assets_256/items/ordinary_forest/trophies/bear_claw.png",
     "icon_1024": "assets_1024/items/ordinary_forest/trophies/bear_claw.png",
@@ -481,7 +490,8 @@
       "mob_loot"
     ],
     "can_sell": true,
-    "sell_price_copper": 6
+    "sell_price_copper": 6,
+    "max_stack": 30
   },
   {
     "id": "boar_tusk",
@@ -491,7 +501,7 @@
     "item_class": "trophies",
     "quality": "common",
     "stackable": true,
-    "stack_size": 20,
+    "stack_size": 30,
     "icon": "assets/items/ordinary_forest/trophies/boar_tusk.png",
     "icon_256": "assets_256/items/ordinary_forest/trophies/boar_tusk.png",
     "icon_1024": "assets_1024/items/ordinary_forest/trophies/boar_tusk.png",
@@ -503,6 +513,7 @@
       "mob_loot"
     ],
     "can_sell": true,
-    "sell_price_copper": 6
+    "sell_price_copper": 6,
+    "max_stack": 30
   }
 ]

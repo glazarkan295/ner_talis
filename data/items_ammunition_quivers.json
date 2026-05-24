@@ -21,7 +21,8 @@
     ],
     "icon": "/assets/items/ammo/arrow_quiver_empty.png",
     "can_sell": true,
-    "sell_price_copper": 10
+    "sell_price_copper": 10,
+    "stack_size": 1
   },
   {
     "id": "bolt_quiver_empty",
@@ -45,7 +46,8 @@
     ],
     "icon": "/assets/items/ammo/bolt_quiver_empty.png",
     "can_sell": true,
-    "sell_price_copper": 10
+    "sell_price_copper": 10,
+    "stack_size": 1
   },
   {
     "id": "arrow_for_bow",

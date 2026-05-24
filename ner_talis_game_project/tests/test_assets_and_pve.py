@@ -280,15 +280,16 @@ class AssetsAndPveIntegrationTest(unittest.TestCase):
         self.assertEqual(player["free_skill_points"], 2)
         self.assertEqual(player["experience"], 2)
 
-    def test_death_experience_penalty_removes_ten_percent_current_experience(self):
+    def test_death_experience_penalty_removes_ten_percent_level_requirement(self):
         _storage, player = self.make_player_and_storage()
         player["experience"] = 137
         player["total_experience"] = 500
 
         result = apply_death_experience_penalty(player, 10)
 
-        self.assertEqual(result["lost"], 14)
-        self.assertEqual(player["experience"], 123)
+        self.assertEqual(result["lost"], 10)
+        self.assertEqual(result["base_experience"], 100)
+        self.assertEqual(player["experience"], 127)
         self.assertEqual(player["total_experience"], 500)
         self.assertEqual(player["experience_to_next"], 100)
 
@@ -319,10 +320,12 @@ class AssetsAndPveIntegrationTest(unittest.TestCase):
 
         text, buttons = handle_battle_action(player, BATTLE_ATTACK, rng=random.Random(1))
 
-        self.assertIn("Штраф смерти: -5 опыта (-10%).", text)
-        self.assertEqual(player["experience"], 45)
+        self.assertIn("Штраф смерти: -10 опыта (-10%).", text)
+        self.assertIn("в лагерь локации", text)
+        self.assertEqual(player["experience"], 40)
         self.assertFalse(player.get("in_battle"))
-        self.assertEqual(buttons, [])
+        self.assertEqual(player.get("current_zone"), "hilly_meadows_camp")
+        self.assertTrue(any("Свернуть лагерь" in row for row in buttons))
 
     def test_race_bonuses_affect_combat_stats(self):
         _storage, player = self.make_player_and_storage()

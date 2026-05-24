@@ -88,7 +88,8 @@
     },
     "stats": [
       "Броня: +2"
-    ]
+    ],
+    "stack_size": 1
   },
   {
     "id": "ordinary_leather_chest",
@@ -117,7 +118,8 @@
     },
     "stats": [
       "Броня: +5"
-    ]
+    ],
+    "stack_size": 1
   },
   {
     "id": "ordinary_leather_boots",
@@ -145,7 +147,8 @@
     },
     "stats": [
       "Броня: +2"
-    ]
+    ],
+    "stack_size": 1
   },
   {
     "id": "ordinary_leather_gloves",
@@ -173,7 +176,8 @@
     },
     "stats": [
       "Броня: +2"
-    ]
+    ],
+    "stack_size": 1
   },
   {
     "id": "ordinary_leather_belt",
@@ -201,7 +205,8 @@
     },
     "stats": [
       "Броня: +1"
-    ]
+    ],
+    "stack_size": 1
   },
   {
     "id": "ordinary_leather_pants",
@@ -229,7 +234,8 @@
     },
     "stats": [
       "Броня: +4"
-    ]
+    ],
+    "stack_size": 1
   },
   {
     "id": "glass_diamond",

@@ -91,10 +91,10 @@ class ProfileSiteFixesTest(unittest.TestCase):
         )
 
         profile = frontend_profile(player)
-        skill = next(skill for skill in profile["skills"]["active"] if skill["id"] == "legacy_focus")
+        skill_ids = {skill["id"] for skill in profile["skills"]["active"]}
 
-        self.assertEqual(skill["resourceText"], "Расход: Мана: 2")
-        self.assertNotIn("concentration_cost", skill)
+        self.assertNotIn("legacy_focus", skill_ids)
+        self.assertEqual(skill_ids, {"basic_attack", "magic_spark"})
 
     def test_equipped_items_change_final_parameters(self):
         player = self._new_player()

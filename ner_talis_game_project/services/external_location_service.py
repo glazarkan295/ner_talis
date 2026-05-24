@@ -20,6 +20,7 @@ from project_paths import resolve_project_path
 from services.derived_stats_service import calculate_energy_stats, ensure_player_resources
 from services.item_registry import build_inventory_item, get_item_definition_by_name, slugify_fallback_item_id
 from services.inventory_service import add_inventory_item as add_inventory_stack, inventory_add_result_notice, remove_empty_stacks_and_recalculate
+from services.active_skill_service import normalize_starter_only_skills
 from services.pve_battle_service import BATTLE_ACTIONS, battle_buttons, create_location_battle, handle_battle_action
 from services.race_bonus_service import extra_alchemy_ingredient_chance_percent, search_event_weights
 from storage.event_claims import ensure_event_id
@@ -1455,6 +1456,7 @@ def _is_equipped_skill_action(player: dict[str, Any], action: str) -> bool:
 
 
 def _equipped_attack_skills(player: dict[str, Any]) -> list[dict[str, Any]]:
+    normalize_starter_only_skills(player)
     skills = player.get("skills") or {}
     equipped = skills.get("equipped", []) if isinstance(skills, dict) else []
     result: list[dict[str, Any]] = []

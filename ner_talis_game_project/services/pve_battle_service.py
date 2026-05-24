@@ -25,6 +25,7 @@ from services.active_skill_service import (
     is_skill_weapon_compatible,
     skill_weapon_requirement_text,
     validate_skill_ammo,
+    normalize_starter_only_skills,
 )
 from services.pve_battle_models import (
     BattleState,
@@ -311,6 +312,7 @@ def format_last_turn_log(battle: dict[str, Any]) -> str:
 
 
 def battle_buttons(player: dict[str, Any] | None = None) -> list[list[str]]:
+    normalize_starter_only_skills(player) if isinstance(player, dict) else None
     recalculate_inventory_overflow(player) if isinstance(player, dict) else None
     rows = [row[:] for row in base_battle_buttons(player)]
     skills = ((player or {}).get("skills") or {}).get("equipped", []) if isinstance((player or {}).get("skills"), dict) else []
@@ -406,6 +408,21 @@ def move_player_to_battle_return_location(player: dict[str, Any], battle: dict[s
     player["current_location"] = location_id
     player["current_zone"] = location_id
     player["location_id"] = location_id
+    return location_id
+
+
+def death_camp_buttons() -> list[list[str]]:
+    return [["Профиль"], ["Готовка", "Еда"], ["Свернуть лагерь"]]
+
+
+def move_player_to_death_camp(player: dict[str, Any], battle: dict[str, Any]) -> str:
+    """Move the defeated player to the current location camp by default."""
+
+    location_id = battle_return_location(battle)
+    player["current_location"] = location_id
+    player["current_zone"] = f"{location_id}_camp"
+    player["location_id"] = f"{location_id}_camp"
+    player["active_timer"] = None
     return location_id
 
 
@@ -521,6 +538,7 @@ def build_enemy(mob_key: str, rank: EnemyRank, level: int, index: int, location_
 
 
 def create_location_battle(player: dict[str, Any], rng: random.Random | None = None, location_id: str | None = None) -> tuple[dict[str, Any], str]:
+    normalize_starter_only_skills(player)
     rng = rng or random.Random()
     location_id = normalize_battle_location(location_id or player.get("current_location") or player.get("location_id") or "hilly_meadows")
     player_level = max(1, safe_int(player.get("level"), 1))
@@ -657,6 +675,7 @@ def player_attack_raw_damage(player: dict[str, Any], action: str) -> tuple[int, 
 
 
 def get_equipped_skill(player: dict[str, Any], action: str) -> dict[str, Any] | None:
+    normalize_starter_only_skills(player)
     skills = player.get("skills") if isinstance(player.get("skills"), dict) else {}
     for skill in skills.get("equipped", []):
         if not isinstance(skill, dict):
@@ -951,6 +970,17 @@ def format_battle_status(battle: dict[str, Any]) -> str:
     )
 
 
+def loot_parameters_for_rank(rank: EnemyRank, chance: int | float, min_amount: int, max_amount: int) -> tuple[int, int, int]:
+    chance_value = max(0, int(math.ceil(float(chance))))
+    min_value = max(1, safe_int(min_amount, 1))
+    max_value = max(min_value, safe_int(max_amount, min_value))
+    if rank == EnemyRank.ELITE:
+        chance_value = min(100, int(math.ceil(chance_value * 1.5)))
+        min_value = max(1, int(math.ceil(min_value * 1.5)))
+        max_value = max(min_value, int(math.ceil(max_value * 1.7)))
+    return chance_value, min_value, max_value
+
+
 def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: random.Random) -> str:
     enemies = battle.get("enemies", [])
     player_level = max(1, safe_int(player.get("level"), 1))
@@ -971,8 +1001,9 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
         xp_total += math.ceil(base_xp * diff_mult)
         template_key = next((key for key, value in catalog.items() if value["name"] == enemy.get("name")), "")
         for item_name, chance, min_amount, max_amount in catalog.get(template_key, {}).get("loot", []):
-            if rng.uniform(0, 100) <= chance:
-                amount = rng.randint(min_amount, max_amount)
+            loot_chance, loot_min, loot_max = loot_parameters_for_rank(rank, chance, min_amount, max_amount)
+            if rng.uniform(0, 100) <= loot_chance:
+                amount = rng.randint(loot_min, loot_max)
                 item_id = battle_loot_item_id(reward_location_id, item_name)
                 add_result = add_inventory_item(player, item_name, amount, item_id=item_id)
                 if add_result.added > 0:
@@ -984,6 +1015,9 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
     xp_total = math.ceil(xp_total * max(0.55, 1 - ((group_count - 1) * 0.05)))
     # Global balance change: experience received from killing mobs is reduced by 20%.
     xp_total = max(1, math.floor(xp_total * 0.8)) if xp_total > 0 else 0
+    # After reaching level 10, mob experience is reduced by an additional 30%.
+    if player_level >= 10 and xp_total > 0:
+        xp_total = max(1, math.floor(xp_total * 0.7))
     progress = grant_experience(player, xp_total)
     player["pve_kills"] = safe_int(player.get("pve_kills"), 0) + len(enemies)
     rewards = [f"Опыт: +{progress['gained']}"]
@@ -1081,7 +1115,7 @@ def finish_player_defeat(player: dict[str, Any], battle: dict[str, Any], log: li
     player["in_battle"] = False
     player["active_battle"] = None
     player["active_event"] = None
-    move_player_to_battle_return_location(player, battle)
+    death_location_id = move_player_to_death_camp(player, battle)
     player["hp"] = max(1, math.ceil(safe_int(player.get("max_hp"), 100) * 0.2))
     penalty = apply_death_experience_penalty(player, 10)
     player_name = battle_player_name(battle)
@@ -1090,8 +1124,8 @@ def finish_player_defeat(player: dict[str, Any], battle: dict[str, Any], log: li
         penalty_text = f"Штраф смерти: -{penalty['lost']} опыта (-10%)."
     return (
         "\n".join(log)
-        + f"\n\n❌ {player_name} проигрывает бой и отступает к безопасному месту. HP частично восстановлено.\n{penalty_text}"
-    ), []
+        + f"\n\n❌ {player_name} проигрывает бой и отступает в лагерь локации. HP частично восстановлено.\n{penalty_text}"
+    ), death_camp_buttons()
 
 
 def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random | None = None) -> tuple[str, list[list[str]]]:
