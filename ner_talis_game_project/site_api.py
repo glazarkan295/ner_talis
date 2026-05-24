@@ -40,9 +40,9 @@ from services.inventory_service import (
 )
 from services.promo_service import redeem_promo_code
 from services.market_service import (
-    is_item_sellable_from_profile,
     is_profile_market_sell_enabled,
     sell_item_from_profile,
+    sellable_inventory_stack_indexes,
 )
 from services.web_profile import PROFILE_SCOPE
 from services.active_skill_service import refresh_unlocked_active_skills, resource_cost_with_modifiers, skill_level, is_skill_weapon_compatible, skill_weapon_requirement_text
@@ -218,6 +218,7 @@ class DropItemRequest(BaseModel):
 class SellItemRequest(BaseModel):
     item_id: str
     amount: int = Field(gt=0)
+    inventory_index: int | None = Field(default=None, ge=0)
 
 
 class PromoRedeemRequest(BaseModel):
@@ -913,17 +914,19 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
 
     inventory = []
     market_sell_enabled = is_profile_market_sell_enabled(player)
-    for raw_item in player.get("inventory", []):
+    sellable_stack_indexes = sellable_inventory_stack_indexes(player) if market_sell_enabled else set()
+    for inventory_index, raw_item in enumerate(player.get("inventory", [])):
         if not isinstance(raw_item, dict):
             continue
         item = normalize_item(raw_item)
+        item["inventoryIndex"] = inventory_index
         if is_profile_equipment_item(item):
             item["actions"] = ["Надеть"]
         elif is_inventory_item_usable(item):
             item["actions"] = ["Использовать"]
         else:
             item.setdefault("actions", [])
-        if market_sell_enabled and is_item_sellable_from_profile(player, str(item.get("id") or item.get("item_id") or "")):
+        if inventory_index in sellable_stack_indexes:
             item.setdefault("actions", [])
             if "Продать" not in item["actions"]:
                 item["actions"].append("Продать")
@@ -1741,7 +1744,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
         player = resolve_profile_write(storage, identifier)
         if not is_profile_market_sell_enabled(player):
             raise HTTPException(status_code=400, detail="Продажа через профиль доступна только в разделе продажи на рынке.")
-        result = sell_item_from_profile(storage, player, request.item_id, request.amount)
+        result = sell_item_from_profile(storage, player, request.item_id, request.amount, request.inventory_index)
         if "Продано:" not in result.text:
             raise HTTPException(status_code=400, detail=result.text)
         refreshed = storage.get_player_by_game_id(player.get("game_id")) or player

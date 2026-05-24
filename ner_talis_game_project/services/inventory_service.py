@@ -76,13 +76,28 @@ def _is_stackable_item(item: dict[str, Any]) -> bool:
     return max_stack > 1
 
 
+def _stack_protection_marker(item: dict[str, Any]) -> str:
+    """Keep protected/locked stacks separate from normal player stacks.
+
+    A protected stack must not merge with an ordinary stack that has the same
+    ``item_id``.  Otherwise the profile can inherit sell actions from the
+    ordinary stack or the protected flag can be lost during normalization.
+    """
+
+    if bool(item.get("quest_item") or item.get("locked") or item.get("protected")):
+        return "protected"
+    if item.get("can_sell") is False:
+        return "sell_locked"
+    return "normal"
+
+
 def _stack_identifier(item: dict[str, Any]) -> str:
     """Canonical key used only for merging stackable inventory entries."""
 
     if _is_stackable_item(item):
         item_id = item.get("item_id")
         if item_id:
-            return str(item_id)
+            return f"{item_id}::{_stack_protection_marker(item)}"
     return _item_identifier(item)
 
 
@@ -311,12 +326,13 @@ def add_inventory_item(
         prepared.setdefault("category", default_category)
 
     canonical_id = _stack_identifier(prepared)
+    item_identity = _item_identifier(prepared)
     if _is_stackable_item(prepared):
-        prepared["item_id"] = canonical_id
-        prepared["id"] = canonical_id
+        prepared.setdefault("item_id", item_identity)
+        prepared["id"] = str(prepared.get("item_id") or item_identity)
     else:
-        prepared.setdefault("item_id", canonical_id)
-        prepared.setdefault("id", canonical_id)
+        prepared.setdefault("item_id", item_identity)
+        prepared.setdefault("id", item_identity)
     prepared = _apply_stack_limit(prepared)
     if max_stack is not None:
         prepared["max_stack"] = max(1, safe_int(max_stack, 1))
@@ -372,11 +388,11 @@ def add_inventory_item(
         new_item = dict(prepared)
         new_item["amount"] = added
         if _is_stackable_item(new_item):
-            new_item["id"] = canonical_id
-            new_item["item_id"] = canonical_id
+            new_item.setdefault("item_id", item_identity)
+            new_item["id"] = str(new_item.get("item_id") or item_identity)
         else:
-            new_item.setdefault("id", canonical_id)
-            new_item.setdefault("item_id", canonical_id)
+            new_item.setdefault("id", item_identity)
+            new_item.setdefault("item_id", item_identity)
         _apply_storage_markers(new_item, overflow=use_overflow)
         inventory.append(new_item)
         if use_overflow:

@@ -103,7 +103,7 @@ function App() {
           return runProfileAction(() => dropItem(profileIdentifier, item.id, amount));
         }}
         onSellItem={(item, amount) => {
-          return runProfileAction(() => sellItem(profileIdentifier, item.id, amount));
+          return runProfileAction(() => sellItem(profileIdentifier, item.id, amount, item.inventoryIndex));
         }}
         onEquipSkill={(skill) => {
           return runProfileAction(() => equipSkill(profileIdentifier, skill.id || skill.name));

@@ -465,32 +465,72 @@ def item_sell_price(item: dict[str, Any]) -> int:
     return -1
 
 
+def sellable_inventory_stack_entry(item: dict[str, Any], index: int | None = None) -> dict[str, Any] | None:
+    """Return a sell entry for one concrete inventory stack.
+
+    The profile UI must decorate actions per stack, not only by aggregated
+    ``item_id``.  Otherwise a protected stack can inherit the sell button from
+    another sellable stack with the same id.
+    """
+    if not isinstance(item, dict) or _is_sell_protected(item):
+        return None
+    price = item_sell_price(item)
+    if price < 0:
+        return None
+    item_id = _item_id(item)
+    if not item_id:
+        return None
+    amount = max(0, safe_int(item.get("amount"), 1))
+    if amount <= 0:
+        return None
+    entry = {
+        "item_id": item_id,
+        "name": _item_name(item),
+        "description": item.get("description") or "Описание предмета пока не добавлено.",
+        "quantity": amount,
+        "price": price,
+    }
+    if index is not None:
+        entry["inventory_index"] = index
+    entry["label"] = f"{entry['name']} ×{entry['quantity']}"
+    return entry
+
+
+def sellable_inventory_stack_indexes(player: dict[str, Any]) -> set[int]:
+    """Return indexes of concrete stacks sellable from the profile UI."""
+    if not is_profile_market_sell_enabled(player):
+        return set()
+    inventory = player.get("inventory", [])
+    if not isinstance(inventory, list):
+        return set()
+    return {
+        index
+        for index, item in enumerate(inventory)
+        if isinstance(item, dict) and sellable_inventory_stack_entry(item, index) is not None
+    }
+
+
 def sellable_inventory_entries(player: dict[str, Any]) -> list[dict[str, Any]]:
     entries_by_id: dict[str, dict[str, Any]] = {}
-    for item in player.get("inventory", []):
-        if not isinstance(item, dict) or _is_sell_protected(item):
+    for index, item in enumerate(player.get("inventory", [])):
+        if not isinstance(item, dict):
             continue
-        price = item_sell_price(item)
-        if price < 0:
+        stack_entry = sellable_inventory_stack_entry(item, index)
+        if stack_entry is None:
             continue
-        item_id = _item_id(item)
-        if not item_id:
-            continue
-        amount = max(0, safe_int(item.get("amount"), 1))
-        if amount <= 0:
-            continue
+        item_id = stack_entry["item_id"]
         entry = entries_by_id.setdefault(
             item_id,
             {
                 "item_id": item_id,
-                "name": _item_name(item),
-                "description": item.get("description") or "Описание предмета пока не добавлено.",
+                "name": stack_entry["name"],
+                "description": stack_entry["description"],
                 "quantity": 0,
-                "price": price,
+                "price": stack_entry["price"],
             },
         )
-        entry["quantity"] += amount
-        entry["price"] = price
+        entry["quantity"] += stack_entry["quantity"]
+        entry["price"] = stack_entry["price"]
     result = []
     for entry in entries_by_id.values():
         entry["label"] = f"{entry['name']} ×{entry['quantity']}"
@@ -538,7 +578,7 @@ def _entry_by_id(player: dict[str, Any], item_id: str) -> dict[str, Any] | None:
     return None
 
 
-def handle_sell_quantity(storage: Any, player: dict[str, Any], entry: dict[str, Any], raw_quantity: str) -> MarketResult:
+def handle_sell_quantity(storage: Any, player: dict[str, Any], entry: dict[str, Any], raw_quantity: str, inventory_index: int | None = None) -> MarketResult:
     quantity = _parse_positive_int(raw_quantity)
     if quantity is None or quantity > safe_int(entry.get("quantity"), 0):
         return MarketResult(
@@ -552,7 +592,11 @@ def handle_sell_quantity(storage: Any, player: dict[str, Any], entry: dict[str, 
     if not isinstance(inventory, list):
         inventory = []
         player["inventory"] = inventory
-    for item in inventory:
+    indexed_items = list(enumerate(inventory))
+    if inventory_index is not None:
+        indexed_items = [(index, item) for index, item in indexed_items if index == inventory_index]
+
+    for index, item in indexed_items:
         if remaining <= 0:
             break
         if not isinstance(item, dict) or _item_id(item) != entry["item_id"] or _is_sell_protected(item):
@@ -600,9 +644,19 @@ def is_item_sellable_from_profile(player: dict[str, Any], item_id: str) -> bool:
     return _entry_by_id(player, item_id) is not None
 
 
-def sell_item_from_profile(storage: Any, player: dict[str, Any], item_id: str, quantity: int) -> MarketResult:
+def sell_item_from_profile(storage: Any, player: dict[str, Any], item_id: str, quantity: int, inventory_index: int | None = None) -> MarketResult:
     if not is_profile_market_sell_enabled(player):
         return MarketResult("Продажа через профиль доступна только когда игрок находится на рынке в разделе продажи.", [], str(player.get("current_zone") or ""))
+    if inventory_index is not None:
+        inventory = player.get("inventory", [])
+        if not isinstance(inventory, list) or inventory_index < 0 or inventory_index >= len(inventory):
+            return MarketResult("Этот стак предмета уже недоступен для продажи.", [], MARKET_SELL_ZONE)
+        raw_item = inventory[inventory_index]
+        entry = sellable_inventory_stack_entry(raw_item, inventory_index) if isinstance(raw_item, dict) else None
+        if not entry or entry["item_id"] != item_id:
+            return MarketResult("Этот стак предмета нельзя продать на рынке.", [], MARKET_SELL_ZONE)
+        return handle_sell_quantity(storage, player, entry, str(quantity), inventory_index=inventory_index)
+
     entry = _entry_by_id(player, item_id)
     if not entry:
         return MarketResult("Этот предмет сейчас нельзя продать на рынке.", [], MARKET_SELL_ZONE)
