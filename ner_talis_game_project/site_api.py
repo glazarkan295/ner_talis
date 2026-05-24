@@ -973,7 +973,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "experienceCurrent": safe_int(player.get("experience"), 0),
             "experienceToNext": safe_int(player.get("experience_to_next"), max(100, level * 100)),
             "freeAttributePoints": safe_int(player.get("free_stat_points"), 0),
-            "freeSkillPoints": 0,
+            "freeSkillPoints": safe_int(player.get("free_skill_points"), 0),
             "balanceText": format_money(safe_int(player.get("money"), 0)),
             "registrationDate": format_date(player.get("created_at")),
             "inventoryCapacity": max_regular_slots(player),

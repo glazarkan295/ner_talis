@@ -875,6 +875,7 @@ function SkillsTab({ profile, onSpendSkillPoints, onEquipSkill, onUnequipSkill }
     <div className="nt-stack">
       <Panel title="Навыки">
         <div className="nt-lines">
+          <Row label="Свободные очки навыков" value={freePoints} />
           <Row label="Развитие ветвей" value="отключено" />
           <Row label="Доступно" value="стартовые навыки" />
         </div>

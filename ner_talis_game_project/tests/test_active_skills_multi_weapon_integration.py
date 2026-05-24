@@ -48,6 +48,32 @@ class ActiveSkillBranchesRemovedTest(unittest.TestCase):
         self.assertIsInstance(counts, dict)
         self.assertIsNone(catalog_skill_by_id("spirit_power_strike"))
 
+
+    def test_removed_branch_json_catalogs_are_not_shipped(self):
+        removed_paths = [
+            PROJECT_DIR / "data" / "active_skills_registry.json",
+            PROJECT_DIR / "data" / "active_skills_counts.json",
+            PROJECT_DIR / "data" / "branch_choice_messages.json",
+            PROJECT_DIR / "ner_talis_game_project" / "docs" / "active_skills",
+        ]
+        for path in removed_paths:
+            self.assertFalse(path.exists(), f"Старый каталог веток навыков не должен попадать в проект: {path}")
+
+        json_text = "\n".join(
+            path.read_text(encoding="utf-8", errors="ignore")
+            for path in PROJECT_DIR.rglob("*.json")
+            if "node_modules" not in path.parts and "dist" not in path.parts
+        )
+        forbidden_markers = (
+            "active_skills_registry",
+            "active_skills_counts",
+            "branch_choice_messages",
+            "spirit_power_strike",
+            "spirit_arrow_rain",
+        )
+        for marker in forbidden_markers:
+            self.assertNotIn(marker, json_text)
+
     def test_level_10_does_not_send_branch_hint_or_grant_branch_skills(self):
         player = self.make_player()
         player["level"] = 9
