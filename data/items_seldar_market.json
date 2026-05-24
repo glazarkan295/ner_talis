@@ -200,8 +200,7 @@
     "enchant_slots": 0,
     "can_enchant": false,
     "stat_modifiers": {
-      "armor": 1,
-      "bonus_max_energy": 3
+      "armor": 1
     },
     "stats": [
       "Броня: +1"

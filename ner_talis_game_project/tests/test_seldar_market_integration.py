@@ -10,6 +10,8 @@ if str(ROOT_DIR) not in sys.path:
 
 from services.city_service import process_world_action
 from services.market_service import load_market_items
+from services.item_registry import get_item_definition_by_id, registry_item_to_inventory_item
+from services.derived_stats_service import calculate_player_derived_stats
 from services.registration_service import create_player, load_races
 from storage.json_storage import JsonStorage
 
@@ -201,6 +203,23 @@ class SeldarMarketIntegrationTest(unittest.TestCase):
         self.assertEqual(sum(sell_result.buttons, []), ["Продать 1", "Назад на рынок"])
         sell_card = process_world_action(storage, player, "Продать 1", "telegram")
         self.assertIn("Цена продажи", sell_card.text)
+
+    def test_ordinary_leather_belt_does_not_add_hidden_max_energy(self):
+        definition = get_item_definition_by_id("ordinary_leather_belt")
+        self.assertIsNotNone(definition)
+        self.assertEqual(definition.get("stat_modifiers"), {"armor": 1})
+        self.assertNotIn("bonus_max_energy", definition.get("stat_modifiers", {}))
+
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+        base_stats = calculate_player_derived_stats(player)
+        player["equipment"]["belt"] = registry_item_to_inventory_item(definition, 1)
+
+        equipped = calculate_player_derived_stats(player)
+
+        self.assertEqual(equipped["max_energy"], base_stats["max_energy"])
+        self.assertEqual(equipped["bonus_max_energy"], base_stats["bonus_max_energy"])
+        self.assertEqual(equipped["armor"], base_stats["armor"] + 1)
 
     def test_buy_rejects_when_inventory_and_overflow_cannot_fit_full_quantity(self):
         tmp, storage, player = self.make_storage_player()
