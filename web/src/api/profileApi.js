@@ -136,10 +136,14 @@ export function unequipSkill(identifier, skillId) {
 }
 
 
-export function sellItem(identifier, itemId, amount) {
+export function sellItem(identifier, itemId, amount, inventoryIndex = null) {
+  const payload = { item_id: itemId, amount };
+  if (Number.isInteger(inventoryIndex) && inventoryIndex >= 0) {
+    payload.inventory_index = inventoryIndex;
+  }
   return requestJson(`/api/profile/${encodeURIComponent(identifier)}/inventory/sell`, {
     method: "POST",
-    body: JSON.stringify({ item_id: itemId, amount }),
+    body: JSON.stringify(payload),
   });
 }
 

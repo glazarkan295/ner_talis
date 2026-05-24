@@ -465,6 +465,82 @@ class ProfileSiteFixesTest(unittest.TestCase):
             water = next(item for item in payload["profile"]["inventory"] if item["id"] == "clean_water")
             self.assertIn("Продать", water.get("actions", []))
 
+    def test_market_sell_profile_action_is_per_stack_not_item_id(self):
+        player = self._new_player()
+        player["current_zone"] = "seldar_npc_market_sell"
+        player["location_id"] = "seldar_npc_market_sell"
+        player["market_context"] = {"mode": "sell_list"}
+        player["inventory"] = [
+            {"id": "clean_water", "item_id": "clean_water", "name": "Чистая вода", "amount": 1, "protected": True, "can_sell": True, "sell_price_copper": 5},
+            {"id": "clean_water", "item_id": "clean_water", "name": "Чистая вода", "amount": 3, "can_sell": True, "sell_price_copper": 5},
+        ]
+
+        profile = frontend_profile(player)
+        water_stacks = [item for item in profile["inventory"] if item["id"] == "clean_water"]
+
+        self.assertEqual([item["inventoryIndex"] for item in water_stacks], [0, 1])
+        self.assertNotIn("Продать", water_stacks[0].get("actions", []))
+        self.assertFalse(water_stacks[0].get("marketSellAvailable", False))
+        self.assertIn("Продать", water_stacks[1].get("actions", []))
+        self.assertTrue(water_stacks[1].get("marketSellAvailable"))
+
+    def test_market_sell_endpoint_rejects_protected_stack_index(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["money"] = 100
+            player["money_copper"] = 100
+            player["current_zone"] = "seldar_npc_market_sell"
+            player["location_id"] = "seldar_npc_market_sell"
+            player["market_context"] = {"mode": "sell_list"}
+            player["inventory"] = [
+                {"id": "clean_water", "item_id": "clean_water", "name": "Чистая вода", "amount": 1, "protected": True, "can_sell": True, "sell_price_copper": 5},
+                {"id": "clean_water", "item_id": "clean_water", "name": "Чистая вода", "amount": 3, "can_sell": True, "sell_price_copper": 5},
+            ]
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            response = TestClient(app).post(
+                f"/api/profile/{token}/inventory/sell",
+                json={"item_id": "clean_water", "amount": 1, "inventory_index": 0},
+            )
+
+            self.assertEqual(response.status_code, 400)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(restored["money_copper"], 100)
+            self.assertEqual([item["amount"] for item in restored["inventory"]], [1, 3])
+
+    def test_market_sell_endpoint_sells_selected_stack_index_only(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["money"] = 100
+            player["money_copper"] = 100
+            player["race_id"] = "elf"
+            player["current_zone"] = "seldar_npc_market_sell"
+            player["location_id"] = "seldar_npc_market_sell"
+            player["market_context"] = {"mode": "sell_list"}
+            player["inventory"] = [
+                {"id": "clean_water", "item_id": "clean_water", "name": "Чистая вода", "amount": 2, "can_sell": True, "sell_price_copper": 2},
+                {"id": "clean_water", "item_id": "clean_water", "name": "Чистая вода", "amount": 4, "can_sell": True, "sell_price_copper": 5},
+            ]
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            response = TestClient(app).post(
+                f"/api/profile/{token}/inventory/sell",
+                json={"item_id": "clean_water", "amount": 3, "inventory_index": 1},
+            )
+
+            self.assertEqual(response.status_code, 200, response.text)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(restored["money_copper"], 115)
+            self.assertEqual(sum(item["amount"] for item in restored["inventory"]), 3)
+
     def test_market_sell_endpoint_rejects_outside_market_sell_mode(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
