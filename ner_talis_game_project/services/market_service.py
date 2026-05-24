@@ -24,7 +24,7 @@ from services.inventory_service import (
     remove_empty_stacks_and_recalculate,
 )
 from services.item_registry import build_inventory_item, get_item_definition_by_id, get_item_definition_by_name, registry_item_to_inventory_item
-from services.race_bonus_service import npc_purchase_refund_amount
+from services.race_bonus_service import npc_purchase_refund_amount, npc_transaction_bonus_amount
 
 MARKET_ZONE_PREFIX = "seldar_npc_market"
 MARKET_MAIN_ZONE = "seldar_npc_market"
@@ -567,11 +567,13 @@ def handle_sell_quantity(storage: Any, player: dict[str, Any], entry: dict[str, 
 
     remove_empty_stacks_and_recalculate(player)
     total = quantity * safe_int(entry.get("price"), 0)
-    _set_money(player, _money(player) + total)
+    bonus = npc_transaction_bonus_amount(player, total)
+    _set_money(player, _money(player) + total + bonus)
     list_result = open_sell_list(player)
     storage.update_player(player)
+    bonus_text = f" Возврат золота: +{bonus} медных." if bonus else ""
     return MarketResult(
-        f"Продано: {entry['name']} ×{quantity}. Получено: {total} медных.\n\n{list_result.text}",
+        f"Продано: {entry['name']} ×{quantity}. Получено: {total} медных.{bonus_text}\n\n{list_result.text}",
         list_result.buttons,
         list_result.zone_id,
     )

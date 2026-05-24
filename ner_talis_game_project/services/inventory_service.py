@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from services.derived_stats_service import safe_int
-from services.item_registry import build_inventory_item, slugify_fallback_item_id
+from services.item_registry import build_inventory_item, inventory_stack_limit_from_definition, slugify_fallback_item_id
 
 OVERFLOW_EFFECT_ID = "inventory_overflow_penalty"
 
@@ -86,6 +86,13 @@ def _stack_identifier(item: dict[str, Any]) -> str:
     return _item_identifier(item)
 
 
+def _apply_stack_limit(item: dict[str, Any]) -> dict[str, Any]:
+    limit = max(1, inventory_stack_limit_from_definition(item))
+    item["max_stack"] = limit
+    item["stackable"] = limit > 1
+    return item
+
+
 def _prepare_item(item: dict[str, Any], amount: int | None = None, *, default_source: str | None = None, default_category: str | None = None) -> dict[str, Any]:
     prepared = dict(item)
     if amount is not None:
@@ -94,13 +101,11 @@ def _prepare_item(item: dict[str, Any], amount: int | None = None, *, default_so
     item_id = _item_identifier(prepared)
     prepared.setdefault("id", item_id)
     prepared.setdefault("item_id", item_id)
-    prepared.setdefault("max_stack", 999)
-    prepared.setdefault("stackable", True)
     if default_source:
         prepared.setdefault("source", default_source)
     if default_category:
         prepared.setdefault("category", default_category)
-    return prepared
+    return _apply_stack_limit(prepared)
 
 
 def _apply_storage_markers(item: dict[str, Any], *, overflow: bool) -> None:
@@ -149,27 +154,9 @@ def normalize_inventory_stacks(player: dict[str, Any]) -> None:
         return
 
     normalized: list[Any] = []
-    stack_by_key: dict[str, dict[str, Any]] = {}
-    for entry in inventory:
-        if not isinstance(entry, dict):
-            normalized.append(entry)
-            continue
-        amount = safe_int(entry.get("amount"), 1)
-        if amount <= 0:
-            continue
-        if not _is_stackable_item(entry):
-            normalized.append(entry)
-            continue
-        key = _stack_identifier(entry)
-        existing = stack_by_key.get(key)
-        if existing is None:
-            entry["amount"] = amount
-            if entry.get("item_id"):
-                entry["id"] = str(entry.get("item_id"))
-            normalized.append(entry)
-            stack_by_key[key] = entry
-            continue
-        existing["amount"] = safe_int(existing.get("amount"), 0) + amount
+    open_stacks: dict[str, list[dict[str, Any]]] = {}
+
+    def merge_metadata(target: dict[str, Any], source: dict[str, Any]) -> None:
         for meta_key in (
             "icon",
             "asset_icon",
@@ -184,8 +171,49 @@ def normalize_inventory_stacks(player: dict[str, Any]) -> None:
             "energy_restore",
             "use_effect",
         ):
-            if existing.get(meta_key) is None and entry.get(meta_key) is not None:
-                existing[meta_key] = entry.get(meta_key)
+            if target.get(meta_key) is None and source.get(meta_key) is not None:
+                target[meta_key] = source.get(meta_key)
+
+    for entry in inventory:
+        if not isinstance(entry, dict):
+            normalized.append(entry)
+            continue
+        amount = safe_int(entry.get("amount"), 1)
+        if amount <= 0:
+            continue
+        entry = _apply_stack_limit(entry)
+        if not _is_stackable_item(entry):
+            for _index in range(amount):
+                new_entry = dict(entry)
+                new_entry["amount"] = 1
+                normalized.append(new_entry)
+            continue
+        key = _stack_identifier(entry)
+        if entry.get("item_id"):
+            entry["id"] = str(entry.get("item_id"))
+        max_stack_value = max(1, safe_int(entry.get("max_stack"), 1))
+        stacks = open_stacks.setdefault(key, [])
+        remaining = amount
+        for existing in stacks:
+            current = max(0, safe_int(existing.get("amount"), 0))
+            free = max_stack_value - current
+            if free <= 0:
+                continue
+            added = min(free, remaining)
+            existing["amount"] = current + added
+            merge_metadata(existing, entry)
+            remaining -= added
+            if remaining <= 0:
+                break
+        while remaining > 0:
+            new_amount = min(max_stack_value, remaining)
+            new_entry = dict(entry)
+            new_entry["amount"] = new_amount
+            new_entry["max_stack"] = max_stack_value
+            new_entry["stackable"] = True
+            normalized.append(new_entry)
+            stacks.append(new_entry)
+            remaining -= new_amount
 
     inventory[:] = normalized
 
@@ -267,7 +295,7 @@ def add_inventory_item(
         return result
 
     if isinstance(item, str):
-        prepared = build_inventory_item(item, amount, item_id=item_id, max_stack=max_stack or 999)
+        prepared = build_inventory_item(item, amount, item_id=item_id, max_stack=max_stack)
     else:
         prepared = dict(item)
         if item_id:
@@ -289,8 +317,11 @@ def add_inventory_item(
     else:
         prepared.setdefault("item_id", canonical_id)
         prepared.setdefault("id", canonical_id)
-    max_stack_value = max(1, safe_int(prepared.get("max_stack"), max_stack or 999))
-    prepared["max_stack"] = max_stack_value
+    prepared = _apply_stack_limit(prepared)
+    if max_stack is not None:
+        prepared["max_stack"] = max(1, safe_int(max_stack, 1))
+        prepared["stackable"] = prepared["max_stack"] > 1
+    max_stack_value = max(1, safe_int(prepared.get("max_stack"), 1))
 
     remaining = amount
     inventory = player.setdefault("inventory", [])
@@ -303,8 +334,10 @@ def add_inventory_item(
             continue
         if _stack_identifier(existing) != canonical_id:
             continue
+        _apply_stack_limit(existing)
         current = max(0, safe_int(existing.get("amount"), 1))
-        free = max_stack_value - current
+        existing_limit = max(1, safe_int(existing.get("max_stack"), max_stack_value))
+        free = min(max_stack_value, existing_limit) - current
         if free <= 0:
             continue
         added = min(free, remaining)

@@ -155,7 +155,7 @@ def create_player(
         "hp": None,
         "spirit": None,
         "mana": None,
-        "branch": "Ветвь не выбрана",
+        "branch": "Без ветви",
         "skill_branch": None,
         "branch_choice_hint_sent": False,
         "has_identification_amulet": True,

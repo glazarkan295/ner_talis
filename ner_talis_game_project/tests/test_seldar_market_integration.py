@@ -166,7 +166,8 @@ class SeldarMarketIntegrationTest(unittest.TestCase):
         result = process_world_action(storage, player, "Чистая вода ×3", "telegram")
         self.assertIn("Цена продажи", result.text)
         process_world_action(storage, player, "Продать", "telegram")
-        result = process_world_action(storage, player, "2", "telegram")
+        with patch("services.market_service.npc_transaction_bonus_amount", return_value=0):
+            result = process_world_action(storage, player, "2", "telegram")
 
         self.assertIn("Продано: Чистая вода ×2", result.text)
         self.assertIn("Продать 1", sum(result.buttons, []))

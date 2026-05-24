@@ -3,12 +3,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from services.active_skill_service import (
-    BRANCH_LABELS,
-    choose_active_skill_branch,
+    DISABLED_BRANCH_TEXT,
     ensure_active_skill_fields,
-    has_identification_amulet,
-    player_branch,
-    refresh_unlocked_active_skills,
 )
 from services.external_location_service import (
     EXTERNAL_LOCATION_BUTTONS,
@@ -139,15 +135,12 @@ def town_hall_buttons() -> list[list[str]]:
 
 def order_stone_buttons(player: dict[str, Any]) -> list[list[str]]:
     ensure_active_skill_fields(player)
-    if player_branch(player):
-        return [["Ратуша"], [BACK_TO_CENTRAL]]
-    if int(player.get("level") or 1) < 10 or not has_identification_amulet(player):
-        return [["Ратуша"], [BACK_TO_CENTRAL]]
-    return [[APPLY_ID_AMULET], ["Ратуша", BACK_TO_CENTRAL]]
+    return [["Ратуша"], [BACK_TO_CENTRAL]]
 
 
 def branch_choice_buttons() -> list[list[str]]:
-    return [[CHOOSE_SPIRIT_BRANCH], [CHOOSE_MANA_BRANCH], ["Ратуша", BACK_TO_CENTRAL]]
+    # Kept only for compatibility with old imports; no branch choice is shown.
+    return [["Ратуша"], [BACK_TO_CENTRAL]]
 
 
 def gates_buttons() -> list[list[str]]:
@@ -519,28 +512,10 @@ CITY_BUTTONS = frozenset(CITY_ACTIONS.keys()) | BRANCH_CHOICE_ACTIONS | EXTERNAL
 
 def order_stone_text(player: dict[str, Any]) -> str:
     ensure_active_skill_fields(player)
-    branch = player_branch(player)
-    if branch:
-        return (
-            "🪨 Распорядительный камень\n\n"
-            f"Вы уже закрепили свою ветвь: {BRANCH_LABELS[branch]}. "
-            "Сменить её обычным способом нельзя."
-        )
-    if int(player.get("level") or 1) < 10:
-        return (
-            "🪨 Распорядительный камень\n\n"
-            "Камень остаётся холодным. Похоже, сначала нужно окрепнуть до 10 уровня. "
-            "Это откроет только выбор ветви, а не сами активные навыки напрямую."
-        )
-    if not has_identification_amulet(player):
-        return (
-            "🪨 Распорядительный камень\n\n"
-            "Камень не реагирует. Нужен идентификационный амулет — без него он не сможет определить владельца."
-        )
     return (
         "🪨 Распорядительный камень\n\n"
-        "Холодная грань камня едва заметно светится. Ваш идентификационный амулет отзывается слабым теплом. "
-        "Можно приложить амулет и выбрать путь развития активных навыков."
+        "Камень молчит. Система выбора ветви Духа или ветви Маны отключена.\n\n"
+        f"{DISABLED_BRANCH_TEXT}"
     )
 
 
@@ -556,15 +531,6 @@ def _branch_gate_response(player: dict[str, Any], action: str) -> WorldActionRes
             "Сначала перейдите в Селдар → Верхний квартал → Ратуша.",
             central_square_buttons(),
         )
-
-    if action == ORDER_STONE and int(player.get("level") or 1) < 10:
-        return WorldActionResult(
-            "🪨 Распорядительный камень\n\n"
-            "Вы пришли рано: камень остаётся холодным. "
-            "Сначала нужно окрепнуть до 10 уровня, и только потом он позволит выбрать ветвь развития.",
-            town_hall_buttons(),
-        )
-
     return None
 
 
@@ -588,7 +554,7 @@ def process_branch_choice_action(storage: Any, player: dict[str, Any], action: s
     if not _order_stone_interaction_allowed(player, action):
         storage.update_player(player)
         return WorldActionResult(
-            "🪨 Сначала подойдите к Распорядительному камню в Ратуше и только потом прикладывайте амулет.",
+            "🪨 Сначала подойдите к Распорядительному камню в Ратуше.",
             town_hall_buttons(),
         )
 
@@ -596,51 +562,9 @@ def process_branch_choice_action(storage: Any, player: dict[str, Any], action: s
         player["current_city"] = "seldar"
         player["current_zone"] = "seldar_town_hall_order_stone"
         player["location_id"] = "seldar_town_hall_order_stone"
-        refresh_unlocked_active_skills(player)
-        storage.update_player(player)
-        return WorldActionResult(order_stone_text(player), order_stone_buttons(player))
-
-    if action == APPLY_ID_AMULET:
-        if player_branch(player):
-            return WorldActionResult(order_stone_text(player), order_stone_buttons(player))
-        if int(player.get("level") or 1) < 10 or not has_identification_amulet(player):
-            return WorldActionResult(order_stone_text(player), order_stone_buttons(player))
-        player["current_city"] = "seldar"
-        player["current_zone"] = "seldar_town_hall_order_stone"
-        player["location_id"] = "seldar_town_hall_order_stone"
-        storage.update_player(player)
-        text = (
-            "Вы прикладываете идентификационный амулет к холодной грани Распорядительного камня. "
-            "Внутри камня вспыхивают две тусклые жилы: одна отзывается тяжёлым дыханием тела и оружия, "
-            "другая — ровным потоком маны.\n\n"
-            "Ветвь Духа — путь оружия, стойкости, рывков, ударов, парирования и боевой воли. Навыки тратят очки духа.\n\n"
-            "Ветвь Маны — путь заклинаний, барьеров, лечения, стихий, контроля и магической поддержки. Навыки тратят очки маны."
-        )
-        return WorldActionResult(text, branch_choice_buttons())
-
-    branch = "spirit" if action == CHOOSE_SPIRIT_BRANCH else "mana"
-    try:
-        result = choose_active_skill_branch(player, branch)
-    except ValueError as exc:
-        message = str(exc)
-        if "already" in message or "level" in message or "amulet" in message:
-            text = order_stone_text(player)
-        else:
-            text = "Сейчас нельзя выбрать ветвь активных навыков."
-        storage.update_player(player)
-        return WorldActionResult(text, order_stone_buttons(player))
 
     storage.update_player(player)
-    label = result["branch_label"]
-    added = int(result.get("added_skills") or 0)
-    text = (
-        f"✅ Вы выбрали {label}.\n\n"
-        "Теперь вторая ветвь закрыта для постоянного развития. "
-        "Сами активные навыки открываются не за уровень, а по требованиям ветви, предыдущих навыков, "
-        "модификаторов, вложенных характеристик, оружия, книг, наставников, свитков, квестов, событий или особых условий.\n\n"
-        f"Открыто навыков ветви: {added}."
-    )
-    return WorldActionResult(text, order_stone_buttons(player))
+    return WorldActionResult(order_stone_text(player), order_stone_buttons(player))
 
 
 def _is_external_location_state(player: dict[str, Any]) -> bool:
