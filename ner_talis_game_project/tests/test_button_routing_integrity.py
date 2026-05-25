@@ -141,10 +141,30 @@ class ButtonRoutingIntegrityTest(unittest.TestCase):
         result = process_world_action(storage, player, ORDER_STONE, "telegram")
 
         self.assert_known_response(result)
-        self.assertIn("отключена", result.text)
+        self.assertIn("10", result.text)
         updated = storage.get_player_by_game_id("NT-BUTTONS")
         self.assertEqual(updated.get("current_zone"), "seldar_town_hall_order_stone")
         self.assertNotIn("market_context", updated)
+
+
+    def test_unknown_text_keeps_external_location_state_on_telegram_and_vk(self):
+        for platform in ("telegram", "vk"):
+            with self.subTest(platform=platform):
+                storage, player = self.make_storage_player()
+                player["current_city"] = "outside_seldar"
+                player["current_zone"] = "hilly_meadows"
+                player["location_id"] = "hilly_meadows"
+                player["current_location"] = "hilly_meadows"
+                storage.update_player(player)
+
+                result = process_world_action(storage, player, "случайный текст", platform)
+
+                self.assertIn("Неизвестное действие внешней локации", result.text)
+                updated = storage.get_player_by_game_id("NT-BUTTONS")
+                self.assertEqual(updated.get("current_city"), "outside_seldar")
+                self.assertEqual(updated.get("current_zone"), "hilly_meadows")
+                self.assertEqual(updated.get("location_id"), "hilly_meadows")
+                self.assertEqual(updated.get("current_location"), "hilly_meadows")
 
     def test_market_buy_sell_buttons_work_through_vk_route(self):
         storage, player = self.make_storage_player()

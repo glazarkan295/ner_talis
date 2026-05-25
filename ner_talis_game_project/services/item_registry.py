@@ -18,6 +18,54 @@ from project_paths import project_path, resolve_project_path
 ITEMS_HILLY_MEADOWS_PATH = project_path("data", "items_hilly_meadows.json")
 ITEMS_REGISTRY_GLOB = "items_*.json"
 
+
+def _item_registry_paths() -> list[Path]:
+    data_dir = project_path("data")
+    paths = [
+        candidate
+        for candidate in sorted(data_dir.glob(ITEMS_REGISTRY_GLOB))
+        if not candidate.name.startswith("items_import_")
+    ]
+    if not paths and ITEMS_HILLY_MEADOWS_PATH.exists():
+        paths = [ITEMS_HILLY_MEADOWS_PATH]
+    return paths
+
+
+def _registry_item_id(item: dict[str, Any]) -> str:
+    return str(item.get("id") or item.get("item_id") or "").strip()
+
+
+def _canonical_duplicate_payload(item: dict[str, Any]) -> str:
+    normalized = deepcopy(item)
+    item_id = _registry_item_id(normalized)
+    normalized["id"] = item_id
+    normalized.pop("item_id", None)
+    return json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+
+
+def validate_item_registry_duplicates(paths: list[Path] | None = None) -> None:
+    """Fail when item registry files define the same id differently."""
+
+    seen: dict[str, tuple[str, Path]] = {}
+    conflicts: list[str] = []
+    for items_path in paths or _item_registry_paths():
+        for item in load_item_definitions(items_path):
+            item_id = _registry_item_id(item)
+            if not item_id:
+                continue
+            payload = _canonical_duplicate_payload(item)
+            previous = seen.get(item_id)
+            if previous is None:
+                seen[item_id] = (payload, items_path)
+                continue
+            previous_payload, previous_path = previous
+            if payload != previous_payload:
+                conflicts.append(f"{item_id}: {previous_path} vs {items_path}")
+    if conflicts:
+        details = "; ".join(conflicts)
+        raise ValueError(f"Conflicting duplicate item ids in registry: {details}")
+
+
 CATEGORY_TO_RU = {
     "camp_food": "Еда",
     "consumable": "Расходники",
@@ -65,6 +113,20 @@ TYPE_TO_RU = {
     "ammunition": "Боеприпас",
     "arrow": "Стрела",
     "bolt": "Болт",
+    "glass_gem": "драг. камень",
+    "gem_imitation": "драг. камень",
+    "material": "Материал",
+    "ingot": "Слиток",
+    "plate": "Пластина",
+    "leather": "Кожа",
+    "paper": "Бумага",
+    "recipe": "Рецепт",
+    "blueprint": "Чертёж",
+    "weapon": "Оружие",
+    "sword": "Меч",
+    "ring": "Кольцо",
+    "necklace": "Ожерелье",
+    "junk": "Хлам",
 }
 
 QUALITY_TO_RU = {
@@ -160,14 +222,8 @@ def load_item_definitions(path: str | Path | None = None) -> list[dict[str, Any]
 def load_all_item_definitions() -> list[dict[str, Any]]:
     """Load every gameplay item registry from ``data/items_*.json``."""
 
-    data_dir = project_path("data")
-    paths = [
-        candidate
-        for candidate in sorted(data_dir.glob(ITEMS_REGISTRY_GLOB))
-        if not candidate.name.startswith("items_import_")
-    ]
-    if not paths and ITEMS_HILLY_MEADOWS_PATH.exists():
-        paths = [ITEMS_HILLY_MEADOWS_PATH]
+    paths = _item_registry_paths()
+    validate_item_registry_duplicates(paths)
 
     definitions: list[dict[str, Any]] = []
     seen_ids: set[str] = set()

@@ -91,16 +91,19 @@ function App() {
           return runProfileAction(() => spendSkillPoints(profileIdentifier, skill.id || skill.name, modifierId, amount));
         }}
         onEquipItem={(item, slotKey = null) => {
-          return runProfileAction(() => equipItem(profileIdentifier, item.id, slotKey));
+          return runProfileAction(() => equipItem(profileIdentifier, item.id, slotKey, item.inventoryIndex));
         }}
         onUnequipItem={(slotKey) => {
           return runProfileAction(() => unequipItem(profileIdentifier, slotKey));
         }}
         onUseItem={(item) => {
-          return runProfileAction(() => useItem(profileIdentifier, item.id));
+          return runProfileAction(() => useItem(profileIdentifier, item.id, item.inventoryIndex));
         }}
         onDropItem={(item, amount) => {
-          return runProfileAction(() => dropItem(profileIdentifier, item.id, amount));
+          return runProfileAction(() => dropItem(profileIdentifier, item.id, amount, item.inventoryIndex));
+        }}
+        onSellItem={(item, amount) => {
+          return runProfileAction(() => sellItem(profileIdentifier, item.id, amount, item.inventoryIndex));
         }}
         onSellItem={(item, amount) => {
           return runProfileAction(() => sellItem(profileIdentifier, item.id, amount, item.inventoryIndex));

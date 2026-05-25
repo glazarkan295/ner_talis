@@ -151,7 +151,8 @@ class VkRegistrationBot:
             existing_player.get("in_battle")
             or existing_player.get("active_timer")
             or existing_player.get("market_context")
-            or str(existing_player.get("current_zone") or "").startswith(("hilly_meadows", "ordinary_forest", "seldar_npc_market"))
+            or existing_player.get("crafting_context")
+            or str(existing_player.get("current_zone") or "").startswith(("hilly_meadows", "ordinary_forest", "seldar_npc_market", "seldar_smeltery", "seldar_forge", "seldar_leatherwork", "seldar_jewelry_workshop", "seldar_alchemy_workshop"))
         ):
             self.handle_city_action(external_user_id, peer_id, text)
             return

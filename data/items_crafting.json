@@ -1,0 +1,226 @@
+[
+  {
+    "id": "simple_leather_sheet",
+    "name": "Простой лист кожи",
+    "name_ru": "Простой лист кожи",
+    "category": "resources",
+    "type": "material",
+    "subtype": "leather",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Подготовленный лист простой кожи для кожевенной мастерской.",
+    "can_sell": true,
+    "sell_price_copper": 12,
+    "icon": "/assets/items/crafting/simple_leather_sheet.png"
+  },
+  {
+    "id": "basic_weapon_blueprint",
+    "name": "Простой оружейный чертёж",
+    "name_ru": "Простой оружейный чертёж",
+    "category": "resources",
+    "type": "recipe",
+    "subtype": "blueprint",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Заготовка простого чертежа для кузницы.",
+    "can_sell": true,
+    "sell_price_copper": 15,
+    "icon": "/assets/items/crafting/basic_weapon_blueprint.png"
+  },
+  {
+    "id": "simple_leather_recipe",
+    "name": "Простой кожевенный рецепт",
+    "name_ru": "Простой кожевенный рецепт",
+    "category": "resources",
+    "type": "recipe",
+    "subtype": "recipe",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Запись простого кожевенного рецепта.",
+    "can_sell": true,
+    "sell_price_copper": 12,
+    "icon": "/assets/items/crafting/simple_leather_recipe.png"
+  },
+  {
+    "id": "simple_jewelry_recipe",
+    "name": "Простой ювелирный рецепт",
+    "name_ru": "Простой ювелирный рецепт",
+    "category": "resources",
+    "type": "recipe",
+    "subtype": "recipe",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Запись простого ювелирного рецепта.",
+    "can_sell": true,
+    "sell_price_copper": 16,
+    "icon": "/assets/items/crafting/simple_jewelry_recipe.png"
+  },
+  {
+    "id": "simple_iron_sword",
+    "name": "Простой железный меч",
+    "name_ru": "Простой железный меч",
+    "category": "equipment",
+    "type": "weapon",
+    "subtype": "sword",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простой железный меч без украшений и зачарований.",
+    "can_sell": true,
+    "sell_price_copper": 120,
+    "slot": "weapon1",
+    "targetSlotKey": "weapon1",
+    "slotKey": "weapon1",
+    "item_class": "weapon",
+    "stat_modifiers": {
+      "bonus_strength": 1,
+      "bonus_accuracy": 1
+    },
+    "combat": {
+      "damage_type": "Физический",
+      "damage_min": 6,
+      "damage_max": 10,
+      "range": "Ближний бой"
+    },
+    "stats": [
+      "Сила: +1",
+      "Точность: +1"
+    ],
+    "icon": "/assets/items/crafting/simple_iron_sword.png"
+  },
+  {
+    "id": "simple_iron_helmet",
+    "name": "Простой железный шлем",
+    "name_ru": "Простой железный шлем",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "helmet",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простой железный шлем, выкованный из железных пластин.",
+    "can_sell": true,
+    "sell_price_copper": 130,
+    "slot": "helmet",
+    "targetSlotKey": "helmet",
+    "slotKey": "helmet",
+    "item_class": "equipment",
+    "stat_modifiers": {
+      "armor": 3,
+      "magic_armor": 1
+    },
+    "stats": [
+      "Броня: +3"
+    ],
+    "icon": "/assets/items/crafting/simple_iron_helmet.png"
+  },
+  {
+    "id": "simple_leather_belt_crafted",
+    "name": "Простой кожаный пояс",
+    "name_ru": "Простой кожаный пояс",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "belt",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простой кожаный пояс, сделанный в кожевенной мастерской.",
+    "can_sell": true,
+    "sell_price_copper": 60,
+    "slot": "belt",
+    "targetSlotKey": "belt",
+    "slotKey": "belt",
+    "item_class": "equipment",
+    "stat_modifiers": {
+      "armor": 1
+    },
+    "stats": [
+      "Броня: +1"
+    ],
+    "icon": "/assets/items/crafting/simple_leather_belt.png"
+  },
+  {
+    "id": "rough_copper_ring",
+    "name": "Грубое медное кольцо",
+    "name_ru": "Грубое медное кольцо",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "ring",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простое медное кольцо без камня.",
+    "can_sell": true,
+    "sell_price_copper": 70,
+    "slot": "ring1",
+    "targetSlotKey": "ring1",
+    "slotKey": "ring1",
+    "item_class": "jewelry",
+    "stat_modifiers": {
+      "bonus_perception": 1
+    },
+    "stats": [
+      "Восприятие: +1"
+    ],
+    "icon": "/assets/items/crafting/rough_copper_ring.png"
+  },
+  {
+    "id": "rough_copper_necklace",
+    "name": "Грубое медное ожерелье",
+    "name_ru": "Грубое медное ожерелье",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "necklace",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простое медное ожерелье без вставок.",
+    "can_sell": true,
+    "sell_price_copper": 90,
+    "slot": "necklace",
+    "targetSlotKey": "necklace",
+    "slotKey": "necklace",
+    "item_class": "jewelry",
+    "stat_modifiers": {
+      "bonus_wisdom": 1
+    },
+    "stats": [
+      "Мудрость: +1"
+    ],
+    "icon": "/assets/items/crafting/rough_copper_necklace.png"
+  },
+  {
+    "id": "alchemy_sludge",
+    "name": "Алхимический шлак",
+    "name_ru": "Алхимический шлак",
+    "category": "resources",
+    "type": "junk",
+    "subtype": "junk",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Непригодный остаток неудачного алхимического опыта.",
+    "can_sell": true,
+    "sell_price_copper": 1,
+    "icon": "/assets/items/crafting/alchemy_sludge.png"
+  },
+  {
+    "id": "suspicious_mixture",
+    "name": "Подозрительная смесь",
+    "name_ru": "Подозрительная смесь",
+    "category": "consumables",
+    "type": "consumable",
+    "subtype": "potion",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Нестабильная смесь. Использовать её опасно.",
+    "can_sell": true,
+    "sell_price_copper": 2,
+    "icon": "/assets/items/crafting/suspicious_mixture.png"
+  }
+]

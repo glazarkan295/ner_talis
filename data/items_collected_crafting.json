@@ -1,0 +1,689 @@
+[
+  {
+    "id": "simple_energy_potion",
+    "item_id": "simple_energy_potion",
+    "name": "Простое зелье энергии",
+    "name_ru": "Простое зелье энергии",
+    "category": "consumables",
+    "type": "consumable",
+    "subtype": "potion",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 10,
+    "description": "Простое алхимическое зелье с жёлтой жидкостью. Восстанавливает 20 энергии.",
+    "can_sell": true,
+    "sell_price_copper": 35,
+    "icon": "/assets/items/crafting/simple_energy_potion.png",
+    "integration_tags": [
+      "inventory_item",
+      "consumable"
+    ],
+    "use_effect": {
+      "energy_restore": 20
+    },
+    "stats": [
+      "Восстановление энергии: 20"
+    ],
+    "energy_restore": 20
+  },
+  {
+    "id": "simple_mana_potion",
+    "item_id": "simple_mana_potion",
+    "name": "Простое зелье маны",
+    "name_ru": "Простое зелье маны",
+    "category": "consumables",
+    "type": "consumable",
+    "subtype": "potion",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 10,
+    "description": "Простое алхимическое зелье с синей жидкостью. Восстанавливает 30 маны.",
+    "can_sell": true,
+    "sell_price_copper": 35,
+    "icon": "/assets/items/crafting/simple_mana_potion.png",
+    "integration_tags": [
+      "inventory_item",
+      "consumable"
+    ],
+    "use_effect": {
+      "mana_restore": 30
+    },
+    "stats": [
+      "Восстановление маны: 30"
+    ]
+  },
+  {
+    "id": "simple_spirit_potion",
+    "item_id": "simple_spirit_potion",
+    "name": "Простое зелье духа",
+    "name_ru": "Простое зелье духа",
+    "category": "consumables",
+    "type": "consumable",
+    "subtype": "potion",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 10,
+    "description": "Простое алхимическое зелье с зелёной жидкостью. Восстанавливает 30 духа.",
+    "can_sell": true,
+    "sell_price_copper": 35,
+    "icon": "/assets/items/crafting/simple_spirit_potion.png",
+    "integration_tags": [
+      "inventory_item",
+      "consumable"
+    ],
+    "use_effect": {
+      "spirit_restore": 30
+    },
+    "stats": [
+      "Восстановление духа: 30"
+    ]
+  },
+  {
+    "id": "simple_healing_potion",
+    "item_id": "simple_healing_potion",
+    "name": "Простое зелье лечения",
+    "name_ru": "Простое зелье лечения",
+    "category": "consumables",
+    "type": "consumable",
+    "subtype": "potion",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 10,
+    "description": "Простое алхимическое зелье с красной жидкостью. Восстанавливает 30 HP.",
+    "can_sell": true,
+    "sell_price_copper": 35,
+    "icon": "/assets/items/crafting/simple_healing_potion.png",
+    "integration_tags": [
+      "inventory_item",
+      "consumable"
+    ],
+    "buy_price_copper": 70,
+    "use_effect": {
+      "hp_restore": 30
+    },
+    "stats": [
+      "Восстановление HP: 30"
+    ]
+  },
+  {
+    "id": "iron_ingot",
+    "item_id": "iron_ingot",
+    "name": "Железный слиток",
+    "name_ru": "Железный слиток",
+    "category": "resources",
+    "type": "material",
+    "subtype": "metal_ingot",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 10,
+    "description": "Железный слиток. Основной металлический материал для кузницы.",
+    "can_sell": true,
+    "sell_price_copper": 30,
+    "icon": "/assets/items/crafting/iron_ingot.png",
+    "integration_tags": [
+      "inventory_item",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "copper_ingot",
+    "item_id": "copper_ingot",
+    "name": "Медный слиток",
+    "name_ru": "Медный слиток",
+    "category": "resources",
+    "type": "material",
+    "subtype": "metal_ingot",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 10,
+    "description": "Медный слиток. Базовый металлический материал.",
+    "can_sell": true,
+    "sell_price_copper": 30,
+    "icon": "/assets/items/crafting/copper_ingot.png",
+    "integration_tags": [
+      "inventory_item",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "coal",
+    "item_id": "coal",
+    "name": "Уголь",
+    "name_ru": "Уголь",
+    "category": "resources",
+    "type": "material",
+    "subtype": "fuel",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Уголь. Топливо для плавильни.",
+    "can_sell": true,
+    "sell_price_copper": 15,
+    "icon": "/assets/items/crafting/coal.png",
+    "integration_tags": [
+      "inventory_item",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "steel_ingot",
+    "item_id": "steel_ingot",
+    "name": "Стальной слиток",
+    "name_ru": "Стальной слиток",
+    "category": "resources",
+    "type": "material",
+    "subtype": "metal_ingot",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 10,
+    "description": "Стальной слиток. Более прочный металлический материал для кузницы.",
+    "can_sell": true,
+    "sell_price_copper": 45,
+    "icon": "/assets/items/crafting/steel_ingot.png",
+    "integration_tags": [
+      "inventory_item",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "fabric_cloth",
+    "item_id": "fabric_cloth",
+    "name": "Тканевое полотно",
+    "name_ru": "Тканевое полотно",
+    "category": "resources",
+    "type": "material",
+    "subtype": "fabric",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Тканевое полотно. Материал для ремесла.",
+    "can_sell": true,
+    "sell_price_copper": 20,
+    "icon": "/assets/items/crafting/fabric_cloth.png",
+    "integration_tags": [
+      "inventory_item",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "iron_plate",
+    "item_id": "iron_plate",
+    "name": "Железная пластина",
+    "name_ru": "Железная пластина",
+    "category": "resources",
+    "type": "material",
+    "subtype": "metal_plate",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Железная пластина. Заготовка для кузнечных изделий.",
+    "can_sell": true,
+    "sell_price_copper": 10,
+    "icon": "/assets/items/crafting/iron_plate.png",
+    "integration_tags": [
+      "inventory_item",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "copper_plate",
+    "item_id": "copper_plate",
+    "name": "Медная пластина",
+    "name_ru": "Медная пластина",
+    "category": "resources",
+    "type": "material",
+    "subtype": "metal_plate",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Медная пластина. Заготовка для ремесла.",
+    "can_sell": true,
+    "sell_price_copper": 10,
+    "icon": "/assets/items/crafting/copper_plate.png",
+    "integration_tags": [
+      "inventory_item",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "steel_plate",
+    "item_id": "steel_plate",
+    "name": "Стальная пластина",
+    "name_ru": "Стальная пластина",
+    "category": "resources",
+    "type": "material",
+    "subtype": "metal_plate",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Стальная пластина. Прочная кузнечная заготовка.",
+    "can_sell": true,
+    "sell_price_copper": 10,
+    "icon": "/assets/items/crafting/steel_plate.png",
+    "integration_tags": [
+      "inventory_item",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "simple_board",
+    "item_id": "simple_board",
+    "name": "Простая доска",
+    "name_ru": "Простая доска",
+    "category": "resources",
+    "type": "material",
+    "subtype": "wood",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Простая доска. Базовый деревянный материал.",
+    "can_sell": true,
+    "sell_price_copper": 8,
+    "icon": "/assets/items/crafting/simple_board.png",
+    "integration_tags": [
+      "inventory_item",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "paper_sheet",
+    "item_id": "paper_sheet",
+    "name": "Обычный лист бумаги",
+    "name_ru": "Обычный лист бумаги",
+    "category": "resources",
+    "type": "material",
+    "subtype": "paper",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 30,
+    "description": "Обычный лист бумаги. Материал для записей, рецептов и чертежей.",
+    "can_sell": true,
+    "sell_price_copper": 5,
+    "icon": "/assets/items/crafting/ordinary_paper_sheet.png",
+    "integration_tags": [
+      "inventory_item",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "rope",
+    "item_id": "rope",
+    "name": "Верёвка",
+    "name_ru": "Верёвка",
+    "category": "resources",
+    "type": "material",
+    "subtype": "rope",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 40,
+    "description": "Грубая прочная верёвка. Создаётся из любых сухожилий.",
+    "can_sell": true,
+    "sell_price_copper": 14,
+    "icon": "/assets/items/crafting/rope.png",
+    "integration_tags": [
+      "inventory_item",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "tanned_leather",
+    "item_id": "tanned_leather",
+    "name": "Выделанная кожа",
+    "name_ru": "Выделанная кожа",
+    "category": "resources",
+    "type": "material",
+    "subtype": "leather",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Выделанная кожа. Базовый материал для кожевенного ремесла.",
+    "can_sell": true,
+    "sell_price_copper": 20,
+    "icon": "/assets/items/crafting/tanned_leather.png",
+    "integration_tags": [
+      "inventory_item",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "leather_strip",
+    "item_id": "leather_strip",
+    "name": "Полоски кожи",
+    "name_ru": "Полоски кожи",
+    "category": "resources",
+    "type": "material",
+    "subtype": "leather",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 40,
+    "description": "Полоски обработанной кожи. Материал для кожевенного ремесла.",
+    "can_sell": true,
+    "sell_price_copper": 8,
+    "icon": "/assets/items/crafting/leather_strips.png",
+    "integration_tags": [
+      "inventory_item",
+      "crafting_material"
+    ]
+  },
+  {
+    "id": "simple_sword",
+    "item_id": "simple_sword",
+    "name": "Простой меч",
+    "name_ru": "Простой меч",
+    "category": "equipment",
+    "type": "weapon",
+    "subtype": "sword",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простой меч. Одноручное оружие для слота оружия 1 или 2. Бонусы зависят от качества и уровня созданного предмета.",
+    "can_sell": true,
+    "sell_price_copper": 100,
+    "icon": "/assets/items/crafting/simple_sword_common.png",
+    "integration_tags": [
+      "inventory_item"
+    ],
+    "slot": "weapon1",
+    "targetSlotKey": "weapon1",
+    "slotKey": "weapon1",
+    "item_class": "weapon",
+    "weapon_type": "sword",
+    "combat": {
+      "damage_type": "Физический",
+      "damage_min": 3,
+      "damage_max": 6,
+      "range": "Ближний бой"
+    },
+    "stat_modifiers": {
+      "bonus_strength": 1
+    },
+    "stats": [
+      "Сила: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "assets/simple_sword_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "strength",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "assets/simple_sword_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "strength",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "assets/simple_sword_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "strength",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          },
+          {
+            "type": "bonus_max_spirit",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/crafting/simple_sword_common.png",
+      "uncommon": "/assets/items/crafting/simple_sword_uncommon.png",
+      "rare": "/assets/items/crafting/simple_sword_rare.png"
+    }
+  },
+  {
+    "id": "simple_staff",
+    "item_id": "simple_staff",
+    "name": "Простой посох",
+    "name_ru": "Простой посох",
+    "category": "equipment",
+    "type": "weapon",
+    "subtype": "staff",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простой посох. Оружие для слота оружия 1. Бонусы зависят от качества и уровня созданного предмета.",
+    "can_sell": true,
+    "sell_price_copper": 100,
+    "icon": "/assets/items/crafting/simple_staff_common.png",
+    "integration_tags": [
+      "inventory_item"
+    ],
+    "slot": "weapon1",
+    "targetSlotKey": "weapon1",
+    "slotKey": "weapon1",
+    "item_class": "weapon",
+    "weapon_type": "staff",
+    "combat": {
+      "damage_type": "Магический",
+      "damage_min": 3,
+      "damage_max": 6,
+      "range": "Ближний бой"
+    },
+    "stat_modifiers": {
+      "bonus_wisdom": 1
+    },
+    "stats": [
+      "Мудрость: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "assets/simple_staff_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "wisdom",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "assets/simple_staff_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "wisdom",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "assets/simple_staff_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "wisdom",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          },
+          {
+            "type": "bonus_max_mana",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/crafting/simple_staff_common.png",
+      "uncommon": "/assets/items/crafting/simple_staff_uncommon.png",
+      "rare": "/assets/items/crafting/simple_staff_rare.png"
+    }
+  },
+  {
+    "id": "simple_dagger",
+    "item_id": "simple_dagger",
+    "name": "Простой кинжал",
+    "name_ru": "Простой кинжал",
+    "category": "equipment",
+    "type": "weapon",
+    "subtype": "dagger",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простой кинжал. Одноручное оружие для слота оружия 1 или 2. Бонусы зависят от качества и уровня созданного предмета.",
+    "can_sell": true,
+    "sell_price_copper": 80,
+    "icon": "/assets/items/crafting/simple_dagger_common.png",
+    "integration_tags": [
+      "inventory_item"
+    ],
+    "slot": "weapon1",
+    "targetSlotKey": "weapon1",
+    "slotKey": "weapon1",
+    "item_class": "weapon",
+    "weapon_type": "dagger",
+    "combat": {
+      "damage_type": "Физический",
+      "damage_min": 3,
+      "damage_max": 6,
+      "range": "Ближний бой"
+    },
+    "stat_modifiers": {
+      "bonus_agility": 1
+    },
+    "stats": [
+      "Ловкость: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "assets/simple_dagger_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "agility",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "assets/simple_dagger_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "agility",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "assets/simple_dagger_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "agility",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          },
+          {
+            "type": "bonus_max_spirit",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/crafting/simple_dagger_common.png",
+      "uncommon": "/assets/items/crafting/simple_dagger_uncommon.png",
+      "rare": "/assets/items/crafting/simple_dagger_rare.png"
+    }
+  }
+]

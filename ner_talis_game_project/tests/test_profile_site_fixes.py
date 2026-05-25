@@ -646,6 +646,7 @@ class ProfileSiteFixesTest(unittest.TestCase):
             {"id": "tea", "name": "Травяной чай", "category": "Еда", "amount": 1, "energy_restore": 20},
             {"id": "ore", "name": "Кусок медной руды", "category": "resources", "subtype": "ore", "amount": 1},
             {"id": "fang", "name": "Клык шакала", "category": "Трофеи", "source": "mob", "amount": 1},
+            {"id": "glass_ruby", "item_id": "glass_ruby", "name": "Стекляшки: Рубин", "category": "resources", "subtype": "glass_gem", "amount": 1},
         ]
 
         profile = frontend_profile(player)
@@ -654,6 +655,38 @@ class ProfileSiteFixesTest(unittest.TestCase):
         self.assertEqual(categories["Травяной чай"], "Расходники")
         self.assertEqual(categories["Кусок медной руды"], "Ресурсы")
         self.assertEqual(categories["Клык шакала"], "Добыча")
+        self.assertEqual(categories["Стекляшки: Рубин"], "Материалы")
+        glass_item = next(item for item in profile["inventory"] if item["name"] == "Стекляшки: Рубин")
+        self.assertEqual(glass_item["type"], "драг. камень")
+
+    def test_profile_inventory_marks_crafting_materials_for_materials_category(self):
+        player = self._new_player()
+        player["inventory"] = [
+            {
+                "id": "plain_board",
+                "name": "Простая доска",
+                "category": "resources",
+                "subtype": "wood",
+                "amount": 1,
+                "integration_tags": ["inventory_item", "resource", "crafting_material"],
+            },
+            {
+                "id": "protected_fang",
+                "name": "Клык зверя",
+                "category": "Трофеи",
+                "source": "mob",
+                "amount": 1,
+                "integration_tags": ["trophy", "crafting_material"],
+            },
+        ]
+
+        profile = frontend_profile(player)
+        items = {item["name"]: item for item in profile["inventory"]}
+
+        self.assertEqual(items["Простая доска"]["category"], "Материалы")
+        self.assertTrue(items["Простая доска"].get("isMaterial"))
+        self.assertEqual(items["Клык зверя"]["category"], "Добыча")
+        self.assertTrue(items["Клык зверя"].get("isMaterial"))
 
 
     def test_skills_can_be_equipped_and_unequipped_through_private_profile_token(self):
@@ -728,6 +761,97 @@ class ProfileSiteFixesTest(unittest.TestCase):
             )
 
             self.assertEqual(response.status_code, 401)
+
+
+    def _client_with_player(self, player):
+        tmp_dir = tempfile.TemporaryDirectory()
+        storage = JsonStorage(str(Path(tmp_dir.name) / "players.json"))
+        storage.save_new_player(player, "telegram", "111")
+        token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+        app = FastAPI()
+        app.include_router(create_profile_api_router(lambda: storage))
+        return tmp_dir, storage, TestClient(app), token
+
+    def test_profile_equips_specific_duplicate_item_by_inventory_index(self):
+        player = self._new_player()
+        player["equipment"] = {}
+        player["inventory"] = [
+            {"id": "duplicate_sword", "name": "Обычный меч", "category": "Оружие", "type": "Оружие", "subtype": "Меч", "slot": "weapon", "quality": "обычный", "amount": 1},
+            {"id": "duplicate_sword", "name": "Редкий меч", "category": "Оружие", "type": "Оружие", "subtype": "Меч", "slot": "weapon", "quality": "редкий", "amount": 1},
+        ]
+        tmp_dir, storage, client, token = self._client_with_player(player)
+        try:
+            response = client.post(
+                f"/api/profile/{token}/equipment/equip",
+                json={"item_id": "duplicate_sword", "slot_key": "weapon1", "inventory_index": 1},
+            )
+
+            self.assertEqual(response.status_code, 200, response.text)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(restored["equipment"]["weapon1"]["name"], "Редкий меч")
+            self.assertEqual(restored["inventory"][0]["name"], "Обычный меч")
+        finally:
+            tmp_dir.cleanup()
+
+    def test_profile_uses_specific_duplicate_consumable_by_inventory_index(self):
+        player = self._new_player()
+        player["current_energy"] = 0
+        player["energy"] = 0
+        player["inventory"] = [
+            {"id": "duplicate_food", "name": "Слабая еда", "category": "Еда", "amount": 1, "use_effect": {"energy_restore": 5}},
+            {"id": "duplicate_food", "name": "Сильная еда", "category": "Еда", "amount": 1, "use_effect": {"energy_restore": 20}},
+        ]
+        tmp_dir, storage, client, token = self._client_with_player(player)
+        try:
+            response = client.post(
+                f"/api/profile/{token}/inventory/use",
+                json={"item_id": "duplicate_food", "inventory_index": 1},
+            )
+
+            self.assertEqual(response.status_code, 200, response.text)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(restored["current_energy"], 20)
+            self.assertEqual(len(restored["inventory"]), 1)
+            self.assertEqual(restored["inventory"][0]["name"], "Слабая еда")
+        finally:
+            tmp_dir.cleanup()
+
+    def test_profile_drops_specific_duplicate_item_by_inventory_index(self):
+        player = self._new_player()
+        player["inventory"] = [
+            {"id": "duplicate_material", "name": "Обычный материал", "category": "Материалы", "quality": "обычный", "amount": 1},
+            {"id": "duplicate_material", "name": "Редкий материал", "category": "Материалы", "quality": "редкий", "amount": 1},
+        ]
+        tmp_dir, storage, client, token = self._client_with_player(player)
+        try:
+            response = client.post(
+                f"/api/profile/{token}/inventory/drop",
+                json={"item_id": "duplicate_material", "amount": 1, "inventory_index": 1},
+            )
+
+            self.assertEqual(response.status_code, 200, response.text)
+            restored = storage.get_player_by_game_id(player["game_id"])
+            self.assertEqual(len(restored["inventory"]), 1)
+            self.assertEqual(restored["inventory"][0]["name"], "Обычный материал")
+        finally:
+            tmp_dir.cleanup()
+
+    def test_profile_rejects_stale_inventory_index_mismatch(self):
+        player = self._new_player()
+        player["inventory"] = [
+            {"id": "actual_item", "name": "Другой предмет", "category": "Материалы", "amount": 1},
+        ]
+        tmp_dir, storage, client, token = self._client_with_player(player)
+        try:
+            response = client.post(
+                f"/api/profile/{token}/inventory/drop",
+                json={"item_id": "old_item", "amount": 1, "inventory_index": 0},
+            )
+
+            self.assertEqual(response.status_code, 409)
+            self.assertIn("Инвентарь изменился", response.text)
+        finally:
+            tmp_dir.cleanup()
 
     def test_two_handed_weapon_blocks_second_weapon_slot_in_profile(self):
         player = self._new_player()

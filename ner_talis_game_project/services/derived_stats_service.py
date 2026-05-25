@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from services.race_bonus_service import hp_multiplier, outgoing_damage_multiplier, stat_multiplier
-from services.active_skill_service import skill_level, skill_modifier_multiplier, skill_profile_power
+from services.active_skill_service import skill_level, skill_modifier_multiplier, skill_profile_power, passive_skill_multiplier, passive_stat_modifiers
 
 HIDDEN_FORMULA_KEYS = {"formula", "base_damage_formula", "damage_formula", "scaling_formula"}
 FORMULA_TEXT_MARKERS = ("player_level", "ceil(", "floor(", "log2(", "ln(", "уровень ×", "уровня ×", "уровень персонажа ×")
@@ -375,7 +375,7 @@ def equipment_stat_bonus(equipment_modifiers: dict[str, int], stat_key: str) -> 
 
 
 def all_bonus_modifiers(player: dict[str, Any]) -> dict[str, int]:
-    return merge_modifier_totals(equipment_modifier_totals(player), external_effect_modifier_totals(player))
+    return merge_modifier_totals(equipment_modifier_totals(player), external_effect_modifier_totals(player), passive_stat_modifiers(player))
 
 
 def effective_stat(player: dict[str, Any], stat_key: str, bonus_modifiers: dict[str, int] | None = None) -> int:
@@ -513,6 +513,7 @@ def calculate_player_skill_raw_damage(player: dict[str, Any], skill: dict[str, A
         base_damage = profile_power + soft_level(level) * role_coefficient
         base_damage *= 1 + math.log(skill_level(skill) + 1) * 0.12
         base_damage *= skill_modifier_multiplier(skill)
+        base_damage *= passive_skill_multiplier(player, skill, "damage")
     elif skill_id in {"magic_spark", "neutral_magic_clot"} or "magic_spark" in formula or "магический сгусток" in skill_name.casefold():
         base_damage = 4 + level * 1.1 + stats["intelligence"] * 0.8
     elif skill_id in {"basic_attack", "neutral_basic_strike"} or "basic_attack" in formula or "обычный удар" in skill_name.casefold():

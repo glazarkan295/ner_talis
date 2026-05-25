@@ -1,0 +1,216 @@
+{
+  "actions": [
+    {
+      "id": "grind",
+      "name": "Измельчить"
+    },
+    {
+      "id": "cut",
+      "name": "Нарезать"
+    },
+    {
+      "id": "dry",
+      "name": "Высушить"
+    },
+    {
+      "id": "soak",
+      "name": "Замочить"
+    },
+    {
+      "id": "heat",
+      "name": "Нагреть"
+    },
+    {
+      "id": "boil",
+      "name": "Кипятить"
+    },
+    {
+      "id": "distill",
+      "name": "Перегнать"
+    },
+    {
+      "id": "mix",
+      "name": "Смешать"
+    },
+    {
+      "id": "infuse",
+      "name": "Настаивать"
+    },
+    {
+      "id": "magic_treat",
+      "name": "Обработать магией"
+    },
+    {
+      "id": "cool",
+      "name": "Охладить"
+    },
+    {
+      "id": "stabilize",
+      "name": "Стабилизировать"
+    },
+    {
+      "id": "crystallize",
+      "name": "Кристаллизовать"
+    }
+  ],
+  "ingredients": [
+    {
+      "item_id": "clean_water",
+      "role": "base",
+      "type": "liquid",
+      "tier": 1,
+      "potency": 1,
+      "toxicity": 0,
+      "volatility": 0,
+      "stability": 3,
+      "description": "Прозрачная вода без запаха."
+    },
+    {
+      "item_id": "muddy_water",
+      "role": "base",
+      "type": "liquid",
+      "tier": 1,
+      "potency": 1,
+      "toxicity": 1,
+      "volatility": 1,
+      "stability": 1,
+      "description": "Вода с примесями и земляным осадком."
+    },
+    {
+      "item_id": "silver_chamomile",
+      "role": "active",
+      "type": "herb",
+      "tier": 1,
+      "potency": 3,
+      "toxicity": 0,
+      "volatility": 1,
+      "stability": 2,
+      "alchemy_tags": [
+        "healing"
+      ],
+      "description": "Светлый цветок с мягким травяным запахом."
+    },
+    {
+      "item_id": "meadow_mint",
+      "role": "active",
+      "type": "herb",
+      "tier": 1,
+      "potency": 2,
+      "toxicity": 0,
+      "volatility": 1,
+      "stability": 2,
+      "alchemy_tags": [
+        "energy_restore"
+      ],
+      "description": "Свежая трава с холодящим ароматом."
+    },
+    {
+      "item_id": "yellow_clover",
+      "role": "active",
+      "type": "herb",
+      "tier": 1,
+      "potency": 2,
+      "toxicity": 0,
+      "volatility": 1,
+      "stability": 2,
+      "alchemy_tags": [
+        "mana"
+      ],
+      "description": "Жёлтый клевер с лёгким сладким запахом."
+    },
+    {
+      "item_id": "mountain_wormwood",
+      "role": "active",
+      "type": "herb",
+      "tier": 1,
+      "potency": 2,
+      "toxicity": 1,
+      "volatility": 2,
+      "stability": 1,
+      "alchemy_tags": [
+        "spirit"
+      ],
+      "description": "Горькая трава с резким запахом."
+    },
+    {
+      "item_id": "meadow_root",
+      "role": "active",
+      "type": "root",
+      "tier": 1,
+      "potency": 2,
+      "toxicity": 0,
+      "volatility": 1,
+      "stability": 2,
+      "description": "Плотный корень с землянистым запахом."
+    },
+    {
+      "item_id": "sweet_meadow_berry",
+      "role": "active",
+      "type": "herb",
+      "tier": 1,
+      "potency": 1,
+      "toxicity": 0,
+      "volatility": 1,
+      "stability": 1,
+      "description": "Сладкая ягода с мягким соком."
+    },
+    {
+      "item_id": "pale_toadstool",
+      "role": "active",
+      "type": "mushroom",
+      "tier": 1,
+      "potency": 2,
+      "toxicity": 3,
+      "volatility": 2,
+      "stability": 0,
+      "alchemy_tags": [
+        "toxic"
+      ],
+      "description": "Бледный гриб с неприятным запахом."
+    },
+    {
+      "item_id": "common_stone",
+      "role": "catalyst",
+      "type": "mineral",
+      "tier": 1,
+      "potency": 1,
+      "toxicity": 0,
+      "volatility": 0,
+      "stability": 1,
+      "description": "Простой камень, который можно истолочь в грубый порошок."
+    },
+    {
+      "item_id": "iron_scrap",
+      "role": "catalyst",
+      "type": "mineral",
+      "tier": 1,
+      "potency": 1,
+      "toxicity": 0,
+      "volatility": 1,
+      "stability": 0,
+      "description": "Кусок старого металла с ржавыми краями."
+    },
+    {
+      "item_id": "dry_log",
+      "role": "stabilizer",
+      "type": "resin",
+      "tier": 1,
+      "potency": 1,
+      "toxicity": 0,
+      "volatility": 0,
+      "stability": 2,
+      "description": "Сухое дерево с остатками смолы."
+    },
+    {
+      "item_id": "fabric_pieces",
+      "role": "stabilizer",
+      "type": "powder",
+      "tier": 1,
+      "potency": 1,
+      "toxicity": 0,
+      "volatility": 0,
+      "stability": 1,
+      "description": "Грубые куски ткани для фильтрации и удержания осадка."
+    }
+  ]
+}

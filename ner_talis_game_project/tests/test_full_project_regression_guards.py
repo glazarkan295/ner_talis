@@ -266,5 +266,24 @@ class FullProjectRegressionGuardsTest(unittest.TestCase):
         self.assertNotIn('Стартовых навыков пока нет.', component)
 
 
+    def test_crafting_service_has_no_duplicate_alchemy_menu_guard(self):
+        source = (Path(__file__).resolve().parents[1] / "services" / "crafting_service.py").read_text(encoding="utf-8")
+        self.assertNotIn('if workshop_id == "alchemy":\n    if workshop_id == "alchemy":', source)
+
+    def test_main_vk_thread_sets_daemon_once(self):
+        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+        start = source.index("def start_vk_thread")
+        end = source.index("def build_telegram_bot_application")
+        self.assertEqual(source[start:end].count("daemon=True"), 1)
+
+    def test_profile_skills_tab_uses_active_skills_title_without_start_available_row(self):
+        component = (Path(__file__).resolve().parents[2] / "web" / "src" / "components" / "player-profile" / "PlayerProfile.jsx").read_text(encoding="utf-8")
+
+        self.assertIn('Panel title="Активные навыки"', component)
+        self.assertNotIn('Panel title="Стартовые навыки"', component)
+        self.assertNotIn('label="Доступно" value="стартовые навыки"', component)
+        self.assertNotIn('Стартовых навыков пока нет.', component)
+
+
 if __name__ == "__main__":
     unittest.main()

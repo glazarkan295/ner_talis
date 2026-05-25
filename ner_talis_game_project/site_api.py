@@ -7,6 +7,7 @@ JSON without a separate data file.
 
 from __future__ import annotations
 
+import logging
 from copy import deepcopy
 from datetime import datetime, timezone, timedelta
 from typing import Any
@@ -45,7 +46,7 @@ from services.market_service import (
     sellable_inventory_stack_indexes,
 )
 from services.web_profile import PROFILE_SCOPE
-from services.active_skill_service import refresh_unlocked_active_skills, resource_cost_with_modifiers, skill_level, is_skill_weapon_compatible, skill_weapon_requirement_text
+from services.active_skill_service import refresh_unlocked_active_skills, resource_cost_with_modifiers, skill_level, is_skill_weapon_compatible, skill_weapon_requirement_text, can_spend_skill_points_on, player_branch, selected_main_path, selected_secondary_path, path_level, secondary_path_limit
 
 FRONT_TO_BACK_STAT = {
     "strength": "strength",
@@ -103,6 +104,12 @@ ITEM_VALUE_TRANSLATIONS = {
     "battle_item": "Расходники",
     "single_use": "Расходники",
     "one_time": "Расходники",
+    "material": "Материалы",
+    "materials": "Материалы",
+    "crafting_material": "Материалы",
+    "Материал": "Материалы",
+    "материал": "Материалы",
+    "материалы": "Материалы",
     "food": "Расходники",
     "drink": "Расходники",
     "camp_food": "Расходники",
@@ -110,6 +117,8 @@ ITEM_VALUE_TRANSLATIONS = {
     "resources": "Ресурсы",
     "location_resource": "Ресурсы",
     "gathered_resource": "Ресурсы",
+    "glass_gem": "драг. камень",
+    "gem_imitation": "драг. камень",
     "loot": "Добыча",
     "mob_loot": "Добыча",
     "drop": "Добыча",
@@ -169,6 +178,9 @@ ENGLISH_ITEM_NAME_TRANSLATIONS = {
 }
 
 
+logger = logging.getLogger(__name__)
+
+
 RACE_MODEL_KEYS = {
     "human": "human",
     "elf": "elf",
@@ -200,6 +212,7 @@ class SkillEquipRequest(BaseModel):
 class EquipItemRequest(BaseModel):
     item_id: str
     slot_key: str | None = None
+    inventory_index: int | None = Field(default=None, ge=0)
 
 
 class UnequipItemRequest(BaseModel):
@@ -208,11 +221,13 @@ class UnequipItemRequest(BaseModel):
 
 class UseItemRequest(BaseModel):
     item_id: str
+    inventory_index: int | None = Field(default=None, ge=0)
 
 
 class DropItemRequest(BaseModel):
     item_id: str
     amount: int = Field(gt=0)
+    inventory_index: int | None = Field(default=None, ge=0)
 
 
 class SellItemRequest(BaseModel):
@@ -572,6 +587,13 @@ RESOURCE_TYPE_MARKERS = {
     "руда", "дерево", "древесина", "трава", "травы", "цветок", "цветы", "гриб", "грибы",
     "камень", "камни", "корень", "корни", "ягода", "ягоды", "ингредиент", "ингредиенты",
 }
+MATERIAL_TYPE_MARKERS = {
+    "material", "materials", "crafting_material", "craft_material", "crafting",
+    "glass_gem", "gem_imitation", "драг. камень", "драгоценный камень", "стекляшки",
+    "ingot", "bar", "scrap", "cloth", "fabric", "leather", "hide", "plank", "board",
+    "материал", "материалы", "ремесленный материал", "крафт", "слиток", "слитки",
+    "лом", "ткань", "кожа", "шкура", "доска", "доски", "полоски кожи",
+}
 MOB_LOOT_MARKERS = ("моб", "добыч", "pve", "enemy", "monster", "mob")
 
 
@@ -588,6 +610,23 @@ def _text_parts_for_category(item: dict[str, Any]) -> set[str]:
     return {part for part in parts if part}
 
 
+ORE_TYPE_MARKERS = {"ore", "руда", "руды"}
+GLASS_GEM_MARKERS = {"glass_gem", "gem_imitation", "драг. камень", "драгоценный камень", "стекляшки"}
+
+
+def is_ore_resource_item(item: dict[str, Any]) -> bool:
+    parts = _text_parts_for_category(item)
+    name = str(item.get("name") or item.get("name_ru") or "").casefold()
+    return bool(parts & ORE_TYPE_MARKERS) or "руд" in name
+
+
+def is_glass_gem_item(item: dict[str, Any]) -> bool:
+    parts = _text_parts_for_category(item)
+    name = str(item.get("name") or item.get("name_ru") or "").casefold()
+    item_id = str(item.get("id") or item.get("item_id") or "").casefold()
+    return bool(parts & GLASS_GEM_MARKERS) or "стекляш" in name or item_id.startswith("glass_")
+
+
 def classify_profile_inventory_category(item: dict[str, Any], current_category: str) -> str:
     source_text = str(item.get("source") or item.get("origin") or "").casefold()
     parts = _text_parts_for_category(item)
@@ -595,9 +634,22 @@ def classify_profile_inventory_category(item: dict[str, Any], current_category: 
         return "Добыча"
     if item_energy_restore(item) > 0 or parts & CONSUMABLE_CATEGORY_MARKERS:
         return "Расходники"
+    if is_glass_gem_item(item):
+        return "Материалы"
+    # Руда — это ресурс, даже если у неё есть ремесленные теги.
+    if is_ore_resource_item(item):
+        return "Ресурсы"
+    if current_category in {"Материал", "Материалы"} or parts & MATERIAL_TYPE_MARKERS:
+        return "Материалы"
     if current_category in {"Ресурс", "Ресурсы", "Ингредиенты"} or parts & RESOURCE_TYPE_MARKERS:
         return "Ресурсы"
     return current_category
+
+
+def is_profile_material_item(item: dict[str, Any]) -> bool:
+    category = str(item.get("category") or "").casefold()
+    parts = _text_parts_for_category(item)
+    return is_glass_gem_item(item) or category in {"материал", "материалы"} or bool(parts & MATERIAL_TYPE_MARKERS)
 
 
 DIRECTLY_USABLE_CATEGORY_MARKERS = {
@@ -704,6 +756,7 @@ def normalize_item(item: dict[str, Any], default_category: str = "Прочее")
         if not any("заряжено" in str(line).casefold() for line in stats):
             stats.append(ammo_line)
     normalized["stats"] = stats
+    normalized["isMaterial"] = is_profile_material_item(normalized)
     return normalized
 
 
@@ -726,12 +779,13 @@ def format_skill_damage(
     return damage
 
 
-def skill_resource_text(skill: dict[str, Any]) -> str:
+def skill_resource_text(skill: dict[str, Any], player: dict[str, Any] | None = None) -> str:
     try:
-        spirit_i, mana_i = resource_cost_with_modifiers(skill)
+        spirit_i, mana_i = resource_cost_with_modifiers(skill, player)
         mana = safe_float(mana_i, 0)
         spirit = safe_float(spirit_i, 0)
     except Exception:
+        logger.exception("Failed to calculate profile skill resource text for skill=%r", skill.get("id") or skill.get("name"))
         mana = safe_float(skill.get("mana_cost") if "mana_cost" in skill else skill.get("manaCost"), 0)
         spirit = safe_float(skill.get("spirit_cost") if "spirit_cost" in skill else skill.get("spiritCost"), 0)
     parts: list[str] = []
@@ -770,7 +824,7 @@ def normalize_skill(
     if isinstance(raw_resource_text, str) and not contains_concentration_text(raw_resource_text) and not contains_formula_text(raw_resource_text):
         normalized["resourceText"] = raw_resource_text
     else:
-        normalized["resourceText"] = skill_resource_text(skill)
+        normalized["resourceText"] = skill_resource_text(skill, player)
     normalized["cooldownText"] = skill.get("cooldown_text") or skill_cooldown_text(skill)
     normalized["cooldown"] = safe_int(skill.get("cooldown_turns") if "cooldown_turns" in skill else skill.get("cooldown"), 0)
     normalized["level"] = skill_level(skill)
@@ -971,7 +1025,13 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "nickname": player.get("name", "Безымянный"),
             "raceKey": race_key,
             "raceName": player.get("race_name", "Человек"),
-            "branch": "Без ветви",
+            "branch": player_branch(player) or "Без ветви",
+            "skillBranch": player_branch(player) or "Без ветви",
+            "mainSkillPath": selected_main_path(player),
+            "mainSkillPathLevel": path_level(player, selected_main_path(player) or ""),
+            "secondarySkillPath": selected_secondary_path(player),
+            "secondarySkillPathLevel": path_level(player, selected_secondary_path(player) or ""),
+            "secondarySkillPathLimit": secondary_path_limit(player),
             "level": level,
             "experienceCurrent": safe_int(player.get("experience"), 0),
             "experienceToNext": safe_int(player.get("experience_to_next"), max(100, level * 100)),
@@ -1436,7 +1496,7 @@ AMMO_LOAD_RULES = {
         "ammo_item_id": "arrow_for_bow",
         "ammo_name": "стрел",
         "capacity": 30,
-        "missing_message": "Сначала экипируйте колчан для стрел.",
+        "missing_message": "Сначала экипируйте колчан для стрел или положите его в инвентарь.",
     },
     "bolt_for_crossbow": {
         "quiver_slot": "weapon2",
@@ -1444,8 +1504,8 @@ AMMO_LOAD_RULES = {
         "quiver_item_id": "bolt_quiver_empty",
         "ammo_item_id": "bolt_for_crossbow",
         "ammo_name": "болтов",
-        "capacity": 20,
-        "missing_message": "Сначала экипируйте колчан для болтов.",
+        "capacity": 30,
+        "missing_message": "Сначала экипируйте колчан для болтов или положите его в инвентарь.",
     },
 }
 
@@ -1464,19 +1524,61 @@ def is_ammunition_item(item: dict[str, Any] | None) -> bool:
     return "боеприп" in text or "ammunition" in text
 
 
-def load_ammo_into_equipped_quiver(player: dict[str, Any], item: dict[str, Any], amount: int) -> tuple[int, str]:
+def _quiver_capacity_for_rule(quiver: dict[str, Any], rule: dict[str, Any]) -> int:
+    base_capacity = max(1, safe_int(rule.get("capacity"), 1))
+    current_capacity = safe_int(quiver.get("capacity"), 0)
+    # Базовые пустые колчаны могут получить увеличенную вместимость после обновления данных.
+    # Поэтому при загрузке не оставляем старые экземпляры с устаревшей меньшей вместимостью.
+    if item_identity(quiver) == str(rule.get("quiver_item_id") or ""):
+        return max(base_capacity, current_capacity)
+    return max(1, current_capacity or base_capacity)
+
+
+def _find_reloadable_quiver(player: dict[str, Any], rule: dict[str, Any]) -> tuple[dict[str, Any] | None, str, bool]:
+    required_kind = str(rule.get("quiver_kind") or "")
+    required_ammo_id = str(rule.get("ammo_item_id") or "")
+    full_quiver_seen = False
+
+    def is_compatible(candidate: Any) -> bool:
+        if not isinstance(candidate, dict) or quiver_kind(candidate) != required_kind:
+            return False
+        loaded_ammo_id = str(candidate.get("ammo_item_id") or required_ammo_id)
+        return loaded_ammo_id == required_ammo_id
+
+    equipment = player.setdefault("equipment", {})
+    equipped = equipment.get(str(rule.get("quiver_slot") or "weapon2"))
+    if is_compatible(equipped):
+        capacity = _quiver_capacity_for_rule(equipped, rule)
+        if max(0, safe_int(equipped.get("ammo_count"), 0)) < capacity:
+            return equipped, "экипированный колчан", full_quiver_seen
+        full_quiver_seen = True
+
+    inventory = player.setdefault("inventory", [])
+    for candidate in inventory:
+        if not is_compatible(candidate):
+            continue
+        capacity = _quiver_capacity_for_rule(candidate, rule)
+        if max(0, safe_int(candidate.get("ammo_count"), 0)) < capacity:
+            return candidate, "колчан в инвентаре", full_quiver_seen
+        full_quiver_seen = True
+
+    return None, "", full_quiver_seen
+
+
+def load_ammo_into_quiver(player: dict[str, Any], item: dict[str, Any], amount: int) -> tuple[int, str]:
     item_id = item_identity(item)
     rule = AMMO_LOAD_RULES.get(item_id)
     if not rule:
         raise HTTPException(status_code=400, detail="Этот боеприпас нельзя загрузить в колчан.")
-    equipment = player.setdefault("equipment", {})
-    quiver = equipment.get(rule["quiver_slot"])
-    if not isinstance(quiver, dict) or quiver_kind(quiver) != rule.get("quiver_kind"):
+    quiver, location_label, full_quiver_seen = _find_reloadable_quiver(player, rule)
+    if not isinstance(quiver, dict):
+        if full_quiver_seen:
+            raise HTTPException(status_code=400, detail="Колчан уже заполнен.")
         raise HTTPException(status_code=400, detail=rule["missing_message"])
     quiver.setdefault("ammo_item_id", rule["ammo_item_id"])
     if str(quiver.get("ammo_item_id") or "") != rule["ammo_item_id"]:
-        raise HTTPException(status_code=400, detail="Этот боеприпас не подходит к экипированному колчану.")
-    capacity = max(1, safe_int(quiver.get("capacity") or rule["capacity"], rule["capacity"]))
+        raise HTTPException(status_code=400, detail="Этот боеприпас не подходит к выбранному колчану.")
+    capacity = _quiver_capacity_for_rule(quiver, rule)
     current = max(0, safe_int(quiver.get("ammo_count"), 0))
     free = max(0, capacity - current)
     if free <= 0:
@@ -1485,7 +1587,11 @@ def load_ammo_into_equipped_quiver(player: dict[str, Any], item: dict[str, Any],
     quiver["capacity"] = capacity
     quiver["ammo_count"] = current + loaded
     quiver["ammo_item_id"] = rule["ammo_item_id"]
-    return loaded, f"В колчан загружено: {rule['ammo_name']} ×{loaded}."
+    return loaded, f"В {location_label} загружено: {rule['ammo_name']} ×{loaded}."
+
+
+# Совместимость для старых импортов/тестов.
+load_ammo_into_equipped_quiver = load_ammo_into_quiver
 
 
 def remove_inventory_amount_at_index(inventory: list[Any], index: int, amount: int) -> None:
@@ -1496,6 +1602,33 @@ def remove_inventory_amount_at_index(inventory: list[Any], index: int, amount: i
         item["amount"] = current - amount
     else:
         inventory.pop(index)
+
+
+def find_inventory_index_for_site_action(inventory: list[Any], item_id: str, inventory_index: int | None = None) -> int | None:
+    """Find an inventory stack by UI index when available, with item_id fallback.
+
+    The React profile displays duplicated crafted variants with the same base
+    item id. Using the explicit inventory index prevents equipping, using or
+    dropping the wrong quality variant while keeping old clients compatible.
+    """
+    expected_item_id = str(item_id or "").strip()
+    if inventory_index is not None:
+        if inventory_index < 0 or inventory_index >= len(inventory):
+            raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
+        item = inventory[inventory_index]
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
+        if item_identity(item) != expected_item_id:
+            raise HTTPException(status_code=409, detail="Инвентарь изменился. Обновите профиль и повторите действие.")
+        return inventory_index
+    return next(
+        (
+            index
+            for index, item in enumerate(inventory)
+            if isinstance(item, dict) and item_identity(item) == expected_item_id
+        ),
+        None,
+    )
 
 
 def spend_points_on_skill(skill: dict[str, Any], modifier_id: str | None, amount: int) -> None:
@@ -1595,6 +1728,9 @@ def create_profile_api_router(get_storage) -> APIRouter:
         skill = find_player_skill(player, request.skill_id)
         if skill is None:
             raise HTTPException(status_code=404, detail="Навык не найден.")
+        ok, message = can_spend_skill_points_on(player, skill, request.amount)
+        if not ok:
+            raise HTTPException(status_code=400, detail=message)
         spend_points_on_skill(skill, request.modifier_id, request.amount)
         player["free_skill_points"] = free_points - request.amount
         refresh_unlocked_active_skills(player)
@@ -1625,7 +1761,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
         original_player = deepcopy(player)
         inventory = player.setdefault("inventory", [])
         equipment = player.setdefault("equipment", {})
-        item_index = next((index for index, item in enumerate(inventory) if isinstance(item, dict) and str(item.get("id") or item.get("item_id")) == request.item_id), None)
+        item_index = find_inventory_index_for_site_action(inventory, request.item_id, request.inventory_index)
         if item_index is None:
             raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
         item = inventory.pop(item_index)
@@ -1715,14 +1851,14 @@ def create_profile_api_router(get_storage) -> APIRouter:
         storage = get_storage()
         player = resolve_profile_write(storage, identifier)
         inventory = player.setdefault("inventory", [])
-        item_index = next((index for index, item in enumerate(inventory) if isinstance(item, dict) and str(item.get("id") or item.get("item_id")) == request.item_id), None)
+        item_index = find_inventory_index_for_site_action(inventory, request.item_id, request.inventory_index)
         if item_index is None:
             raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
         item = inventory[item_index]
         if not is_inventory_item_usable(item):
             raise HTTPException(status_code=400, detail="Этот предмет нельзя использовать напрямую из профиля.")
         if is_ammunition_item(item):
-            loaded, message = load_ammo_into_equipped_quiver(player, item, safe_int(item.get("amount"), 1))
+            loaded, message = load_ammo_into_quiver(player, item, safe_int(item.get("amount"), 1))
             remove_inventory_amount_at_index(inventory, item_index, loaded)
             recalculate_inventory_overflow(player)
             sync_player_parameters_for_bots(player)
@@ -1759,7 +1895,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
         storage = get_storage()
         player = resolve_profile_write(storage, identifier)
         inventory = player.setdefault("inventory", [])
-        item_index = next((index for index, item in enumerate(inventory) if isinstance(item, dict) and str(item.get("id") or item.get("item_id")) == request.item_id), None)
+        item_index = find_inventory_index_for_site_action(inventory, request.item_id, request.inventory_index)
         if item_index is None:
             raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
         item = inventory[item_index]

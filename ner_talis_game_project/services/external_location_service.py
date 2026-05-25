@@ -950,6 +950,12 @@ def complete_active_timer(storage: Any, player: dict[str, Any], timer_id: str | 
             player.get("current_zone", "hilly_meadows"),
         )
 
+    if timer.get("type") == "craft":
+        from services.crafting_service import complete_craft_timer
+
+        craft_response = complete_craft_timer(storage, player, timer.get("id"))
+        return LocationResponse(craft_response.text, craft_response.buttons, craft_response.zone_id, craft_response.scheduled_timer)
+
     raw_location_id = str(timer.get("location_id") or current_location_id(player))
     location_id = raw_location_id.removesuffix("_camp").removesuffix("_search").removesuffix("_battle")
     if location_id not in EXPLORATION_LOCATION_IDS:
