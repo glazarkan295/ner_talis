@@ -183,7 +183,6 @@ ITEM_SPECIFIC_TYPE_RU = {
     "fabric_pieces": "Хлам",
     "old_knife": "Хлам",
     "iron_scrap": "Хлам",
-    "small_pelt": "Шкура",
 }
 
 ITEM_SPECIFIC_STACK_LIMITS = {

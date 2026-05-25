@@ -13,6 +13,21 @@ if str(ROOT_DIR) not in sys.path:
 
 from services.item_registry import validate_item_registry_duplicates
 
+LEGACY_HIDE_TENDON_IDS = {
+    "dense_hide",
+    "jackal_hide",
+    "small_hide",
+    "small_pelt",
+    "deer_hide",
+    "wolf_hide",
+    "boar_hide",
+    "bear_hide",
+    "strong_tendon",
+    "tough_tendon",
+    "strong_sinew",
+    "tough_sinew",
+}
+
 
 def _registry_files():
     return [
@@ -94,6 +109,28 @@ class ItemRegistryIntegrityTest(unittest.TestCase):
             except Exception as exc:
                 invalid.append(f"{path.relative_to(PROJECT_ROOT)}: {exc}")
         self.assertEqual([], invalid)
+
+    def test_legacy_hide_and_tendon_items_are_not_declared_or_shipped(self):
+        declared = []
+        for path in sorted((PROJECT_ROOT / "data").glob("items*.json")):
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            items = payload.get("items") if isinstance(payload, dict) else payload
+            if not isinstance(items, list):
+                continue
+            for index, item in enumerate(items, start=1):
+                if not isinstance(item, dict):
+                    continue
+                item_id = str(item.get("id") or item.get("item_id") or "").strip()
+                if item_id in LEGACY_HIDE_TENDON_IDS:
+                    declared.append(f"{path.relative_to(PROJECT_ROOT)}:{index} {item_id}")
+
+        shipped_assets = []
+        for path in sorted((PROJECT_ROOT / "web" / "public").rglob("*.png")):
+            if path.stem in LEGACY_HIDE_TENDON_IDS:
+                shipped_assets.append(str(path.relative_to(PROJECT_ROOT)))
+
+        self.assertEqual([], declared)
+        self.assertEqual([], shipped_assets)
 
 
 if __name__ == "__main__":
