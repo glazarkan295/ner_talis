@@ -61,6 +61,10 @@ class DeathBalanceStackRulesTest(unittest.TestCase):
         self.assertIn("Опыт: +78", rewards)
         self.assertEqual(player["experience"], 78)
 
+    def test_empowered_loot_has_ten_percent_higher_chance_without_amount_bonus(self):
+        self.assertEqual(loot_parameters_for_rank(EnemyRank.EMPOWERED, 20, 1, 1), (22, 1, 1))
+        self.assertEqual(loot_parameters_for_rank(EnemyRank.EMPOWERED, 91, 1, 2), (100, 1, 2))
+
     def test_elite_loot_has_higher_chance_and_amount(self):
         self.assertEqual(loot_parameters_for_rank(EnemyRank.ELITE, 20, 1, 1), (30, 2, 2))
         self.assertEqual(loot_parameters_for_rank(EnemyRank.NORMAL, 20, 1, 1), (20, 1, 1))

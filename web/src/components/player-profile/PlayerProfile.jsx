@@ -479,7 +479,7 @@ function ItemModal({ item, slotKey, position, onClose, onEquipItem, onUnequipIte
           <span className="nt-modal-item-icon"><ItemArt item={item} /></span>
           <div>
             <h3>{item.name || "Предмет"}</h3>
-            <div className="nt-modal-subtitle">{item.quality || "обычный"} · ур. {item.level || 1}</div>
+            <div className="nt-modal-subtitle">{item.quality || "обычный"}{item.level ? ` · ур. ${item.level}` : ""}</div>
           </div>
         </div>
         <div className="nt-modal-grid">

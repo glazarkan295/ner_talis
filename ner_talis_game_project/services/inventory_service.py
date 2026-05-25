@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+import random
 from dataclasses import dataclass
 from typing import Any
 
@@ -9,6 +11,131 @@ from services.derived_stats_service import safe_int
 from services.item_registry import build_inventory_item, inventory_stack_limit_from_definition, slugify_fallback_item_id
 
 OVERFLOW_EFFECT_ID = "inventory_overflow_penalty"
+
+
+LEVELLED_EQUIPMENT_CATEGORY_MARKERS = {
+    "equipment", "weapon", "weapons", "armor", "armour", "jewelry", "jewellery",
+    "экипировка", "снаряжение", "оружие", "броня", "бижутерия", "украшение", "украшения",
+}
+LEVELLED_EQUIPMENT_SLOT_KEYS = {
+    "helmet", "necklace", "chest", "belt", "pants", "boots", "gloves",
+    "ring", "ring1", "ring2", "weapon", "weapon1", "weapon2",
+    "main_hand", "off_hand", "special",
+}
+QUALITY_PRICE_MULTIPLIERS = {
+    "common": 1.0,
+    "обычный": 1.0,
+    "uncommon": 1.5,
+    "необычный": 1.5,
+    "rare": 2.5,
+    "редкий": 2.5,
+    "epic": 4.0,
+    "эпический": 4.0,
+    "legendary": 7.0,
+    "легендарный": 7.0,
+    "mythic": 11.0,
+    "мифический": 11.0,
+    "divine": 16.0,
+    "божественный": 16.0,
+}
+QUALITY_PRICE_MINIMUMS = {"uncommon": 300, "необычный": 300, "rare": 500, "редкий": 500}
+SET_PRICE_MULTIPLIER = 1.25
+LEVEL_PRICE_STEP = 0.02
+
+
+def _text_tokens_for_equipment(item: dict[str, Any]) -> set[str]:
+    tokens: set[str] = set()
+    for key in ("category", "type", "subtype", "item_class", "slot", "equipment_slot", "targetSlotKey", "slotKey", "target_slot"):
+        value = item.get(key)
+        if value is None:
+            continue
+        text = str(value).strip().casefold()
+        if text:
+            tokens.add(text)
+    return tokens
+
+
+def is_levelled_equipment_item(item: dict[str, Any]) -> bool:
+    if not isinstance(item, dict):
+        return False
+    tokens = _text_tokens_for_equipment(item)
+    slot = str(item.get("targetSlotKey") or item.get("slotKey") or item.get("slot") or item.get("equipment_slot") or item.get("target_slot") or "").strip().casefold()
+    return slot in LEVELLED_EQUIPMENT_SLOT_KEYS or bool(tokens & LEVELLED_EQUIPMENT_CATEGORY_MARKERS)
+
+
+def _quality_key(item: dict[str, Any]) -> str:
+    return str(item.get("quality") or "common").strip().casefold()
+
+
+def _has_set_membership(item: dict[str, Any]) -> bool:
+    for key in ("set_id", "setId", "set_name", "setName", "item_set", "itemSet", "set", "set_bonus", "setBonus"):
+        value = item.get(key)
+        if value not in (None, "", [], {}):
+            return True
+    return False
+
+
+def _base_sell_price(item: dict[str, Any]) -> int:
+    raw = item.get("base_sell_price_copper")
+    if raw is None:
+        raw = item.get("sell_price_copper", item.get("sellPriceCopper"))
+    return max(0, safe_int(raw, 0))
+
+
+def calculate_generated_item_sell_price(item: dict[str, Any]) -> int:
+    base = _base_sell_price(item)
+    if base <= 0:
+        return 0
+    quality = _quality_key(item)
+    quality_multiplier = QUALITY_PRICE_MULTIPLIERS.get(quality, 1.0)
+    quality_base = max(math.ceil(base * quality_multiplier), QUALITY_PRICE_MINIMUMS.get(quality, 0), safe_int(item.get("quality_price_floor_copper"), 0))
+    level = max(1, safe_int(item.get("level"), 1))
+    level_multiplier = 1.0 + max(0, level - 1) * LEVEL_PRICE_STEP
+    set_multiplier = SET_PRICE_MULTIPLIER if _has_set_membership(item) else 1.0
+    return max(1, math.ceil(quality_base * level_multiplier * set_multiplier))
+
+
+def apply_generated_item_level_and_price(
+    player: dict[str, Any],
+    item: dict[str, Any],
+    generation_type: str,
+    *,
+    rng: Any = random,
+) -> dict[str, Any]:
+    """Apply gameplay level and sell price rules to crafted/found weapons and equipment.
+
+    Crafted gear rolls from current player level down to -5. Found gear rolls
+    from player level -20 to player level +20. The price then depends on base
+    price, quality, generated level and set membership.
+    """
+
+    if not isinstance(item, dict) or not is_levelled_equipment_item(item):
+        return item
+
+    player_level = max(1, safe_int(player.get("level"), 1) if isinstance(player, dict) else 1)
+    if generation_type == "crafted":
+        level = max(1, player_level - int(rng.randint(0, 5)))
+        item["generation_type"] = "crafted"
+    elif generation_type == "found":
+        level = max(1, player_level + int(rng.randint(-20, 20)))
+        item["generation_type"] = "found"
+    else:
+        return item
+
+    item["level"] = level
+    item["required_level"] = level
+    if item.get("base_sell_price_copper") is None:
+        base = item.get("sell_price_copper", item.get("sellPriceCopper"))
+        if base is not None:
+            item["base_sell_price_copper"] = max(0, safe_int(base, 0))
+    item["quality_price_floor_copper"] = QUALITY_PRICE_MINIMUMS.get(_quality_key(item), safe_int(item.get("quality_price_floor_copper"), 0))
+    price = calculate_generated_item_sell_price(item)
+    if price > 0:
+        item["sell_price_copper"] = price
+        item["sellPriceCopper"] = price
+        item["can_sell"] = True
+        item["canSell"] = True
+    return item
 
 
 @dataclass

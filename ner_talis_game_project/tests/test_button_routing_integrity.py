@@ -1,5 +1,6 @@
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -166,6 +167,72 @@ class ButtonRoutingIntegrityTest(unittest.TestCase):
                 self.assertEqual(updated.get("location_id"), "hilly_meadows")
                 self.assertEqual(updated.get("current_location"), "hilly_meadows")
 
+
+    def test_stale_crafting_context_does_not_capture_city_buttons_free_text_or_commands(self):
+        for platform in ("telegram", "vk"):
+            with self.subTest(platform=platform, action="city_button"):
+                storage, player = self.make_storage_player()
+                player["current_city"] = "seldar"
+                player["current_zone"] = "seldar_forge"
+                player["location_id"] = "seldar_forge"
+                player["crafting_context"] = {"workshop": "forge", "step": "sections"}
+                storage.update_player(player)
+
+                result = process_world_action(storage, player, "Портовый квартал", platform)
+
+                self.assert_known_response(result)
+                self.assertNotIn("Кузница", result.text)
+                updated = storage.get_player_by_game_id("NT-BUTTONS")
+                self.assertEqual(updated.get("current_zone"), "seldar_port_district")
+                self.assertNotIn("crafting_context", updated)
+
+            with self.subTest(platform=platform, action="free_text"):
+                storage, player = self.make_storage_player()
+                player["current_city"] = "seldar"
+                player["current_zone"] = "seldar_forge"
+                player["location_id"] = "seldar_forge"
+                player["crafting_context"] = {"workshop": "forge", "step": "sections"}
+                storage.update_player(player)
+
+                result = process_world_action(storage, player, "любой свободный текст", platform)
+
+                self.assertIn("Неизвестное городское действие", result.text)
+                self.assertNotIn("Кузница", result.text)
+                updated = storage.get_player_by_game_id("NT-BUTTONS")
+                self.assertEqual(updated.get("current_zone"), "seldar_forge")
+
+            with self.subTest(platform=platform, action="slash_command"):
+                storage, player = self.make_storage_player()
+                player["current_city"] = "seldar"
+                player["current_zone"] = "seldar_forge"
+                player["location_id"] = "seldar_forge"
+                player["crafting_context"] = {"workshop": "forge", "step": "sections"}
+                storage.update_player(player)
+
+                result = process_world_action(storage, player, "/promo EXP4500", platform)
+
+                self.assertIn("Неизвестная команда", result.text)
+                self.assertNotIn("Кузница", result.text)
+                updated = storage.get_player_by_game_id("NT-BUTTONS")
+                self.assertEqual(updated.get("current_zone"), "seldar_forge")
+
+
+    def test_stale_crafting_context_does_not_capture_external_location_buttons(self):
+        storage, player = self.make_storage_player()
+        player["current_city"] = "seldar"
+        player["current_zone"] = "seldar_forge"
+        player["location_id"] = "seldar_forge"
+        player["crafting_context"] = {"workshop": "forge", "step": "sections"}
+        storage.update_player(player)
+
+        result = process_world_action(storage, player, OUTSIDE_CITY, "telegram")
+
+        self.assert_known_response(result)
+        self.assertIn(HILLY_MEADOWS, flat_buttons(result.buttons))
+        updated = storage.get_player_by_game_id("NT-BUTTONS")
+        self.assertEqual(updated.get("current_zone"), "outside_city_crossroads")
+        self.assertNotIn("crafting_context", updated)
+
     def test_market_buy_sell_buttons_work_through_vk_route(self):
         storage, player = self.make_storage_player()
 
@@ -196,6 +263,105 @@ class ButtonRoutingIntegrityTest(unittest.TestCase):
         updated = storage.get_player_by_game_id("NT-BUTTONS")
         self.assertEqual(updated.get("current_zone"), "seldar_npc_market")
         self.assertEqual(updated.get("market_context", {}).get("mode"), "main")
+
+    def test_external_state_blocks_city_buttons_and_keeps_location_keyboard(self):
+        for action in ("Портовый квартал", "/x", "случайный текст"):
+            with self.subTest(action=action):
+                storage, player = self.make_storage_player()
+                player["current_city"] = "outside_seldar"
+                player["current_zone"] = "hilly_meadows"
+                player["location_id"] = "hilly_meadows"
+                player["current_location"] = "hilly_meadows"
+                storage.update_player(player)
+
+                result = process_world_action(storage, player, action, "telegram")
+
+                self.assertIn("Неизвестное действие внешней локации", result.text)
+                self.assertIn("Начать поиск", flat_buttons(result.buttons))
+                self.assertIn("Разбить лагерь", flat_buttons(result.buttons))
+                self.assertIn("Вернуться в город", flat_buttons(result.buttons))
+                self.assertNotIn("Портовый квартал", flat_buttons(result.buttons))
+                updated = storage.get_player_by_game_id("NT-BUTTONS")
+                self.assertEqual(updated.get("current_city"), "outside_seldar")
+                self.assertEqual(updated.get("current_zone"), "hilly_meadows")
+                self.assertEqual(updated.get("location_id"), "hilly_meadows")
+
+    def test_unknown_text_in_external_camp_returns_camp_keyboard(self):
+        storage, player = self.make_storage_player()
+        player["current_city"] = "outside_seldar"
+        player["current_zone"] = "hilly_meadows_camp"
+        player["location_id"] = "hilly_meadows_camp"
+        player["current_location"] = "hilly_meadows"
+        storage.update_player(player)
+
+        result = process_world_action(storage, player, "случайный текст", "vk")
+
+        self.assertIn("Неизвестное действие внешней локации", result.text)
+        self.assertIn("Готовка", flat_buttons(result.buttons))
+        self.assertIn("Еда", flat_buttons(result.buttons))
+        self.assertIn("Свернуть лагерь", flat_buttons(result.buttons))
+        self.assertNotIn("Холмистые луга", flat_buttons(result.buttons))
+
+    def test_stale_market_context_does_not_capture_free_text_or_buy_number_outside_market(self):
+        for action in ("любой текст", "Купить 1"):
+            with self.subTest(action=action):
+                storage, player = self.make_storage_player()
+                player["current_city"] = "seldar"
+                player["current_zone"] = "seldar_central_square"
+                player["location_id"] = "seldar_central_square"
+                player["market_context"] = {"mode": "main"}
+                storage.update_player(player)
+
+                result = process_world_action(storage, player, action, "telegram")
+
+                self.assertIn("Неизвестное городское действие", result.text)
+                self.assertNotIn("Покупка у NPC", result.text)
+                self.assertNotIn("Рынок", result.text)
+                updated = storage.get_player_by_game_id("NT-BUTTONS")
+                self.assertEqual(updated.get("current_zone"), "seldar_central_square")
+                self.assertNotIn("market_context", updated)
+
+    def test_stale_crafting_context_does_not_capture_numeric_input_outside_workshop(self):
+        storage, player = self.make_storage_player()
+        player["current_city"] = "seldar"
+        player["current_zone"] = "seldar_central_square"
+        player["location_id"] = "seldar_central_square"
+        player["crafting_context"] = {"workshop": "forge", "step": "quantity"}
+        storage.update_player(player)
+
+        result = process_world_action(storage, player, "1", "telegram")
+
+        self.assertIn("Неизвестное городское действие", result.text)
+        self.assertNotIn("Кузница", result.text)
+        updated = storage.get_player_by_game_id("NT-BUTTONS")
+        self.assertEqual(updated.get("current_zone"), "seldar_central_square")
+        self.assertNotIn("crafting_context", updated)
+
+    def test_active_craft_timer_blocks_city_shortcuts_before_navigation(self):
+        for action in ("Центральная площадь", "⬅️ Центральная площадь", "В город", "Портовый квартал", "/x"):
+            with self.subTest(action=action):
+                storage, player = self.make_storage_player()
+                player["current_city"] = "seldar"
+                player["current_zone"] = "seldar_forge"
+                player["location_id"] = "seldar_forge"
+                player["crafting_context"] = {"workshop": "forge", "step": "crafting"}
+                player["active_timer"] = {
+                    "id": "craft-test",
+                    "type": "craft",
+                    "seconds": 60,
+                    "ends_at": time.time() + 60,
+                    "location_id": "seldar_forge",
+                    "craft": {"recipe_id": "test", "quantity": 1, "workshop_id": "forge"},
+                }
+                storage.update_player(player)
+
+                result = process_world_action(storage, player, action, "telegram")
+
+                self.assertIn("Сначала дождитесь окончания создания", result.text)
+                self.assertEqual(flat_buttons(result.buttons), ["Проверить таймер"])
+                updated = storage.get_player_by_game_id("NT-BUTTONS")
+                self.assertEqual(updated.get("current_zone"), "seldar_forge")
+                self.assertIsInstance(updated.get("active_timer"), dict)
 
 
 if __name__ == "__main__":

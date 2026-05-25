@@ -85,12 +85,80 @@ class CraftingWorkshopsAndAlchemyTest(unittest.TestCase):
 
         result = process_world_action(storage, player, "Кузница", "telegram")
         self.assertIn("Выберите раздел создания", result.text)
-        self.assertIn("Оружие", sum(result.buttons, []))
+        flat = sum(result.buttons, [])
+        self.assertIn("Оружие", flat)
+        self.assertIn("Броня", flat)
+        self.assertIn("Заготовки", flat)
+        self.assertIn("Рецепты", flat)
+
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT"), "Оружие", "telegram")
+        self.assertIn("Что можно создать", result.text)
+        for expected in (
+            "Простой меч",
+            "Простой кинжал",
+            "Простой топор",
+            "Простой молот",
+            "Простой лук",
+            "Простой арбалет",
+            "Простой щит",
+            "Простой посох",
+            "Простая книга",
+        ):
+            self.assertIn(expected, result.text)
+        self.assertIn("Крафт №9", sum(result.buttons, []))
+        self.assertNotIn("Крафт №10", sum(result.buttons, []))
+
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT"), "Броня", "telegram")
+        self.assertIn("В этом разделе пока нет доступных рецептов.", result.text)
+        self.assertNotIn("Крафт №1", sum(result.buttons, []))
+
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT"), "Рецепты", "telegram")
+        self.assertIn("В этом разделе пока нет доступных рецептов.", result.text)
+        self.assertNotIn("Крафт №1", sum(result.buttons, []))
 
         result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT"), "Заготовки", "telegram")
         self.assertIn("Что можно создать", result.text)
         self.assertIn("Крафт №1", sum(result.buttons, []))
         self.assertNotIn("Медная пластина", sum(result.buttons, []))
+
+
+    def test_leatherwork_blanks_use_tanned_leather_instead_of_simple_leather_sheet(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+
+        process_world_action(storage, player, "Кожевенная мастерская", "telegram")
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT"), "Заготовки", "telegram")
+
+        self.assertIn("Выделанная кожа", result.text)
+        self.assertNotIn("Простой лист кожи", result.text)
+
+    def test_leatherwork_armor_section_has_simple_leather_armor_set_and_recipes_section_is_empty(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+
+        process_world_action(storage, player, "Кожевенная мастерская", "telegram")
+
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT"), "Броня", "telegram")
+        flat = sum(result.buttons, [])
+        for expected in (
+            "Простой кожаный шлем",
+            "Простой кожаный пояс",
+            "Простой кожаный нагрудник",
+            "Простые кожаные ботинки",
+            "Простые кожаные штаны",
+            "Простые кожаные перчатки",
+        ):
+            self.assertIn(expected, result.text)
+        self.assertIn("Крафт №6", flat)
+        self.assertNotIn("Крафт №7", flat)
+        self.assertIn("Кожевенная мастерская", flat)
+
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT"), "Рецепты", "telegram")
+        flat = sum(result.buttons, [])
+        self.assertIn("В этом разделе пока нет доступных рецептов.", result.text)
+        self.assertNotIn("Простой кожевенный рецепт", result.text)
+        self.assertNotIn("Крафт №1", flat)
+        self.assertIn("Кожевенная мастерская", flat)
 
     def test_alchemy_experiment_uses_number_input_and_exact_error_text(self):
         tmp, storage, player = self.make_storage_player()

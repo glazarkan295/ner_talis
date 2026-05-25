@@ -33,6 +33,7 @@ from services.derived_stats_service import (
 from services.item_registry import enrich_inventory_item
 from services.inventory_service import (
     add_inventory_item,
+    is_levelled_equipment_item,
     max_overflow_slots,
     max_regular_slots,
     overflow_slot_count,
@@ -720,7 +721,12 @@ def normalize_item(item: dict[str, Any], default_category: str = "Прочее")
     if raw_subtype:
         normalized["subtype"] = translated_subtype
     normalized["quality"] = normalize_quality(normalized.get("quality"))
-    normalized.setdefault("level", 1)
+    if is_levelled_equipment_item(normalized):
+        normalized["level"] = max(1, safe_int(normalized.get("level"), 1))
+        normalized["required_level"] = max(1, safe_int(normalized.get("required_level"), normalized["level"]))
+    else:
+        normalized.pop("level", None)
+        normalized.pop("required_level", None)
     normalized.setdefault("description", "Описание предмета пока не добавлено.")
     normalized.setdefault("stats", [])
     normalized.setdefault("enchantments", [])
@@ -1397,6 +1403,18 @@ def _add_inventory_item_or_raise(player: dict[str, Any], item: dict[str, Any], a
         raise HTTPException(status_code=400, detail=detail)
 
 
+def validate_equipment_level_requirement(player: dict[str, Any], item: dict[str, Any]) -> None:
+    if not is_levelled_equipment_item(item):
+        return
+    item_level = max(1, safe_int(item.get("level") or item.get("required_level"), 1))
+    player_level = max(1, safe_int(player.get("level"), 1))
+    if item_level > player_level + 3:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Уровень предмета слишком высок: требуется не выше {player_level + 3}, у предмета {item_level}.",
+        )
+
+
 def compatible_equipment_slot(item: dict[str, Any], requested_slot: str | None, equipment: dict[str, Any]) -> str:
     raw_slot = str(item.get("targetSlotKey") or item.get("slotKey") or item.get("slot") or item.get("target_slot") or "").strip()
     item_type = str(item.get("type") or item.get("subtype") or item.get("category") or "").casefold()
@@ -1766,6 +1784,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
         item = inventory.pop(item_index)
         try:
+            validate_equipment_level_requirement(player, item)
             slot_key = compatible_equipment_slot(item, request.slot_key, equipment)
             previous_item = equipment.get(slot_key)
             if isinstance(previous_item, dict):

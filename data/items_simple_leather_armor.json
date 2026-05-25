@@ -1,0 +1,1100 @@
+[
+  {
+    "id": "simple_leather_helmet",
+    "item_id": "simple_leather_helmet",
+    "name": "Простой кожаный шлем",
+    "name_ru": "Простой кожаный шлем",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "leather_helmet",
+    "armor_type": "leather",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простой кожаный шлем. Простая кожаная экипировка. Бонусы зависят от качества и уровня созданного предмета.",
+    "can_sell": true,
+    "sell_price_copper": 150,
+    "base_sell_price_copper": 150,
+    "icon": "/assets/items/equipment/simple_leather_armor/simple_leather_helmet_common.png",
+    "integration_tags": [
+      "inventory_item",
+      "simple_leather_armor"
+    ],
+    "slot": "helmet",
+    "targetSlotKey": "helmet",
+    "slotKey": "helmet",
+    "equipment_slot": "helmet",
+    "item_class": "equipment",
+    "set_id": "simple_leather_armor",
+    "set_name": "Простая кожаная броня",
+    "stat_modifiers": {
+      "armor": 1
+    },
+    "stats": [
+      "Броня: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_helmet_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_helmet_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          },
+          {
+            "type": "dodge",
+            "target": "player"
+          },
+          {
+            "type": "endurance",
+            "target": "player"
+          },
+          {
+            "type": "physical_defense",
+            "target": "player"
+          },
+          {
+            "type": "magical_defense",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_helmet_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          },
+          {
+            "type": "dodge",
+            "target": "player"
+          },
+          {
+            "type": "endurance",
+            "target": "player"
+          },
+          {
+            "type": "physical_defense",
+            "target": "player"
+          },
+          {
+            "type": "magical_defense",
+            "target": "player"
+          },
+          {
+            "type": "stun_resist_chance",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/equipment/simple_leather_armor/simple_leather_helmet_common.png",
+      "uncommon": "/assets/items/equipment/simple_leather_armor/simple_leather_helmet_uncommon.png",
+      "rare": "/assets/items/equipment/simple_leather_armor/simple_leather_helmet_rare.png"
+    },
+    "effect_generation_rules": {
+      "scales_with_item_level": true,
+      "notes": [
+        "Сила эффектов зависит от уровня созданного предмета.",
+        "Численные значения эффектов закрепляются при интеграции через helper масштабирования уровневой экипировки."
+      ],
+      "common": {
+        "effects_total": 1,
+        "selection_mode": "fixed",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          }
+        ]
+      },
+      "uncommon": {
+        "effects_total": 2,
+        "selection_mode": "random_from_pool",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          },
+          {
+            "id": "dodge",
+            "name_ru": "Уклонение"
+          },
+          {
+            "id": "endurance",
+            "name_ru": "Выносливость"
+          },
+          {
+            "id": "physical_defense",
+            "name_ru": "Физическая защита"
+          },
+          {
+            "id": "magical_defense",
+            "name_ru": "Магическая защита"
+          }
+        ]
+      },
+      "rare": {
+        "effects_total": 3,
+        "selection_mode": "random_from_pool",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          },
+          {
+            "id": "dodge",
+            "name_ru": "Уклонение"
+          },
+          {
+            "id": "endurance",
+            "name_ru": "Выносливость"
+          },
+          {
+            "id": "physical_defense",
+            "name_ru": "Физическая защита"
+          },
+          {
+            "id": "magical_defense",
+            "name_ru": "Магическая защита"
+          },
+          {
+            "id": "stun_resist_chance",
+            "name_ru": "Шанс сопротивления оглушению"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "simple_leather_belt_reworked",
+    "item_id": "simple_leather_belt_reworked",
+    "name": "Простой кожаный пояс",
+    "name_ru": "Простой кожаный пояс",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "leather_belt",
+    "armor_type": "leather",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простой кожаный пояс. Простая кожаная экипировка. Бонусы зависят от качества и уровня созданного предмета.",
+    "can_sell": true,
+    "sell_price_copper": 150,
+    "base_sell_price_copper": 150,
+    "icon": "/assets/items/equipment/simple_leather_armor/simple_leather_belt_common.png",
+    "integration_tags": [
+      "inventory_item",
+      "simple_leather_armor"
+    ],
+    "slot": "belt",
+    "targetSlotKey": "belt",
+    "slotKey": "belt",
+    "equipment_slot": "belt",
+    "item_class": "equipment",
+    "set_id": "simple_leather_armor",
+    "set_name": "Простая кожаная броня",
+    "stat_modifiers": {
+      "armor": 1
+    },
+    "stats": [
+      "Броня: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_belt_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_belt_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          },
+          {
+            "type": "dodge",
+            "target": "player"
+          },
+          {
+            "type": "agility",
+            "target": "player"
+          },
+          {
+            "type": "physical_defense",
+            "target": "player"
+          },
+          {
+            "type": "magical_defense",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_belt_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          },
+          {
+            "type": "dodge",
+            "target": "player"
+          },
+          {
+            "type": "agility",
+            "target": "player"
+          },
+          {
+            "type": "physical_defense",
+            "target": "player"
+          },
+          {
+            "type": "magical_defense",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/equipment/simple_leather_armor/simple_leather_belt_common.png",
+      "uncommon": "/assets/items/equipment/simple_leather_armor/simple_leather_belt_uncommon.png",
+      "rare": "/assets/items/equipment/simple_leather_armor/simple_leather_belt_rare.png"
+    },
+    "effect_generation_rules": {
+      "scales_with_item_level": true,
+      "notes": [
+        "Сила эффектов зависит от уровня созданного предмета.",
+        "Численные значения эффектов закрепляются при интеграции через helper масштабирования уровневой экипировки."
+      ],
+      "common": {
+        "effects_total": 1,
+        "selection_mode": "fixed",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          }
+        ]
+      },
+      "uncommon": {
+        "effects_total": 2,
+        "selection_mode": "random_from_pool",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          },
+          {
+            "id": "dodge",
+            "name_ru": "Уклонение"
+          },
+          {
+            "id": "agility",
+            "name_ru": "Ловкость"
+          },
+          {
+            "id": "physical_defense",
+            "name_ru": "Физическая защита"
+          },
+          {
+            "id": "magical_defense",
+            "name_ru": "Магическая защита"
+          }
+        ]
+      },
+      "rare": {
+        "effects_total": 3,
+        "selection_mode": "random_from_pool",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          },
+          {
+            "id": "dodge",
+            "name_ru": "Уклонение"
+          },
+          {
+            "id": "agility",
+            "name_ru": "Ловкость"
+          },
+          {
+            "id": "physical_defense",
+            "name_ru": "Физическая защита"
+          },
+          {
+            "id": "magical_defense",
+            "name_ru": "Магическая защита"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "simple_leather_chestpiece",
+    "item_id": "simple_leather_chestpiece",
+    "name": "Простой кожаный нагрудник",
+    "name_ru": "Простой кожаный нагрудник",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "leather_chestpiece",
+    "armor_type": "leather",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простой кожаный нагрудник. Простая кожаная экипировка. Бонусы зависят от качества и уровня созданного предмета.",
+    "can_sell": true,
+    "sell_price_copper": 150,
+    "base_sell_price_copper": 150,
+    "icon": "/assets/items/equipment/simple_leather_armor/simple_leather_chestpiece_common.png",
+    "integration_tags": [
+      "inventory_item",
+      "simple_leather_armor"
+    ],
+    "slot": "chest",
+    "targetSlotKey": "chest",
+    "slotKey": "chest",
+    "equipment_slot": "chest",
+    "item_class": "equipment",
+    "set_id": "simple_leather_armor",
+    "set_name": "Простая кожаная броня",
+    "stat_modifiers": {
+      "armor": 1
+    },
+    "stats": [
+      "Броня: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_chestpiece_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_chestpiece_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          },
+          {
+            "type": "dodge",
+            "target": "player"
+          },
+          {
+            "type": "agility",
+            "target": "player"
+          },
+          {
+            "type": "physical_defense",
+            "target": "player"
+          },
+          {
+            "type": "magical_defense",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_chestpiece_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          },
+          {
+            "type": "dodge",
+            "target": "player"
+          },
+          {
+            "type": "agility",
+            "target": "player"
+          },
+          {
+            "type": "physical_defense",
+            "target": "player"
+          },
+          {
+            "type": "magical_defense",
+            "target": "player"
+          },
+          {
+            "type": "stun_resist_chance",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/equipment/simple_leather_armor/simple_leather_chestpiece_common.png",
+      "uncommon": "/assets/items/equipment/simple_leather_armor/simple_leather_chestpiece_uncommon.png",
+      "rare": "/assets/items/equipment/simple_leather_armor/simple_leather_chestpiece_rare.png"
+    },
+    "effect_generation_rules": {
+      "scales_with_item_level": true,
+      "notes": [
+        "Сила эффектов зависит от уровня созданного предмета.",
+        "Численные значения эффектов закрепляются при интеграции через helper масштабирования уровневой экипировки."
+      ],
+      "common": {
+        "effects_total": 1,
+        "selection_mode": "fixed",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          }
+        ]
+      },
+      "uncommon": {
+        "effects_total": 2,
+        "selection_mode": "random_from_pool",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          },
+          {
+            "id": "dodge",
+            "name_ru": "Уклонение"
+          },
+          {
+            "id": "agility",
+            "name_ru": "Ловкость"
+          },
+          {
+            "id": "physical_defense",
+            "name_ru": "Физическая защита"
+          },
+          {
+            "id": "magical_defense",
+            "name_ru": "Магическая защита"
+          }
+        ]
+      },
+      "rare": {
+        "effects_total": 3,
+        "selection_mode": "random_from_pool",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          },
+          {
+            "id": "dodge",
+            "name_ru": "Уклонение"
+          },
+          {
+            "id": "agility",
+            "name_ru": "Ловкость"
+          },
+          {
+            "id": "physical_defense",
+            "name_ru": "Физическая защита"
+          },
+          {
+            "id": "magical_defense",
+            "name_ru": "Магическая защита"
+          },
+          {
+            "id": "stun_resist_chance",
+            "name_ru": "Шанс сопротивления оглушению"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "simple_leather_boots",
+    "item_id": "simple_leather_boots",
+    "name": "Простые кожаные ботинки",
+    "name_ru": "Простые кожаные ботинки",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "leather_boots",
+    "armor_type": "leather",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простые кожаные ботинки. Простая кожаная экипировка. Бонусы зависят от качества и уровня созданного предмета.",
+    "can_sell": true,
+    "sell_price_copper": 150,
+    "base_sell_price_copper": 150,
+    "icon": "/assets/items/equipment/simple_leather_armor/simple_leather_boots_common.png",
+    "integration_tags": [
+      "inventory_item",
+      "simple_leather_armor"
+    ],
+    "slot": "boots",
+    "targetSlotKey": "boots",
+    "slotKey": "boots",
+    "equipment_slot": "boots",
+    "item_class": "equipment",
+    "set_id": "simple_leather_armor",
+    "set_name": "Простая кожаная броня",
+    "stat_modifiers": {
+      "armor": 1
+    },
+    "stats": [
+      "Броня: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_boots_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_boots_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          },
+          {
+            "type": "dodge",
+            "target": "player"
+          },
+          {
+            "type": "agility",
+            "target": "player"
+          },
+          {
+            "type": "physical_defense",
+            "target": "player"
+          },
+          {
+            "type": "magical_defense",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_boots_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          },
+          {
+            "type": "dodge",
+            "target": "player"
+          },
+          {
+            "type": "agility",
+            "target": "player"
+          },
+          {
+            "type": "physical_defense",
+            "target": "player"
+          },
+          {
+            "type": "magical_defense",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/equipment/simple_leather_armor/simple_leather_boots_common.png",
+      "uncommon": "/assets/items/equipment/simple_leather_armor/simple_leather_boots_uncommon.png",
+      "rare": "/assets/items/equipment/simple_leather_armor/simple_leather_boots_rare.png"
+    },
+    "effect_generation_rules": {
+      "scales_with_item_level": true,
+      "notes": [
+        "Сила эффектов зависит от уровня созданного предмета.",
+        "Численные значения эффектов закрепляются при интеграции через helper масштабирования уровневой экипировки."
+      ],
+      "common": {
+        "effects_total": 1,
+        "selection_mode": "fixed",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          }
+        ]
+      },
+      "uncommon": {
+        "effects_total": 2,
+        "selection_mode": "random_from_pool",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          },
+          {
+            "id": "dodge",
+            "name_ru": "Уклонение"
+          },
+          {
+            "id": "agility",
+            "name_ru": "Ловкость"
+          },
+          {
+            "id": "physical_defense",
+            "name_ru": "Физическая защита"
+          },
+          {
+            "id": "magical_defense",
+            "name_ru": "Магическая защита"
+          }
+        ]
+      },
+      "rare": {
+        "effects_total": 3,
+        "selection_mode": "random_from_pool",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          },
+          {
+            "id": "dodge",
+            "name_ru": "Уклонение"
+          },
+          {
+            "id": "agility",
+            "name_ru": "Ловкость"
+          },
+          {
+            "id": "physical_defense",
+            "name_ru": "Физическая защита"
+          },
+          {
+            "id": "magical_defense",
+            "name_ru": "Магическая защита"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "simple_leather_pants",
+    "item_id": "simple_leather_pants",
+    "name": "Простые кожаные штаны",
+    "name_ru": "Простые кожаные штаны",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "leather_pants",
+    "armor_type": "leather",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простые кожаные штаны. Простая кожаная экипировка. Бонусы зависят от качества и уровня созданного предмета.",
+    "can_sell": true,
+    "sell_price_copper": 150,
+    "base_sell_price_copper": 150,
+    "icon": "/assets/items/equipment/simple_leather_armor/simple_leather_pants_common.png",
+    "integration_tags": [
+      "inventory_item",
+      "simple_leather_armor"
+    ],
+    "slot": "pants",
+    "targetSlotKey": "pants",
+    "slotKey": "pants",
+    "equipment_slot": "pants",
+    "item_class": "equipment",
+    "set_id": "simple_leather_armor",
+    "set_name": "Простая кожаная броня",
+    "stat_modifiers": {
+      "armor": 1
+    },
+    "stats": [
+      "Броня: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_pants_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_pants_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          },
+          {
+            "type": "dodge",
+            "target": "player"
+          },
+          {
+            "type": "agility",
+            "target": "player"
+          },
+          {
+            "type": "physical_defense",
+            "target": "player"
+          },
+          {
+            "type": "magical_defense",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_pants_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          },
+          {
+            "type": "dodge",
+            "target": "player"
+          },
+          {
+            "type": "agility",
+            "target": "player"
+          },
+          {
+            "type": "physical_defense",
+            "target": "player"
+          },
+          {
+            "type": "magical_defense",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/equipment/simple_leather_armor/simple_leather_pants_common.png",
+      "uncommon": "/assets/items/equipment/simple_leather_armor/simple_leather_pants_uncommon.png",
+      "rare": "/assets/items/equipment/simple_leather_armor/simple_leather_pants_rare.png"
+    },
+    "effect_generation_rules": {
+      "scales_with_item_level": true,
+      "notes": [
+        "Сила эффектов зависит от уровня созданного предмета.",
+        "Численные значения эффектов закрепляются при интеграции через helper масштабирования уровневой экипировки."
+      ],
+      "common": {
+        "effects_total": 1,
+        "selection_mode": "fixed",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          }
+        ]
+      },
+      "uncommon": {
+        "effects_total": 2,
+        "selection_mode": "random_from_pool",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          },
+          {
+            "id": "dodge",
+            "name_ru": "Уклонение"
+          },
+          {
+            "id": "agility",
+            "name_ru": "Ловкость"
+          },
+          {
+            "id": "physical_defense",
+            "name_ru": "Физическая защита"
+          },
+          {
+            "id": "magical_defense",
+            "name_ru": "Магическая защита"
+          }
+        ]
+      },
+      "rare": {
+        "effects_total": 3,
+        "selection_mode": "random_from_pool",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          },
+          {
+            "id": "dodge",
+            "name_ru": "Уклонение"
+          },
+          {
+            "id": "agility",
+            "name_ru": "Ловкость"
+          },
+          {
+            "id": "physical_defense",
+            "name_ru": "Физическая защита"
+          },
+          {
+            "id": "magical_defense",
+            "name_ru": "Магическая защита"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "simple_leather_gloves",
+    "item_id": "simple_leather_gloves",
+    "name": "Простые кожаные перчатки",
+    "name_ru": "Простые кожаные перчатки",
+    "category": "equipment",
+    "type": "equipment",
+    "subtype": "leather_gloves",
+    "armor_type": "leather",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простые кожаные перчатки. Простая кожаная экипировка. Бонусы зависят от качества и уровня созданного предмета.",
+    "can_sell": true,
+    "sell_price_copper": 150,
+    "base_sell_price_copper": 150,
+    "icon": "/assets/items/equipment/simple_leather_armor/simple_leather_gloves_common.png",
+    "integration_tags": [
+      "inventory_item",
+      "simple_leather_armor"
+    ],
+    "slot": "gloves",
+    "targetSlotKey": "gloves",
+    "slotKey": "gloves",
+    "equipment_slot": "gloves",
+    "item_class": "equipment",
+    "set_id": "simple_leather_armor",
+    "set_name": "Простая кожаная броня",
+    "stat_modifiers": {
+      "armor": 1
+    },
+    "stats": [
+      "Броня: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_gloves_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_gloves_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          },
+          {
+            "type": "dodge",
+            "target": "player"
+          },
+          {
+            "type": "agility",
+            "target": "player"
+          },
+          {
+            "type": "physical_defense",
+            "target": "player"
+          },
+          {
+            "type": "magical_defense",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "/assets/items/equipment/simple_leather_armor/simple_leather_gloves_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "armor",
+            "target": "player"
+          },
+          {
+            "type": "dodge",
+            "target": "player"
+          },
+          {
+            "type": "agility",
+            "target": "player"
+          },
+          {
+            "type": "physical_defense",
+            "target": "player"
+          },
+          {
+            "type": "magical_defense",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/equipment/simple_leather_armor/simple_leather_gloves_common.png",
+      "uncommon": "/assets/items/equipment/simple_leather_armor/simple_leather_gloves_uncommon.png",
+      "rare": "/assets/items/equipment/simple_leather_armor/simple_leather_gloves_rare.png"
+    },
+    "effect_generation_rules": {
+      "scales_with_item_level": true,
+      "notes": [
+        "Сила эффектов зависит от уровня созданного предмета.",
+        "Численные значения эффектов закрепляются при интеграции через helper масштабирования уровневой экипировки."
+      ],
+      "common": {
+        "effects_total": 1,
+        "selection_mode": "fixed",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          }
+        ]
+      },
+      "uncommon": {
+        "effects_total": 2,
+        "selection_mode": "random_from_pool",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          },
+          {
+            "id": "dodge",
+            "name_ru": "Уклонение"
+          },
+          {
+            "id": "agility",
+            "name_ru": "Ловкость"
+          },
+          {
+            "id": "physical_defense",
+            "name_ru": "Физическая защита"
+          },
+          {
+            "id": "magical_defense",
+            "name_ru": "Магическая защита"
+          }
+        ]
+      },
+      "rare": {
+        "effects_total": 3,
+        "selection_mode": "random_from_pool",
+        "effect_pool": [
+          {
+            "id": "armor",
+            "name_ru": "Броня"
+          },
+          {
+            "id": "dodge",
+            "name_ru": "Уклонение"
+          },
+          {
+            "id": "agility",
+            "name_ru": "Ловкость"
+          },
+          {
+            "id": "physical_defense",
+            "name_ru": "Физическая защита"
+          },
+          {
+            "id": "magical_defense",
+            "name_ru": "Магическая защита"
+          },
+          {
+            "id": "accuracy",
+            "name_ru": "Точность"
+          }
+        ]
+      }
+    }
+  }
+]
