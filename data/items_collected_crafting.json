@@ -685,5 +685,653 @@
       "uncommon": "/assets/items/crafting/simple_dagger_uncommon.png",
       "rare": "/assets/items/crafting/simple_dagger_rare.png"
     }
+  },
+  {
+    "id": "simple_axe",
+    "item_id": "simple_axe",
+    "name": "Простой топор",
+    "name_ru": "Простой топор",
+    "category": "equipment",
+    "type": "weapon",
+    "subtype": "axe",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простой боевой топор без украшений. Бонусы зависят от качества и уровня созданного предмета.",
+    "can_sell": true,
+    "sell_price_copper": 100,
+    "icon": "/assets/items/crafting/simple_axe_common.png",
+    "integration_tags": [
+      "inventory_item"
+    ],
+    "slot": "weapon1",
+    "targetSlotKey": "weapon1",
+    "slotKey": "weapon1",
+    "item_class": "weapon",
+    "weapon_type": "axe",
+    "combat": {
+      "damage_type": "Физический",
+      "damage_min": 4,
+      "damage_max": 8,
+      "range": "Ближний бой"
+    },
+    "stat_modifiers": {
+      "bonus_strength": 1
+    },
+    "stats": [
+      "Сила: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "assets/simple_axe_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "strength",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "assets/simple_axe_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "strength",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "assets/simple_axe_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "strength",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          },
+          {
+            "type": "bonus_max_spirit",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/crafting/simple_axe_common.png",
+      "uncommon": "/assets/items/crafting/simple_axe_uncommon.png",
+      "rare": "/assets/items/crafting/simple_axe_rare.png"
+    }
+  },
+  {
+    "id": "simple_hammer",
+    "item_id": "simple_hammer",
+    "name": "Простой молот",
+    "name_ru": "Простой молот",
+    "category": "equipment",
+    "type": "weapon",
+    "subtype": "hammer",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простой боевой молот без украшений. Бонусы зависят от качества и уровня созданного предмета.",
+    "can_sell": true,
+    "sell_price_copper": 100,
+    "icon": "/assets/items/crafting/simple_hammer_common.png",
+    "integration_tags": [
+      "inventory_item"
+    ],
+    "slot": "weapon1",
+    "targetSlotKey": "weapon1",
+    "slotKey": "weapon1",
+    "item_class": "weapon",
+    "weapon_type": "hammer",
+    "combat": {
+      "damage_type": "Физический",
+      "damage_min": 5,
+      "damage_max": 9,
+      "range": "Ближний бой"
+    },
+    "stat_modifiers": {
+      "bonus_endurance": 1
+    },
+    "stats": [
+      "Выносливость: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "assets/simple_hammer_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "endurance",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "assets/simple_hammer_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "endurance",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "assets/simple_hammer_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "endurance",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          },
+          {
+            "type": "bonus_max_spirit",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/crafting/simple_hammer_common.png",
+      "uncommon": "/assets/items/crafting/simple_hammer_uncommon.png",
+      "rare": "/assets/items/crafting/simple_hammer_rare.png"
+    }
+  },
+  {
+    "id": "simple_bow",
+    "item_id": "simple_bow",
+    "name": "Простой лук",
+    "name_ru": "Простой лук",
+    "category": "equipment",
+    "type": "weapon",
+    "subtype": "bow",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простой лук. Для боевых навыков требует стрелы в подходящем колчане.",
+    "can_sell": true,
+    "sell_price_copper": 100,
+    "icon": "/assets/items/crafting/simple_bow_common.png",
+    "integration_tags": [
+      "inventory_item"
+    ],
+    "slot": "weapon1",
+    "targetSlotKey": "weapon1",
+    "slotKey": "weapon1",
+    "item_class": "weapon",
+    "weapon_type": "bow",
+    "combat": {
+      "damage_type": "Физический",
+      "damage_min": 3,
+      "damage_max": 7,
+      "range": "Дальний бой",
+      "two_handed": true
+    },
+    "stat_modifiers": {
+      "bonus_perception": 1
+    },
+    "stats": [
+      "Восприятие: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "assets/simple_bow_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "perception",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "assets/simple_bow_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "perception",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "assets/simple_bow_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "perception",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          },
+          {
+            "type": "bonus_max_spirit",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/crafting/simple_bow_common.png",
+      "uncommon": "/assets/items/crafting/simple_bow_uncommon.png",
+      "rare": "/assets/items/crafting/simple_bow_rare.png"
+    },
+    "two_handed": true,
+    "hands": 2
+  },
+  {
+    "id": "simple_crossbow",
+    "item_id": "simple_crossbow",
+    "name": "Простой арбалет",
+    "name_ru": "Простой арбалет",
+    "category": "equipment",
+    "type": "weapon",
+    "subtype": "crossbow",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простой арбалет. Для боевых навыков требует болты в подходящем колчане.",
+    "can_sell": true,
+    "sell_price_copper": 120,
+    "icon": "/assets/items/crafting/simple_crossbow_common.png",
+    "integration_tags": [
+      "inventory_item"
+    ],
+    "slot": "weapon1",
+    "targetSlotKey": "weapon1",
+    "slotKey": "weapon1",
+    "item_class": "weapon",
+    "weapon_type": "crossbow",
+    "combat": {
+      "damage_type": "Физический",
+      "damage_min": 4,
+      "damage_max": 9,
+      "range": "Дальний бой",
+      "two_handed": true
+    },
+    "stat_modifiers": {
+      "bonus_perception": 1
+    },
+    "stats": [
+      "Восприятие: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "assets/simple_crossbow_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "perception",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "assets/simple_crossbow_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "perception",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "assets/simple_crossbow_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "perception",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          },
+          {
+            "type": "bonus_max_spirit",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/crafting/simple_crossbow_common.png",
+      "uncommon": "/assets/items/crafting/simple_crossbow_uncommon.png",
+      "rare": "/assets/items/crafting/simple_crossbow_rare.png"
+    },
+    "two_handed": true,
+    "hands": 2
+  },
+  {
+    "id": "simple_shield",
+    "item_id": "simple_shield",
+    "name": "Простой щит",
+    "name_ru": "Простой щит",
+    "category": "equipment",
+    "type": "weapon",
+    "subtype": "shield",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простой щит для защитных приёмов пути щита. Бонусы зависят от качества и уровня созданного предмета.",
+    "can_sell": true,
+    "sell_price_copper": 90,
+    "icon": "/assets/items/crafting/simple_shield_common.png",
+    "integration_tags": [
+      "inventory_item"
+    ],
+    "slot": "weapon2",
+    "targetSlotKey": "weapon2",
+    "slotKey": "weapon2",
+    "item_class": "weapon",
+    "weapon_type": "shield",
+    "combat": {
+      "damage_type": "Физический",
+      "damage_min": 1,
+      "damage_max": 3,
+      "range": "Ближний бой"
+    },
+    "stat_modifiers": {
+      "bonus_endurance": 1
+    },
+    "stats": [
+      "Выносливость: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "assets/simple_shield_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "endurance",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "assets/simple_shield_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "endurance",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "assets/simple_shield_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "endurance",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          },
+          {
+            "type": "bonus_max_spirit",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/crafting/simple_shield_common.png",
+      "uncommon": "/assets/items/crafting/simple_shield_uncommon.png",
+      "rare": "/assets/items/crafting/simple_shield_rare.png"
+    }
+  },
+  {
+    "id": "simple_magic_book",
+    "item_id": "simple_magic_book",
+    "name": "Простая книга",
+    "name_ru": "Простая книга",
+    "category": "equipment",
+    "type": "weapon",
+    "subtype": "magic_book",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "description": "Простая магическая книга. Подходит для путей Маны. Бонусы зависят от качества и уровня созданного предмета.",
+    "can_sell": true,
+    "sell_price_copper": 110,
+    "icon": "/assets/items/crafting/simple_magic_book_common.png",
+    "integration_tags": [
+      "inventory_item"
+    ],
+    "slot": "weapon1",
+    "targetSlotKey": "weapon1",
+    "slotKey": "weapon1",
+    "item_class": "weapon",
+    "weapon_type": "magic_book",
+    "combat": {
+      "damage_type": "Магический",
+      "damage_min": 2,
+      "damage_max": 6,
+      "range": "Ближний бой"
+    },
+    "stat_modifiers": {
+      "bonus_intelligence": 1
+    },
+    "stats": [
+      "Интеллект: +1"
+    ],
+    "quality_variants": [
+      {
+        "quality": "common",
+        "name_suffix": "обычный",
+        "asset_filename": "assets/simple_magic_book_common.png",
+        "effects_count": 1,
+        "effect_pool": [
+          {
+            "type": "intelligence",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "uncommon",
+        "name_suffix": "необычный",
+        "asset_filename": "assets/simple_magic_book_uncommon.png",
+        "effects_count": 2,
+        "effect_pool": [
+          {
+            "type": "intelligence",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          }
+        ]
+      },
+      {
+        "quality": "rare",
+        "name_suffix": "редкий",
+        "asset_filename": "assets/simple_magic_book_rare.png",
+        "effects_count": 3,
+        "effect_pool": [
+          {
+            "type": "intelligence",
+            "target": "player"
+          },
+          {
+            "type": "crit_chance",
+            "target": "player"
+          },
+          {
+            "type": "crit_damage",
+            "target": "player"
+          },
+          {
+            "type": "accuracy",
+            "target": "player"
+          },
+          {
+            "type": "bonus_max_mana",
+            "target": "player"
+          }
+        ]
+      }
+    ],
+    "assets_by_quality": {
+      "common": "/assets/items/crafting/simple_magic_book_common.png",
+      "uncommon": "/assets/items/crafting/simple_magic_book_uncommon.png",
+      "rare": "/assets/items/crafting/simple_magic_book_rare.png"
+    }
   }
 ]

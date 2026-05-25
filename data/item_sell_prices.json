@@ -446,5 +446,119 @@
     "sell_price_copper": 200,
     "currency": "copper",
     "unit": "1 item"
+  },
+  {
+    "id": "simple_axe",
+    "name_ru": "Простой топор",
+    "sell_price_copper": 100,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "simple_hammer",
+    "name_ru": "Простой молот",
+    "sell_price_copper": 100,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "simple_bow",
+    "name_ru": "Простой лук",
+    "sell_price_copper": 100,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "simple_crossbow",
+    "name_ru": "Простой арбалет",
+    "sell_price_copper": 120,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "simple_shield",
+    "name_ru": "Простой щит",
+    "sell_price_copper": 90,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "simple_magic_book",
+    "name_ru": "Простая книга",
+    "sell_price_copper": 110,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "simple_leather_helmet",
+    "name_ru": "Простой кожаный шлем",
+    "sell_price_copper": 150,
+    "currency": "copper",
+    "unit": "1 item",
+    "quality_prices_copper": {
+      "common": 150,
+      "uncommon": 300,
+      "rare": 500
+    }
+  },
+  {
+    "id": "simple_leather_belt_reworked",
+    "name_ru": "Простой кожаный пояс",
+    "sell_price_copper": 150,
+    "currency": "copper",
+    "unit": "1 item",
+    "quality_prices_copper": {
+      "common": 150,
+      "uncommon": 300,
+      "rare": 500
+    }
+  },
+  {
+    "id": "simple_leather_chestpiece",
+    "name_ru": "Простой кожаный нагрудник",
+    "sell_price_copper": 150,
+    "currency": "copper",
+    "unit": "1 item",
+    "quality_prices_copper": {
+      "common": 150,
+      "uncommon": 300,
+      "rare": 500
+    }
+  },
+  {
+    "id": "simple_leather_boots",
+    "name_ru": "Простые кожаные ботинки",
+    "sell_price_copper": 150,
+    "currency": "copper",
+    "unit": "1 item",
+    "quality_prices_copper": {
+      "common": 150,
+      "uncommon": 300,
+      "rare": 500
+    }
+  },
+  {
+    "id": "simple_leather_pants",
+    "name_ru": "Простые кожаные штаны",
+    "sell_price_copper": 150,
+    "currency": "copper",
+    "unit": "1 item",
+    "quality_prices_copper": {
+      "common": 150,
+      "uncommon": 300,
+      "rare": 500
+    }
+  },
+  {
+    "id": "simple_leather_gloves",
+    "name_ru": "Простые кожаные перчатки",
+    "sell_price_copper": 150,
+    "currency": "copper",
+    "unit": "1 item",
+    "quality_prices_copper": {
+      "common": 150,
+      "uncommon": 300,
+      "rare": 500
+    }
   }
 ]

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 from services.derived_stats_service import calculate_player_derived_stats, calculate_player_skill_raw_damage, ensure_player_resources, safe_int, soft_level
 from services.item_registry import build_inventory_item, get_item_definition_by_id, get_item_definition_by_name
-from services.inventory_service import add_inventory_item as add_inventory_stack, inventory_add_result_notice, recalculate_inventory_overflow
+from services.inventory_service import add_inventory_item as add_inventory_stack, apply_generated_item_level_and_price, inventory_add_result_notice, recalculate_inventory_overflow
 from services.progression_service import apply_death_experience_penalty, grant_experience
 from services.active_skill_service import (
     consume_skill_ammo,
@@ -982,7 +982,13 @@ def loot_parameters_for_rank(rank: EnemyRank, chance: int | float, min_amount: i
     chance_value = max(0, int(math.ceil(float(chance))))
     min_value = max(1, safe_int(min_amount, 1))
     max_value = max(min_value, safe_int(max_amount, min_value))
-    if rank == EnemyRank.ELITE:
+    if rank == EnemyRank.EMPOWERED:
+        # Усиленные мобы в стартовых локациях должны давать добычу немного чаще.
+        # Сейчас PVE-каталоги с добычей подключены для стартовых локаций
+        # Холмистые луга и Обыкновенный лес; повышение касается только шанса,
+        # не количества предметов.
+        chance_value = min(100, int(math.ceil(chance_value * 1.1)))
+    elif rank == EnemyRank.ELITE:
         chance_value = min(100, int(math.ceil(chance_value * 1.5)))
         min_value = max(1, int(math.ceil(min_value * 1.5)))
         max_value = max(min_value, int(math.ceil(max_value * 1.7)))
@@ -1049,7 +1055,9 @@ def add_inventory_item(player: dict[str, Any], item_name: str, amount: int, *, i
     definition = get_item_definition_by_id(item_id or "") if item_id else None
     definition = definition or get_item_definition_by_name(item_name)
     inventory_item = build_inventory_item(item_name, amount, item_id=item_id)
-    inventory_item["category"] = "Добыча"
+    apply_generated_item_level_and_price(player, inventory_item, "found")
+    if not inventory_item.get("level"):
+        inventory_item["category"] = "Добыча"
     inventory_item["source"] = "Добыча с мобов"
     if definition:
         inventory_item.setdefault("type", definition.get("type"))

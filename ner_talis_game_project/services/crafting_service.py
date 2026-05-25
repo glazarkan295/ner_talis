@@ -18,7 +18,7 @@ from typing import Any
 
 from project_paths import resolve_project_path
 from services.derived_stats_service import safe_int
-from services.inventory_service import add_inventory_item, inventory_add_result_notice, remove_empty_stacks_and_recalculate
+from services.inventory_service import add_inventory_item, apply_generated_item_level_and_price, inventory_add_result_notice, remove_empty_stacks_and_recalculate
 from services.item_registry import build_inventory_item, get_item_definition_by_id, get_item_definition_by_name, registry_item_to_inventory_item
 
 CHECK_TIMER = "Проверить таймер"
@@ -77,7 +77,7 @@ WORKSHOPS: dict[str, dict[str, Any]] = {
         "title": "🛠 Кузница",
         "skill": "blacksmithing",
         "sections": ["Оружие", "Броня", "Заготовки", "Рецепты"],
-        "intro": "Здесь создают оружие, броню, заготовки и кузнечные рецепты.",
+        "intro": "Здесь создают оружие и кузнечные заготовки.",
     },
     LEATHERWORK: {
         "id": "leatherwork",
@@ -130,6 +130,39 @@ CRAFT_ACTIONS = frozenset(
     }
     | {f"{CRAFT_PREFIX}{index}" for index in range(1, 51)}
 )
+
+CRAFTING_ZONE_PREFIXES = (
+    "seldar_smeltery",
+    "seldar_forge",
+    "seldar_leatherwork",
+    "seldar_jewelry_workshop",
+    "seldar_alchemy_workshop",
+)
+
+
+def current_crafting_zone(player: dict[str, Any]) -> str:
+    return str(player.get("current_zone") or player.get("location_id") or "")
+
+
+def is_crafting_zone(player: dict[str, Any]) -> bool:
+    return current_crafting_zone(player).startswith(CRAFTING_ZONE_PREFIXES)
+
+
+def clear_stale_crafting_context_if_needed(player: dict[str, Any]) -> bool:
+    """Drop leftover crafting context when the player is no longer in a workshop.
+
+    Numeric recipe/amount input is valid only inside the matching workshop. An
+    active craft timer is different: it intentionally locks all actions until
+    completion and must never be cleared by this stale-context guard.
+    """
+    active_timer = player.get("active_timer")
+    if isinstance(active_timer, dict) and active_timer.get("type") == "craft":
+        return False
+    if isinstance(player.get("crafting_context"), dict) and not is_crafting_zone(player):
+        player.pop("crafting_context", None)
+        return True
+    return False
+
 
 ACTION_NAMES = {
     "grind": "Измельчить",
@@ -706,6 +739,13 @@ def _quality_variant_stat_key(raw_type: str) -> str:
         "intelligence": "bonus_intelligence",
         "wisdom": "bonus_wisdom",
         "accuracy": "bonus_accuracy",
+        "dodge": "bonus_dodge",
+        "armor": "armor",
+        "physical_defense": "bonus_physical_defense",
+        "magical_defense": "bonus_magic_defense",
+        "magic_defense": "bonus_magic_defense",
+        "magic_armor": "magic_armor",
+        "stun_resist_chance": "bonus_stun_resist_chance",
         "crit_chance": "bonus_crit_chance",
         "crit_damage": "bonus_crit_damage",
         "bonus_max_mana": "bonus_mana",
@@ -723,6 +763,8 @@ def _quality_variant_value(key: str, quality: str) -> int:
         return 5 if quality == "common" else 8 if quality == "uncommon" else 12
     if key == "bonus_crit_chance":
         return 1 if quality != "rare" else 2
+    if key in {"armor", "magic_armor", "bonus_dodge", "bonus_physical_defense", "bonus_magic_defense", "bonus_stun_resist_chance"}:
+        return 1 if quality != "rare" else 2
     return 1 if quality != "rare" else 2
 
 
@@ -735,6 +777,12 @@ def _quality_variant_label(key: str) -> str:
         "bonus_intelligence": "Интеллект",
         "bonus_wisdom": "Мудрость",
         "bonus_accuracy": "Точность",
+        "bonus_dodge": "Уклонение",
+        "armor": "Броня",
+        "magic_armor": "Магическая броня",
+        "bonus_physical_defense": "Физическая защита",
+        "bonus_magic_defense": "Магическая защита",
+        "bonus_stun_resist_chance": "Сопротивление оглушению",
         "bonus_crit_chance": "Шанс крита",
         "bonus_crit_damage": "Урон крита",
         "bonus_mana": "Мана",
@@ -769,6 +817,10 @@ def _crafted_output_item(item_id: str, item_name: str, amount: int) -> dict[str,
         return build_inventory_item(item_name, amount, item_id=item_id)
     variant = _roll_quality_variant(definition)
     item = registry_item_to_inventory_item(definition, amount)
+    if item.get("base_sell_price_copper") is None:
+        base_price = item.get("sell_price_copper", item.get("sellPriceCopper"))
+        if base_price is not None:
+            item["base_sell_price_copper"] = max(0, safe_int(base_price, 0))
     if not variant:
         return item
     quality = str(variant.get("quality") or item.get("quality") or "common")
@@ -778,13 +830,18 @@ def _crafted_output_item(item_id: str, item_name: str, amount: int) -> dict[str,
         item["name"] = f"{item.get('name') or item_name} ({quality_ru})"
         item["name_ru"] = item["name"]
         sell_price = 500 if quality == "rare" else 300
+        item["quality_price_floor_copper"] = sell_price
         item["sell_price_copper"] = sell_price
         item["sellPriceCopper"] = sell_price
         item["can_sell"] = True
         item["canSell"] = True
     asset_filename = variant.get("asset_filename")
     if asset_filename:
-        item["icon"] = "/assets/items/crafting/" + str(asset_filename).replace("\\\\", "/").split("/")[-1]
+        asset_path = str(asset_filename).replace("\\", "/")
+        if asset_path.startswith("/assets/"):
+            item["icon"] = asset_path
+        else:
+            item["icon"] = "/assets/items/crafting/" + asset_path.split("/")[-1]
         item["asset_icon"] = item["icon"]
     pool = [entry for entry in variant.get("effect_pool") or [] if isinstance(entry, dict)]
     count = max(1, safe_int(variant.get("effects_count"), 1))
@@ -848,9 +905,13 @@ def complete_craft_timer(storage: Any, player: dict[str, Any], timer_id: str | N
         if isinstance(definition, dict) and definition.get("quality_variants") and amount > 1:
             result = None
             for _ in range(amount):
-                result = add_inventory_item(player, _crafted_output_item(str(item_id), str(item_name), 1), 1, item_id=str(item_id), default_source="Ремесло")
+                crafted_item = _crafted_output_item(str(item_id), str(item_name), 1)
+                apply_generated_item_level_and_price(player, crafted_item, "crafted")
+                result = add_inventory_item(player, crafted_item, 1, item_id=str(item_id), default_source="Ремесло")
         else:
-            result = add_inventory_item(player, _crafted_output_item(str(item_id), str(item_name), amount), amount, item_id=str(item_id) if item_id else None, default_source="Ремесло")
+            crafted_item = _crafted_output_item(str(item_id), str(item_name), amount)
+            apply_generated_item_level_and_price(player, crafted_item, "crafted")
+            result = add_inventory_item(player, crafted_item, amount, item_id=str(item_id) if item_id else None, default_source="Ремесло")
         if workshop_id == "alchemy":
             _unlock_alchemy_recipe(player, str(recipe.get("id") or ""))
     _add_craft_experience(player, workshop_id, quantity)
@@ -1342,16 +1403,58 @@ def _handle_alchemy_action(storage: Any, player: dict[str, Any], action: str) ->
 # ----------------------------- Public dispatch -----------------------------
 
 
+def _is_number_sequence(action: str) -> bool:
+    parts = str(action or "").split()
+    return bool(parts) and all(part.isdigit() for part in parts)
+
+
+def _is_contextual_crafting_input(context: dict[str, Any], action: str) -> bool:
+    """Return True only for inputs that belong to the active crafting flow.
+
+    A stale ``crafting_context`` must not capture every city button, slash
+    command or random chat message. Otherwise the player can get dragged back
+    into the last workshop (most visibly the Forge) by any unrelated input.
+    """
+
+    if not isinstance(context, dict) or not context:
+        return False
+    if str(action or "").strip().startswith("/"):
+        return False
+    if action in CRAFT_ACTIONS or action in WORKSHOPS or action in {ENCHANTER, JEWELRY}:
+        return True
+    if action.startswith(CRAFT_PREFIX):
+        return True
+
+    step = str(context.get("step") or "")
+    workshop_id = str(context.get("workshop") or "")
+
+    if workshop_id == "alchemy":
+        if step == "choose_actions":
+            return _is_number_sequence(action)
+        if step.startswith("choose_") or step.startswith("quantity_"):
+            return str(action or "").strip().isdigit()
+        return False
+
+    if step == "quantity":
+        return str(action or "").strip().isdigit()
+
+    return False
+
+
 def should_handle_crafting_action(player: dict[str, Any], action: str) -> bool:
     if isinstance(player.get("active_timer"), dict) and player["active_timer"].get("type") == "craft":
         return True
-    if isinstance(player.get("crafting_context"), dict):
+    if action in WORKSHOPS or action in {ENCHANTER, JEWELRY}:
         return True
-    if action in WORKSHOPS:
-        return True
-    current_zone = str(player.get("current_zone") or player.get("location_id") or "")
-    if current_zone.startswith(("seldar_smeltery", "seldar_forge", "seldar_leatherwork", "seldar_jewelry_workshop", "seldar_alchemy_workshop")):
-        if action in CRAFT_ACTIONS or action.isdigit() or action.startswith(CRAFT_PREFIX):
+
+    context = player.get("crafting_context")
+    if isinstance(context, dict) and _is_contextual_crafting_input(context, action):
+        # A stale workshop context must not consume plain numeric input after the
+        # player has already moved back to the city, market or an external area.
+        return is_crafting_zone(player)
+
+    if is_crafting_zone(player):
+        if action in CRAFT_ACTIONS or action.startswith(CRAFT_PREFIX):
             return True
     return False
 

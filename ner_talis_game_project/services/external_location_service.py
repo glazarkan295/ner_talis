@@ -19,7 +19,7 @@ from typing import Any, Iterable
 from project_paths import resolve_project_path
 from services.derived_stats_service import calculate_energy_stats, ensure_player_resources
 from services.item_registry import build_inventory_item, get_item_definition_by_name, slugify_fallback_item_id
-from services.inventory_service import add_inventory_item as add_inventory_stack, inventory_add_result_notice, remove_empty_stacks_and_recalculate
+from services.inventory_service import add_inventory_item as add_inventory_stack, apply_generated_item_level_and_price, inventory_add_result_notice, remove_empty_stacks_and_recalculate
 from services.active_skill_service import normalize_starter_only_skills
 from services.pve_battle_service import BATTLE_ACTIONS, battle_buttons, create_location_battle, handle_battle_action
 from services.race_bonus_service import extra_alchemy_ingredient_chance_percent, search_event_weights
@@ -337,6 +337,38 @@ def camp_buttons() -> list[list[str]]:
     ]
 
 
+def current_external_buttons(player: dict[str, Any]) -> list[list[str]]:
+    """Return buttons for the player's real external-location state.
+
+    Unknown text and unrelated stale city buttons must not push a player to the
+    outside crossroads or into a city screen. This helper keeps the visible
+    keyboard tied to the exact external state: location, camp, fortress, active
+    event or crossroads.
+    """
+    if player.get("in_battle"):
+        return battle_buttons(player)
+
+    active_event = player.get("active_event")
+    if isinstance(active_event, dict):
+        event_type = str(active_event.get("type") or "")
+        return event_choice_buttons(event_type)
+
+    zone = str(player.get("current_zone") or player.get("location_id") or "")
+    current_location = str(player.get("current_location") or "")
+
+    if zone.endswith("_camp"):
+        return camp_buttons()
+    if zone == "outside_city_crossroads":
+        return outside_city_buttons()
+    if current_location == "fortress_in_gorge" or zone.startswith("fortress_in_gorge"):
+        return fortress_buttons()
+    if current_location in EXPLORATION_LOCATION_IDS:
+        return location_buttons(current_location)
+    if zone in EXPLORATION_LOCATION_IDS:
+        return location_buttons(zone)
+    return outside_city_buttons()
+
+
 def camp_dish_name_by_index(index: int) -> str | None:
     dishes = list(CAMP_DISHES.keys())
     if 1 <= index <= len(dishes):
@@ -616,7 +648,9 @@ def add_item(player: dict[str, Any], name: str, amount: int, *, item_id: str | N
         return add_inventory_stack(player, name, 0)
 
     inventory_item = build_inventory_item(name, amount, item_id=item_id, max_stack=max_stack)
-    apply_location_item_category(inventory_item, name)
+    apply_generated_item_level_and_price(player, inventory_item, "found")
+    if not inventory_item.get("level"):
+        apply_location_item_category(inventory_item, name)
     inventory_item.setdefault("source", source)
     inventory_item.setdefault("actions", [])
     return add_inventory_stack(
@@ -1604,4 +1638,4 @@ def handle_external_location_action(
     if action in {COLLECT, SKIP, INSPECT_AND_TAKE, LOOK, LEAVE, RETREAT, COLLECT_TREE, COLLECT_MUSHROOMS, GATHER_WATER, PUT_HAND_IN_BURROW}:
         return resolve_active_event(storage, player, action, rng)
 
-    return LocationResponse("Неизвестное действие внешней локации.", outside_city_buttons(), player.get("current_zone", "outside_city_crossroads"))
+    return LocationResponse("Неизвестное действие внешней локации.", current_external_buttons(player), player.get("current_zone", "outside_city_crossroads"))

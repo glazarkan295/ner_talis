@@ -114,6 +114,47 @@ class CollectedItemsIntegrationTest(unittest.TestCase):
         self.assertIn("✅ Верёвка", result.text)
         self.assertIn("✅ Выделанная кожа", result.text)
 
+
+    def test_forge_has_weapon_recipes_for_all_basic_combat_paths(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+
+        process_world_action(storage, player, "Кузница", "telegram")
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-COLLECTED"), "Оружие", "telegram")
+
+        expected_items = {
+            "simple_sword": "Простой меч",
+            "simple_dagger": "Простой кинжал",
+            "simple_axe": "Простой топор",
+            "simple_hammer": "Простой молот",
+            "simple_bow": "Простой лук",
+            "simple_crossbow": "Простой арбалет",
+            "simple_shield": "Простой щит",
+            "simple_staff": "Простой посох",
+            "simple_magic_book": "Простая книга",
+        }
+        for item_id, name in expected_items.items():
+            definition = get_item_definition_by_id(item_id)
+            self.assertIsNotNone(definition, item_id)
+            self.assertEqual(definition.get("max_stack"), 1)
+            self.assertTrue(definition.get("quality_variants"), item_id)
+            self.assertTrue(Path("web/public" + definition["icon"]).exists(), definition["icon"])
+            self.assertIn(name, result.text)
+
+        recipe_ids = storage.get_player_by_game_id("NT-COLLECTED")["crafting_context"]["recipe_ids"]
+        for recipe_id in (
+            "forge_simple_sword",
+            "forge_simple_dagger",
+            "forge_simple_axe",
+            "forge_simple_hammer",
+            "forge_simple_bow",
+            "forge_simple_crossbow",
+            "forge_simple_shield",
+            "forge_simple_staff",
+            "forge_simple_magic_book",
+        ):
+            self.assertIn(recipe_id, recipe_ids)
+
     def test_ammo_aliases_stay_compatible_with_quiver_system(self):
         arrow = registry_item_to_inventory_item(get_item_definition_by_id("arrow_for_bow"), 5)
         bolt = registry_item_to_inventory_item(get_item_definition_by_id("bolt_for_crossbow"), 5)

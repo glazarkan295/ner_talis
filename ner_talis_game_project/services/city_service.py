@@ -29,7 +29,9 @@ from services.external_location_service import (
     EXTERNAL_LOCATION_BUTTONS,
     LEGACY_OUTSIDE_CITY,
     OUTSIDE_CITY,
+    current_external_buttons,
     handle_external_location_action,
+    outside_city_buttons,
 )
 from services.web_profile import create_profile_site_link
 from services.market_service import (
@@ -46,6 +48,7 @@ from services.market_service import (
 )
 from services.crafting_service import (
     CRAFT_ACTIONS,
+    clear_stale_crafting_context_if_needed,
     handle_crafting_action,
     should_handle_crafting_action,
 )
@@ -557,8 +560,8 @@ CITY_ACTIONS: dict[str, CityResponse] = {
     "Ратуша": CityResponse(TOWN_HALL_TEXT, town_hall_buttons(), "seldar_town_hall"),
     "Жилой район": CityResponse(HOUSING_TEXT, upper_buttons(), "seldar_residential_district"),
     "Городские ворота": CityResponse(GATES_TEXT, gates_buttons(), "seldar_city_gates"),
-    LEGACY_OUTSIDE_CITY: CityResponse(LEAVE_CITY_TEXT, gates_buttons(), "outside_city_crossroads"),
-    OUTSIDE_CITY: CityResponse(LEAVE_CITY_TEXT, gates_buttons(), "outside_city_crossroads"),
+    LEGACY_OUTSIDE_CITY: CityResponse(LEAVE_CITY_TEXT, outside_city_buttons(), "outside_city_crossroads"),
+    OUTSIDE_CITY: CityResponse(LEAVE_CITY_TEXT, outside_city_buttons(), "outside_city_crossroads"),
     "Объявления": CityResponse(ANNOUNCEMENTS_TEXT, central_square_buttons(), "seldar_announcements"),
 }
 
@@ -861,9 +864,33 @@ def _is_external_location_state(player: dict[str, Any]) -> bool:
     return any(value.startswith(external_prefixes) for value in values if value)
 
 
+
+
+def _has_active_craft_timer(player: dict[str, Any]) -> bool:
+    active_timer = player.get("active_timer")
+    return isinstance(active_timer, dict) and active_timer.get("type") == "craft"
+
+
+def _is_market_zone(player: dict[str, Any]) -> bool:
+    zone = str(player.get("current_zone") or player.get("location_id") or "")
+    return zone.startswith(MARKET_ZONE_PREFIX)
+
+
+def _clear_stale_market_context_if_needed(player: dict[str, Any]) -> bool:
+    if player.get("market_context") and not _is_market_zone(player):
+        player.pop("market_context", None)
+        return True
+    return False
+
+
+def _current_context_buttons(player: dict[str, Any]) -> list[list[str]]:
+    if _is_external_location_state(player):
+        return current_external_buttons(player)
+    return _current_city_buttons(player)
+
 def _market_should_own_back(player: dict[str, Any], action: str) -> bool:
     """Return True when the shared ``Назад`` button belongs to the market."""
-    return action == MARKET_BACK and is_market_context(player) and not _is_external_location_state(player)
+    return action == MARKET_BACK and _is_market_zone(player) and is_market_context(player) and not _is_external_location_state(player)
 
 
 def _market_should_handle_action(player: dict[str, Any], action: str) -> bool:
@@ -876,7 +903,9 @@ def _market_should_handle_action(player: dict[str, Any], action: str) -> bool:
     """
     if action == MARKET_ENTRY:
         return True
-    if not is_market_context(player) or _is_external_location_state(player):
+    if _is_external_location_state(player) or not _is_market_zone(player):
+        return False
+    if not is_market_context(player):
         return False
     if action in BRANCH_CHOICE_ACTIONS:
         return False
@@ -891,6 +920,18 @@ def _external_should_handle_action(player: dict[str, Any], action: str) -> bool:
     if action not in EXTERNAL_LOCATION_BUTTONS:
         return False
     return not _market_should_own_back(player, action)
+
+
+def _current_city_buttons(player: dict[str, Any]) -> list[list[str]]:
+    zone = str(player.get("current_zone") or player.get("location_id") or "")
+    for response in CITY_ACTIONS.values():
+        if response.zone_id == zone:
+            return response.buttons
+    return central_square_buttons()
+
+
+def _unknown_input_result(player: dict[str, Any], text: str) -> WorldActionResult:
+    return WorldActionResult(text=text, buttons=_current_city_buttons(player))
 
 
 def process_world_action(
@@ -909,6 +950,22 @@ def process_world_action(
         response = handle_external_location_action(storage, player, action)
         return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
 
+    # Active crafting timers are a hard lock: no city shortcuts, slash commands
+    # or stale navigation buttons may move the player for one inconsistent step.
+    if _has_active_craft_timer(player):
+        response = handle_crafting_action(storage, player, action)
+        return WorldActionResult(
+            text=response.text,
+            buttons=response.buttons,
+            scheduled_timer=response.scheduled_timer,
+        )
+
+    context_changed = False
+    context_changed = clear_stale_crafting_context_if_needed(player) or context_changed
+    context_changed = _clear_stale_market_context_if_needed(player) or context_changed
+    if context_changed:
+        storage.update_player(player)
+
     if action == PROFILE_BUTTON:
         try:
             profile_url = create_profile_site_link(storage, player, platform)
@@ -920,7 +977,17 @@ def process_world_action(
         except Exception:
             logger.exception("Failed to create profile site link for player=%s platform=%s", player.get("game_id"), platform)
             text = "Профиль сейчас недоступен. Попробуйте ещё раз позже."
-        return WorldActionResult(text=text, buttons=central_square_buttons())
+        return WorldActionResult(text=text, buttons=_current_context_buttons(player))
+
+    # While outside the city, every non-profile input belongs to the external
+    # location router. This prevents old/random city buttons from teleporting
+    # the player back into Seldar.
+    if _is_external_location_state(player):
+        response = handle_external_location_action(storage, player, action)
+        return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
+
+    if str(action or "").strip().startswith("/"):
+        return _unknown_input_result(player, "Неизвестная команда или команда недоступна в этом месте.")
 
     if action in {CENTRAL_SQUARE, BACK_TO_CENTRAL, "В город"}:
         player.pop("crafting_context", None)
@@ -972,6 +1039,7 @@ def process_world_action(
     # a market screen, where it belongs to the market card/list flow.
     if _external_should_handle_action(player, action):
         player.pop("market_context", None)
+        player.pop("crafting_context", None)
         response = handle_external_location_action(storage, player, action)
         return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
 
@@ -982,6 +1050,9 @@ def process_world_action(
     if _is_external_location_state(player):
         response = handle_external_location_action(storage, player, action)
         return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
+
+    if action not in CITY_ACTIONS:
+        return _unknown_input_result(player, UNKNOWN_CITY_ACTION_TEXT)
 
     response = get_city_response(action)
     updated_player = apply_city_transition(storage, player, response)
