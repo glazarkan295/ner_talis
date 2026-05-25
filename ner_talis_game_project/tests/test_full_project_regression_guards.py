@@ -188,19 +188,45 @@ class FullProjectRegressionGuardsTest(unittest.TestCase):
         self.assertEqual(player["active_battle"].get("round_number"), start_round + 1)
         self.assertTrue(buttons)
 
-    def test_battle_duplicate_loot_names_are_granted_by_location_item_id(self):
+    def test_starting_location_resources_and_mob_drops_use_expected_inventory_categories(self):
+        player = {
+            "level": 1,
+            "inventory": [
+                {"id": "meadow_mint", "item_id": "meadow_mint", "name": "Луговая мята", "category": "Ингредиенты", "type": "Трава", "source": "hilly_meadows", "amount": 1},
+                {"id": "common_stone", "item_id": "common_stone", "name": "Обычный камень", "category": "Ресурсы", "type": "Камень", "source": "hilly_meadows", "amount": 1},
+                {"id": "simple_hide", "item_id": "simple_hide", "name": "Простая шкура", "category": "Трофеи", "type": "Шкура", "source": "Добыча с мобов", "amount": 1},
+                {"id": "raw_meat", "item_id": "raw_meat", "name": "Сырое мясо", "category": "Ингредиенты", "type": "Мясо", "source": "Добыча с мобов", "amount": 1},
+            ],
+            "equipment": {},
+            "stats": {},
+            "skills": {"active": [], "equipped": [], "passive": []},
+        }
+
+        profile = frontend_profile(player)
+        categories = {item["id"]: item["category"] for item in profile["inventory"]}
+
+        self.assertEqual(categories["meadow_mint"], "Ресурсы")
+        self.assertEqual(categories["common_stone"], "Ресурсы")
+        self.assertEqual(categories["simple_hide"], "Добыча")
+        self.assertEqual(categories["raw_meat"], "Добыча")
+
+    def test_starting_mob_hide_and_tendon_loot_is_canonical(self):
         hilly_player = {"game_id": "NT-HILLY", "level": 1, "inventory": [], "equipment": {}}
         hilly_battle = {"return_location": "hilly_meadows", "enemies": [{"name": "Бык", "level": 1, "rank": "normal"}]}
         grant_battle_rewards(hilly_player, hilly_battle, AlwaysLootRandom())
         hilly_ids = {item.get("id") for item in hilly_player["inventory"]}
-        self.assertIn("strong_tendon", hilly_ids)
+        self.assertIn("simple_tendon", hilly_ids)
+        self.assertIn("simple_hide", hilly_ids)
+        self.assertNotIn("strong_tendon", hilly_ids)
         self.assertNotIn("strong_sinew", hilly_ids)
 
         forest_player = {"game_id": "NT-FOREST", "level": 10, "inventory": [], "equipment": {}}
         forest_battle = {"return_location": "ordinary_forest", "enemies": [{"name": "Разъярённый олень", "level": 10, "rank": "normal"}]}
         grant_battle_rewards(forest_player, forest_battle, AlwaysLootRandom())
         forest_ids = {item.get("id") for item in forest_player["inventory"]}
-        self.assertIn("strong_sinew", forest_ids)
+        self.assertIn("simple_tendon", forest_ids)
+        self.assertIn("simple_hide", forest_ids)
+        self.assertNotIn("strong_sinew", forest_ids)
         self.assertNotIn("strong_tendon", forest_ids)
 
     def test_vk_keyboard_keeps_priority_navigation_and_battle_buttons(self):

@@ -145,6 +145,77 @@ class AmmoQuiverIntegrationTest(unittest.TestCase):
             quiver = profile["equipment"]["weapon2"]
             self.assertTrue(any("12/30" in str(line) for line in quiver["stats"]))
 
+
+    def test_profile_use_refreshes_stale_quiver_loaded_stats(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "players.json"
+            storage = JsonStorage(db_path)
+            player = self.make_player()
+            player["equipment"]["weapon2"] = registry_item_to_inventory_item(get_item_definition_by_id("arrow_quiver_empty"), 1)
+            player["equipment"]["weapon2"]["slotKey"] = "weapon2"
+            player["equipment"]["weapon2"]["stats"] = ["Вместимость стрел: 30", "Заряжено: 0/30"]
+            player["inventory"] = [registry_item_to_inventory_item(get_item_definition_by_id("arrow_for_bow"), 5)]
+            storage.save_new_player(player, "telegram", "111")
+            link = create_profile_site_link(storage, player, "telegram")
+            token = link.split("token=", 1)[1].split("&", 1)[0]
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            client = TestClient(app)
+            response = client.post(f"/api/profile/{token}/inventory/use", json={"item_id": "arrow_for_bow"})
+
+            self.assertEqual(response.status_code, 200, response.text)
+            updated = storage.get_player_by_game_id("NT-AMMO")
+            self.assertEqual(updated["equipment"]["weapon2"]["ammo_count"], 5)
+            self.assertTrue(any("5/30" in str(line) for line in updated["equipment"]["weapon2"].get("stats", [])))
+            self.assertFalse(any("0/30" in str(line) for line in updated["equipment"]["weapon2"].get("stats", [])))
+            profile = frontend_profile(updated)
+            self.assertTrue(any("5/30" in str(line) for line in profile["equipment"]["weapon2"].get("stats", [])))
+
+    def test_pve_skill_consumption_refreshes_quiver_loaded_stats(self):
+        player = self.make_player()
+        player["equipment"]["weapon2"] = {
+            "id": "arrow_quiver_empty",
+            "name": "Пустой колчан для стрел лука",
+            "slotKey": "weapon2",
+            "ammo_item_id": "arrow_for_bow",
+            "ammo_count": 2,
+            "capacity": 30,
+            "stats": ["Вместимость стрел: 30", "Заряжено: 0/30"],
+        }
+        skill = runtime_skill_from_catalog(bow_test_skill())
+
+        ok, message = consume_skill_ammo(player, skill)
+
+        self.assertTrue(ok, message)
+        self.assertEqual(player["equipment"]["weapon2"]["ammo_count"], 1)
+        self.assertTrue(any("1/30" in str(line) for line in player["equipment"]["weapon2"].get("stats", [])))
+        self.assertFalse(any("0/30" in str(line) for line in player["equipment"]["weapon2"].get("stats", [])))
+
+
+    def test_profile_use_loads_arrows_into_legacy_arrow_quiver_slot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "players.json"
+            storage = JsonStorage(db_path)
+            player = self.make_player()
+            player["equipment"].pop("weapon2", None)
+            player["equipment"]["arrow_quiver"] = registry_item_to_inventory_item(get_item_definition_by_id("arrow_quiver_empty"), 1)
+            player["equipment"]["arrow_quiver"]["slotKey"] = "arrow_quiver"
+            player["inventory"] = [registry_item_to_inventory_item(get_item_definition_by_id("arrow_for_bow"), 7)]
+            storage.save_new_player(player, "telegram", "111")
+            link = create_profile_site_link(storage, player, "telegram")
+            token = link.split("token=", 1)[1].split("&", 1)[0]
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            client = TestClient(app)
+            response = client.post(f"/api/profile/{token}/inventory/use", json={"item_id": "arrow_for_bow"})
+
+            self.assertEqual(response.status_code, 200, response.text)
+            updated = storage.get_player_by_game_id("NT-AMMO")
+            self.assertEqual(updated["equipment"]["arrow_quiver"]["ammo_count"], 7)
+            self.assertFalse(any(item.get("id") == "arrow_for_bow" for item in updated.get("inventory", [])))
+
     def test_profile_use_loads_arrows_into_inventory_quiver_when_not_equipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "players.json"

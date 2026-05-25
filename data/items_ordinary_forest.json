@@ -209,51 +209,6 @@
     ]
   },
   {
-    "id": "tough_sinew",
-    "name_ru": "Жёсткое сухожилие",
-    "category": "trophies",
-    "subtype": "tendon",
-    "item_class": "trophies",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 30,
-    "icon": "assets/items/ordinary_forest/trophies/tough_sinew.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/tough_sinew.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/tough_sinew.png",
-    "source_location": "ordinary_forest",
-    "description": "Звериный трофей.",
-    "integration_tags": [
-      "inventory_item",
-      "ordinary_forest",
-      "mob_loot"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 10,
-    "max_stack": 30
-  },
-  {
-    "id": "deer_hide",
-    "name_ru": "Оленья шкура",
-    "category": "trophies",
-    "subtype": "hide",
-    "item_class": "trophies",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 20,
-    "icon": "assets/items/ordinary_forest/trophies/deer_hide.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/deer_hide.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/deer_hide.png",
-    "source_location": "ordinary_forest",
-    "description": "Звериный трофей.",
-    "integration_tags": [
-      "inventory_item",
-      "ordinary_forest",
-      "mob_loot"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 5
-  },
-  {
     "id": "deer_antler",
     "name_ru": "Рог оленя",
     "category": "trophies",
@@ -276,29 +231,6 @@
     "sell_price_copper": 8
   },
   {
-    "id": "strong_sinew",
-    "name_ru": "Крепкое сухожилие",
-    "category": "trophies",
-    "subtype": "tendon",
-    "item_class": "trophies",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 30,
-    "icon": "assets/items/ordinary_forest/trophies/strong_sinew.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/strong_sinew.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/strong_sinew.png",
-    "source_location": "ordinary_forest",
-    "description": "Звериный трофей.",
-    "integration_tags": [
-      "inventory_item",
-      "ordinary_forest",
-      "mob_loot"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 10,
-    "max_stack": 30
-  },
-  {
     "id": "old_bear_trap",
     "name_ru": "Старый капкан",
     "category": "events",
@@ -316,28 +248,6 @@
       "inventory_item",
       "ordinary_forest"
     ]
-  },
-  {
-    "id": "wolf_hide",
-    "name_ru": "Волчья шкура",
-    "category": "trophies",
-    "subtype": "hide",
-    "item_class": "trophies",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 20,
-    "icon": "assets/items/ordinary_forest/trophies/wolf_hide.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/wolf_hide.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/wolf_hide.png",
-    "source_location": "ordinary_forest",
-    "description": "Звериный трофей.",
-    "integration_tags": [
-      "inventory_item",
-      "ordinary_forest",
-      "mob_loot"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 5
   },
   {
     "id": "bear_fang",
@@ -380,28 +290,6 @@
       "inventory_item",
       "ordinary_forest"
     ]
-  },
-  {
-    "id": "boar_hide",
-    "name_ru": "Кабанья шкура",
-    "category": "trophies",
-    "subtype": "hide",
-    "item_class": "trophies",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 20,
-    "icon": "assets/items/ordinary_forest/trophies/boar_hide.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/boar_hide.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/boar_hide.png",
-    "source_location": "ordinary_forest",
-    "description": "Звериный трофей.",
-    "integration_tags": [
-      "inventory_item",
-      "ordinary_forest",
-      "mob_loot"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 7
   },
   {
     "id": "wolf_fang",
@@ -447,28 +335,6 @@
     ],
     "can_sell": true,
     "sell_price_copper": 10
-  },
-  {
-    "id": "bear_hide",
-    "name_ru": "Медвежья шкура",
-    "category": "trophies",
-    "subtype": "hide",
-    "item_class": "trophies",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 20,
-    "icon": "assets/items/ordinary_forest/trophies/bear_hide.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/bear_hide.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/bear_hide.png",
-    "source_location": "ordinary_forest",
-    "description": "Звериный трофей.",
-    "integration_tags": [
-      "inventory_item",
-      "ordinary_forest",
-      "mob_loot"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 7
   },
   {
     "id": "bear_claw",

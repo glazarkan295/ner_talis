@@ -1,0 +1,54 @@
+[
+  {
+    "id": "simple_hide",
+    "name": "Простая шкура",
+    "name_ru": "Простая шкура",
+    "category": "trophies",
+    "inventory_section": "loot",
+    "subtype": "hide",
+    "type": "hide",
+    "item_class": "beast_trophy",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 30,
+    "max_stack": 30,
+    "icon": "/assets/items/starter_loot/simple_hide.png",
+    "source_location": "starter_mobs",
+    "description": "Простая звериная шкура из стартовых локаций. Используется в кожевенном ремесле.",
+    "integration_tags": [
+      "inventory_item",
+      "trophy",
+      "mob_loot",
+      "starting_locations",
+      "crafting_material"
+    ],
+    "can_sell": true,
+    "sell_price_copper": 10
+  },
+  {
+    "id": "simple_tendon",
+    "name": "Простое сухожилие",
+    "name_ru": "Простое сухожилие",
+    "category": "trophies",
+    "inventory_section": "loot",
+    "subtype": "tendon",
+    "type": "tendon",
+    "item_class": "beast_trophy",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 30,
+    "max_stack": 30,
+    "icon": "/assets/items/starter_loot/simple_tendon.png",
+    "source_location": "starter_mobs",
+    "description": "Простое звериное сухожилие из стартовых локаций. Подходит для простой верёвки.",
+    "integration_tags": [
+      "inventory_item",
+      "trophy",
+      "mob_loot",
+      "starting_locations",
+      "crafting_material"
+    ],
+    "can_sell": true,
+    "sell_price_copper": 10
+  }
+]

@@ -83,7 +83,7 @@ class DeathBalanceStackRulesTest(unittest.TestCase):
         self.assertEqual(build_inventory_item("Куски ткани", item_id="fabric_pieces")["type"], "Хлам")
         self.assertEqual(build_inventory_item("Старый нож", item_id="old_knife")["type"], "Хлам")
         self.assertEqual(build_inventory_item("Железный лом", item_id="iron_scrap")["type"], "Хлам")
-        self.assertEqual(build_inventory_item("Маленькая шкурка", item_id="small_pelt")["type"], "Шкура")
+        self.assertEqual(build_inventory_item("Простая шкура", item_id="simple_hide")["type"], "Шкура")
         self.assertEqual(build_inventory_item("Серебристая ромашка", item_id="silver_chamomile")["type"], "Цветы")
 
 

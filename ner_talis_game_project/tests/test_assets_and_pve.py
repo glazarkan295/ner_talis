@@ -50,10 +50,14 @@ class AssetsAndPveIntegrationTest(unittest.TestCase):
 
     def test_hilly_meadows_item_registry_is_loaded(self):
         items = load_item_definitions()
-        self.assertEqual(len(items), 35)
+        self.assertEqual(len(items), 29)
         mint = get_item_definition_by_name("Луговая мята")
         self.assertIsNotNone(mint)
         self.assertEqual(mint["id"], "meadow_mint")
+
+        simple_hide = get_item_definition_by_name("Простая шкура")
+        self.assertIsNotNone(simple_hide)
+        self.assertEqual(simple_hide["id"], "simple_hide")
 
     def test_add_item_enriches_inventory_with_icon_and_stable_id(self):
         player = {"inventory": []}

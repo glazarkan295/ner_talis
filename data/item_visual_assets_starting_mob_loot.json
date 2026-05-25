@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "id": "simple_hide",
+      "name_ru": "Простая шкура",
+      "category": "trophies",
+      "image": "/assets/items/starter_loot/simple_hide.png"
+    },
+    {
+      "id": "simple_tendon",
+      "name_ru": "Простое сухожилие",
+      "category": "trophies",
+      "image": "/assets/items/starter_loot/simple_tendon.png"
+    }
+  ]
+}

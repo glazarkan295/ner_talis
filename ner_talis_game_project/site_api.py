@@ -596,6 +596,7 @@ MATERIAL_TYPE_MARKERS = {
     "лом", "ткань", "кожа", "шкура", "доска", "доски", "полоски кожи",
 }
 MOB_LOOT_MARKERS = ("моб", "добыч", "pve", "enemy", "monster", "mob")
+STARTING_LOCATION_SOURCE_MARKERS = ("hilly_meadows", "ordinary_forest", "холмист", "обыкновенный лес")
 
 
 def _text_parts_for_category(item: dict[str, Any]) -> set[str]:
@@ -633,6 +634,11 @@ def classify_profile_inventory_category(item: dict[str, Any], current_category: 
     parts = _text_parts_for_category(item)
     if any(marker in source_text for marker in MOB_LOOT_MARKERS) or current_category in {"Добыча", "Трофеи"}:
         return "Добыча"
+    equipment_markers = {"equipment", "экипировка", "снаряжение", "weapon", "оружие", "armor", "броня", "jewelry", "бижутерия"}
+    if parts & equipment_markers:
+        return current_category
+    if any(marker in source_text for marker in STARTING_LOCATION_SOURCE_MARKERS) or parts & {"hilly_meadows", "ordinary_forest"}:
+        return "Ресурсы"
     if item_energy_restore(item) > 0 or parts & CONSUMABLE_CATEGORY_MARKERS:
         return "Расходники"
     if is_glass_gem_item(item):
@@ -759,8 +765,10 @@ def normalize_item(item: dict[str, Any], default_category: str = "Прочее")
         ammo_count = safe_int(normalized.get("ammo_count"), 0)
         capacity = safe_int(normalized.get("capacity"), 0)
         ammo_line = f"Заряжено: {ammo_count}/{capacity}"
-        if not any("заряжено" in str(line).casefold() for line in stats):
-            stats.append(ammo_line)
+        # Старые сохранения могли хранить строку "Заряжено: 0/30" прямо в stats.
+        # Если её не удалить, профиль продолжит показывать 0 даже после загрузки стрел/болтов.
+        stats = [line for line in stats if "заряжено" not in str(line).casefold()]
+        stats.append(ammo_line)
     normalized["stats"] = stats
     normalized["isMaterial"] = is_profile_material_item(normalized)
     return normalized
@@ -1552,6 +1560,25 @@ def _quiver_capacity_for_rule(quiver: dict[str, Any], rule: dict[str, Any]) -> i
     return max(1, current_capacity or base_capacity)
 
 
+def sync_quiver_ammo_stats(quiver: dict[str, Any], rule: dict[str, Any] | None = None) -> None:
+    if not isinstance(quiver, dict):
+        return
+    capacity = safe_int(quiver.get("capacity"), 0)
+    if rule is not None:
+        capacity = _quiver_capacity_for_rule(quiver, rule)
+        quiver["capacity"] = capacity
+        quiver.setdefault("ammo_item_id", rule.get("ammo_item_id"))
+    ammo_count = max(0, safe_int(quiver.get("ammo_count"), 0))
+    quiver["ammo_count"] = min(ammo_count, capacity) if capacity > 0 else ammo_count
+    stats = quiver.get("stats")
+    if not isinstance(stats, list):
+        stats = []
+    stats = [line for line in stats if "заряжено" not in str(line).casefold()]
+    if capacity > 0:
+        stats.append(f"Заряжено: {quiver['ammo_count']}/{capacity}")
+    quiver["stats"] = stats
+
+
 def _find_reloadable_quiver(player: dict[str, Any], rule: dict[str, Any]) -> tuple[dict[str, Any] | None, str, bool]:
     required_kind = str(rule.get("quiver_kind") or "")
     required_ammo_id = str(rule.get("ammo_item_id") or "")
@@ -1564,17 +1591,24 @@ def _find_reloadable_quiver(player: dict[str, Any], rule: dict[str, Any]) -> tup
         return loaded_ammo_id == required_ammo_id
 
     equipment = player.setdefault("equipment", {})
-    equipped = equipment.get(str(rule.get("quiver_slot") or "weapon2"))
-    if is_compatible(equipped):
-        capacity = _quiver_capacity_for_rule(equipped, rule)
-        if max(0, safe_int(equipped.get("ammo_count"), 0)) < capacity:
-            return equipped, "экипированный колчан", full_quiver_seen
-        full_quiver_seen = True
+    equipped_candidates = []
+    for slot in (str(rule.get("quiver_slot") or "weapon2"), required_kind):
+        candidate = equipment.get(slot)
+        if isinstance(candidate, dict) and all(candidate is not seen for seen in equipped_candidates):
+            equipped_candidates.append(candidate)
+    for equipped in equipped_candidates:
+        if is_compatible(equipped):
+            sync_quiver_ammo_stats(equipped, rule)
+            capacity = _quiver_capacity_for_rule(equipped, rule)
+            if max(0, safe_int(equipped.get("ammo_count"), 0)) < capacity:
+                return equipped, "экипированный колчан", full_quiver_seen
+            full_quiver_seen = True
 
     inventory = player.setdefault("inventory", [])
     for candidate in inventory:
         if not is_compatible(candidate):
             continue
+        sync_quiver_ammo_stats(candidate, rule)
         capacity = _quiver_capacity_for_rule(candidate, rule)
         if max(0, safe_int(candidate.get("ammo_count"), 0)) < capacity:
             return candidate, "колчан в инвентаре", full_quiver_seen
@@ -1605,6 +1639,7 @@ def load_ammo_into_quiver(player: dict[str, Any], item: dict[str, Any], amount: 
     quiver["capacity"] = capacity
     quiver["ammo_count"] = current + loaded
     quiver["ammo_item_id"] = rule["ammo_item_id"]
+    sync_quiver_ammo_stats(quiver, rule)
     return loaded, f"В {location_label} загружено: {rule['ammo_name']} ×{loaded}."
 
 
