@@ -91,10 +91,14 @@ export function confirmAttributePoints(identifier, allocations) {
   });
 }
 
-export function equipItem(identifier, itemId, slotKey = null) {
+export function equipItem(identifier, itemId, slotKey = null, inventoryIndex = null) {
+  const payload = { item_id: itemId, slot_key: slotKey };
+  if (Number.isInteger(inventoryIndex) && inventoryIndex >= 0) {
+    payload.inventory_index = inventoryIndex;
+  }
   return requestJson(`/api/profile/${encodeURIComponent(identifier)}/equipment/equip`, {
     method: "POST",
-    body: JSON.stringify({ item_id: itemId, slot_key: slotKey }),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -105,10 +109,14 @@ export function unequipItem(identifier, slotKey) {
   });
 }
 
-export function useItem(identifier, itemId) {
+export function useItem(identifier, itemId, inventoryIndex = null) {
+  const payload = { item_id: itemId };
+  if (Number.isInteger(inventoryIndex) && inventoryIndex >= 0) {
+    payload.inventory_index = inventoryIndex;
+  }
   return requestJson(`/api/profile/${encodeURIComponent(identifier)}/inventory/use`, {
     method: "POST",
-    body: JSON.stringify({ item_id: itemId }),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -147,9 +155,13 @@ export function sellItem(identifier, itemId, amount, inventoryIndex = null) {
   });
 }
 
-export function dropItem(identifier, itemId, amount) {
+export function dropItem(identifier, itemId, amount, inventoryIndex = null) {
+  const payload = { item_id: itemId, amount };
+  if (Number.isInteger(inventoryIndex) && inventoryIndex >= 0) {
+    payload.inventory_index = inventoryIndex;
+  }
   return requestJson(`/api/profile/${encodeURIComponent(identifier)}/inventory/drop`, {
     method: "POST",
-    body: JSON.stringify({ item_id: itemId, amount }),
+    body: JSON.stringify(payload),
   });
 }

@@ -13,7 +13,7 @@ from typing import Any
 
 from game_data.starter_items import get_starter_equipment
 from game_data.starter_skills import get_starter_skills
-from services.active_skill_service import normalize_starter_only_skills
+from services.active_skill_service import ensure_active_skill_fields
 
 STARTER_EXTRA_FIELDS = {
     "main_platform",
@@ -33,6 +33,17 @@ STARTER_EXTRA_FIELDS = {
     "mana",
     "branch",
     "skill_branch",
+    "pending_branch_choice",
+    "pending_skill_preview_id",
+    "pending_skill_choice",
+    "path_threshold_hint_sent",
+    "secondary_path_hint_sent",
+    "chosen_skill_groups",
+    "active_skill_secondary_path",
+    "active_skill_main_path",
+    "active_skill_branch",
+    "secondary_skill_path",
+    "main_skill_path",
     "branch_choice_hint_sent",
     "branch_chosen_at",
     "branch_choice_place",
@@ -120,25 +131,10 @@ def ensure_starter_pack(player: dict[str, Any]) -> bool:
     """Ensure a profile has starter gear and current starter skills exactly once."""
     changed = False
 
-    branch_changed = False
-    if player.get("skill_branch") is not None:
-        player["skill_branch"] = None
-        branch_changed = True
-    if player.get("branch") not in {None, "Без ветви", "Ветви отключены"}:
-        player["branch"] = "Без ветви"
-        branch_changed = True
-    if player.get("branch_choice_hint_sent"):
-        player["branch_choice_hint_sent"] = False
-        branch_changed = True
-    if "has_identification_amulet" not in player:
-        player["has_identification_amulet"] = True
-        branch_changed = True
-    if "unlocked_skill_sources" not in player:
-        player["unlocked_skill_sources"] = []
-        branch_changed = True
+    branch_changed = ensure_active_skill_fields(player)
 
     if player.get("starter_pack_applied"):
-        return sync_starter_skill_definitions(player) or normalize_starter_only_skills(player) or branch_changed
+        return sync_starter_skill_definitions(player) or ensure_active_skill_fields(player) or branch_changed
 
     if not isinstance(player.get("equipment"), dict) or not player.get("equipment"):
         player["equipment"] = get_starter_equipment()
@@ -150,7 +146,7 @@ def ensure_starter_pack(player: dict[str, Any]) -> bool:
         player["skills"] = get_starter_skills()
         changed = True
     else:
-        changed = sync_starter_skill_definitions(player) or normalize_starter_only_skills(player) or changed
+        changed = sync_starter_skill_definitions(player) or ensure_active_skill_fields(player) or changed
 
     player["starter_pack_applied"] = True
     return True

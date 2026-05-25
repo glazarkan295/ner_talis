@@ -62,11 +62,11 @@
     "bow": "Для навыков с луком нужен колчан для стрел.",
     "crossbow": "Для навыков с арбалетом нужен колчан для болтов."
   },
-  "inventory_section": "Инвентарь → Боеприпасы",
+  "inventory_section": "Инвентарь → Боеприпасы / Колчаны",
   "equipment_sections": [
     "Экипировка → Колчан для стрел",
     "Экипировка → Колчан для болтов"
   ],
-  "combat_storage": "equipped_quiver_only",
-  "integration_note": "Если в проекте уже используются другие item_id для колчанов, стрел или болтов, замените item_id в ammunition_system/quiver_system и ammo_requirements, оставив логику без изменений."
+  "combat_storage": "loaded_quiver_equipped_for_combat",
+  "integration_note": "Заряжать стрелы/болты можно в подходящий колчан в экипировке или в инвентаре. Для применения навыка в бою колчан всё равно должен быть экипирован."
 }

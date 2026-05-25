@@ -1,11 +1,30 @@
+import logging
 import os
 from dataclasses import dataclass
 from typing import Any
 
 from services.active_skill_service import (
-    DISABLED_BRANCH_TEXT,
+    ACTIVE_BRANCH_TEXT,
+    MANA_BRANCH,
+    MANA_PATHS,
+    SPIRIT_BRANCH,
+    SPIRIT_PATHS,
+    choose_active_skill_branch,
+    choose_main_path,
+    choose_secondary_path,
+    confirm_pending_skill_choice,
+    current_available_choice,
     ensure_active_skill_fields,
+    load_branch_choice_messages,
+    main_path_level,
+    next_threshold_for_path,
+    path_level,
+    preview_skill_choice,
+    selected_main_path,
+    selected_secondary_path,
+    player_branch,
 )
+
 from services.external_location_service import (
     EXTERNAL_LOCATION_BUTTONS,
     LEGACY_OUTSIDE_CITY,
@@ -25,6 +44,11 @@ from services.market_service import (
     is_market_context,
     market_main_buttons,
 )
+from services.crafting_service import (
+    CRAFT_ACTIONS,
+    handle_crafting_action,
+    should_handle_crafting_action,
+)
 
 
 CENTRAL_SQUARE = "Центральная площадь"
@@ -34,7 +58,17 @@ ORDER_STONE = "Распорядительный камень"
 APPLY_ID_AMULET = "Приложить идентификационный амулет"
 CHOOSE_SPIRIT_BRANCH = "Выбрать Ветвь Духа"
 CHOOSE_MANA_BRANCH = "Выбрать Ветвь Маны"
+PREVIEW_SPIRIT_BRANCH = "Ветка Духа"
+PREVIEW_MANA_BRANCH = "Ветка Маны"
+CONFIRM_BRANCH = "Выбрать ветку"
+BACK_TO_BRANCH_CHOICE = "Вернуться к выбору"
+CONFIRM_PATH = "Выбрать путь"
+BACK_TO_PATHS = "Вернуться к путям"
+CONFIRM_SKILL = "Выбрать навык"
+BACK_TO_SKILL_CHOICE = "Вернуться к выбору навыка"
+SECONDARY_PATH_ACTION = "Выбрать дополнительный путь"
 PROFILE_BUTTON = "Профиль"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -139,8 +173,29 @@ def order_stone_buttons(player: dict[str, Any]) -> list[list[str]]:
 
 
 def branch_choice_buttons() -> list[list[str]]:
-    # Kept only for compatibility with old imports; no branch choice is shown.
-    return [["Ратуша"], [BACK_TO_CENTRAL]]
+    return [[PREVIEW_SPIRIT_BRANCH, PREVIEW_MANA_BRANCH], ["Ратуша"]]
+
+
+def path_choice_buttons(branch: str, exclude: str | None = None) -> list[list[str]]:
+    paths = SPIRIT_PATHS if branch == SPIRIT_BRANCH else MANA_PATHS
+    values = [path for path in paths if path != exclude]
+    rows = [[f"Путь: {values[index]}", f"Путь: {values[index + 1]}"] for index in range(0, len(values) - 1, 2)]
+    if len(values) % 2:
+        rows.append([f"Путь: {values[-1]}"])
+    rows.append(["Ратуша"])
+    return rows
+
+
+def skill_choice_buttons(choice: dict[str, Any]) -> list[list[str]]:
+    options = choice.get("options") or []
+    rows = [[f"Навык {index + 1}"] for index, _skill in enumerate(options)]
+    rows.append(["Ратуша"])
+    return rows
+
+
+def skill_preview_buttons() -> list[list[str]]:
+    return [[CONFIRM_SKILL], [BACK_TO_SKILL_CHOICE, "Ратуша"]]
+
 
 
 def gates_buttons() -> list[list[str]]:
@@ -506,17 +561,112 @@ CITY_ACTIONS: dict[str, CityResponse] = {
     "Объявления": CityResponse(ANNOUNCEMENTS_TEXT, central_square_buttons(), "seldar_announcements"),
 }
 
-BRANCH_CHOICE_ACTIONS = frozenset({ORDER_STONE, APPLY_ID_AMULET, CHOOSE_SPIRIT_BRANCH, CHOOSE_MANA_BRANCH})
-CITY_BUTTONS = frozenset(CITY_ACTIONS.keys()) | BRANCH_CHOICE_ACTIONS | EXTERNAL_LOCATION_BUTTONS | MARKET_ACTIONS
+BRANCH_CHOICE_ACTIONS = frozenset({ORDER_STONE, APPLY_ID_AMULET, CHOOSE_SPIRIT_BRANCH, CHOOSE_MANA_BRANCH, PREVIEW_SPIRIT_BRANCH, PREVIEW_MANA_BRANCH, CONFIRM_BRANCH, BACK_TO_BRANCH_CHOICE, CONFIRM_PATH, BACK_TO_PATHS, CONFIRM_SKILL, BACK_TO_SKILL_CHOICE, SECONDARY_PATH_ACTION})
+CITY_BUTTONS = frozenset(CITY_ACTIONS.keys()) | BRANCH_CHOICE_ACTIONS | EXTERNAL_LOCATION_BUTTONS | MARKET_ACTIONS | CRAFT_ACTIONS
+
+
+def _message_text(key: str, fallback: str = "") -> str:
+    messages = load_branch_choice_messages()
+    value = messages.get(key)
+    if isinstance(value, dict):
+        text = value.get("text") or value.get("stone_text") or ""
+        admin = value.get("administrator_text") or ""
+        return "\n\n".join(part for part in (text, admin) if part) or fallback
+    return fallback
+
+
+def _branch_intro_text() -> str:
+    return _message_text(
+        "stone_branch_choice_intro",
+        "Вы прикладываете идентификационный амулет к камню. Распорядитель предлагает выбрать ветвь развития.",
+    )
+
+
+def _path_intro_text(branch: str) -> str:
+    messages = load_branch_choice_messages()
+    intro = messages.get("main_path_choice_intro") if isinstance(messages.get("main_path_choice_intro"), dict) else {}
+    data = intro.get("spirit" if branch == SPIRIT_BRANCH else "mana") if isinstance(intro, dict) else None
+    if isinstance(data, dict) and data.get("text"):
+        return str(data["text"])
+    return "Камень показывает доступные пути выбранной ветки. Выберите основной путь."
+
+
+def _secondary_intro_text(player: dict[str, Any]) -> str:
+    return _message_text(
+        "secondary_path_choice_intro",
+        "Камень открывает возможность второго пути. Он не сможет превысить 60% уровня основного пути.",
+    )
+
+
+def _no_choices_text() -> str:
+    return _message_text("stone_no_available_choices", "Вы притрагиваетесь к камню и ощущаете его холод. Сейчас он ничего не показывает.")
+
+
+def _skill_choice_text(choice: dict[str, Any]) -> str:
+    lines = [_message_text("skill_choice_available", "Камень предлагает три возможности. Выберите одну из них вдумчиво.")]
+    lines.append(f"\nПуть: {choice.get('path')} · порог: {choice.get('threshold')} · уровень пути: доступен")
+    for index, skill in enumerate(choice.get("options") or [], 1):
+        kind = "пассивный" if skill.get("is_passive") else "активный"
+        lines.append(f"{index}. {skill.get('name')} — {kind}. {skill.get('effect')}")
+    return "\n".join(lines)
+
+
+def _skill_preview_text(player: dict[str, Any], skill: dict[str, Any]) -> str:
+    kind = "пассивный навык" if skill.get("is_passive") else "активный навык"
+    path = skill.get("path") or "—"
+    threshold = skill.get("unlock_path_level") or 0
+    reqs = skill.get("usage_requirements") or skill.get("required_equipment") or "—"
+    if isinstance(reqs, list):
+        reqs = "; ".join(str(item) for item in reqs)
+    resource = "нет" if skill.get("is_passive") else str(skill.get("resource_cost_text") or "—")
+    cooldown = "нет" if skill.get("is_passive") else str(skill.get("cooldown_turns_text") or "—")
+    return (
+        f"Название: {skill.get('name')}\n\n"
+        f"Тип: {kind}\nПуть: {path}\nПорог: {threshold}\n\n"
+        f"Описание:\n{skill.get('effect') or '—'}\n\n"
+        f"Расход:\n{resource}\n\nОткат:\n{cooldown}\n\nТребования:\n{reqs}"
+    )
+
+
+def _branch_preview_text(branch: str) -> str:
+    messages = load_branch_choice_messages()
+    previews = messages.get("branch_previews") if isinstance(messages.get("branch_previews"), dict) else {}
+    data = previews.get("spirit" if branch == SPIRIT_BRANCH else "mana") if isinstance(previews, dict) else None
+    if isinstance(data, dict) and data.get("text"):
+        return str(data["text"])
+    paths = ", ".join(SPIRIT_PATHS if branch == SPIRIT_BRANCH else MANA_PATHS)
+    return f"Ветвь {branch}. Пути: {paths}."
+
+
+def _path_preview_text(path: str) -> str:
+    messages = load_branch_choice_messages()
+    previews = messages.get("path_previews") if isinstance(messages.get("path_previews"), dict) else {}
+    for data in previews.values() if isinstance(previews, dict) else []:
+        if isinstance(data, dict) and data.get("name") == path:
+            return str(data.get("text") or path)
+    return f"Путь: {path}."
+
+
+def _stone_main_screen(player: dict[str, Any]) -> WorldActionResult:
+    ensure_active_skill_fields(player)
+    level = int(player.get("level") or 1)
+    if level < 10 and not player_branch(player):
+        return WorldActionResult(_message_text("stone_no_level_10", "— Рано. Возвращайся, когда дорастёшь до 10 уровня."), [["Ратуша"]])
+    if not player_branch(player):
+        return WorldActionResult(_branch_intro_text(), branch_choice_buttons())
+    branch = player_branch(player) or SPIRIT_BRANCH
+    if not selected_main_path(player):
+        return WorldActionResult(_path_intro_text(branch), path_choice_buttons(branch))
+    if level >= 100 and not selected_secondary_path(player):
+        return WorldActionResult(_secondary_intro_text(player), [[SECONDARY_PATH_ACTION], ["Ратуша"]])
+    choice = current_available_choice(player)
+    if choice:
+        return WorldActionResult(_skill_choice_text(choice), skill_choice_buttons(choice))
+    return WorldActionResult(_no_choices_text(), [["Ратуша"]])
 
 
 def order_stone_text(player: dict[str, Any]) -> str:
-    ensure_active_skill_fields(player)
-    return (
-        "🪨 Распорядительный камень\n\n"
-        "Камень молчит. Система выбора ветви Духа или ветви Маны отключена.\n\n"
-        f"{DISABLED_BRANCH_TEXT}"
-    )
+    return _stone_main_screen(player).text
 
 
 def _current_zone_id(player: dict[str, Any]) -> str:
@@ -527,8 +677,7 @@ def _branch_gate_response(player: dict[str, Any], action: str) -> WorldActionRes
     zone = _current_zone_id(player)
     if zone not in {"seldar_town_hall", "seldar_town_hall_order_stone"} and not (not zone and action == ORDER_STONE):
         return WorldActionResult(
-            "🪨 К Распорядительному камню нельзя обратиться отсюда. "
-            "Сначала перейдите в Селдар → Верхний квартал → Ратуша.",
+            "🪨 К Распорядительному камню нельзя обратиться отсюда. Сначала перейдите в Селдар → Верхний квартал → Ратуша.",
             central_square_buttons(),
         )
     return None
@@ -542,7 +691,8 @@ def _order_stone_interaction_allowed(player: dict[str, Any], action: str) -> boo
 
 
 def process_branch_choice_action(storage: Any, player: dict[str, Any], action: str) -> WorldActionResult | None:
-    if action not in BRANCH_CHOICE_ACTIONS:
+    dynamic = action.startswith("Путь: ") or action.startswith("Навык ")
+    if action not in BRANCH_CHOICE_ACTIONS and not dynamic:
         return None
     ensure_active_skill_fields(player)
     player.pop("market_context", None)
@@ -553,19 +703,98 @@ def process_branch_choice_action(storage: Any, player: dict[str, Any], action: s
         return gate_response
     if not _order_stone_interaction_allowed(player, action):
         storage.update_player(player)
-        return WorldActionResult(
-            "🪨 Сначала подойдите к Распорядительному камню в Ратуше.",
-            town_hall_buttons(),
-        )
+        return WorldActionResult("🪨 Сначала подойдите к Распорядительному камню в Ратуше.", town_hall_buttons())
 
-    if action == ORDER_STONE:
-        player["current_city"] = "seldar"
-        player["current_zone"] = "seldar_town_hall_order_stone"
-        player["location_id"] = "seldar_town_hall_order_stone"
+    player["current_city"] = "seldar"
+    player["current_zone"] = "seldar_town_hall_order_stone"
+    player["location_id"] = "seldar_town_hall_order_stone"
 
+    if action in {ORDER_STONE, APPLY_ID_AMULET, BACK_TO_BRANCH_CHOICE, BACK_TO_PATHS, BACK_TO_SKILL_CHOICE}:
+        result = _stone_main_screen(player)
+        storage.update_player(player)
+        return result
+
+    if action in {CHOOSE_SPIRIT_BRANCH, CHOOSE_MANA_BRANCH}:
+        branch = SPIRIT_BRANCH if action == CHOOSE_SPIRIT_BRANCH else MANA_BRANCH
+        try:
+            choose_active_skill_branch(player, branch)
+        except ValueError as exc:
+            storage.update_player(player)
+            return WorldActionResult(f"🪨 {exc}", [["Ратуша"]])
+        text = _message_text("after_branch_choice", "Камень принимает ваш выбор. Теперь выберите основной путь.") + "\n\n" + _path_intro_text(branch)
+        storage.update_player(player)
+        return WorldActionResult(text, path_choice_buttons(branch))
+
+    if action in {PREVIEW_SPIRIT_BRANCH, PREVIEW_MANA_BRANCH}:
+        branch = SPIRIT_BRANCH if action == PREVIEW_SPIRIT_BRANCH else MANA_BRANCH
+        player["pending_branch_choice"] = branch
+        storage.update_player(player)
+        return WorldActionResult(_branch_preview_text(branch), [[CONFIRM_BRANCH], [BACK_TO_BRANCH_CHOICE, "Ратуша"]])
+
+    if action == CONFIRM_BRANCH:
+        branch = player.get("pending_branch_choice")
+        try:
+            choose_active_skill_branch(player, str(branch or ""))
+        except ValueError as exc:
+            storage.update_player(player)
+            return WorldActionResult(f"🪨 {exc}", [["Ратуша"]])
+        player.pop("pending_branch_choice", None)
+        text = _message_text("after_branch_choice", "Камень принимает ваш выбор. Теперь выберите основной путь.") + "\n\n" + _path_intro_text(player_branch(player) or SPIRIT_BRANCH)
+        storage.update_player(player)
+        return WorldActionResult(text, path_choice_buttons(player_branch(player) or SPIRIT_BRANCH))
+
+    if action == SECONDARY_PATH_ACTION:
+        branch = player_branch(player) or SPIRIT_BRANCH
+        storage.update_player(player)
+        return WorldActionResult(_secondary_intro_text(player), path_choice_buttons(branch, exclude=selected_main_path(player)))
+
+    if action.startswith("Путь: "):
+        path = action.split(":", 1)[1].strip()
+        branch = player_branch(player)
+        if not branch:
+            storage.update_player(player)
+            return WorldActionResult("Сначала выберите ветку развития.", branch_choice_buttons())
+        if not selected_main_path(player):
+            choose_main_path(player, path)
+            text = _message_text("after_main_path_choice", "Основной путь выбран. Развивайте его и возвращайтесь к камню на новых порогах.")
+            storage.update_player(player)
+            return WorldActionResult(text, [["Ратуша"]])
+        if int(player.get("level") or 1) >= 100 and not selected_secondary_path(player):
+            try:
+                choose_secondary_path(player, path)
+            except ValueError as exc:
+                storage.update_player(player)
+                return WorldActionResult(f"🪨 {exc}", [[SECONDARY_PATH_ACTION], ["Ратуша"]])
+            text = _message_text("after_secondary_path_choice", "Дополнительный путь выбран. Его развитие ограничено 60% уровня основного пути.")
+            storage.update_player(player)
+            return WorldActionResult(text, [["Ратуша"]])
+        storage.update_player(player)
+        return WorldActionResult(_path_preview_text(path), [[CONFIRM_PATH], [BACK_TO_PATHS, "Ратуша"]])
+
+    if action.startswith("Навык "):
+        number = action.split(" ", 1)[1].strip()
+        skill = preview_skill_choice(player, number)
+        storage.update_player(player)
+        if not skill:
+            return WorldActionResult("Этот выбор сейчас недоступен.", [[BACK_TO_SKILL_CHOICE], ["Ратуша"]])
+        return WorldActionResult(_skill_preview_text(player, skill), skill_preview_buttons())
+
+    if action == CONFIRM_SKILL:
+        selected = confirm_pending_skill_choice(player)
+        if not selected:
+            storage.update_player(player)
+            return WorldActionResult("Навык не выбран или выбор уже недоступен.", [[BACK_TO_SKILL_CHOICE], ["Ратуша"]])
+        next_threshold = next_threshold_for_path(player, str(selected.get("path") or ""))
+        if next_threshold:
+            text = f"Камень принимает выбор. Навык «{selected.get('name')}» теперь ваш. Следующий порог пути: {next_threshold}."
+        else:
+            text = f"Камень принимает выбор. Навык «{selected.get('name')}» теперь ваш. Этот путь достиг последнего порога."
+        storage.update_player(player)
+        return WorldActionResult(text, [["Ратуша"]])
+
+    result = _stone_main_screen(player)
     storage.update_player(player)
-    return WorldActionResult(order_stone_text(player), order_stone_buttons(player))
-
+    return result
 
 def _is_external_location_state(player: dict[str, Any]) -> bool:
     """Return True when the player is already outside the city flow.
@@ -649,8 +878,17 @@ def process_world_action(
                 "Она привязана к вашему единому игровому ID и действует ограниченное время."
             )
         except Exception:
+            logger.exception("Failed to create profile site link for player=%s platform=%s", player.get("game_id"), platform)
             text = "Профиль сейчас недоступен. Попробуйте ещё раз позже."
         return WorldActionResult(text=text, buttons=central_square_buttons())
+
+    if should_handle_crafting_action(player, action):
+        response = handle_crafting_action(storage, player, action)
+        return WorldActionResult(
+            text=response.text,
+            buttons=response.buttons,
+            scheduled_timer=response.scheduled_timer,
+        )
 
     # Explicit city navigation breaks stale market context. ``Рынок`` is the
     # only city button that intentionally enters the market state machine.
@@ -686,6 +924,10 @@ def process_world_action(
     if _market_should_handle_action(player, action):
         response = handle_market_action(storage, player, action)
         return WorldActionResult(text=response.text, buttons=response.buttons)
+
+    if _is_external_location_state(player):
+        response = handle_external_location_action(storage, player, action)
+        return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
 
     response = get_city_response(action)
     updated_player = apply_city_transition(storage, player, response)

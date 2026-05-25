@@ -8,7 +8,7 @@ const TABS = [
   { id: "info", label: "Информация", icon: "scroll" },
 ];
 
-const INVENTORY_CATEGORIES = ["Всё", "Снаряжение", "Оружие", "Бижутерия", "Расходники", "Ресурсы", "Добыча", "Прочее", "Особое"];
+const INVENTORY_CATEGORIES = ["Всё", "Снаряжение", "Оружие", "Бижутерия", "Расходники", "Ресурсы", "Материалы", "Добыча", "Прочее", "Особое"];
 
 const DEFAULT_SLOTS = [
   { key: "helmet", label: "Шлем" },
@@ -278,6 +278,12 @@ function inventoryFreeSlots(profile, inventory) {
 
 function skillKey(skill) {
   return String(skill?.id || skill?.name || "").trim();
+}
+
+function itemKey(item, fallbackIndex = 0) {
+  const base = item?.id || item?.item_id || item?.name || "item";
+  const index = Number.isInteger(item?.inventoryIndex) ? item.inventoryIndex : fallbackIndex;
+  return `${base}-${index}`;
 }
 
 function hasConcentrationText(value) {
@@ -574,8 +580,8 @@ function SlotItemsModal({ slot, items, selectedItem, position, onSelectItem, onC
         {items.length ? (
           <div className="nt-slot-modal-grid">
             <div className="nt-slot-items-list">
-              {items.map((item) => (
-                <button key={item.id || item.name} className={`nt-slot-choice ${selectedItem?.id === item.id ? "active" : ""} ${qualityClass(item.quality)}`} type="button" onClick={() => onSelectItem(item)}>
+              {items.map((item, index) => (
+                <button key={itemKey(item, index)} className={`nt-slot-choice ${selectedItem?.inventoryIndex === item.inventoryIndex ? "active" : ""} ${qualityClass(item.quality)}`} type="button" onClick={() => onSelectItem(item)}>
                   <ItemArt item={item} className="nt-choice-icon" />
                   <span>{item.name}</span>
                 </button>
@@ -749,7 +755,7 @@ function InventoryTab({ profile, onOpenItem }) {
   const freeSlots = inventoryFreeSlots(profile, inventory);
   const capacity = inventoryCapacity(profile);
   const filtered = useMemo(() => inventory.filter((item) => {
-    const categoryOk = category === "Всё" || item.category === category;
+    const categoryOk = category === "Всё" || item.category === category || (category === "Материалы" && item.isMaterial);
     const queryOk = !query || String(item.name || "").toLowerCase().includes(query.toLowerCase());
     return categoryOk && queryOk;
   }), [inventory, category, query]);
@@ -763,8 +769,8 @@ function InventoryTab({ profile, onOpenItem }) {
           <div className="nt-category-row">{INVENTORY_CATEGORIES.map((item) => <button key={item} className={category === item ? "active" : ""} type="button" onClick={() => setCategory(item)}>{item}</button>)}</div>
         </div>
         <div className="nt-icon-grid">
-          {filtered.map((item) => (
-            <button key={item.id || item.name} className={`nt-item-icon-card ${qualityClass(item.quality)} ${item.overflowSlot ? "overflow-slot" : ""}`.trim()} type="button" onClick={(event) => onOpenItem(item, null, event)}>
+          {filtered.map((item, index) => (
+            <button key={itemKey(item, index)} className={`nt-item-icon-card ${qualityClass(item.quality)} ${item.overflowSlot ? "overflow-slot" : ""}`.trim()} type="button" onClick={(event) => onOpenItem(item, null, event)}>
               <ItemArt item={item} />
               {item.amount > 1 ? <span className="nt-item-amount">×{item.amount}</span> : null}
               {item.overflowSlot ? <span className="nt-overflow-badge">доп</span> : null}
@@ -876,7 +882,9 @@ function SkillsTab({ profile, onSpendSkillPoints, onEquipSkill, onUnequipSkill }
       <Panel title="Навыки">
         <div className="nt-lines">
           <Row label="Свободные очки навыков" value={freePoints} />
-          <Row label="Развитие ветвей" value="отключено" />
+          <Row label="Ветка" value={profile.player?.skillBranch || "Без ветви"} />
+          <Row label="Основной путь" value={profile.player?.mainSkillPath ? `${profile.player.mainSkillPath} · ур. ${profile.player.mainSkillPathLevel || 0}` : "не выбран"} />
+          <Row label="Дополнительный путь" value={profile.player?.secondarySkillPath ? `${profile.player.secondarySkillPath} · ур. ${profile.player.secondarySkillPathLevel || 0} / лимит ${profile.player.secondarySkillPathLimit || 0}` : "не выбран"} />
         </div>
       </Panel>
       <Panel title="Экипированные" right={<span className="nt-badge">{equipUsed} / {equipCapacity}</span>}>

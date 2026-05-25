@@ -1,26 +1,5 @@
 [
   {
-    "id": "simple_healing_potion",
-    "name": "Простое зелье лечения",
-    "name_ru": "Простое зелье лечения",
-    "category": "consumables",
-    "type": "consumable",
-    "subtype": "potion",
-    "quality": "common",
-    "stackable": true,
-    "max_stack": 20,
-    "description": "Расходник для боя. Восстанавливает 30 жизней.",
-    "can_sell": true,
-    "sell_price_copper": 35,
-    "icon": "/assets/items/seldar_market/simple_healing_potion.png",
-    "use_effect": {
-      "hp_restore": 30
-    },
-    "stats": [
-      "Восстановление HP: 30"
-    ]
-  },
-  {
     "id": "mining_pickaxe",
     "name": "Шахтёрская кирка",
     "name_ru": "Шахтёрская кирка",

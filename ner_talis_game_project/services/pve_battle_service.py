@@ -9,11 +9,14 @@ system.
 
 from __future__ import annotations
 
+import logging
 import math
 import random
 import uuid
 from dataclasses import asdict
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from services.derived_stats_service import calculate_player_derived_stats, calculate_player_skill_raw_damage, ensure_player_resources, safe_int, soft_level
 from services.item_registry import build_inventory_item, get_item_definition_by_id, get_item_definition_by_name
@@ -685,13 +688,13 @@ def get_equipped_skill(player: dict[str, Any], action: str) -> dict[str, Any] | 
     return None
 
 
-def skill_costs(skill: dict[str, Any]) -> tuple[int, int]:
+def skill_costs(skill: dict[str, Any], player: dict[str, Any] | None = None) -> tuple[int, int]:
     try:
-        spirit, mana = resource_cost_with_modifiers(skill)
+        spirit, mana = resource_cost_with_modifiers(skill, player)
         if spirit or mana:
             return max(0, spirit), max(0, mana)
     except Exception:
-        pass
+        logger.exception("Failed to calculate battle skill costs for skill=%r", skill.get("id") or skill.get("name"))
     spirit = safe_int(skill.get("spirit_cost") if "spirit_cost" in skill else skill.get("spiritCost"), 0)
     mana = safe_int(skill.get("mana_cost") if "mana_cost" in skill else skill.get("manaCost"), 0)
     return max(0, spirit), max(0, mana)
@@ -789,7 +792,12 @@ def format_pouch(player: dict[str, Any], battle: dict[str, Any] | None = None, p
     start_index = page * BATTLE_POUCH_PAGE_SIZE
     visible = entries[start_index:start_index + BATTLE_POUCH_PAGE_SIZE]
 
-    lines = ["🎒 Подсумок", "", f"Страница {page + 1}/{page_count}. Можно использовать один расходник за ход:"]
+    lines = [
+        "🎒 Подсумок",
+        "",
+        f"Страница {page + 1}/{page_count}. Расходники — дополнительное действие: они не завершают ход.",
+        "После расходников можно снова открыть подсумок или выполнить основное действие: навык, ждать или сбежать.",
+    ]
     buttons: list[list[str]] = []
     context_items: dict[str, str] = {}
     current_row: list[str] = []
@@ -1196,33 +1204,25 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         ref = context_items.get(local_number)
         if ref is None:
             return "🎒 Этот пункт подсумка уже устарел. Откройте подсумок заново.", battle_buttons(player)
-        decrement_cooldowns_once_at_player_turn(battle, player_state)
         item_text, consumed = use_pouch_item_by_ref(player, battle, ref)
         log = [item_text]
         if consumed:
-            defeated = apply_enemy_phase(player, battle, rng, log)
-            if defeated:
-                return finish_player_defeat(player, battle, log)
-        else:
-            battle["last_turn_log"] = log
-            battle.setdefault("battle_log", []).extend(log)
-            sync_player_from_battle(player, battle)
+            log.append("Дополнительное действие выполнено: ход не завершён. Выберите основное действие.")
+        battle["last_turn_log"] = log
+        battle.setdefault("battle_log", []).extend(log)
+        sync_player_from_battle(player, battle)
         player["active_battle"] = battle
         return format_battle_status(battle), battle_buttons(player)
 
     if action.startswith("Использовать: "):
         item_name = action.removeprefix("Использовать: ").strip()
-        decrement_cooldowns_once_at_player_turn(battle, player_state)
         item_text, consumed = use_pouch_item(player, battle, item_name)
         log = [item_text]
         if consumed:
-            defeated = apply_enemy_phase(player, battle, rng, log)
-            if defeated:
-                return finish_player_defeat(player, battle, log)
-        else:
-            battle["last_turn_log"] = log
-            battle.setdefault("battle_log", []).extend(log)
-            sync_player_from_battle(player, battle)
+            log.append("Дополнительное действие выполнено: ход не завершён. Выберите основное действие.")
+        battle["last_turn_log"] = log
+        battle.setdefault("battle_log", []).extend(log)
+        sync_player_from_battle(player, battle)
         player["active_battle"] = battle
         return format_battle_status(battle), battle_buttons(player)
 
@@ -1284,7 +1284,7 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         else:
             target = enemies[0]
         if equipped_skill is not None:
-            spirit_cost, mana_cost = skill_costs(equipped_skill)
+            spirit_cost, mana_cost = skill_costs(equipped_skill, player)
             cooldown_key = str(equipped_skill.get("id") or equipped_skill.get("name"))
             cooldowns = player_state.setdefault("cooldowns", {})
             if safe_int(cooldowns.get(cooldown_key), 0) > 0:

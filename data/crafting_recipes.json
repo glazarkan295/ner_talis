@@ -1,0 +1,836 @@
+[
+  {
+    "id": "alchemy_simple_energy_potion",
+    "workshop": "alchemy",
+    "section": "Рецепты",
+    "output": {
+      "item_id": "simple_energy_potion",
+      "name": "Простое зелье энергии",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "clean_water",
+        "name": "Чистая вода",
+        "amount": 1,
+        "role": "Основа"
+      },
+      {
+        "item_id": "yellow_clover",
+        "name": "Жёлтый клевер",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "animal_fat",
+        "name": "Жир зверя",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Простое зелье энергии.",
+    "craft_time_seconds": 60,
+    "actions": [
+      "soak",
+      "mix",
+      "cool"
+    ]
+  },
+  {
+    "id": "alchemy_simple_healing_potion",
+    "workshop": "alchemy",
+    "section": "Рецепты",
+    "output": {
+      "item_id": "simple_healing_potion",
+      "name": "Простое зелье лечения",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "clean_water",
+        "name": "Чистая вода",
+        "amount": 1,
+        "role": "Основа"
+      },
+      {
+        "item_id": "sweet_meadow_berry",
+        "name": "Сладкая луговая ягода",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "edible_forest_mushroom",
+        "name": "Съедобный лесной гриб",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Простое зелье лечения.",
+    "craft_time_seconds": 60,
+    "actions": [
+      "grind",
+      "mix"
+    ]
+  },
+  {
+    "id": "alchemy_simple_healing_potion_legacy",
+    "workshop": "alchemy",
+    "section": "Рецепты",
+    "output": {
+      "item_id": "simple_healing_potion",
+      "name": "Простое зелье лечения",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "clean_water",
+        "name": "Чистая вода",
+        "amount": 1,
+        "role": "Основа"
+      },
+      {
+        "item_id": "silver_chamomile",
+        "name": "Серебристая ромашка",
+        "amount": 2,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Простое зелье лечения по простой старой формуле.",
+    "craft_time_seconds": 60,
+    "actions": [
+      "grind",
+      "mix"
+    ]
+  },
+  {
+    "id": "alchemy_simple_mana_potion",
+    "workshop": "alchemy",
+    "section": "Рецепты",
+    "output": {
+      "item_id": "simple_mana_potion",
+      "name": "Простое зелье маны",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "clean_water",
+        "name": "Чистая вода",
+        "amount": 1,
+        "role": "Основа"
+      },
+      {
+        "item_id": "silver_chamomile",
+        "name": "Серебристая ромашка",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "tart_blue_berry",
+        "name": "Терпкая синяя ягода",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Простое зелье маны.",
+    "craft_time_seconds": 60,
+    "actions": [
+      "infuse",
+      "mix",
+      "cool"
+    ]
+  },
+  {
+    "id": "alchemy_simple_spirit_potion",
+    "workshop": "alchemy",
+    "section": "Рецепты",
+    "output": {
+      "item_id": "simple_spirit_potion",
+      "name": "Простое зелье духа",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "clean_water",
+        "name": "Чистая вода",
+        "amount": 1,
+        "role": "Основа"
+      },
+      {
+        "item_id": "bitter_gray_mushroom",
+        "name": "Горький серый гриб",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "mountain_wormwood",
+        "name": "Горная полынь",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Простое зелье духа.",
+    "craft_time_seconds": 60,
+    "actions": [
+      "grind",
+      "mix",
+      "heat"
+    ]
+  },
+  {
+    "id": "forge_iron_helmet",
+    "workshop": "forge",
+    "section": "Броня",
+    "output": {
+      "item_id": "simple_iron_helmet",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "iron_plate",
+        "amount": 2,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "leather_strip",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Сковать простой железный шлем.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_arrow_for_bow",
+    "workshop": "forge",
+    "section": "Заготовки",
+    "output": {
+      "item_id": "arrow_for_bow",
+      "name": "Стрела для лука",
+      "amount": 10
+    },
+    "ingredients": [
+      {
+        "item_id": "dry_log",
+        "name": "Сухое бревно",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "iron_ingot",
+        "name": "Железный слиток",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Стрела для лука.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_bolt_for_crossbow",
+    "workshop": "forge",
+    "section": "Заготовки",
+    "output": {
+      "item_id": "bolt_for_crossbow",
+      "name": "Болт для арбалета",
+      "amount": 10
+    },
+    "ingredients": [
+      {
+        "item_id": "dry_log",
+        "name": "Сухое бревно",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "iron_ingot",
+        "name": "Железный слиток",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Болт для арбалета.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_copper_plate",
+    "workshop": "forge",
+    "section": "Заготовки",
+    "output": {
+      "item_id": "copper_plate",
+      "name": "Медная пластина",
+      "amount": 3
+    },
+    "ingredients": [
+      {
+        "item_id": "copper_ingot",
+        "name": "Медный слиток",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Медная пластина.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_iron_plate",
+    "workshop": "forge",
+    "section": "Заготовки",
+    "output": {
+      "item_id": "iron_plate",
+      "name": "Железная пластина",
+      "amount": 3
+    },
+    "ingredients": [
+      {
+        "item_id": "iron_ingot",
+        "name": "Железный слиток",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Железная пластина.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_paper_sheet",
+    "workshop": "forge",
+    "section": "Заготовки",
+    "output": {
+      "item_id": "paper_sheet",
+      "name": "Обычный лист бумаги",
+      "amount": 5
+    },
+    "ingredients": [
+      {
+        "item_id": "dry_log",
+        "name": "Сухое бревно",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Обычный лист бумаги.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_simple_board",
+    "workshop": "forge",
+    "section": "Заготовки",
+    "output": {
+      "item_id": "simple_board",
+      "name": "Простая доска",
+      "amount": 2
+    },
+    "ingredients": [
+      {
+        "item_id": "dry_log",
+        "name": "Сухое бревно",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Простая доска.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_steel_plate",
+    "workshop": "forge",
+    "section": "Заготовки",
+    "output": {
+      "item_id": "steel_plate",
+      "name": "Стальная пластина",
+      "amount": 3
+    },
+    "ingredients": [
+      {
+        "item_id": "steel_ingot",
+        "name": "Стальной слиток",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Стальная пластина.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_iron_sword",
+    "workshop": "forge",
+    "section": "Оружие",
+    "output": {
+      "item_id": "simple_iron_sword",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "iron_ingot",
+        "amount": 2,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "leather_strip",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Сковать простой железный меч.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_simple_dagger",
+    "workshop": "forge",
+    "section": "Оружие",
+    "output": {
+      "item_id": "simple_dagger",
+      "name": "Простой кинжал",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "iron_ingot",
+        "name": "Железный слиток",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "leather_strip",
+        "name": "Полоски кожи",
+        "amount": 2,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Простой кинжал.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_simple_staff",
+    "workshop": "forge",
+    "section": "Оружие",
+    "output": {
+      "item_id": "simple_staff",
+      "name": "Простой посох",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "dry_log",
+        "name": "Сухое бревно",
+        "amount": 2,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "leather_strip",
+        "name": "Полоски кожи",
+        "amount": 2,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Простой посох.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_simple_sword",
+    "workshop": "forge",
+    "section": "Оружие",
+    "output": {
+      "item_id": "simple_sword",
+      "name": "Простой меч",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "iron_ingot",
+        "name": "Железный слиток",
+        "amount": 2,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "leather_strip",
+        "name": "Полоски кожи",
+        "amount": 2,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Простой меч.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_basic_weapon_blueprint",
+    "workshop": "forge",
+    "section": "Рецепты",
+    "output": {
+      "item_id": "basic_weapon_blueprint",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "paper_sheet",
+        "amount": 2,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "iron_scrap",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Составить простой оружейный чертёж.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "jewelry_copper_ring",
+    "workshop": "jewelry",
+    "section": "Кольца",
+    "output": {
+      "item_id": "rough_copper_ring",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "copper_ingot",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "glass_topaz",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Сделать грубое медное кольцо со стекляшкой.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "jewelry_copper_necklace",
+    "workshop": "jewelry",
+    "section": "Ожерелья",
+    "output": {
+      "item_id": "rough_copper_necklace",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "copper_ingot",
+        "amount": 2,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "glass_amethyst",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Сделать грубое медное ожерелье со стекляшкой.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "jewelry_simple_recipe",
+    "workshop": "jewelry",
+    "section": "Рецепты",
+    "output": {
+      "item_id": "simple_jewelry_recipe",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "paper_sheet",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "glass_aquamarine",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Записать простой ювелирный рецепт.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "leather_belt_simple",
+    "workshop": "leatherwork",
+    "section": "Броня",
+    "output": {
+      "item_id": "simple_leather_belt_crafted",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "simple_leather_sheet",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "leather_strip",
+        "amount": 2,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Сделать простой кожаный пояс.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "leather_sheet_from_hide",
+    "workshop": "leatherwork",
+    "section": "Заготовки",
+    "output": {
+      "item_id": "simple_leather_sheet",
+      "amount": 2
+    },
+    "ingredients": [
+      {
+        "item_id": "small_pelt",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Выделать простой лист кожи из маленькой шкурки.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "leatherwork_fabric_cloth",
+    "workshop": "leatherwork",
+    "section": "Заготовки",
+    "output": {
+      "item_id": "fabric_cloth",
+      "name": "Тканевое полотно",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "fabric_pieces",
+        "name": "Куски ткани",
+        "amount": 4,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Тканевое полотно.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "leatherwork_leather_strip",
+    "workshop": "leatherwork",
+    "section": "Заготовки",
+    "output": {
+      "item_id": "leather_strip",
+      "name": "Полоски кожи",
+      "amount": 4
+    },
+    "ingredients": [
+      {
+        "item_id": "tanned_leather",
+        "name": "Выделанная кожа",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Полоски кожи.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "leatherwork_rope",
+    "workshop": "leatherwork",
+    "section": "Заготовки",
+    "output": {
+      "item_id": "rope",
+      "name": "Верёвка",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "name": "Сухожилия",
+        "amount": 3,
+        "role": "Ингредиент",
+        "match_type": "any_item_type",
+        "item_type": "tendon"
+      }
+    ],
+    "description": "Создать Верёвка.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "leatherwork_tanned_leather",
+    "workshop": "leatherwork",
+    "section": "Заготовки",
+    "output": {
+      "item_id": "tanned_leather",
+      "name": "Выделанная кожа",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "name": "Шкура",
+        "amount": 1,
+        "role": "Ингредиент",
+        "match_type": "any_item_type",
+        "item_type": "hide"
+      }
+    ],
+    "description": "Создать Выделанная кожа.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "leather_simple_recipe",
+    "workshop": "leatherwork",
+    "section": "Рецепты",
+    "output": {
+      "item_id": "simple_leather_recipe",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "paper_sheet",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "fabric_pieces",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Записать простой кожевенный рецепт.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "smelt_copper_ingot",
+    "workshop": "smeltery",
+    "section": "default",
+    "output": {
+      "item_id": "copper_ingot",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "copper_ore_chunk",
+        "amount": 3,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Переплавить куски медной руды в медный слиток.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "smeltery_copper_ingot",
+    "workshop": "smeltery",
+    "section": "default",
+    "output": {
+      "item_id": "copper_ingot",
+      "name": "Медный слиток",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "coal",
+        "name": "Уголь",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "copper_ore_chunk",
+        "name": "Кусок медной руды",
+        "amount": 2,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Медный слиток.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "smeltery_coal",
+    "workshop": "smeltery",
+    "section": "default",
+    "output": {
+      "item_id": "coal",
+      "name": "Уголь",
+      "amount_min": 2,
+      "amount_max": 5
+    },
+    "ingredients": [
+      {
+        "item_id": "dry_log",
+        "name": "Сухое бревно",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Уголь.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "smeltery_iron_ingot_iron_ore_smelting",
+    "workshop": "smeltery",
+    "section": "default",
+    "output": {
+      "item_id": "iron_ingot",
+      "name": "Железный слиток",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "coal",
+        "name": "Уголь",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "iron_ore_chunk",
+        "name": "Кусок железной руды",
+        "amount": 2,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Плавка железной руды",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "smeltery_iron_ingot_iron_scrap_smelting",
+    "workshop": "smeltery",
+    "section": "default",
+    "output": {
+      "item_id": "iron_ingot",
+      "name": "Железный слиток",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "coal",
+        "name": "Уголь",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "iron_scrap",
+        "name": "Железный лом",
+        "amount": 3,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Переплавка железного лома",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "smeltery_steel_ingot",
+    "workshop": "smeltery",
+    "section": "default",
+    "output": {
+      "item_id": "steel_ingot",
+      "name": "Стальной слиток",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "coal",
+        "name": "Уголь",
+        "amount": 3,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "iron_ingot",
+        "name": "Железный слиток",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Создать Стальной слиток.",
+    "craft_time_seconds": 60
+  }
+]

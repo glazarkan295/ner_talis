@@ -6,6 +6,7 @@ import math
 from typing import Any
 
 from services.race_bonus_service import experience_multiplier
+from services.active_skill_service import maybe_mark_branch_hint
 
 
 def safe_int(value: Any, default: int = 0) -> int:
@@ -42,7 +43,7 @@ def grant_experience(player: dict[str, Any], base_amount: int) -> dict[str, Any]
         player["free_skill_points"] = safe_int(player.get("free_skill_points"), 0) + 2
         level_ups += 1
 
-    branch_hint = None
+    branch_hint = maybe_mark_branch_hint(player) if level_ups > 0 else None
     return {
         "gained": gained,
         "level_ups": level_ups,
