@@ -35,6 +35,10 @@ FORGE = "Кузница"
 LEATHERWORK = "Кожевенная мастерская"
 JEWELRY = "Ювелирная мастерская"
 ALCHEMY = "Алхимическая мастерская"
+ENCHANTER = "Мастерская чародея"
+BACK_TO_CENTRAL = "⬅️ Центральная площадь"
+CENTRAL_SQUARE = "Центральная площадь"
+MAINTENANCE_TEXT = "Мастерская временно закрыта на техническое обслуживание."
 
 ALCHEMY_BY_RECIPE = "Создать по рецепту"
 ALCHEMY_EXPERIMENT = "Эксперимент"
@@ -106,6 +110,7 @@ SECTION_LABELS = {section for data in WORKSHOPS.values() for section in (data.ge
 
 CRAFT_ACTIONS = frozenset(
     set(WORKSHOPS.keys())
+    | {ENCHANTER, BACK_TO_CENTRAL, CENTRAL_SQUARE}
     | SECTION_LABELS
     | {
         BACK,
@@ -458,7 +463,7 @@ def _set_city_zone(player: dict[str, Any], zone_id: str) -> None:
 
 
 def _craft_district_buttons() -> list[list[str]]:
-    return [[SMELTERY, FORGE], [LEATHERWORK, JEWELRY], [ALCHEMY, "Мастерская чародея"], ["⬅️ Центральная площадь"]]
+    return [[SMELTERY, FORGE], [LEATHERWORK, JEWELRY], [ALCHEMY, ENCHANTER], [BACK_TO_CENTRAL]]
 
 
 def _section_buttons(workshop_id: str) -> list[list[str]]:
@@ -471,14 +476,32 @@ def _section_buttons(workshop_id: str) -> list[list[str]]:
     return rows
 
 
-def _recipe_buttons(recipes: list[dict[str, Any]]) -> list[list[str]]:
+def _workshop_home_button(workshop_id: str) -> str:
+    return WORKSHOP_ACTION_BY_ID.get(workshop_id, CRAFT_DISTRICT)
+
+
+def _recipe_navigation_buttons(workshop_id: str, *, source: str = "list") -> list[list[str]]:
+    if workshop_id == "alchemy":
+        if source == "preview":
+            return [[ALCHEMY_BY_RECIPE], [ALCHEMY]]
+        if source == "quantity":
+            return [[ALCHEMY_BY_RECIPE], [ALCHEMY]]
+        return [[ALCHEMY]]
+    if workshop_id == "smeltery":
+        if source == "list":
+            return [[CRAFT_DISTRICT]]
+        return [[SMELTERY], [CRAFT_DISTRICT]]
+    return [[_workshop_home_button(workshop_id)], [CRAFT_DISTRICT]]
+
+
+def _recipe_buttons(recipes: list[dict[str, Any]], workshop_id: str) -> list[list[str]]:
     rows: list[list[str]] = []
     for index in range(0, len(recipes), 2):
         row = [f"{CRAFT_PREFIX}{index + 1}"]
         if index + 2 <= len(recipes):
             row.append(f"{CRAFT_PREFIX}{index + 2}")
         rows.append(row)
-    rows.append([RETURN_TO_CHOICE, CRAFT_DISTRICT])
+    rows.extend(_recipe_navigation_buttons(workshop_id, source="list"))
     return rows
 
 
@@ -494,7 +517,17 @@ def _clear_context(player: dict[str, Any]) -> None:
     player.pop("crafting_context", None)
 
 
+def _maintenance_response(storage: Any, player: dict[str, Any], title: str, text: str | None = None) -> CraftResponse:
+    _clear_context(player)
+    _set_city_zone(player, "seldar_craft_district")
+    storage.update_player(player)
+    message = f"{title}\n\n{text or MAINTENANCE_TEXT}"
+    return CraftResponse(message, _craft_district_buttons(), "seldar_craft_district")
+
+
 def _show_workshop_menu(storage: Any, player: dict[str, Any], workshop_id: str) -> CraftResponse:
+    if workshop_id == "jewelry":
+        return _maintenance_response(storage, player, "💎 Ювелирная мастерская", "Мастерская временно закрыта на технические работы.")
     data = WORKSHOP_BY_ID[workshop_id]
     _set_city_zone(player, data["zone"])
     if workshop_id == "alchemy":
@@ -521,6 +554,9 @@ def _show_recipe_list(storage: Any, player: dict[str, Any], workshop_id: str, se
     recipes = _recipes_for(workshop_id, None if section in {None, "default"} else section)
     if workshop_id == "smeltery":
         recipes = _recipes_for(workshop_id, "default")
+    if workshop_id == "alchemy":
+        unlocked = {str(recipe_id) for recipe_id in player.get("unlocked_alchemy_recipes", []) if recipe_id}
+        recipes = [recipe for recipe in recipes if str(recipe.get("id") or "") in unlocked]
     context = _active_context(player)
     context.update({"workshop": workshop_id, "section": section or "default", "step": "list", "recipe_ids": [recipe["id"] for recipe in recipes]})
     _set_city_zone(player, data["zone"])
@@ -530,8 +566,11 @@ def _show_recipe_list(storage: Any, player: dict[str, Any], workshop_id: str, se
         lines.append(f"Раздел: {section}")
     lines.append("")
     if not recipes:
-        lines.append("В этом разделе пока нет доступных рецептов.")
-        return CraftResponse("\n".join(lines), [[RETURN_TO_CHOICE], [CRAFT_DISTRICT]], data["zone"])
+        if workshop_id == "alchemy":
+            lines.append("Открытых алхимических рецептов пока нет. Рецепты можно купить, найти или открыть удачным экспериментом.")
+        else:
+            lines.append("В этом разделе пока нет доступных рецептов.")
+        return CraftResponse("\n".join(lines), _recipe_navigation_buttons(workshop_id, source="list"), data["zone"])
     for index, recipe in enumerate(recipes, 1):
         mark = "✅" if _has_ingredients(player, recipe) else "❌"
         out_amount_label = _recipe_output_amount_label(recipe)
@@ -540,7 +579,7 @@ def _show_recipe_list(storage: Any, player: dict[str, Any], workshop_id: str, se
         for ingredient in recipe.get("ingredients") or []:
             lines.append(f"   {_ingredient_line(player, ingredient)}")
     lines.append("\nНажмите короткую кнопку вида «Крафт №1», чтобы посмотреть рецепт.")
-    return CraftResponse("\n".join(lines), _recipe_buttons(recipes), data["zone"])
+    return CraftResponse("\n".join(lines), _recipe_buttons(recipes, workshop_id), data["zone"])
 
 
 def _selected_recipe_from_context(player: dict[str, Any], action: str) -> dict[str, Any] | None:
@@ -582,7 +621,7 @@ def _preview_recipe(storage: Any, player: dict[str, Any], recipe: dict[str, Any]
         lines.append(f"\nАлхимические действия: {action_names}")
     max_count = _max_craft_count(player, recipe)
     lines.append(f"\nМожно создать сейчас: {max_count}.")
-    return CraftResponse("\n".join(lines), [[CREATE], [RETURN_TO_CHOICE, CRAFT_DISTRICT]], data["zone"])
+    return CraftResponse("\n".join(lines), [[CREATE]] + _recipe_navigation_buttons(workshop_id, source="preview"), data["zone"])
 
 
 def _prompt_quantity(storage: Any, player: dict[str, Any]) -> CraftResponse:
@@ -594,7 +633,7 @@ def _prompt_quantity(storage: Any, player: dict[str, Any]) -> CraftResponse:
     storage.update_player(player)
     return CraftResponse(
         f"Сколько создать предмета «{_recipe_output_name(recipe)}»?\nОтправьте количество числом в чат.",
-        [[RETURN_TO_CHOICE], [CANCEL]],
+        _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"),
         WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"],
     )
 
@@ -616,11 +655,11 @@ def _start_craft(storage: Any, player: dict[str, Any], quantity_text: str) -> Cr
     try:
         quantity = int(str(quantity_text).strip())
     except ValueError:
-        return CraftResponse("Нужно отправить количество числом.", [[RETURN_TO_CHOICE], [CANCEL]], WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+        return CraftResponse("Нужно отправить количество числом.", _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
     if quantity <= 0:
-        return CraftResponse("Количество должно быть больше нуля.", [[RETURN_TO_CHOICE], [CANCEL]], WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+        return CraftResponse("Количество должно быть больше нуля.", _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
     if not _has_ingredients(player, recipe, quantity):
-        return CraftResponse("Не хватает ресурсов для выбранного количества.", [[RETURN_TO_CHOICE], [CANCEL]], WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+        return CraftResponse("Не хватает ресурсов для выбранного количества.", _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
     _consume_recipe_ingredients(player, recipe, quantity)
     workshop_id = str(recipe.get("workshop") or "smeltery")
     seconds = _total_craft_seconds(recipe, quantity)
@@ -763,6 +802,17 @@ def _crafted_output_item(item_id: str, item_name: str, amount: int) -> dict[str,
     item["stats"] = stats
     return item
 
+def _unlock_alchemy_recipe(player: dict[str, Any], recipe_id: str | None) -> None:
+    if not recipe_id:
+        return
+    unlocked = player.setdefault("unlocked_alchemy_recipes", [])
+    if not isinstance(unlocked, list):
+        unlocked = []
+        player["unlocked_alchemy_recipes"] = unlocked
+    if str(recipe_id) not in {str(item) for item in unlocked}:
+        unlocked.append(str(recipe_id))
+
+
 def complete_craft_timer(storage: Any, player: dict[str, Any], timer_id: str | None = None) -> CraftResponse:
     timer = player.get("active_timer")
     if not isinstance(timer, dict) or timer.get("type") != "craft":
@@ -801,6 +851,8 @@ def complete_craft_timer(storage: Any, player: dict[str, Any], timer_id: str | N
                 result = add_inventory_item(player, _crafted_output_item(str(item_id), str(item_name), 1), 1, item_id=str(item_id), default_source="Ремесло")
         else:
             result = add_inventory_item(player, _crafted_output_item(str(item_id), str(item_name), amount), amount, item_id=str(item_id) if item_id else None, default_source="Ремесло")
+        if workshop_id == "alchemy":
+            _unlock_alchemy_recipe(player, str(recipe.get("id") or ""))
     _add_craft_experience(player, workshop_id, quantity)
     storage.update_player(player)
     notice = inventory_add_result_notice(result, item_name) if result is not None else ""
@@ -839,7 +891,7 @@ def _return_to_choice(storage: Any, player: dict[str, Any]) -> CraftResponse:
 
 
 def _alchemy_menu_buttons() -> list[list[str]]:
-    return [[ALCHEMY_BY_RECIPE, ALCHEMY_EXPERIMENT], [ALCHEMY_JOURNAL], [BACK]]
+    return [[ALCHEMY_BY_RECIPE, ALCHEMY_EXPERIMENT], [CRAFT_DISTRICT]]
 
 
 def _alchemy_menu_response(player: dict[str, Any], persist_storage: Any | None = None) -> CraftResponse:
@@ -888,11 +940,11 @@ def _show_alchemy_component_list(storage: Any, player: dict[str, Any], role: str
     lines = [f"Выберите {title}.", "Отправьте номер в чат.", ""]
     if not options:
         lines.append("Подходящих предметов в инвентаре нет.")
-        return CraftResponse("\n".join(lines), [[BACK], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse("\n".join(lines), [[ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     for index, entry in enumerate(options, 1):
         lines.append(f"{index}. {entry['name']} ×{entry['available']}")
         lines.append(f"   {entry.get('description') or 'Базовое описание отсутствует.'}")
-    return CraftResponse("\n".join(lines), [[BACK], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+    return CraftResponse("\n".join(lines), [[ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
 
 
 def _begin_experiment(storage: Any, player: dict[str, Any]) -> CraftResponse:
@@ -907,14 +959,14 @@ def _select_alchemy_component(storage: Any, player: dict[str, Any], role: str, a
     try:
         number = int(str(action).strip())
     except ValueError:
-        return CraftResponse("Нужно отправить только номер из списка.", [[BACK], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse("Нужно отправить только номер из списка.", [[ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     option_ids = context.get("alchemy_options") or []
     if not isinstance(option_ids, list) or number < 1 or number > len(option_ids):
-        return CraftResponse(f"В списке нет варианта под номером {number}.\nОтправьте номер ещё раз.", [[BACK], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse(f"В списке нет варианта под номером {number}.\nОтправьте номер ещё раз.", [[ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     item_id = str(option_ids[number - 1])
     context.update({"step": f"quantity_{role}", "pending_component": {"role": role, "item_id": item_id}})
     storage.update_player(player)
-    return CraftResponse(f"Вы выбрали {ROLE_TITLES[role]}: {_item_name(item_id)}.\nУкажите количество.", [[BACK], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+    return CraftResponse(f"Вы выбрали {ROLE_TITLES[role]}: {_item_name(item_id)}.\nУкажите количество.", [[ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
 
 
 def _add_alchemy_component_quantity(storage: Any, player: dict[str, Any], role: str, action: str) -> CraftResponse:
@@ -924,11 +976,11 @@ def _add_alchemy_component_quantity(storage: Any, player: dict[str, Any], role: 
     try:
         amount = int(str(action).strip())
     except ValueError:
-        return CraftResponse("Нужно отправить количество числом.", [[BACK], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse("Нужно отправить количество числом.", [[ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     if amount <= 0:
-        return CraftResponse("Количество должно быть больше нуля.", [[BACK], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse("Количество должно быть больше нуля.", [[ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     if _inventory_count(player, item_id=item_id) < amount:
-        return CraftResponse("В инвентаре нет такого количества.", [[BACK], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse("В инвентаре нет такого количества.", [[ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     draft = context.setdefault("draft", {"base": [], "active_ingredients": [], "catalysts": [], "stabilizers": [], "actions": []})
     key = ROLE_DRAFT_KEYS[role]
     if role == "base":
@@ -941,28 +993,28 @@ def _add_alchemy_component_quantity(storage: Any, player: dict[str, Any], role: 
     if role == "active":
         context["step"] = "ask_more_active"
         storage.update_player(player)
-        return CraftResponse(f"Добавлено: {_item_name(item_id)} ×{amount}.\nДобавить ещё один ингредиент?", [[YES, NO], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse(f"Добавлено: {_item_name(item_id)} ×{amount}.\nДобавить ещё один ингредиент?", [[YES, NO], [ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     if role == "catalyst":
         context["step"] = "ask_more_catalyst"
         storage.update_player(player)
-        return CraftResponse(f"Добавлено: {_item_name(item_id)} ×{amount}.\nДобавить ещё один катализатор?", [[YES, NO], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse(f"Добавлено: {_item_name(item_id)} ×{amount}.\nДобавить ещё один катализатор?", [[YES, NO], [ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     context["step"] = "ask_more_stabilizer"
     storage.update_player(player)
-    return CraftResponse(f"Добавлено: {_item_name(item_id)} ×{amount}.\nДобавить ещё один стабилизатор?", [[YES, NO], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+    return CraftResponse(f"Добавлено: {_item_name(item_id)} ×{amount}.\nДобавить ещё один стабилизатор?", [[YES, NO], [ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
 
 
 def _ask_add_catalyst(storage: Any, player: dict[str, Any]) -> CraftResponse:
     context = _active_context(player)
     context["step"] = "ask_add_catalyst"
     storage.update_player(player)
-    return CraftResponse("Хотите добавить катализатор?", [[YES, NO], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+    return CraftResponse("Хотите добавить катализатор?", [[YES, NO], [ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
 
 
 def _ask_add_stabilizer(storage: Any, player: dict[str, Any]) -> CraftResponse:
     context = _active_context(player)
     context["step"] = "ask_add_stabilizer"
     storage.update_player(player)
-    return CraftResponse("Хотите добавить стабилизатор?", [[YES, NO], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+    return CraftResponse("Хотите добавить стабилизатор?", [[YES, NO], [ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
 
 
 def _action_options() -> list[dict[str, str]]:
@@ -978,7 +1030,7 @@ def _show_action_order(storage: Any, player: dict[str, Any]) -> CraftResponse:
     lines = ["Выберите порядок действий.", "Отправьте номера действий через пробел.", "Пример: 1 8 5", ""]
     for index, action in enumerate(_action_options(), 1):
         lines.append(f"{index}. {action.get('name') or ACTION_NAMES.get(str(action.get('id')), str(action.get('id')))}")
-    return CraftResponse("\n".join(lines), [[BACK], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+    return CraftResponse("\n".join(lines), [[ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
 
 
 def _ingredient_total_from_draft(draft: dict[str, Any]) -> int:
@@ -1007,16 +1059,16 @@ def _parse_action_order(storage: Any, player: dict[str, Any], action: str) -> Cr
     context = _active_context(player)
     parts = str(action).strip().split()
     if not parts or any(not part.isdigit() for part in parts):
-        return CraftResponse("Нужно отправить номера действий через пробел.\nПример: 1 8 5", [[BACK], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse("Нужно отправить номера действий через пробел.\nПример: 1 8 5", [[ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     options = _action_options()
     indexes = [int(part) for part in parts]
     bad = next((index for index in indexes if index < 1 or index > len(options)), None)
     if bad is not None:
-        return CraftResponse(f"В списке нет варианта под номером {bad}.\nОтправьте номер ещё раз.", [[BACK], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse(f"В списке нет варианта под номером {bad}.\nОтправьте номер ещё раз.", [[ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     draft = context.setdefault("draft", {})
     stage, _ingredient_limit, action_limit = _stage_limits(draft)
     if len(indexes) > action_limit:
-        return CraftResponse("Вы выбрали слишком много действий для выбранных ингредиентов.", [[BACK], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse("Вы выбрали слишком много действий для выбранных ингредиентов.", [[ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     draft["actions"] = [str(options[index - 1]["id"]) for index in indexes]
     context["step"] = "confirm_experiment"
     storage.update_player(player)
@@ -1040,19 +1092,19 @@ def _show_experiment_summary(player: dict[str, Any]) -> CraftResponse:
     base = draft.get("base") if isinstance(draft.get("base"), list) else []
     active = draft.get("active_ingredients") if isinstance(draft.get("active_ingredients"), list) else []
     if not base or not active:
-        return CraftResponse("Для опыта нужна основа и хотя бы один активный ингредиент.", [[CHANGE_COMPOSITION], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse("Для опыта нужна основа и хотя бы один активный ингредиент.", [[CHANGE_COMPOSITION], [ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     if _ingredient_total_from_draft(draft) > ingredient_limit:
-        return CraftResponse("Вы выбрали слишком много ингредиентов для выбранной стадии.", [[CHANGE_COMPOSITION], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse("Вы выбрали слишком много ингредиентов для выбранной стадии.", [[CHANGE_COMPOSITION], [ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     actions = draft.get("actions") if isinstance(draft.get("actions"), list) else []
     if len(actions) > action_limit:
-        return CraftResponse("Вы выбрали слишком много действий для выбранных ингредиентов.", [[CHANGE_ACTIONS], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse("Вы выбрали слишком много действий для выбранных ингредиентов.", [[CHANGE_ACTIONS], [ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     lines = ["Проверьте состав опыта:", ""]
     for entry in components:
         lines.append(f"• {_item_name(str(entry.get('item_id')))} ×{safe_int(entry.get('amount'), 1)}")
     action_names = " → ".join(ACTION_NAMES.get(action, action) for action in actions) or "—"
     metrics = _alchemy_metrics(player, components, actions)
     lines.extend(["", f"Действия: {action_names}", f"Предполагаемая стадия: {stage}", f"Общий риск: {_risk_label(int(metrics['risk']))}."])
-    return CraftResponse("\n".join(lines), [[CONFIRM_EXPERIMENT], [CHANGE_COMPOSITION, CHANGE_ACTIONS], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+    return CraftResponse("\n".join(lines), [[CONFIRM_EXPERIMENT], [CHANGE_COMPOSITION, CHANGE_ACTIONS], [ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
 
 
 def _recipe_signature(recipe: dict[str, Any]) -> tuple[tuple[tuple[str, int], ...], tuple[str, ...]]:
@@ -1175,7 +1227,7 @@ def _start_alchemy_experiment(storage: Any, player: dict[str, Any]) -> CraftResp
     context = _active_context(player)
     draft = context.get("draft") if isinstance(context.get("draft"), dict) else {}
     if not _consume_draft_components(player, draft):
-        return CraftResponse("Не хватает ингредиентов для опыта.", [[CHANGE_COMPOSITION], [CANCEL]], WORKSHOP_BY_ID["alchemy"]["zone"])
+        return CraftResponse("Не хватает ингредиентов для опыта.", [[CHANGE_COMPOSITION], [ALCHEMY]], WORKSHOP_BY_ID["alchemy"]["zone"])
     recipe = _matching_alchemy_recipe(draft)
     metrics = _alchemy_metrics(player, _draft_components(draft), [str(action) for action in (draft.get("actions") if isinstance(draft.get("actions"), list) else [])])
     if recipe is None:
@@ -1216,21 +1268,19 @@ def _start_alchemy_experiment(storage: Any, player: dict[str, Any]) -> CraftResp
 
 
 def _alchemy_journal(storage: Any, player: dict[str, Any]) -> CraftResponse:
-    known = set(str(item) for item in player.get("unlocked_alchemy_recipes", []) if item)
-    recipes = [recipe for recipe in _recipes_for("alchemy", "Рецепты") if not known or recipe.get("id") in known]
-    lines = ["📖 Журнал рецептов", ""]
-    if not recipes:
-        lines.append("Известных рецептов пока нет.")
-    else:
-        for index, recipe in enumerate(recipes, 1):
-            lines.append(f"{index}. {_recipe_output_name(recipe)} — {recipe.get('stage') or 'стадия не указана'}")
-    storage.update_player(player)
-    return CraftResponse("\n".join(lines), [[BACK]], WORKSHOP_BY_ID["alchemy"]["zone"])
+    return _alchemy_menu_response(player, persist_storage=storage)
 
 
 def _handle_alchemy_action(storage: Any, player: dict[str, Any], action: str) -> CraftResponse:
     context = _active_context(player)
     step = str(context.get("step") or "alchemy_menu")
+    if action == CRAFT_DISTRICT:
+        _clear_context(player)
+        _set_city_zone(player, "seldar_craft_district")
+        storage.update_player(player)
+        return CraftResponse("⚒ Ремесленный квартал", _craft_district_buttons(), "seldar_craft_district")
+    if action in {ALCHEMY, BACK, CANCEL, RETURN_TO_CHOICE}:
+        return _alchemy_menu_response(player, persist_storage=storage)
     if action == ALCHEMY_BY_RECIPE:
         context.update({"workshop": "alchemy", "section": "Рецепты", "step": "list"})
         return _show_recipe_list(storage, player, "alchemy", "Рецепты")
@@ -1238,13 +1288,6 @@ def _handle_alchemy_action(storage: Any, player: dict[str, Any], action: str) ->
         return _begin_experiment(storage, player)
     if action == ALCHEMY_JOURNAL:
         return _alchemy_journal(storage, player)
-    if action == BACK:
-        return _alchemy_menu_response(player, persist_storage=storage)
-    if action == CANCEL:
-        _clear_context(player)
-        _set_city_zone(player, "seldar_craft_district")
-        storage.update_player(player)
-        return CraftResponse("Опыт отменён. Вы вернулись в Ремесленный квартал.", _craft_district_buttons(), "seldar_craft_district")
     if step == "choose_actions":
         return _parse_action_order(storage, player, action)
     if step.startswith("choose_"):
@@ -1327,6 +1370,18 @@ def handle_crafting_action(storage: Any, player: dict[str, Any], action: str) ->
             str(active_timer.get("location_id") or player.get("current_zone") or "seldar_craft_district"),
         )
 
+    if action in {BACK_TO_CENTRAL, CENTRAL_SQUARE}:
+        _clear_context(player)
+        _set_city_zone(player, "seldar_central_square")
+        storage.update_player(player)
+        return CraftResponse("🏙 Центральная площадь Селдара", [], "seldar_central_square")
+
+    if action == ENCHANTER:
+        return _maintenance_response(storage, player, "🔮 Мастерская чародея", "Мастерская временно закрыта на техническое обслуживание.")
+
+    if action == JEWELRY:
+        return _maintenance_response(storage, player, "💎 Ювелирная мастерская", "Мастерская временно закрыта на технические работы.")
+
     if action in WORKSHOPS:
         workshop_id = WORKSHOPS[action]["id"]
         return _show_workshop_menu(storage, player, workshop_id)
@@ -1355,7 +1410,7 @@ def handle_crafting_action(storage: Any, player: dict[str, Any], action: str) ->
     if action.startswith(CRAFT_PREFIX):
         recipe = _selected_recipe_from_context(player, action)
         if not recipe:
-            return CraftResponse("Такого номера крафта нет в текущем списке.", [[RETURN_TO_CHOICE], [CRAFT_DISTRICT]], WORKSHOP_BY_ID.get(workshop_id, WORKSHOP_BY_ID["smeltery"])["zone"])
+            return CraftResponse("Такого номера крафта нет в текущем списке.", _recipe_navigation_buttons(workshop_id, source="list"), WORKSHOP_BY_ID.get(workshop_id, WORKSHOP_BY_ID["smeltery"])["zone"])
         return _preview_recipe(storage, player, recipe)
     step = str(context.get("step") or "")
     if step == "preview" and action == CREATE:

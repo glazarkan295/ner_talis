@@ -95,6 +95,12 @@ async def send_city_response(
         platform=TELEGRAM_PLATFORM,
     )
 
+    for message in getattr(result, "extra_messages", ()):
+        await update.message.reply_text(
+            message,
+            disable_web_page_preview=True,
+        )
+
     await update.message.reply_text(
         result.text,
         reply_markup=make_keyboard(result.buttons),

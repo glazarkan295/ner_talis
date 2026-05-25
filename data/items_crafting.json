@@ -202,25 +202,27 @@
     "subtype": "junk",
     "quality": "common",
     "stackable": true,
-    "max_stack": 20,
+    "max_stack": 30,
     "description": "Непригодный остаток неудачного алхимического опыта.",
     "can_sell": true,
-    "sell_price_copper": 1,
-    "icon": "/assets/items/crafting/alchemy_sludge.png"
+    "sell_price_copper": 10,
+    "icon": "/assets/items/crafting/alchemy_sludge.png",
+    "asset_icon": "/assets/items/crafting/alchemy_sludge.png"
   },
   {
     "id": "suspicious_mixture",
-    "name": "Подозрительная смесь",
-    "name_ru": "Подозрительная смесь",
+    "name": "Подозрительное зелье",
+    "name_ru": "Подозрительное зелье",
     "category": "consumables",
     "type": "consumable",
     "subtype": "potion",
     "quality": "common",
     "stackable": true,
-    "max_stack": 20,
+    "max_stack": 10,
     "description": "Нестабильная смесь. Использовать её опасно.",
     "can_sell": true,
-    "sell_price_copper": 2,
-    "icon": "/assets/items/crafting/suspicious_mixture.png"
+    "sell_price_copper": 200,
+    "icon": "/assets/items/crafting/suspicious_mixture.png",
+    "asset_icon": "/assets/items/crafting/suspicious_mixture.png"
   }
 ]

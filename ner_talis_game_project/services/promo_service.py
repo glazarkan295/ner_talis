@@ -13,6 +13,7 @@ from project_paths import resolve_project_path
 from services.derived_stats_service import calculate_energy_stats
 from services.inventory_service import add_inventory_item, recalculate_inventory_overflow
 from services.item_registry import get_item_definition_by_id, registry_item_to_inventory_item, slugify_fallback_item_id
+from services.progression_service import grant_experience
 
 try:  # POSIX file lock for JSON fallback storage.
     import fcntl  # type: ignore
@@ -230,6 +231,11 @@ def apply_reward_to_player(player: dict[str, Any], reward: dict[str, Any]) -> di
         player["free_stat_points"] = int(player.get("free_stat_points", 0)) + int(reward.get("free_stat_points") or 0)
     if "free_skill_points" in reward:
         player["free_skill_points"] = int(player.get("free_skill_points", 0)) + int(reward.get("free_skill_points") or 0)
+
+    experience_reward = int(reward.get("experience", reward.get("exp", reward.get("xp", 0))) or 0)
+    if experience_reward > 0:
+        grant_experience(player, experience_reward)
+
     for item in reward.get("items") or []:
         if isinstance(item, dict):
             amount = int(item.get("amount", 1) or 0)

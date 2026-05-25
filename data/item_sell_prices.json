@@ -432,5 +432,19 @@
     "sell_price_copper": 20,
     "currency": "copper",
     "unit": "1 item"
+  },
+  {
+    "id": "alchemy_sludge",
+    "name_ru": "Алхимический шлак",
+    "sell_price_copper": 10,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "suspicious_mixture",
+    "name_ru": "Подозрительное зелье",
+    "sell_price_copper": 200,
+    "currency": "copper",
+    "unit": "1 item"
   }
 ]
