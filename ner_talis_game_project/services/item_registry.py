@@ -66,6 +66,45 @@ def validate_item_registry_duplicates(paths: list[Path] | None = None) -> None:
         raise ValueError(f"Conflicting duplicate item ids in registry: {details}")
 
 
+
+LEGACY_STARTING_LOOT_ID_ALIASES = {
+    "dense_hide": "simple_hide",
+    "jackal_hide": "simple_hide",
+    "small_hide": "simple_hide",
+    "small_pelt": "simple_hide",
+    "deer_hide": "simple_hide",
+    "wolf_hide": "simple_hide",
+    "boar_hide": "simple_hide",
+    "bear_hide": "simple_hide",
+    "strong_tendon": "simple_tendon",
+    "tough_tendon": "simple_tendon",
+    "strong_sinew": "simple_tendon",
+    "tough_sinew": "simple_tendon",
+}
+LEGACY_STARTING_LOOT_NAME_ALIASES = {
+    "плотная шкура": "simple_hide",
+    "шкура шакала": "simple_hide",
+    "маленькая шкура": "simple_hide",
+    "маленькая шкурка": "simple_hide",
+    "оленья шкура": "simple_hide",
+    "волчья шкура": "simple_hide",
+    "кабанья шкура": "simple_hide",
+    "медвежья шкура": "simple_hide",
+    "крепкое сухожилие": "simple_tendon",
+    "жёсткое сухожилие": "simple_tendon",
+    "жесткое сухожилие": "simple_tendon",
+}
+
+
+def canonical_starting_loot_id(value: str | None) -> str:
+    key = str(value or "").strip()
+    return LEGACY_STARTING_LOOT_ID_ALIASES.get(key, key)
+
+
+def canonical_starting_loot_name_id(value: str | None) -> str | None:
+    key = str(value or "").strip().casefold()
+    return LEGACY_STARTING_LOOT_NAME_ALIASES.get(key)
+
 CATEGORY_TO_RU = {
     "camp_food": "Еда",
     "consumable": "Расходники",
@@ -272,19 +311,29 @@ def get_item_definition(item_id_or_name: str, path: str | Path | None = None) ->
         return None
     by_id, by_name = _indexes(path)
     key = str(item_id_or_name).strip()
+    canonical_id = canonical_starting_loot_id(key)
+    if canonical_id in by_id:
+        return by_id.get(canonical_id)
+    name_alias_id = canonical_starting_loot_name_id(key)
+    if name_alias_id:
+        return by_id.get(name_alias_id)
     return by_id.get(key) or by_name.get(key.casefold())
 
 
 def get_item_definition_by_name(name: str, path: str | Path | None = None) -> dict[str, Any] | None:
     if not name:
         return None
-    return _indexes(path)[1].get(str(name).strip().casefold())
+    indexes = _indexes(path)
+    canonical_id = canonical_starting_loot_name_id(name)
+    if canonical_id:
+        return indexes[0].get(canonical_id)
+    return indexes[1].get(str(name).strip().casefold())
 
 
 def get_item_definition_by_id(item_id: str, path: str | Path | None = None) -> dict[str, Any] | None:
     if not item_id:
         return None
-    return _indexes(path)[0].get(str(item_id).strip())
+    return _indexes(path)[0].get(canonical_starting_loot_id(str(item_id).strip()))
 
 
 def registry_item_to_inventory_item(definition: dict[str, Any], amount: int = 1) -> dict[str, Any]:
@@ -321,7 +370,8 @@ def registry_item_to_inventory_item(definition: dict[str, Any], amount: int = 1)
 
 
 def build_inventory_item(name: str, amount: int = 1, *, item_id: str | None = None, max_stack: int | None = None) -> dict[str, Any]:
-    definition = get_item_definition_by_id(item_id or "") if item_id else None
+    canonical_item_id = canonical_starting_loot_id(item_id or "") if item_id else canonical_starting_loot_name_id(name)
+    definition = get_item_definition_by_id(canonical_item_id or "") if canonical_item_id else None
     definition = definition or get_item_definition_by_name(name)
     if definition:
         item = registry_item_to_inventory_item(definition, amount)
@@ -329,8 +379,8 @@ def build_inventory_item(name: str, amount: int = 1, *, item_id: str | None = No
             item["max_stack"] = max(1, int(max_stack))
         return item
     return {
-        "id": item_id or slugify_fallback_item_id(name),
-        "item_id": item_id or slugify_fallback_item_id(name),
+        "id": canonical_item_id or item_id or slugify_fallback_item_id(name),
+        "item_id": canonical_item_id or item_id or slugify_fallback_item_id(name),
         "name": name,
         "category": "Ресурсы",
         "type": "Материал",
@@ -346,6 +396,12 @@ def enrich_inventory_item(item: dict[str, Any]) -> dict[str, Any]:
     """Adds id/icon/category metadata to old inventory entries when possible."""
     if not isinstance(item, dict):
         return item
+    item = dict(item)
+    legacy_id = str(item.get("id") or item.get("item_id") or "").strip()
+    canonical_id = canonical_starting_loot_id(legacy_id) if legacy_id else canonical_starting_loot_name_id(str(item.get("name") or item.get("name_ru") or ""))
+    if canonical_id and canonical_id != legacy_id:
+        item["id"] = canonical_id
+        item["item_id"] = canonical_id
     definition = get_item_definition_by_id(str(item.get("id") or item.get("item_id") or ""))
     definition = definition or get_item_definition_by_name(str(item.get("name") or item.get("name_ru") or ""))
     if not definition:

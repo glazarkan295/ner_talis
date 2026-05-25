@@ -1019,6 +1019,23 @@ def _equipped_quiver(player: dict[str, Any], slot: str) -> dict[str, Any] | None
     return item if isinstance(item, dict) else None
 
 
+def _sync_quiver_ammo_stats(quiver: dict[str, Any]) -> None:
+    if not isinstance(quiver, dict):
+        return
+    capacity = max(0, _safe_int(quiver.get("capacity"), 0))
+    ammo_count = max(0, _safe_int(quiver.get("ammo_count"), 0))
+    if capacity > 0:
+        ammo_count = min(ammo_count, capacity)
+    quiver["ammo_count"] = ammo_count
+    stats = quiver.get("stats")
+    if not isinstance(stats, list):
+        stats = []
+    stats = [line for line in stats if "заряжено" not in str(line).casefold()]
+    if capacity > 0:
+        stats.append(f"Заряжено: {ammo_count}/{capacity}")
+    quiver["stats"] = stats
+
+
 def validate_skill_ammo(player: dict[str, Any], skill: dict[str, Any]) -> tuple[bool, str]:
     _weapon, requirement = skill_ammo_requirement_for_current_weapon(player, skill)
     if not requirement:
@@ -1031,6 +1048,7 @@ def validate_skill_ammo(player: dict[str, Any], skill: dict[str, Any]) -> tuple[
     required_ammo_id = str(requirement.get("ammo_item_id") or "")
     if required_ammo_id and str(quiver.get("ammo_item_id") or required_ammo_id) != required_ammo_id:
         return False, str(requirement.get("missing_loaded_ammo_message") or "В колчане нет нужных боеприпасов.")
+    _sync_quiver_ammo_stats(quiver)
     need = max(1, _safe_int(requirement.get("consume_per_use"), 1))
     if _safe_int(quiver.get("ammo_count"), 0) < need:
         return False, str(requirement.get("missing_loaded_ammo_message") or requirement.get("missing_message") or "В колчане нет нужного количества боеприпасов.")
@@ -1049,6 +1067,7 @@ def consume_skill_ammo(player: dict[str, Any], skill: dict[str, Any]) -> tuple[b
     quiver = _equipped_quiver(player, quiver_slot)
     need = max(1, _safe_int(requirement.get("consume_per_use"), 1))
     quiver["ammo_count"] = max(0, _safe_int(quiver.get("ammo_count"), 0) - need)
+    _sync_quiver_ammo_stats(quiver)
     ammo_name = str(requirement.get("ammo_short_name") or requirement.get("ammo_name") or "боеприпас")
     return True, f"Из колчана израсходовано: {ammo_name} ×{need}."
 

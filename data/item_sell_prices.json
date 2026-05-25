@@ -196,29 +196,8 @@
     "unit": "1 item"
   },
   {
-    "id": "wolf_hide",
-    "name_ru": "Волчья шкура",
-    "sell_price_copper": 5,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
     "id": "animal_fat",
     "name_ru": "Жир зверя",
-    "sell_price_copper": 10,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "tough_tendon",
-    "name_ru": "Жёсткое сухожилие",
-    "sell_price_copper": 10,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "tough_sinew",
-    "name_ru": "Жёсткое сухожилие",
     "sell_price_copper": 10,
     "currency": "copper",
     "unit": "1 item"
@@ -238,13 +217,6 @@
     "unit": "1 item"
   },
   {
-    "id": "boar_hide",
-    "name_ru": "Кабанья шкура",
-    "sell_price_copper": 7,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
     "id": "jackal_fang",
     "name_ru": "Клык шакала",
     "sell_price_copper": 6,
@@ -259,36 +231,8 @@
     "unit": "1 item"
   },
   {
-    "id": "strong_tendon",
-    "name_ru": "Крепкое сухожилие",
-    "sell_price_copper": 10,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "strong_sinew",
-    "name_ru": "Крепкое сухожилие",
-    "sell_price_copper": 10,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
     "id": "meat_piece",
     "name_ru": "Кусочек мяса",
-    "sell_price_copper": 5,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "small_hide",
-    "name_ru": "Маленькая шкура",
-    "sell_price_copper": 4,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "small_pelt",
-    "name_ru": "Маленькая шкурка",
     "sell_price_copper": 5,
     "currency": "copper",
     "unit": "1 item"
@@ -308,20 +252,6 @@
     "unit": "1 item"
   },
   {
-    "id": "bear_hide",
-    "name_ru": "Медвежья шкура",
-    "sell_price_copper": 7,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "deer_hide",
-    "name_ru": "Оленья шкура",
-    "sell_price_copper": 5,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
     "id": "sharp_tooth",
     "name_ru": "Острый зуб",
     "sell_price_copper": 6,
@@ -329,23 +259,9 @@
     "unit": "1 item"
   },
   {
-    "id": "dense_hide",
-    "name_ru": "Плотная шкура",
-    "sell_price_copper": 8,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
     "id": "deer_antler",
     "name_ru": "Рог оленя",
     "sell_price_copper": 8,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "jackal_hide",
-    "name_ru": "Шкура шакала",
-    "sell_price_copper": 6,
     "currency": "copper",
     "unit": "1 item"
   },
@@ -560,5 +476,15 @@
       "uncommon": 300,
       "rare": 500
     }
+  },
+  {
+    "id": "simple_hide",
+    "name_ru": "Простая шкура",
+    "sell_price_copper": 10
+  },
+  {
+    "id": "simple_tendon",
+    "name_ru": "Простое сухожилие",
+    "sell_price_copper": 10
   }
 ]

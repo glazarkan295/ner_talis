@@ -102,14 +102,33 @@ class CollectedItemsIntegrationTest(unittest.TestCase):
         self.assertEqual(common.get("quality"), "обычный")
         self.assertLess(common.get("sell_price_copper", 0), 300)
 
-    def test_type_based_leatherwork_recipes_use_existing_hide_and_tendon_loot(self):
+    def test_leatherwork_blanks_use_canonical_simple_hide_and_tendon(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+        self.add_item(player, "simple_tendon", 3)
+        self.add_item(player, "simple_hide", 1)
+        storage.update_player(player)
+
+        process_world_action(storage, player, "Кожевенная мастерская", "telegram")
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-COLLECTED"), "Заготовки", "telegram")
+        self.assertIn("✅ Верёвка", result.text)
+        self.assertIn("Простое сухожилие ×3", result.text)
+        self.assertIn("✅ Выделанная кожа", result.text)
+        self.assertIn("Простая шкура ×1", result.text)
+
+    def test_legacy_hide_and_tendon_ids_are_canonicalized_for_old_inventories(self):
         tmp, storage, player = self.make_storage_player()
         self.addCleanup(tmp.cleanup)
         self.add_item(player, "strong_tendon", 3)
         self.add_item(player, "small_pelt", 1)
         storage.update_player(player)
 
-        process_world_action(storage, player, "Кожевенная мастерская", "telegram")
+        restored = storage.get_player_by_game_id("NT-COLLECTED")
+        ids = {item.get("id") for item in restored["inventory"]}
+        self.assertIn("simple_tendon", ids)
+        self.assertIn("simple_hide", ids)
+
+        process_world_action(storage, restored, "Кожевенная мастерская", "telegram")
         result = process_world_action(storage, storage.get_player_by_game_id("NT-COLLECTED"), "Заготовки", "telegram")
         self.assertIn("✅ Верёвка", result.text)
         self.assertIn("✅ Выделанная кожа", result.text)

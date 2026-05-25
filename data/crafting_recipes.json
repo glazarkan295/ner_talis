@@ -398,7 +398,7 @@
     "craft_time_seconds": 60
   },
   {
-    "id": "leatherwork_tanned_leather_from_small_pelt",
+    "id": "leatherwork_tanned_leather_from_simple_hide",
     "workshop": "leatherwork",
     "section": "Заготовки",
     "output": {
@@ -408,7 +408,8 @@
     },
     "ingredients": [
       {
-        "item_id": "small_pelt",
+        "item_id": "simple_hide",
+        "name": "Простая шкура",
         "amount": 1,
         "role": "Ингредиент"
       }
@@ -467,11 +468,10 @@
     },
     "ingredients": [
       {
-        "name": "Сухожилия",
+        "item_id": "simple_tendon",
+        "name": "Простое сухожилие",
         "amount": 3,
-        "role": "Ингредиент",
-        "match_type": "any_item_type",
-        "item_type": "tendon"
+        "role": "Ингредиент"
       }
     ],
     "description": "Создать Верёвка.",

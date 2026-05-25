@@ -767,25 +767,6 @@
         "sell_price_copper": 6
       },
       {
-        "id": "dense_hide",
-        "name_ru": "Плотная шкура",
-        "category": "trophies",
-        "subtype": "hide",
-        "item_class": "beast_trophy",
-        "quality": "common",
-        "stackable": true,
-        "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/trophies/dense_hide.png",
-        "source_location": "bull",
-        "integration_tags": [
-          "inventory_item",
-          "trophy",
-          "crafting_material"
-        ],
-        "can_sell": true,
-        "sell_price_copper": 8
-      },
-      {
         "id": "gopher_claw",
         "name_ru": "Коготок суслика",
         "category": "trophies",
@@ -814,25 +795,6 @@
         "stackable": true,
         "stack_size": 20,
         "icon": "assets/items/hilly_meadows/trophies/jackal_fang.png",
-        "source_location": "wild_jackal",
-        "integration_tags": [
-          "inventory_item",
-          "trophy",
-          "crafting_material"
-        ],
-        "can_sell": true,
-        "sell_price_copper": 6
-      },
-      {
-        "id": "jackal_hide",
-        "name_ru": "Шкура шакала",
-        "category": "trophies",
-        "subtype": "hide",
-        "item_class": "beast_trophy",
-        "quality": "common",
-        "stackable": true,
-        "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/trophies/jackal_hide.png",
         "source_location": "wild_jackal",
         "integration_tags": [
           "inventory_item",
@@ -900,76 +862,44 @@
         "sell_price_copper": 6
       },
       {
-        "id": "small_hide",
-        "name_ru": "Маленькая шкура",
+        "id": "simple_hide",
+        "name_ru": "Простая шкура",
         "category": "trophies",
         "subtype": "hide",
         "item_class": "beast_trophy",
         "quality": "common",
         "stackable": true,
-        "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/trophies/small_hide.png",
-        "source_location": "oversized_gopher",
+        "stack_size": 30,
+        "max_stack": 30,
+        "icon": "assets/items/starter_loot/simple_hide.png",
+        "source_location": "starter_mobs",
         "integration_tags": [
           "inventory_item",
           "trophy",
-          "crafting_material"
-        ],
-        "can_sell": true,
-        "sell_price_copper": 4
-      },
-      {
-        "id": "small_pelt",
-        "name_ru": "Маленькая шкурка",
-        "category": "trophies",
-        "subtype": "pelt",
-        "item_class": "beast_trophy",
-        "quality": "common",
-        "stackable": true,
-        "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/trophies/small_pelt.png",
-        "source_location": "rabid_rabbit",
-        "integration_tags": [
-          "inventory_item",
-          "trophy",
-          "crafting_material"
-        ],
-        "can_sell": true,
-        "sell_price_copper": 5
-      },
-      {
-        "id": "strong_tendon",
-        "name_ru": "Крепкое сухожилие",
-        "category": "trophies",
-        "subtype": "tendon",
-        "item_class": "beast_trophy",
-        "quality": "common",
-        "stackable": true,
-        "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/trophies/strong_tendon.png",
-        "source_location": "bull",
-        "integration_tags": [
-          "inventory_item",
-          "trophy",
+          "mob_loot",
+          "starting_locations",
           "crafting_material"
         ],
         "can_sell": true,
         "sell_price_copper": 10
       },
       {
-        "id": "tough_tendon",
-        "name_ru": "Жёсткое сухожилие",
+        "id": "simple_tendon",
+        "name_ru": "Простое сухожилие",
         "category": "trophies",
         "subtype": "tendon",
         "item_class": "beast_trophy",
         "quality": "common",
         "stackable": true,
-        "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/trophies/tough_tendon.png",
-        "source_location": "wild_jackal",
+        "stack_size": 30,
+        "max_stack": 30,
+        "icon": "assets/items/starter_loot/simple_tendon.png",
+        "source_location": "starter_mobs",
         "integration_tags": [
           "inventory_item",
           "trophy",
+          "mob_loot",
+          "starting_locations",
           "crafting_material"
         ],
         "can_sell": true,
@@ -1441,25 +1371,6 @@
           "sell_price_copper": 6
         },
         {
-          "id": "dense_hide",
-          "name_ru": "Плотная шкура",
-          "category": "trophies",
-          "subtype": "hide",
-          "item_class": "beast_trophy",
-          "quality": "common",
-          "stackable": true,
-          "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/trophies/dense_hide.png",
-          "source_location": "bull",
-          "integration_tags": [
-            "inventory_item",
-            "trophy",
-            "crafting_material"
-          ],
-          "can_sell": true,
-          "sell_price_copper": 8
-        },
-        {
           "id": "gopher_claw",
           "name_ru": "Коготок суслика",
           "category": "trophies",
@@ -1488,25 +1399,6 @@
           "stackable": true,
           "stack_size": 20,
           "icon": "assets/items/hilly_meadows/trophies/jackal_fang.png",
-          "source_location": "wild_jackal",
-          "integration_tags": [
-            "inventory_item",
-            "trophy",
-            "crafting_material"
-          ],
-          "can_sell": true,
-          "sell_price_copper": 6
-        },
-        {
-          "id": "jackal_hide",
-          "name_ru": "Шкура шакала",
-          "category": "trophies",
-          "subtype": "hide",
-          "item_class": "beast_trophy",
-          "quality": "common",
-          "stackable": true,
-          "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/trophies/jackal_hide.png",
           "source_location": "wild_jackal",
           "integration_tags": [
             "inventory_item",
@@ -1572,82 +1464,6 @@
           ],
           "can_sell": true,
           "sell_price_copper": 6
-        },
-        {
-          "id": "small_hide",
-          "name_ru": "Маленькая шкура",
-          "category": "trophies",
-          "subtype": "hide",
-          "item_class": "beast_trophy",
-          "quality": "common",
-          "stackable": true,
-          "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/trophies/small_hide.png",
-          "source_location": "oversized_gopher",
-          "integration_tags": [
-            "inventory_item",
-            "trophy",
-            "crafting_material"
-          ],
-          "can_sell": true,
-          "sell_price_copper": 4
-        },
-        {
-          "id": "small_pelt",
-          "name_ru": "Маленькая шкурка",
-          "category": "trophies",
-          "subtype": "pelt",
-          "item_class": "beast_trophy",
-          "quality": "common",
-          "stackable": true,
-          "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/trophies/small_pelt.png",
-          "source_location": "rabid_rabbit",
-          "integration_tags": [
-            "inventory_item",
-            "trophy",
-            "crafting_material"
-          ],
-          "can_sell": true,
-          "sell_price_copper": 5
-        },
-        {
-          "id": "strong_tendon",
-          "name_ru": "Крепкое сухожилие",
-          "category": "trophies",
-          "subtype": "tendon",
-          "item_class": "beast_trophy",
-          "quality": "common",
-          "stackable": true,
-          "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/trophies/strong_tendon.png",
-          "source_location": "bull",
-          "integration_tags": [
-            "inventory_item",
-            "trophy",
-            "crafting_material"
-          ],
-          "can_sell": true,
-          "sell_price_copper": 10
-        },
-        {
-          "id": "tough_tendon",
-          "name_ru": "Жёсткое сухожилие",
-          "category": "trophies",
-          "subtype": "tendon",
-          "item_class": "beast_trophy",
-          "quality": "common",
-          "stackable": true,
-          "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/trophies/tough_tendon.png",
-          "source_location": "wild_jackal",
-          "integration_tags": [
-            "inventory_item",
-            "trophy",
-            "crafting_material"
-          ],
-          "can_sell": true,
-          "sell_price_copper": 10
         }
       ]
     }

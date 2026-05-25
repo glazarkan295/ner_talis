@@ -121,30 +121,6 @@
       "image_256": "assets_256/items/ordinary_forest/events/forest_tick.png"
     },
     {
-      "id": "tough_sinew",
-      "name_ru": "Жёсткое сухожилие",
-      "category": "trophies",
-      "section": "loot",
-      "source": "Обыкновенный лес / волки",
-      "rarity": "common",
-      "note": "Звериный трофей.",
-      "image": "assets/items/ordinary_forest/trophies/tough_sinew.png",
-      "image_1024": "assets_1024/items/ordinary_forest/trophies/tough_sinew.png",
-      "image_256": "assets_256/items/ordinary_forest/trophies/tough_sinew.png"
-    },
-    {
-      "id": "deer_hide",
-      "name_ru": "Оленья шкура",
-      "category": "trophies",
-      "section": "loot",
-      "source": "Обыкновенный лес / разъярённый олень",
-      "rarity": "common",
-      "note": "Звериный трофей.",
-      "image": "assets/items/ordinary_forest/trophies/deer_hide.png",
-      "image_1024": "assets_1024/items/ordinary_forest/trophies/deer_hide.png",
-      "image_256": "assets_256/items/ordinary_forest/trophies/deer_hide.png"
-    },
-    {
       "id": "deer_antler",
       "name_ru": "Рог оленя",
       "category": "trophies",
@@ -157,18 +133,6 @@
       "image_256": "assets_256/items/ordinary_forest/trophies/deer_antler.png"
     },
     {
-      "id": "strong_sinew",
-      "name_ru": "Крепкое сухожилие",
-      "category": "trophies",
-      "section": "loot",
-      "source": "Обыкновенный лес / разъярённый олень",
-      "rarity": "common",
-      "note": "Звериный трофей.",
-      "image": "assets/items/ordinary_forest/trophies/strong_sinew.png",
-      "image_1024": "assets_1024/items/ordinary_forest/trophies/strong_sinew.png",
-      "image_256": "assets_256/items/ordinary_forest/trophies/strong_sinew.png"
-    },
-    {
       "id": "old_bear_trap",
       "name_ru": "Старый капкан",
       "category": "events",
@@ -179,18 +143,6 @@
       "image": "assets/items/ordinary_forest/events/old_bear_trap.png",
       "image_1024": "assets_1024/items/ordinary_forest/events/old_bear_trap.png",
       "image_256": "assets_256/items/ordinary_forest/events/old_bear_trap.png"
-    },
-    {
-      "id": "wolf_hide",
-      "name_ru": "Волчья шкура",
-      "category": "trophies",
-      "section": "loot",
-      "source": "Обыкновенный лес / волки",
-      "rarity": "common",
-      "note": "Звериный трофей.",
-      "image": "assets/items/ordinary_forest/trophies/wolf_hide.png",
-      "image_1024": "assets_1024/items/ordinary_forest/trophies/wolf_hide.png",
-      "image_256": "assets_256/items/ordinary_forest/trophies/wolf_hide.png"
     },
     {
       "id": "bear_fang",
@@ -217,18 +169,6 @@
       "image_256": "assets_256/items/ordinary_forest/events/mire_trap.png"
     },
     {
-      "id": "boar_hide",
-      "name_ru": "Кабанья шкура",
-      "category": "trophies",
-      "section": "loot",
-      "source": "Обыкновенный лес / кабаны",
-      "rarity": "common",
-      "note": "Звериный трофей.",
-      "image": "assets/items/ordinary_forest/trophies/boar_hide.png",
-      "image_1024": "assets_1024/items/ordinary_forest/trophies/boar_hide.png",
-      "image_256": "assets_256/items/ordinary_forest/trophies/boar_hide.png"
-    },
-    {
       "id": "wolf_fang",
       "name_ru": "Волчий клык",
       "category": "trophies",
@@ -251,18 +191,6 @@
       "image": "assets/items/ordinary_forest/trophies/animal_fat.png",
       "image_1024": "assets_1024/items/ordinary_forest/trophies/animal_fat.png",
       "image_256": "assets_256/items/ordinary_forest/trophies/animal_fat.png"
-    },
-    {
-      "id": "bear_hide",
-      "name_ru": "Медвежья шкура",
-      "category": "trophies",
-      "section": "loot",
-      "source": "Обыкновенный лес / медведь",
-      "rarity": "common",
-      "note": "Звериный трофей.",
-      "image": "assets/items/ordinary_forest/trophies/bear_hide.png",
-      "image_1024": "assets_1024/items/ordinary_forest/trophies/bear_hide.png",
-      "image_256": "assets_256/items/ordinary_forest/trophies/bear_hide.png"
     },
     {
       "id": "bear_claw",
