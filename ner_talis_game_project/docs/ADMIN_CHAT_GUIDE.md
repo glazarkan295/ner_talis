@@ -65,6 +65,12 @@ ADMIN_BACKUP_DIR=data/admin_backups
 /admin_promo_add START100 100 {"money":1000,"items":[{"item_id":"small_potion","amount":3}]}
 ```
 
+Промокод на опыт:
+
+```text
+/admin_promo_add EXP4500 100 {"experience":4500}
+```
+
 ### Массовая загрузка промокодов
 
 ```text

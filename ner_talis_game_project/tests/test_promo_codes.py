@@ -30,7 +30,7 @@ class PromoCodeCreationTest(unittest.TestCase):
         else:
             os.environ["ADMIN_AUDIT_LOG_PATH"] = self._old_audit_path
 
-    def _make_player(self, storage, *, platform="telegram", external_user_id="111", name="ПромоТест"):
+    def _make_player(self, storage, *, platform="telegram", external_user_id="111", name="ПромоТест", race_id="human"):
         races = load_races("data/races.json")
         game_id = storage.generate_game_id()
         player = create_player(
@@ -38,7 +38,7 @@ class PromoCodeCreationTest(unittest.TestCase):
             platform=platform,
             external_user_id=external_user_id,
             name=name,
-            race_id="human",
+            race_id=race_id,
             races=races,
         )
         storage.save_new_player(player, platform, external_user_id)
@@ -81,6 +81,33 @@ class PromoCodeCreationTest(unittest.TestCase):
             promo_data = load_promo_data(storage)
             self.assertEqual(promo_data["codes"]["MEAT20"]["uses_left"], 1)
             self.assertIn(game_id, promo_data["codes"]["MEAT20"]["used_by"])
+
+
+    def test_promo_experience_reward_uses_progression_handler_and_levels_player(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.environ["PROMO_CODES_PATH"] = str(Path(tmp_dir) / "promo_codes.json")
+            os.environ["ADMIN_AUDIT_LOG_PATH"] = str(Path(tmp_dir) / "admin_audit.log")
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            game_id = self._make_player(storage, race_id="elf")
+
+            result = execute_admin_command(
+                text='/admin_promo_add EXP4500 1 {"experience":4500}',
+                storage=storage,
+                platform="telegram",
+                admin_user_id="999",
+            )
+            ok, message = redeem_promo_code(storage, game_id, "exp4500")
+
+            self.assertTrue(result.handled)
+            self.assertIn("Промокод EXP4500 создан", result.text)
+            self.assertTrue(ok, message)
+            player = storage.get_player_by_game_id(game_id)
+            self.assertEqual(player["total_experience"], 4500)
+            self.assertEqual(player["experience"], 0)
+            self.assertEqual(player["level"], 10)
+            self.assertEqual(player["experience_to_next"], 1000)
+            self.assertEqual(player["free_stat_points"], 45)
+            self.assertEqual(player["free_skill_points"], 18)
 
     def test_redeem_rejects_second_use_by_same_player(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -200,3 +200,32 @@ class ButtonRoutingIntegrityTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class OrderStoneMessageSplitTest(unittest.TestCase):
+    def make_storage_player(self, level=10):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        storage = JsonStorage(str(Path(tmp.name) / "players.json"))
+        player = create_player(
+            game_id="NT-STONE-SPLIT",
+            platform="telegram",
+            external_user_id="333",
+            name="Камень",
+            race_id="human",
+            races=load_races("data/races.json"),
+        )
+        player["level"] = level
+        player["current_city"] = "seldar"
+        player["current_zone"] = "seldar_town_hall"
+        player["location_id"] = "seldar_town_hall"
+        storage.save_new_player(player, "telegram", "333")
+        return storage, storage.get_player_by_game_id("NT-STONE-SPLIT")
+
+    def test_order_stone_sends_stone_and_administrator_text_separately(self):
+        storage, player = self.make_storage_player(level=10)
+        result = process_world_action(storage, player, ORDER_STONE, "telegram")
+
+        self.assertTrue(result.extra_messages)
+        self.assertIn("камню", result.extra_messages[0])
+        self.assertIn("Распорядитель", result.text)
+        self.assertNotIn("Распорядитель", result.extra_messages[0])

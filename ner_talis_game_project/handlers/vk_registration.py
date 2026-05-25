@@ -459,6 +459,8 @@ class VkRegistrationBot:
             action=action,
             platform=VK_PLATFORM,
         )
+        for message in getattr(result, "extra_messages", ()):
+            self.send(peer_id, message)
         self.send(peer_id, result.text, make_keyboard(result.buttons))
         self.schedule_timer_notification(peer_id, result.scheduled_timer)
 

@@ -32,6 +32,7 @@ def admin_help_text() -> str:
         "Промокоды:\n"
         "/admin_promo_add CODE USES REWARD_JSON\n"
         "Пример: /admin_promo_add START100 100 {\"money\":1000,\"items\":[{\"item_id\":\"small_potion\",\"amount\":3}]}\n"
+        "Пример опыта: /admin_promo_add EXP4500 100 {\"experience\":4500}\n"
         "/admin_promo_bulk JSON_ARRAY — загрузить сразу несколько промокодов.\n"
         "Пример: /admin_promo_bulk [{\"code\":\"A1\",\"uses_left\":10,\"reward\":{\"money\":500}}]\n"
         "/admin_promo_off CODE — отключить промокод.\n"

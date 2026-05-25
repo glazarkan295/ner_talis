@@ -140,3 +140,101 @@ class CraftingWorkshopsAndAlchemyTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class CraftingNavigationFixesTest(unittest.TestCase):
+    def make_storage_player(self):
+        tmp = tempfile.TemporaryDirectory()
+        storage = JsonStorage(str(Path(tmp.name) / "players.json"))
+        player = create_player(
+            game_id="NT-CRAFT-NAV",
+            platform="telegram",
+            external_user_id="222",
+            name="Навигатор",
+            race_id="human",
+            races=load_races("data/races.json"),
+        )
+        player["inventory"] = []
+        storage.save_new_player(player, "telegram", "222")
+        return tmp, storage, storage.get_player_by_game_id("NT-CRAFT-NAV")
+
+    def test_alchemy_by_recipe_shows_only_unlocked_recipes_and_local_buttons(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+
+        process_world_action(storage, player, "Алхимическая мастерская", "telegram")
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Создать по рецепту", "telegram")
+        flat = sum(result.buttons, [])
+        self.assertIn("Открытых алхимических рецептов пока нет", result.text)
+        self.assertNotIn("Крафт №1", flat)
+        self.assertIn("Алхимическая мастерская", flat)
+        self.assertNotIn("Вернуться к выбору", flat)
+        self.assertNotIn("Ремесленный квартал", flat)
+
+        player = storage.get_player_by_game_id("NT-CRAFT-NAV")
+        player["unlocked_alchemy_recipes"] = ["alchemy_simple_healing_potion_legacy"]
+        storage.update_player(player)
+        result = process_world_action(storage, player, "Создать по рецепту", "telegram")
+        flat = sum(result.buttons, [])
+        self.assertIn("Простое зелье лечения", result.text)
+        self.assertIn("Крафт №1", flat)
+        self.assertIn("Алхимическая мастерская", flat)
+        self.assertNotIn("Журнал рецептов", flat)
+
+    def test_alchemy_experiment_cancel_and_back_buttons_return_to_alchemy(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+        add_inventory_item(player, "clean_water", 1, item_id="clean_water")
+        storage.update_player(player)
+
+        process_world_action(storage, player, "Алхимическая мастерская", "telegram")
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Эксперимент", "telegram")
+        flat = sum(result.buttons, [])
+        self.assertIn("Алхимическая мастерская", flat)
+        self.assertNotIn("Отмена", flat)
+        self.assertNotIn("Назад", flat)
+
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Алхимическая мастерская", "telegram")
+        self.assertIn("Создать по рецепту", sum(result.buttons, []))
+        self.assertEqual(storage.get_player_by_game_id("NT-CRAFT-NAV").get("current_zone"), "seldar_alchemy_workshop")
+
+    def test_forge_and_leatherwork_sections_use_workshop_back_buttons(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+
+        process_world_action(storage, player, "Кузница", "telegram")
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Оружие", "telegram")
+        flat = sum(result.buttons, [])
+        self.assertIn("Кузница", flat)
+        self.assertNotIn("Вернуться к выбору", flat)
+
+        process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Кожевенная мастерская", "telegram")
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Броня", "telegram")
+        flat = sum(result.buttons, [])
+        self.assertIn("Кожевенная мастерская", flat)
+        self.assertNotIn("Вернуться к выбору", flat)
+
+    def test_smeltery_entry_has_no_return_to_choice_button(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+
+        result = process_world_action(storage, player, "Плавильня", "telegram")
+        flat = sum(result.buttons, [])
+        self.assertNotIn("Вернуться к выбору", flat)
+        self.assertIn("Ремесленный квартал", flat)
+
+    def test_blocked_workshops_and_central_square_navigation(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+
+        process_world_action(storage, player, "Ремесленный квартал", "telegram")
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Ювелирная мастерская", "telegram")
+        self.assertIn("технические работы", result.text)
+        self.assertEqual(storage.get_player_by_game_id("NT-CRAFT-NAV").get("current_zone"), "seldar_craft_district")
+
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Мастерская чародея", "telegram")
+        self.assertIn("техническое обслуживание", result.text)
+        self.assertEqual(storage.get_player_by_game_id("NT-CRAFT-NAV").get("current_zone"), "seldar_craft_district")
+
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "⬅️ Центральная площадь", "telegram")
+        self.assertIn("Центральная площадь", result.text)
+        self.assertEqual(storage.get_player_by_game_id("NT-CRAFT-NAV").get("current_zone"), "seldar_central_square")
