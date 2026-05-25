@@ -17,7 +17,9 @@ ENV PORT=8080
 COPY ner_talis_game_project/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY timeweb_start.py ./timeweb_start.py
+COPY data ./data
+COPY ner_talis_game_project ./ner_talis_game_project
 COPY --from=web-builder /web/dist ./web/dist
 
 EXPOSE 8080
