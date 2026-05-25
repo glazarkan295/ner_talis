@@ -32,28 +32,16 @@
 | `dry_log` | Сухое бревно | 4 |
 | `bull_horn` | Бычий рог | 6 |
 | `wolf_fang` | Волчий клык | 8 |
-| `wolf_hide` | Волчья шкура | 5 |
 | `animal_fat` | Жир зверя | 10 |
-| `tough_tendon` | Жёсткое сухожилие | 10 |
-| `tough_sinew` | Жёсткое сухожилие | 10 |
 | `rabid_rabbit_tooth` | Зуб бешеного кролика | 6 |
 | `boar_tusk` | Кабаний клык | 6 |
-| `boar_hide` | Кабанья шкура | 7 |
 | `jackal_fang` | Клык шакала | 6 |
 | `gopher_claw` | Коготок суслика | 6 |
-| `strong_tendon` | Крепкое сухожилие | 10 |
-| `strong_sinew` | Крепкое сухожилие | 10 |
 | `meat_piece` | Кусочек мяса | 5 |
-| `small_hide` | Маленькая шкура | 4 |
-| `small_pelt` | Маленькая шкурка | 5 |
 | `bear_fang` | Медвежий клык | 9 |
 | `bear_claw` | Медвежий коготь | 6 |
-| `bear_hide` | Медвежья шкура | 7 |
-| `deer_hide` | Оленья шкура | 5 |
 | `sharp_tooth` | Острый зуб | 6 |
-| `dense_hide` | Плотная шкура | 8 |
 | `deer_antler` | Рог оленя | 8 |
-| `jackal_hide` | Шкура шакала | 6 |
 | `decent_belt` | Неплохой пояс | 100 |
 | `old_gloves` | Старые перчатки | 30 |
 | `old_knife` | Старый нож | 7 |
@@ -66,3 +54,19 @@
 | `starter_old_boots` | Старые сапоги | 20 |
 | `starter_tunic` | Туника | 20 |
 | `starter_canvas_pants` | Холщевые штаны | 20 |
+| `alchemy_sludge` | Алхимический шлак | 10 |
+| `suspicious_mixture` | Подозрительное зелье | 200 |
+| `simple_axe` | Простой топор | 100 |
+| `simple_hammer` | Простой молот | 100 |
+| `simple_bow` | Простой лук | 100 |
+| `simple_crossbow` | Простой арбалет | 120 |
+| `simple_shield` | Простой щит | 90 |
+| `simple_magic_book` | Простая книга | 110 |
+| `simple_leather_helmet` | Простой кожаный шлем | 150 |
+| `simple_leather_belt_reworked` | Простой кожаный пояс | 150 |
+| `simple_leather_chestpiece` | Простой кожаный нагрудник | 150 |
+| `simple_leather_boots` | Простые кожаные ботинки | 150 |
+| `simple_leather_pants` | Простые кожаные штаны | 150 |
+| `simple_leather_gloves` | Простые кожаные перчатки | 150 |
+| `simple_hide` | Простая шкура | 10 |
+| `simple_tendon` | Простое сухожилие | 10 |

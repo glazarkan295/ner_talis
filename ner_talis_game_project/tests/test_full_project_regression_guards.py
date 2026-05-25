@@ -211,14 +211,27 @@ class FullProjectRegressionGuardsTest(unittest.TestCase):
         self.assertEqual(categories["raw_meat"], "Добыча")
 
     def test_starting_mob_hide_and_tendon_loot_is_canonical(self):
+        legacy_loot_ids = {
+            "dense_hide",
+            "jackal_hide",
+            "small_hide",
+            "small_pelt",
+            "deer_hide",
+            "wolf_hide",
+            "boar_hide",
+            "bear_hide",
+            "strong_tendon",
+            "tough_tendon",
+            "strong_sinew",
+            "tough_sinew",
+        }
         hilly_player = {"game_id": "NT-HILLY", "level": 1, "inventory": [], "equipment": {}}
         hilly_battle = {"return_location": "hilly_meadows", "enemies": [{"name": "Бык", "level": 1, "rank": "normal"}]}
         grant_battle_rewards(hilly_player, hilly_battle, AlwaysLootRandom())
         hilly_ids = {item.get("id") for item in hilly_player["inventory"]}
         self.assertIn("simple_tendon", hilly_ids)
         self.assertIn("simple_hide", hilly_ids)
-        self.assertNotIn("strong_tendon", hilly_ids)
-        self.assertNotIn("strong_sinew", hilly_ids)
+        self.assertTrue(hilly_ids.isdisjoint(legacy_loot_ids))
 
         forest_player = {"game_id": "NT-FOREST", "level": 10, "inventory": [], "equipment": {}}
         forest_battle = {"return_location": "ordinary_forest", "enemies": [{"name": "Разъярённый олень", "level": 10, "rank": "normal"}]}
@@ -226,8 +239,7 @@ class FullProjectRegressionGuardsTest(unittest.TestCase):
         forest_ids = {item.get("id") for item in forest_player["inventory"]}
         self.assertIn("simple_tendon", forest_ids)
         self.assertIn("simple_hide", forest_ids)
-        self.assertNotIn("strong_sinew", forest_ids)
-        self.assertNotIn("strong_tendon", forest_ids)
+        self.assertTrue(forest_ids.isdisjoint(legacy_loot_ids))
 
     def test_vk_keyboard_keeps_priority_navigation_and_battle_buttons(self):
         buttons = [[f"Предмет рынка {index}"] for index in range(50)]

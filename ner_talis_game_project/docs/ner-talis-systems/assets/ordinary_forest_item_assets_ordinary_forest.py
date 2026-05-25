@@ -111,30 +111,6 @@ ORDINARY_FOREST_ITEM_ASSETS = [
     "description": "Иконка опасности/ловушки; не предмет обычной добычи."
   },
   {
-    "item_id": "tough_sinew",
-    "name": "Жёсткое сухожилие",
-    "category": "trophies",
-    "inventory_section": "loot",
-    "rarity": "common",
-    "source": "Обыкновенный лес / волки",
-    "icon": "assets/items/ordinary_forest/trophies/tough_sinew.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/tough_sinew.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/tough_sinew.png",
-    "description": "Звериный трофей."
-  },
-  {
-    "item_id": "deer_hide",
-    "name": "Оленья шкура",
-    "category": "trophies",
-    "inventory_section": "loot",
-    "rarity": "common",
-    "source": "Обыкновенный лес / разъярённый олень",
-    "icon": "assets/items/ordinary_forest/trophies/deer_hide.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/deer_hide.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/deer_hide.png",
-    "description": "Звериный трофей."
-  },
-  {
     "item_id": "deer_antler",
     "name": "Рог оленя",
     "category": "trophies",
@@ -144,18 +120,6 @@ ORDINARY_FOREST_ITEM_ASSETS = [
     "icon": "assets/items/ordinary_forest/trophies/deer_antler.png",
     "icon_1024": "assets_1024/items/ordinary_forest/trophies/deer_antler.png",
     "icon_256": "assets_256/items/ordinary_forest/trophies/deer_antler.png",
-    "description": "Звериный трофей."
-  },
-  {
-    "item_id": "strong_sinew",
-    "name": "Крепкое сухожилие",
-    "category": "trophies",
-    "inventory_section": "loot",
-    "rarity": "common",
-    "source": "Обыкновенный лес / разъярённый олень",
-    "icon": "assets/items/ordinary_forest/trophies/strong_sinew.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/strong_sinew.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/strong_sinew.png",
     "description": "Звериный трофей."
   },
   {
@@ -169,18 +133,6 @@ ORDINARY_FOREST_ITEM_ASSETS = [
     "icon_1024": "assets_1024/items/ordinary_forest/events/old_bear_trap.png",
     "icon_256": "assets_256/items/ordinary_forest/events/old_bear_trap.png",
     "description": "Иконка ловушки; накладывает временный дебаф."
-  },
-  {
-    "item_id": "wolf_hide",
-    "name": "Волчья шкура",
-    "category": "trophies",
-    "inventory_section": "loot",
-    "rarity": "common",
-    "source": "Обыкновенный лес / волки",
-    "icon": "assets/items/ordinary_forest/trophies/wolf_hide.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/wolf_hide.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/wolf_hide.png",
-    "description": "Звериный трофей."
   },
   {
     "item_id": "bear_fang",
@@ -207,18 +159,6 @@ ORDINARY_FOREST_ITEM_ASSETS = [
     "description": "Иконка ловушки; не предмет обычной добычи."
   },
   {
-    "item_id": "boar_hide",
-    "name": "Кабанья шкура",
-    "category": "trophies",
-    "inventory_section": "loot",
-    "rarity": "common",
-    "source": "Обыкновенный лес / кабаны",
-    "icon": "assets/items/ordinary_forest/trophies/boar_hide.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/boar_hide.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/boar_hide.png",
-    "description": "Звериный трофей."
-  },
-  {
     "item_id": "wolf_fang",
     "name": "Волчий клык",
     "category": "trophies",
@@ -240,18 +180,6 @@ ORDINARY_FOREST_ITEM_ASSETS = [
     "icon": "assets/items/ordinary_forest/trophies/animal_fat.png",
     "icon_1024": "assets_1024/items/ordinary_forest/trophies/animal_fat.png",
     "icon_256": "assets_256/items/ordinary_forest/trophies/animal_fat.png",
-    "description": "Звериный трофей."
-  },
-  {
-    "item_id": "bear_hide",
-    "name": "Медвежья шкура",
-    "category": "trophies",
-    "inventory_section": "loot",
-    "rarity": "common",
-    "source": "Обыкновенный лес / медведь",
-    "icon": "assets/items/ordinary_forest/trophies/bear_hide.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/bear_hide.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/bear_hide.png",
     "description": "Звериный трофей."
   },
   {
