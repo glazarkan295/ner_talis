@@ -183,7 +183,11 @@ def build_application():
     runtime["register_telegram_admin_handlers"](application, CommandHandler)
 
     registration_conversation = ConversationHandler(
-        entry_points=[CommandHandler("start", runtime["start_command"])],
+        entry_points=[
+            CommandHandler("start", runtime["start_command"]),
+            MessageHandler(filters.Regex("^Кратко о мире$"), runtime["show_world_short"]),
+            MessageHandler(filters.Regex("^Начать$"), runtime["begin_registration"]),
+        ],
         states={
             runtime["START_MENU"]: [
                 MessageHandler(filters.Regex("^Кратко о мире$"), runtime["show_world_short"]),
