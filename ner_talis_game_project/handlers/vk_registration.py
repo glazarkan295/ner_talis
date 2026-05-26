@@ -138,6 +138,65 @@ class VkRegistrationBot:
             self.connect_by_code(external_user_id, peer_id, code)
             return
 
+        existing_player = self.storage.get_player_by_platform(VK_PLATFORM, external_user_id)
+        session = self.sessions.get(session_key)
+
+        # Registration must own its own reply buttons before the shared city
+        # router sees them. Labels such as «Назад», «Да» and «Нет» are also
+        # used by city/crafting flows; routing them to the city service while
+        # the player has no character breaks the final registration step.
+        if existing_player is None:
+            session = self.sessions.setdefault(
+                session_key,
+                VkRegistrationSession(state=STATE_START_MENU),
+            )
+
+            if text == "Кратко о мире":
+                self.send(peer_id, WORLD_SHORT_TEXT, start_keyboard())
+                session.state = STATE_START_MENU
+                return
+
+            if text == "Начать":
+                self.begin_registration(external_user_id, peer_id, session)
+                return
+
+            if session.state == STATE_AWAITING_NAME:
+                self.receive_name(external_user_id, peer_id, session, text)
+                return
+
+            if session.state == STATE_AWAITING_RACE:
+                self.receive_race(peer_id, session, text)
+                return
+
+            if session.state == STATE_RACE_CARD:
+                self.handle_race_card(peer_id, session, text)
+                return
+
+            if session.state == STATE_RACE_CONFIRM:
+                self.handle_race_confirmation(external_user_id, peer_id, session, text)
+                return
+
+            if lowered == "/city" or text in CITY_BUTTONS:
+                self.send(
+                    peer_id,
+                    "Сначала нужно создать персонажа. Нажми /start и выбери «Начать».",
+                    start_keyboard(),
+                )
+                return
+
+            self.send(
+                peer_id,
+                "Нажми /start, чтобы открыть начальное меню.",
+                start_keyboard(),
+            )
+            return
+
+        # A persisted character wins over any stale in-memory registration session.
+        # This avoids accidental registration handlers intercepting city buttons
+        # after a restart/reconnect race.
+        if session is not None:
+            self.sessions.pop(session_key, None)
+
         if lowered == "/city":
             self.handle_city_action(external_user_id, peer_id, "В город")
             return
@@ -146,8 +205,7 @@ class VkRegistrationBot:
             self.handle_city_action(external_user_id, peer_id, text)
             return
 
-        existing_player = self.storage.get_player_by_platform(VK_PLATFORM, external_user_id)
-        if existing_player is not None and (
+        if (
             existing_player.get("in_battle")
             or existing_player.get("active_timer")
             or existing_player.get("market_context")
@@ -155,36 +213,6 @@ class VkRegistrationBot:
             or str(existing_player.get("current_zone") or "").startswith(("hilly_meadows", "ordinary_forest", "seldar_npc_market", "seldar_smeltery", "seldar_forge", "seldar_leatherwork", "seldar_jewelry_workshop", "seldar_alchemy_workshop"))
         ):
             self.handle_city_action(external_user_id, peer_id, text)
-            return
-
-        session = self.sessions.setdefault(
-            session_key,
-            VkRegistrationSession(state=STATE_START_MENU),
-        )
-
-        if text == "Кратко о мире":
-            self.send(peer_id, WORLD_SHORT_TEXT, start_keyboard())
-            session.state = STATE_START_MENU
-            return
-
-        if text == "Начать":
-            self.begin_registration(external_user_id, peer_id, session)
-            return
-
-        if session.state == STATE_AWAITING_NAME:
-            self.receive_name(external_user_id, peer_id, session, text)
-            return
-
-        if session.state == STATE_AWAITING_RACE:
-            self.receive_race(peer_id, session, text)
-            return
-
-        if session.state == STATE_RACE_CARD:
-            self.handle_race_card(peer_id, session, text)
-            return
-
-        if session.state == STATE_RACE_CONFIRM:
-            self.handle_race_confirmation(external_user_id, peer_id, session, text)
             return
 
         self.send(

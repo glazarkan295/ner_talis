@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -57,7 +58,8 @@ if "vk_api" not in sys.modules:
     sys.modules["vk_api.keyboard"] = keyboard_stub
 
 from handlers.registration import TELEGRAM_PLATFORM, start_command
-from handlers.vk_registration import VK_PLATFORM, VkRegistrationBot, VkRegistrationSession
+from handlers.vk_registration import VK_PLATFORM, STATE_AWAITING_RACE, VkRegistrationBot, VkRegistrationSession
+from storage.json_storage import JsonStorage
 
 
 class FakeStorage:
@@ -140,6 +142,57 @@ class StartRegistrationGuardTest(unittest.TestCase):
         self.assertIn("повторно не запускает", sent[0][1].casefold())
         self.assertNotIn("Выберите действие", sent[0][1])
         self.assertIsNone(sent[0][2])
+
+
+class VkRegistrationFullFlowTest(unittest.TestCase):
+    def _make_bot(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        storage = JsonStorage(str(Path(temp_dir.name) / "players.json"))
+        bot = object.__new__(VkRegistrationBot)
+        bot.storage = storage
+        bot.sessions = {}
+        sent = []
+        bot.send = lambda peer_id, text, keyboard=None: sent.append((peer_id, text, keyboard))
+        return temp_dir, storage, bot, sent
+
+    def test_vk_registration_confirmation_buttons_are_not_captured_by_city_router(self):
+        temp_dir, storage, bot, sent = self._make_bot()
+        self.addCleanup(temp_dir.cleanup)
+
+        for text in ["/start", "Начать", "Тестовый", "Человек", "Выбрать", "Да"]:
+            bot.handle_message("333", 1001, text)
+
+        player = storage.get_player_by_platform(VK_PLATFORM, "333")
+        self.assertIsNotNone(player)
+        self.assertEqual(player["name"], "Тестовый")
+        self.assertEqual(player["race_name"], "Человек")
+        self.assertNotIn(f"{VK_PLATFORM}:333", bot.sessions)
+        self.assertTrue(sent)
+        self.assertIn("добро пожаловать в город Селдар", sent[-1][1])
+        self.assertFalse(any("Сначала нужно создать персонажа" in message for _peer, message, _keyboard in sent[-2:]))
+
+    def test_vk_registration_back_button_stays_in_registration_flow(self):
+        temp_dir, _storage, bot, sent = self._make_bot()
+        self.addCleanup(temp_dir.cleanup)
+
+        for text in ["/start", "Начать", "ИгрокНазад", "Эльф", "Назад"]:
+            bot.handle_message("444", 1002, text)
+
+        session = bot.sessions.get(f"{VK_PLATFORM}:444")
+        self.assertIsNotNone(session)
+        self.assertEqual(session.state, STATE_AWAITING_RACE)
+        self.assertIn("Выбери расу", sent[-1][1])
+        self.assertFalse(any("Сначала нужно создать персонажа" in message for _peer, message, _keyboard in sent[-2:]))
+
+
+class TelegramRegistrationEntryPointGuardTest(unittest.TestCase):
+    def test_telegram_start_menu_buttons_can_enter_conversation_after_lost_session(self):
+        source = (ROOT_DIR / "main_telegram.py").read_text(encoding="utf-8")
+        self.assertIn('MessageHandler(filters.Regex("^Начать$"), runtime["begin_registration"])', source)
+        self.assertIn('MessageHandler(filters.Regex("^Кратко о мире$"), runtime["show_world_short"])', source)
+        entry_block_start = source.index("registration_conversation = ConversationHandler(")
+        city_handler_index = source.index('MessageHandler(filters.Regex(runtime["CITY_BUTTON_PATTERN"]), runtime["city_message"])')
+        self.assertLess(entry_block_start, city_handler_index)
 
 
 if __name__ == "__main__":
