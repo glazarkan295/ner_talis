@@ -153,6 +153,17 @@ def deactivate_promo_code(code: str, storage: Any | None = None) -> bool:
         return True
 
 
+def delete_promo_code(code: str, storage: Any | None = None) -> bool:
+    with _file_locked() if storage is None else _null_context():
+        data = load_promo_data(storage)
+        normalized_code = _normalize_code(code)
+        if normalized_code not in data.get("codes", {}):
+            return False
+        data["codes"].pop(normalized_code, None)
+        save_promo_data(data, storage)
+        return True
+
+
 def list_promo_codes(limit: int = 20, storage: Any | None = None) -> list[dict[str, Any]]:
     data = load_promo_data(storage)
     promos = list(data.get("codes", {}).values())

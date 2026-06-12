@@ -91,7 +91,7 @@ class AdminPanelSiteTest(unittest.TestCase):
             self.assertEqual(player["free_stat_points"], 8)   # +3 reward, +5 for level-up
             self.assertEqual(player["level"], 2)
             self.assertTrue(any(item.get("item_id") == "dried_meat" for item in player["inventory"]))
-            self.assertIn("Дар свыше", player["pending_bot_messages"][-1]["text"])
+            self.assertIn("Вы получили в дар от высших сил", player["pending_bot_messages"][-1]["text"])
 
     def test_admin_panel_promo_create_and_player_view_token(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

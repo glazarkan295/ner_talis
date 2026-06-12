@@ -103,6 +103,9 @@ export function createPlayerViewToken(token, gameId) {
 export function loadPlayerLogs(token, gameId) {
   return requestAdminJson(`/api/admin/players/${encodeURIComponent(gameId)}/logs?_=${Date.now()}`);
 }
+export function loadPlayerChat(token, gameId) {
+  return requestAdminJson(`/api/admin/players/${encodeURIComponent(gameId)}/chat?_=${Date.now()}`);
+}
 export function sendDelivery(token, targetGameId, rewards) {
   return requestAdminJson("/api/admin/delivery/send", { method: "POST", body: JSON.stringify({ target_game_id: targetGameId, rewards }) });
 }
@@ -111,6 +114,9 @@ export function loadPromos(token) {
 }
 export function createPromo(token, code, usesLeft, duration, rewards) {
   return requestAdminJson("/api/admin/promos", { method: "POST", body: JSON.stringify({ code, uses_left: usesLeft, duration, rewards }) });
+}
+export function deletePromo(token, code) {
+  return requestAdminJson(`/api/admin/promos/${encodeURIComponent(code)}`, { method: "DELETE" });
 }
 export function loadAdminPlayerView(token) {
   return requestAdminJson(`/api/admin/player-view?_=${Date.now()}`, { authToken: token });

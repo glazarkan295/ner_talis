@@ -17,6 +17,7 @@ from keyboards.vk_keyboards import (
     start_keyboard,
 )
 from services.city_service import CITY_BUTTONS, process_world_action
+from services.chat_log_service import append_player_chat_log, pop_pending_bot_messages
 from services.promo_service import redeem_promo_code
 from services.external_location_service import complete_active_timer
 from services.runtime_timer_scheduler import attach_timer_notification, schedule_timer_delivery
@@ -602,15 +603,19 @@ class VkRegistrationBot:
             )
             return
 
+        append_player_chat_log(player, direction="player", text=action, platform=VK_PLATFORM)
         result = process_world_action(
             storage=self.storage,
             player=player,
             action=action,
             platform=VK_PLATFORM,
         )
-        for message in getattr(result, "extra_messages", ()):
+        for message in [*pop_pending_bot_messages(player), *getattr(result, "extra_messages", ())]:
+            append_player_chat_log(player, direction="bot", text=message, platform=VK_PLATFORM)
             self.send(peer_id, message)
+        append_player_chat_log(player, direction="bot", text=result.text, platform=VK_PLATFORM)
         self.send(peer_id, result.text, make_keyboard(result.buttons))
+        self.storage.update_player(player)
         self.schedule_timer_notification(peer_id, result.scheduled_timer)
 
     def schedule_timer_notification(self, peer_id: int, timer_data: dict | None) -> None:

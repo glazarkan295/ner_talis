@@ -41,6 +41,7 @@ from services.market_service import (
     MARKET_BUY,
     MARKET_SELL,
     MARKET_ENTRY,
+    MARKET_ENTRY_ACTIONS,
     MARKET_ZONE_PREFIX,
     handle_market_action,
     is_market_context,
@@ -75,6 +76,7 @@ from services.fine_service import (
     pay_fine,
     should_block_movement_action,
 )
+from services.promo_service import redeem_promo_code
 
 
 CENTRAL_SQUARE = "Центральная площадь"
@@ -94,6 +96,8 @@ CONFIRM_SKILL = "Выбрать навык"
 BACK_TO_SKILL_CHOICE = "Вернуться к выбору навыка"
 SECONDARY_PATH_ACTION = "Выбрать дополнительный путь"
 PROFILE_BUTTON = "Профиль"
+CITY_MANAGER = "Городской управляющий"
+CITY_REWARD_CLAIM_ACTION = "Получить награду"
 logger = logging.getLogger(__name__)
 
 
@@ -190,8 +194,16 @@ def upper_buttons() -> list[list[str]]:
 def town_hall_buttons() -> list[list[str]]:
     return [
         [ORDER_STONE],
-        [CITY_FINE_PAY_ACTION],
+        [CITY_MANAGER],
         ["Верхний квартал", BACK_TO_CENTRAL],
+    ]
+
+
+def city_manager_buttons() -> list[list[str]]:
+    return [
+        [CITY_FINE_PAY_ACTION, CITY_REWARD_CLAIM_ACTION],
+        ["Ратуша"],
+        [BACK_TO_CENTRAL],
     ]
 
 
@@ -510,6 +522,18 @@ TOWN_HALL_TEXT = """🏛 Ратуша
 • посмотреть и оплатить долги, штрафы и кредиты;
 • подойти к Распорядительному камню для выбора ветви активных навыков после 10 уровня."""
 
+CITY_MANAGER_TEXT = """📜 Городской управляющий
+
+Здесь оформляют городские штрафы, награды и служебные вопросы.
+
+Доступно:
+• оплатить активные штрафы;
+• получить доступные награды, когда они будут назначены."""
+
+CITY_REWARD_CLAIM_TEXT = """🎁 Получить награду
+
+Сейчас у вас нет назначенных городских наград. Когда появятся события, грамоты или выплаты от администрации, они будут выдаваться здесь."""
+
 HOUSING_TEXT = """🏡 Жилой район
 
 Жильё открывается после покупки участка.
@@ -582,6 +606,8 @@ CITY_ACTIONS: dict[str, CityResponse] = {
     "Мастерская чародея": CityResponse("🔮 Мастерская чародея\n\nМастерская временно закрыта на техническое обслуживание.", craft_buttons(), "seldar_craft_district"),
     "Верхний квартал": CityResponse(UPPER_TEXT, upper_buttons(), "seldar_upper_district"),
     "Ратуша": CityResponse(TOWN_HALL_TEXT, town_hall_buttons(), "seldar_town_hall"),
+    CITY_MANAGER: CityResponse(CITY_MANAGER_TEXT, city_manager_buttons(), "seldar_town_manager"),
+    CITY_REWARD_CLAIM_ACTION: CityResponse(CITY_REWARD_CLAIM_TEXT, city_manager_buttons(), "seldar_town_manager"),
     "Жилой район": CityResponse(HOUSING_TEXT, upper_buttons(), "seldar_residential_district"),
     "Городские ворота": CityResponse(GATES_TEXT, gates_buttons(), "seldar_city_gates"),
     LEGACY_OUTSIDE_CITY: CityResponse(LEAVE_CITY_TEXT, outside_city_buttons(), "outside_city_crossroads"),
@@ -926,7 +952,7 @@ def _market_should_handle_action(player: dict[str, Any], action: str) -> bool:
     external-location buttons such as ``Выход из города`` and
     ``Распорядительный камень``.
     """
-    if action == MARKET_ENTRY:
+    if action in MARKET_ENTRY_ACTIONS:
         return True
     if _is_external_location_state(player) or not _is_market_zone(player):
         return False
@@ -936,7 +962,7 @@ def _market_should_handle_action(player: dict[str, Any], action: str) -> bool:
         return False
     if action in EXTERNAL_LOCATION_BUTTONS and not _market_should_own_back(player, action):
         return False
-    if action in CITY_ACTIONS and action != MARKET_ENTRY and action not in {MARKET_BUY, MARKET_SELL, MARKET_BACK, MARKET_BACK_TO_MAIN}:
+    if action in CITY_ACTIONS and action not in MARKET_ENTRY_ACTIONS and action not in {MARKET_BUY, MARKET_SELL, MARKET_BACK, MARKET_BACK_TO_MAIN}:
         return False
     return True
 
@@ -1051,6 +1077,15 @@ def process_world_action(
         return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
 
     if str(action or "").strip().startswith("/"):
+        command = str(action or "").strip()
+        # Promocodes are single custom commands such as /promo_code.
+        # Multi-word slash commands stay with the normal command router.
+        if " " not in command and len(command) > 1:
+            ok, message = redeem_promo_code(storage, str(player.get("game_id") or ""), command)
+            if ok or command.lower().startswith("/promo"):
+                storage.update_player(player)
+                prefix = "✅" if ok else "⚠️"
+                return WorldActionResult(text=f"{prefix} {message}", buttons=_current_context_buttons(player))
         return _unknown_input_result(player, "Неизвестная команда или команда недоступна в этом месте.")
 
     raid_result = maybe_trigger_raid(player, action)
@@ -1086,7 +1121,7 @@ def process_world_action(
     # only city button that intentionally enters the market state machine.
     # External-location labels are handled below so ``Выход из города`` cannot
     # be swallowed by stale market context.
-    if action in CITY_ACTIONS and action != MARKET_ENTRY and action not in EXTERNAL_LOCATION_BUTTONS:
+    if action in CITY_ACTIONS and action not in MARKET_ENTRY_ACTIONS and action not in EXTERNAL_LOCATION_BUTTONS:
         player.pop("market_context", None)
         player.pop("crafting_context", None)
         response = get_city_response(action)
