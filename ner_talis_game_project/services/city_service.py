@@ -54,6 +54,29 @@ from services.crafting_service import (
 )
 
 
+from services.fishing_service import (
+    FISHING_ACTIONS,
+    PIER_FISHING_ACTION,
+    START_PIER_FISHING,
+    fishing_buttons,
+    handle_fishing_action,
+)
+from services.fine_service import (
+    CITY_FINE_PAY_ACTION,
+    CITY_HALL_BACK,
+    FORTRESS_HALL,
+    MAINLAND_EXTERNAL,
+    STAY_IN_FORTRESS,
+    advance_fine_state,
+    fine_card,
+    maybe_trigger_raid,
+    movement_block_buttons,
+    movement_block_text,
+    pay_fine,
+    should_block_movement_action,
+)
+
+
 CENTRAL_SQUARE = "Центральная площадь"
 BACK_TO_CENTRAL = "⬅️ Центральная площадь"
 OPEN_PAVILION_SITE = "🌐 Открыть торговый павильон"
@@ -167,6 +190,7 @@ def upper_buttons() -> list[list[str]]:
 def town_hall_buttons() -> list[list[str]]:
     return [
         [ORDER_STONE],
+        [CITY_FINE_PAY_ACTION],
         ["Верхний квартал", BACK_TO_CENTRAL],
     ]
 
@@ -234,7 +258,7 @@ DARK_ALLEYS_TEXT = """🌑 Тёмные переулки
 
 Здесь работают те, кто не любит городские правила: чёрный рынок, информатор Крот и подпольное казино.
 
-Важно: при значимых действиях в переулках есть 3% шанс облавы. Если стража поймает игрока, придётся заплатить штраф. Если денег не хватит, остаток станет долгом в ратуше."""
+Важно: при любых действиях в запретных местах есть 15% шанс облавы. Если стража поймает игрока, игрока перенесут на Центральную площадь и наложат городской штраф."""
 
 BLACK_MARKET_TEXT = """🕯 Чёрный рынок
 
@@ -273,7 +297,7 @@ PIER_TEXT = """🪝 Пристань
 
 PIER_FISHING_TEXT = """🎣 Рыбалка на пристани
 
-Для действия нужна удочка.
+Для действия нужна удочка рыбака. Один заброс тратит 2 энергии.
 
 Шансы:
 • обычный улов — 50%
@@ -281,7 +305,7 @@ PIER_FISHING_TEXT = """🎣 Рыбалка на пристани
 • редкий улов — 1%
 • мусор — 30%
 
-Рыбалка может тратить энергию, если используется как добывающее действие."""
+Возможный улов: водоросли, рыба, моллюски, ракушки, медузы, угорь, старый башмак, старый сундучок и редкие морские находки."""
 
 BOAT_RENT_TEXT = """⛵ Аренда лодки
 
@@ -533,7 +557,7 @@ CITY_ACTIONS: dict[str, CityResponse] = {
     "Информатор Крот": CityResponse(INFORMER_TEXT, dark_alleys_buttons(), "seldar_informer_mole"),
     "Подпольное казино": CityResponse(CASINO_TEXT, dark_alleys_buttons(), "seldar_underground_casino"),
     "Пристань": CityResponse(PIER_TEXT, pier_buttons(), "seldar_pier"),
-    "Рыбалка на пристани": CityResponse(PIER_FISHING_TEXT, pier_buttons(), "seldar_pier_fishing"),
+    "Рыбалка на пристани": CityResponse(PIER_FISHING_TEXT, fishing_buttons(), "seldar_pier_fishing"),
     "Аренда лодки": CityResponse(BOAT_RENT_TEXT, pier_buttons(), "seldar_boat_rent"),
     "Портовый рынок": CityResponse(PORT_MARKET_TEXT, port_buttons(), "seldar_port_market"),
     "Таверна": CityResponse(TAVERN_TEXT, tavern_buttons(), "seldar_tavern"),
@@ -566,7 +590,8 @@ CITY_ACTIONS: dict[str, CityResponse] = {
 }
 
 BRANCH_CHOICE_ACTIONS = frozenset({ORDER_STONE, APPLY_ID_AMULET, CHOOSE_SPIRIT_BRANCH, CHOOSE_MANA_BRANCH, PREVIEW_SPIRIT_BRANCH, PREVIEW_MANA_BRANCH, CONFIRM_BRANCH, BACK_TO_BRANCH_CHOICE, CONFIRM_PATH, BACK_TO_PATHS, CONFIRM_SKILL, BACK_TO_SKILL_CHOICE, SECONDARY_PATH_ACTION})
-CITY_BUTTONS = frozenset(CITY_ACTIONS.keys()) | BRANCH_CHOICE_ACTIONS | EXTERNAL_LOCATION_BUTTONS | MARKET_ACTIONS | CRAFT_ACTIONS
+FINE_ACTIONS = frozenset({CITY_FINE_PAY_ACTION, CITY_HALL_BACK, FORTRESS_HALL, STAY_IN_FORTRESS, MAINLAND_EXTERNAL})
+CITY_BUTTONS = frozenset(CITY_ACTIONS.keys()) | BRANCH_CHOICE_ACTIONS | EXTERNAL_LOCATION_BUTTONS | MARKET_ACTIONS | CRAFT_ACTIONS | FINE_ACTIONS | FISHING_ACTIONS
 
 
 def _split_stone_and_administrator_text(text: str) -> list[str]:
@@ -934,6 +959,17 @@ def _unknown_input_result(player: dict[str, Any], text: str) -> WorldActionResul
     return WorldActionResult(text=text, buttons=_current_city_buttons(player))
 
 
+def _with_extra_messages(result: WorldActionResult, messages: tuple[str, ...]) -> WorldActionResult:
+    if not messages:
+        return result
+    return WorldActionResult(
+        text=result.text,
+        buttons=result.buttons,
+        scheduled_timer=result.scheduled_timer,
+        extra_messages=tuple(messages) + tuple(result.extra_messages),
+    )
+
+
 def process_world_action(
     storage: Any,
     player: dict[str, Any],
@@ -966,6 +1002,30 @@ def process_world_action(
     if context_changed:
         storage.update_player(player)
 
+    fine_advance = advance_fine_state(player)
+    if fine_advance.changed:
+        storage.update_player(player)
+
+    if action in {CITY_HALL_BACK}:
+        response = get_city_response("Ратуша")
+        updated_player = apply_city_transition(storage, player, response)
+        text = build_response_text(storage=storage, player=updated_player, response=response, platform=platform)
+        return _with_extra_messages(WorldActionResult(text=text, buttons=response.buttons), fine_advance.messages)
+
+    if action == CITY_FINE_PAY_ACTION:
+        zone = str(player.get("current_zone") or player.get("location_id") or "")
+        place = "fortress" if zone.startswith("fortress_in_gorge") else "city"
+        fine_result = pay_fine(player, place=place)
+        storage.update_player(player)
+        return _with_extra_messages(WorldActionResult(text=fine_result.text, buttons=fine_result.buttons), fine_advance.messages)
+
+    if should_block_movement_action(player, action):
+        storage.update_player(player)
+        return _with_extra_messages(
+            WorldActionResult(text=movement_block_text(), buttons=movement_block_buttons()),
+            fine_advance.messages,
+        )
+
     if action == PROFILE_BUTTON:
         try:
             profile_url = create_profile_site_link(storage, player, platform)
@@ -979,6 +1039,10 @@ def process_world_action(
             text = "Профиль сейчас недоступен. Попробуйте ещё раз позже."
         return WorldActionResult(text=text, buttons=_current_context_buttons(player))
 
+    fishing_response = handle_fishing_action(storage, player, action)
+    if fishing_response is not None:
+        return WorldActionResult(text=fishing_response.text, buttons=fishing_response.buttons)
+
     # While outside the city, every non-profile input belongs to the external
     # location router. This prevents old/random city buttons from teleporting
     # the player back into Seldar.
@@ -988,6 +1052,14 @@ def process_world_action(
 
     if str(action or "").strip().startswith("/"):
         return _unknown_input_result(player, "Неизвестная команда или команда недоступна в этом месте.")
+
+    raid_result = maybe_trigger_raid(player, action)
+    if raid_result is not None:
+        storage.update_player(player)
+        return _with_extra_messages(
+            WorldActionResult(text=raid_result.text, buttons=raid_result.buttons),
+            fine_advance.messages,
+        )
 
     if action in {CENTRAL_SQUARE, BACK_TO_CENTRAL, "В город"}:
         player.pop("crafting_context", None)

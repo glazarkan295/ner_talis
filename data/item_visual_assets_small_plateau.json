@@ -1,0 +1,31 @@
+{
+  "pack_id": "small_plateau_assets",
+  "world": "Нер-Талис",
+  "location": "Малое плато",
+  "version": "2026-06-10",
+  "format": "jpg_assets",
+  "items": [
+    {
+      "id": "old_brooch",
+      "name_ru": "старая брошь",
+      "category": "junk",
+      "section": "resources",
+      "source": "Малое плато / событие old_brooch_garden",
+      "rarity": "common",
+      "image": "/assets/items/junk/old_brooch.jpg",
+      "image_1024": "/assets/items/junk/old_brooch.jpg",
+      "image_256": "/assets/items/junk/old_brooch.jpg"
+    },
+    {
+      "id": "old_medallion",
+      "name_ru": "старый медальон",
+      "category": "junk",
+      "section": "resources",
+      "source": "Малое плато / событие old_medallion_statue",
+      "rarity": "common",
+      "image": "/assets/items/junk/old_medallion.jpg",
+      "image_1024": "/assets/items/junk/old_medallion.jpg",
+      "image_256": "/assets/items/junk/old_medallion.jpg"
+    }
+  ]
+}

@@ -16,6 +16,7 @@ from game_data.starter_skills import get_starter_skills
 from project_paths import resolve_project_path
 from services.inventory_service import add_inventory_item
 from services.item_registry import build_inventory_item
+from services.progression_service import experience_to_next_level
 from services.registration_service import DEFAULT_CRAFTING_LEVELS, load_races
 
 STAT_KEYS = ("strength", "dexterity", "endurance", "intelligence", "wisdom", "perception")
@@ -293,3 +294,295 @@ def add_item_to_player(
     if result.discarded:
         suffix += f" Не поместилось: {result.discarded}."
     return True, f"Игроку {game_id} добавлен предмет {item['item_id']} x{result.added}.{suffix}", player
+
+
+def _iter_players(storage: Any) -> list[dict[str, Any]]:
+    """Возвращает список профилей для безопасных админ-поисков."""
+    if not hasattr(storage, "load"):
+        return []
+    data = storage.load()
+    players = data.get("players") or {}
+    return [player for player in players.values() if isinstance(player, dict)]
+
+
+def _player_platform_pairs(player: dict[str, Any]) -> list[str]:
+    linked_accounts = player.get("linked_accounts") or {}
+    if not isinstance(linked_accounts, dict):
+        return []
+    pairs: list[str] = []
+    for platform, external_user_id in linked_accounts.items():
+        if external_user_id:
+            pairs.append(f"{platform}:{external_user_id}")
+    return pairs
+
+
+def format_player_admin_summary(player: dict[str, Any]) -> str:
+    """Короткая карточка игрока для админ-чата без огромного JSON."""
+    inventory = player.get("inventory") if isinstance(player.get("inventory"), list) else []
+    equipment = player.get("equipment") if isinstance(player.get("equipment"), dict) else {}
+    active_effects = player.get("active_effects") if isinstance(player.get("active_effects"), list) else []
+    location = player.get("location_id") or player.get("current_zone") or player.get("current_city") or "не указано"
+    linked = ", ".join(_player_platform_pairs(player)) or "нет"
+    inventory_preview = []
+    for item in inventory[:8]:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name") or item.get("name_ru") or item.get("item_id") or item.get("id") or "предмет"
+        amount = item.get("amount", 1)
+        inventory_preview.append(f"{name}×{amount}")
+    preview_text = "; ".join(inventory_preview) if inventory_preview else "пусто/не показано"
+    if len(inventory) > 8:
+        preview_text += f"; … ещё {len(inventory) - 8}"
+
+    return (
+        f"Игрок: {player.get('name') or 'без имени'}\n"
+        f"game_id: {player.get('game_id') or player.get('id')}\n"
+        f"public_id: {player.get('public_id') or 'нет'}\n"
+        f"Привязки: {linked}\n"
+        f"Уровень: {player.get('level', 1)}, опыт: {player.get('experience', 0)}/{player.get('experience_to_next', '?')}\n"
+        f"Монеты: {player.get('money', 0)}, долг/штраф: {player.get('debt', 0)}\n"
+        f"HP: {player.get('hp', player.get('current_hp', '?'))}/{player.get('max_hp', '?')}, "
+        f"энергия: {player.get('energy', '?')}/{player.get('max_energy', '?')}\n"
+        f"Локация: {location}\n"
+        f"В бою: {'да' if player.get('in_battle') else 'нет'}, мёртв: {'да' if player.get('is_dead') else 'нет'}\n"
+        f"Инвентарь: {len(inventory)} стеков. {preview_text}\n"
+        f"Экипировка: {len([value for value in equipment.values() if value])} занятых слотов\n"
+        f"Активные эффекты: {len(active_effects)}"
+    )
+
+
+def find_players(storage: Any, query: str, *, limit: int = 10) -> list[dict[str, Any]]:
+    """Ищет игроков по game_id/public_id/имени/Telegram/VK id."""
+    needle = str(query or "").strip()
+    if not needle:
+        return []
+    needle_cf = needle.casefold()
+    normalized_game_id = normalize_game_id(needle)
+
+    # Сначала быстрый точный поиск по game_id, если хранилище умеет.
+    if is_valid_game_id(normalized_game_id) and hasattr(storage, "get_player_by_game_id"):
+        player = storage.get_player_by_game_id(normalized_game_id)
+        if player:
+            return [player]
+
+    # Поиск по platform id в стандартных вариантах.
+    if hasattr(storage, "get_player_by_platform"):
+        for platform in ("telegram", "vk"):
+            raw_id = needle
+            if needle_cf.startswith("tg_") and platform == "telegram":
+                raw_id = needle[3:]
+            elif needle_cf.startswith("vk_") and platform == "vk":
+                raw_id = needle[3:]
+            try:
+                player = storage.get_player_by_platform(platform, raw_id)
+            except Exception:
+                player = None
+            if player:
+                return [player]
+
+    matches: list[dict[str, Any]] = []
+    for player in _iter_players(storage):
+        fields = [
+            str(player.get("game_id") or player.get("id") or ""),
+            str(player.get("public_id") or ""),
+            str(player.get("name") or ""),
+        ]
+        fields.extend(_player_platform_pairs(player))
+        if any(needle_cf in field.casefold() for field in fields):
+            matches.append(player)
+            if len(matches) >= max(1, int(limit)):
+                break
+    return matches
+
+
+
+def _safe_admin_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _grant_exact_experience(player: dict[str, Any], amount: int) -> dict[str, Any]:
+    """Начисляет опыт ровно 1 к 1 для админ-наград/крупиц опыта.
+
+    Обычный grant_experience применяет расовые бонусы. Для админ-команды
+    крупицы опыта должны считаться буквально: 1 крупица = 1 единица опыта.
+    """
+    gained = max(0, _safe_admin_int(amount, 0))
+    player["experience"] = max(0, _safe_admin_int(player.get("experience"), 0)) + gained
+    player["total_experience"] = max(0, _safe_admin_int(player.get("total_experience"), 0)) + gained
+
+    level_ups = 0
+    while True:
+        level = max(1, _safe_admin_int(player.get("level"), 1))
+        required = experience_to_next_level(level)
+        if player["experience"] < required:
+            player["experience_to_next"] = required
+            break
+        player["experience"] -= required
+        player["level"] = level + 1
+        player["free_stat_points"] = _safe_admin_int(player.get("free_stat_points"), 0) + 5
+        player["free_skill_points"] = _safe_admin_int(player.get("free_skill_points"), 0) + 2
+        level_ups += 1
+
+    return {
+        "gained": gained,
+        "level_ups": level_ups,
+        "level": max(1, _safe_admin_int(player.get("level"), 1)),
+        "experience": _safe_admin_int(player.get("experience"), 0),
+        "experience_to_next": _safe_admin_int(player.get("experience_to_next"), experience_to_next_level(max(1, _safe_admin_int(player.get("level"), 1)))),
+    }
+
+
+def add_experience_to_player(storage: Any, *, game_id: str, amount: int) -> tuple[bool, str, dict[str, Any] | None]:
+    """Админское начисление крупиц опыта: 1 крупица = 1 единица опыта."""
+    if amount <= 0:
+        return False, "Количество крупиц опыта должно быть больше 0.", None
+    if amount > 1_000_000_000:
+        return False, "Слишком большое количество опыта для одной админ-команды.", None
+
+    player = storage.get_player_by_game_id(normalize_game_id(game_id)) if hasattr(storage, "get_player_by_game_id") else None
+    if player is None:
+        return False, f"Игрок {game_id} не найден.", None
+
+    old_level = max(1, _safe_admin_int(player.get("level"), 1))
+    old_exp = _safe_admin_int(player.get("experience"), 0)
+    backup_player(player, "before_admin_experience")
+    progress = _grant_exact_experience(player, amount)
+    player["admin_experience_changed_at"] = datetime.now(timezone.utc).isoformat()
+    storage.update_player(player)
+
+    level_part = f", уровень {old_level} -> {progress['level']}" if progress["level"] != old_level else ""
+    ups_part = f", повышений уровня: {progress['level_ups']}" if progress["level_ups"] else ""
+    return (
+        True,
+        f"Игроку {player.get('game_id')} начислены крупицы опыта: +{amount}. "
+        f"Опыт: {old_exp} -> {progress['experience']}/{progress['experience_to_next']}"
+        f"{level_part}{ups_part}.",
+        player,
+    )
+
+
+def _add_free_points_to_player(
+    storage: Any,
+    *,
+    game_id: str,
+    amount: int,
+    field_name: str,
+    label: str,
+    backup_reason: str,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    if amount == 0:
+        return False, f"Количество для изменения поля «{label}» должно быть не равно 0.", None
+    if abs(amount) > 1_000_000:
+        return False, "Слишком большое количество очков для одной админ-команды.", None
+
+    player = storage.get_player_by_game_id(normalize_game_id(game_id)) if hasattr(storage, "get_player_by_game_id") else None
+    if player is None:
+        return False, f"Игрок {game_id} не найден.", None
+
+    old_value = _safe_admin_int(player.get(field_name), 0)
+    new_value = old_value + int(amount)
+    if new_value < 0:
+        return False, f"Нельзя списать {abs(amount)}: у игрока только {old_value} ({label}).", player
+
+    backup_player(player, backup_reason)
+    player[field_name] = new_value
+    player["admin_points_changed_at"] = datetime.now(timezone.utc).isoformat()
+    storage.update_player(player)
+    sign = "+" if amount > 0 else ""
+    return True, f"{label} игрока {player.get('game_id')} изменены: {old_value} -> {new_value} ({sign}{amount}).", player
+
+
+def add_stat_points_to_player(storage: Any, *, game_id: str, amount: int) -> tuple[bool, str, dict[str, Any] | None]:
+    """Админское изменение очков характеристик: 1 единица = 1 свободное очко характеристик."""
+    return _add_free_points_to_player(
+        storage,
+        game_id=game_id,
+        amount=amount,
+        field_name="free_stat_points",
+        label="Очки характеристик",
+        backup_reason="before_admin_stat_points",
+    )
+
+
+def add_skill_points_to_player(storage: Any, *, game_id: str, amount: int) -> tuple[bool, str, dict[str, Any] | None]:
+    """Админское изменение очков навыков: 1 единица = 1 свободное очко навыков."""
+    return _add_free_points_to_player(
+        storage,
+        game_id=game_id,
+        amount=amount,
+        field_name="free_skill_points",
+        label="Очки навыков",
+        backup_reason="before_admin_skill_points",
+    )
+
+def add_money_to_player(storage: Any, *, game_id: str, amount: int) -> tuple[bool, str, dict[str, Any] | None]:
+    """Админское изменение медных монет игрока с backup и защитой от минуса."""
+    if amount == 0:
+        return False, "Сумма должна быть не равна 0.", None
+    if abs(amount) > 1_000_000_000_000:
+        return False, "Слишком большая сумма для одной админ-команды.", None
+
+    player = storage.get_player_by_game_id(normalize_game_id(game_id)) if hasattr(storage, "get_player_by_game_id") else None
+    if player is None:
+        return False, f"Игрок {game_id} не найден.", None
+
+    old_money = int(player.get("money", 0) or 0)
+    new_money = old_money + int(amount)
+    if new_money < 0:
+        return False, f"Нельзя списать {abs(amount)} медных: у игрока только {old_money}.", player
+
+    backup_player(player, "before_admin_money")
+    player["money"] = new_money
+    player["admin_money_changed_at"] = datetime.now(timezone.utc).isoformat()
+    storage.update_player(player)
+    sign = "+" if amount > 0 else ""
+    return True, f"Монеты игрока {player.get('game_id')} изменены: {old_money} -> {new_money} ({sign}{amount}).", player
+
+
+def kick_player_profile_sessions(storage: Any, *, game_id: str, scope: str = "profile") -> tuple[bool, str, int]:
+    """Удаляет активные web/site-сессии игрока для профиля."""
+    normalized_game_id = normalize_game_id(game_id)
+    if not is_valid_game_id(normalized_game_id):
+        return False, "Укажи игровой ID вида NT-XXXXXXXXXX.", 0
+    if not hasattr(storage, "get_player_by_game_id") or storage.get_player_by_game_id(normalized_game_id) is None:
+        return False, f"Игрок {normalized_game_id} не найден.", 0
+
+    # PostgreSQL save(data) не удаляет отсутствующие сессии, поэтому для него нужен нативный DELETE.
+    engine = getattr(storage, "engine", None)
+    if engine is not None:
+        try:
+            from sqlalchemy import text
+
+            with engine.begin() as connection:
+                result = connection.execute(
+                    text("DELETE FROM web_sessions WHERE game_id = :game_id AND scope = :scope"),
+                    {"game_id": normalized_game_id, "scope": scope},
+                )
+                deleted = int(result.rowcount or 0)
+            return True, f"Web-сессии игрока {normalized_game_id} отключены. Удалено: {deleted}.", deleted
+        except Exception as exc:
+            return False, f"Не удалось отключить web-сессии в PostgreSQL: {exc}", 0
+
+    if not hasattr(storage, "load") or not hasattr(storage, "save"):
+        return False, "Хранилище не поддерживает массовое отключение сессий.", 0
+
+    data = storage.load()
+    deleted = 0
+    for key in ("site_sessions", "web_sessions"):
+        sessions = data.get(key) or {}
+        if not isinstance(sessions, dict):
+            continue
+        for token, session in list(sessions.items()):
+            if not isinstance(session, dict):
+                continue
+            if str(session.get("game_id") or "").upper() == normalized_game_id and str(session.get("scope") or scope) == scope:
+                sessions.pop(token, None)
+                deleted += 1
+        data[key] = sessions
+    storage.save(data)
+    return True, f"Web-сессии игрока {normalized_game_id} отключены. Удалено: {deleted}.", deleted

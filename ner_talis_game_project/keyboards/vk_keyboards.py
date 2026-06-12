@@ -91,6 +91,26 @@ def start_keyboard() -> str:
     ])
 
 
+def name_confirm_keyboard() -> str:
+    return make_keyboard([
+        ["Подтвердить"],
+        ["Ввести заново"],
+    ])
+
+
+def gender_keyboard() -> str:
+    return make_keyboard([
+        ["Муж.", "Жен."],
+    ])
+
+
+def gender_confirm_keyboard() -> str:
+    return make_keyboard([
+        ["Да"],
+        ["Нет"],
+    ])
+
+
 def race_keyboard() -> str:
     return make_keyboard([
         ["Человек", "Эльф"],

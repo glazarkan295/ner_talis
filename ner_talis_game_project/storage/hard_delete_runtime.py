@@ -36,6 +36,39 @@ def _session_maps(data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]
     return site_sessions, web_sessions
 
 
+def _new_unique_session_token(site_sessions: dict[str, Any], web_sessions: dict[str, Any]) -> str:
+    while True:
+        token = secrets.token_urlsafe(32)
+        if token not in site_sessions and token not in web_sessions:
+            return token
+
+
+def _purge_sessions_for_player_scope(
+    site_sessions: dict[str, Any],
+    web_sessions: dict[str, Any],
+    game_id: str,
+    scope: str,
+) -> None:
+    target_game_id = str(game_id)
+    target_scope = str(scope)
+    for sessions in (site_sessions, web_sessions):
+        for existing_token, existing_session in list(sessions.items()):
+            if not isinstance(existing_session, dict):
+                continue
+            if str(existing_session.get("game_id") or "") == target_game_id and str(existing_session.get("scope") or "") == target_scope:
+                sessions.pop(existing_token, None)
+
+
+def _normalize_session(token: str, session: dict[str, Any], expires_at: datetime) -> dict[str, Any]:
+    normalized = dict(session)
+    normalized["token"] = token
+    normalized["expires_at"] = expires_at.isoformat()
+    created_at = _parse_datetime(normalized.get("created_at"))
+    if created_at:
+        normalized["created_at"] = created_at.isoformat()
+    return normalized
+
+
 def cleanup_expired_web_sessions(self: Any) -> None:
     data = self.load()
     now = datetime.now(timezone.utc)
@@ -76,11 +109,12 @@ def create_web_session(
     site_sessions, web_sessions = _session_maps(data)
     now = datetime.now(timezone.utc)
 
-    while True:
-        token = secrets.token_urlsafe(32)
-        if token not in site_sessions and token not in web_sessions:
-            break
+    # New bot link invalidates every older one-time token and every active
+    # browser session for the same player/scope. This is the server-side
+    # "logout everywhere for this profile page" switch.
+    _purge_sessions_for_player_scope(site_sessions, web_sessions, str(game_id), scope)
 
+    token = _new_unique_session_token(site_sessions, web_sessions)
     session = {
         "game_id": str(game_id),
         "scope": scope,
@@ -88,6 +122,7 @@ def create_web_session(
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(minutes=max(1, int(minutes)))).isoformat(),
         "used": False,
+        "kind": "activation",
     }
     site_sessions[token] = dict(session)
     web_sessions[token] = dict(session)
@@ -112,12 +147,33 @@ def get_web_session(self: Any, token: str, scope: str | None = None) -> dict[str
     if scope and session.get("scope") != scope:
         return None
 
-    normalized = dict(session)
-    normalized["expires_at"] = expires_at.isoformat()
-    created_at = _parse_datetime(normalized.get("created_at"))
-    if created_at:
-        normalized["created_at"] = created_at.isoformat()
-    return normalized
+    # used=False is a one-time URL activation token. Consume it immediately and
+    # replace it with a private active session token. The URL token is removed,
+    # so opening the same link again cannot enter the profile.
+    if not bool(session.get("used")):
+        game_id = str(session.get("game_id") or "")
+        session_scope = str(session.get("scope") or "")
+        if not game_id or not session_scope:
+            site_sessions.pop(token, None)
+            web_sessions.pop(token, None)
+            self.save(data)
+            return None
+        active_token = _new_unique_session_token(site_sessions, web_sessions)
+        now = datetime.now(timezone.utc)
+        active_session = dict(session)
+        active_session.update({
+            "used": True,
+            "kind": "active",
+            "activated_at": now.isoformat(),
+            "activation_token_used": token,
+        })
+        _purge_sessions_for_player_scope(site_sessions, web_sessions, game_id, session_scope)
+        site_sessions[active_token] = dict(active_session)
+        web_sessions[active_token] = dict(active_session)
+        self.save(data)
+        return _normalize_session(active_token, active_session, expires_at)
+
+    return _normalize_session(token, session, expires_at)
 
 
 def get_player_by_web_token(self: Any, token: str, scope: str | None = None) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
@@ -223,10 +279,12 @@ def postgres_delete_player(self: Any, game_id: str) -> bool:
 
 
 def patch_document_storage_class(storage_class: type[Any]) -> type[Any]:
-    if not callable(getattr(storage_class, "create_web_session", None)):
-        storage_class.create_web_session = create_web_session
-    if not callable(getattr(storage_class, "get_web_session", None)):
-        storage_class.get_web_session = get_web_session
+    # Override site/web session helpers so JSON and SQLite share the same
+    # one-time activation semantics even if the concrete class has an older
+    # create_site_session implementation.
+    storage_class.create_web_session = create_web_session
+    storage_class.create_site_session = create_web_session
+    storage_class.get_web_session = get_web_session
     if not callable(getattr(storage_class, "get_player_by_web_token", None)):
         storage_class.get_player_by_web_token = get_player_by_web_token
     if not callable(getattr(storage_class, "cleanup_expired_web_sessions", None)):

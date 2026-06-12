@@ -1,51 +1,75 @@
-const PROFILE_TOKEN_STORAGE_KEY = "ner_talis_profile_token";
+const PROFILE_SESSION_STORAGE_KEY = "ner_talis_profile_session_token";
+const LEGACY_PROFILE_TOKEN_STORAGE_KEY = "ner_talis_profile_token";
 
-function rememberPrivateProfileToken(token) {
-  if (!token) return;
+function clearLegacyPersistentToken() {
   try {
-    window.localStorage.setItem(PROFILE_TOKEN_STORAGE_KEY, token);
+    window.localStorage.removeItem(LEGACY_PROFILE_TOKEN_STORAGE_KEY);
   } catch {
-    // VK/embedded browsers can block localStorage. The URL token still works.
+    // Embedded browsers can block localStorage.
   }
 }
 
-function getRememberedPrivateProfileToken() {
+function rememberActiveProfileSession(token) {
+  if (!token) return;
   try {
-    return window.localStorage.getItem(PROFILE_TOKEN_STORAGE_KEY) || "";
+    window.sessionStorage.setItem(PROFILE_SESSION_STORAGE_KEY, token);
+  } catch {
+    // VK/embedded browsers can block sessionStorage. Persistence intentionally
+    // stays session-only and is never written to localStorage.
+  }
+}
+
+function getRememberedActiveProfileSession() {
+  try {
+    return window.sessionStorage.getItem(PROFILE_SESSION_STORAGE_KEY) || "";
   } catch {
     return "";
   }
 }
 
+function clearActiveProfileSession() {
+  try {
+    window.sessionStorage.removeItem(PROFILE_SESSION_STORAGE_KEY);
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function removeSensitiveTokenFromAddressBar() {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("token")) return;
+    url.searchParams.delete("token");
+    url.searchParams.delete("t");
+    const cleaned = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState({}, document.title, cleaned || "/profile");
+  } catch {
+    // History can be restricted in embedded browsers. Server-side token reuse
+    // protection still remains active.
+  }
+}
+
 export function getProfileIdentifierFromUrl() {
+  clearLegacyPersistentToken();
   const params = new URLSearchParams(window.location.search);
-  const token = params.get("token");
-  if (token) {
-    rememberPrivateProfileToken(token);
-    return token;
+  const activationToken = params.get("token");
+  if (activationToken) {
+    removeSensitiveTokenFromAddressBar();
+    return activationToken;
   }
 
-  const explicitPublicId =
-    params.get("player") ||
-    params.get("public_id") ||
-    params.get("id");
-  if (explicitPublicId) return explicitPublicId;
+  const rememberedToken = getRememberedActiveProfileSession();
+  if (rememberedToken) return "me";
 
-  const parts = window.location.pathname.split("/").filter(Boolean);
-  const pathIdentifier = parts[parts.length - 1] || "";
-
-  // In VK's embedded browser the query string can be lost after internal
-  // navigation. Keep using the short-lived token from the bot if the page is
-  // still the profile page and there is no explicit public id in the URL.
-  if (!pathIdentifier || pathIdentifier === "profile") {
-    const rememberedToken = getRememberedPrivateProfileToken();
-    if (rememberedToken) return rememberedToken;
-  }
-
-  return pathIdentifier;
+  return "";
 }
 
 export const getPublicIdFromUrl = getProfileIdentifierFromUrl;
+
+function profileAuthHeaders() {
+  const token = getRememberedActiveProfileSession();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 async function requestJson(url, options = {}) {
   const response = await fetch(url, {
@@ -54,6 +78,7 @@ async function requestJson(url, options = {}) {
       "Content-Type": "application/json",
       "Cache-Control": "no-cache",
       Pragma: "no-cache",
+      ...profileAuthHeaders(),
       ...(options.headers || {}),
     },
     ...options,
@@ -67,25 +92,44 @@ async function requestJson(url, options = {}) {
     } catch {
       // ignore json parse errors
     }
+    if (response.status === 401 || response.status === 403) {
+      clearActiveProfileSession();
+    }
     throw new Error(message);
   }
 
-  return response.json();
+  const payload = await response.json();
+  if (payload?.sessionToken) {
+    rememberActiveProfileSession(payload.sessionToken);
+  }
+  if (payload?.profile?.sessionToken) {
+    rememberActiveProfileSession(payload.profile.sessionToken);
+  }
+  return payload;
 }
 
 export function loadPlayerProfile(identifier) {
-  return requestJson(`/api/profile/${encodeURIComponent(identifier)}?_=${Date.now()}`);
+  if (identifier && identifier !== "me") {
+    // The bot URL token is a one-time activation key. It is used only here;
+    // all following API calls go through Authorization: Bearer sessionToken.
+    return requestJson(`/api/profile/session/${encodeURIComponent(identifier)}?_=${Date.now()}`);
+  }
+  return requestJson(`/api/profile/me?_=${Date.now()}`);
+}
+
+function profileEndpoint(path) {
+  return `/api/profile/me${path}`;
 }
 
 export function spendAttributePoints(identifier, attributeKey, amount) {
-  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/attributes/spend`, {
+  return requestJson(profileEndpoint("/attributes/spend"), {
     method: "POST",
     body: JSON.stringify({ attribute_key: attributeKey, amount }),
   });
 }
 
 export function confirmAttributePoints(identifier, allocations) {
-  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/attributes/confirm`, {
+  return requestJson(profileEndpoint("/attributes/confirm"), {
     method: "POST",
     body: JSON.stringify({ allocations }),
   });
@@ -96,14 +140,14 @@ export function equipItem(identifier, itemId, slotKey = null, inventoryIndex = n
   if (Number.isInteger(inventoryIndex) && inventoryIndex >= 0) {
     payload.inventory_index = inventoryIndex;
   }
-  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/equipment/equip`, {
+  return requestJson(profileEndpoint("/equipment/equip"), {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
 export function unequipItem(identifier, slotKey) {
-  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/equipment/unequip`, {
+  return requestJson(profileEndpoint("/equipment/unequip"), {
     method: "POST",
     body: JSON.stringify({ slot_key: slotKey }),
   });
@@ -114,42 +158,39 @@ export function useItem(identifier, itemId, inventoryIndex = null) {
   if (Number.isInteger(inventoryIndex) && inventoryIndex >= 0) {
     payload.inventory_index = inventoryIndex;
   }
-  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/inventory/use`, {
+  return requestJson(profileEndpoint("/inventory/use"), {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
-
 export function spendSkillPoints(identifier, skillId, modifierId, amount) {
-  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/skills/spend`, {
+  return requestJson(profileEndpoint("/skills/spend"), {
     method: "POST",
     body: JSON.stringify({ skill_id: skillId, modifier_id: modifierId, amount }),
   });
 }
 
-
 export function equipSkill(identifier, skillId) {
-  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/skills/equip`, {
+  return requestJson(profileEndpoint("/skills/equip"), {
     method: "POST",
     body: JSON.stringify({ skill_id: skillId }),
   });
 }
 
 export function unequipSkill(identifier, skillId) {
-  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/skills/unequip`, {
+  return requestJson(profileEndpoint("/skills/unequip"), {
     method: "POST",
     body: JSON.stringify({ skill_id: skillId }),
   });
 }
-
 
 export function sellItem(identifier, itemId, amount, inventoryIndex = null) {
   const payload = { item_id: itemId, amount };
   if (Number.isInteger(inventoryIndex) && inventoryIndex >= 0) {
     payload.inventory_index = inventoryIndex;
   }
-  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/inventory/sell`, {
+  return requestJson(profileEndpoint("/inventory/sell"), {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -160,7 +201,7 @@ export function dropItem(identifier, itemId, amount, inventoryIndex = null) {
   if (Number.isInteger(inventoryIndex) && inventoryIndex >= 0) {
     payload.inventory_index = inventoryIndex;
   }
-  return requestJson(`/api/profile/${encodeURIComponent(identifier)}/inventory/drop`, {
+  return requestJson(profileEndpoint("/inventory/drop"), {
     method: "POST",
     body: JSON.stringify(payload),
   });

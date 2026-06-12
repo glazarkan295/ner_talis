@@ -22,8 +22,8 @@
         "role": "Ингредиент"
       },
       {
-        "item_id": "animal_fat",
-        "name": "Жир зверя",
+        "item_id": "fat_piece",
+        "name": "Кусок жира",
         "amount": 1,
         "role": "Ингредиент"
       }
@@ -469,7 +469,7 @@
     "ingredients": [
       {
         "item_id": "simple_tendon",
-        "name": "Простое сухожилие",
+        "name": "Сухожилия",
         "amount": 3,
         "role": "Ингредиент"
       }

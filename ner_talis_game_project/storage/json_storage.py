@@ -41,6 +41,7 @@ class JsonStorage:
             "names": {},
             "link_codes": {},
             "site_sessions": {},
+            "admin_panel_sessions": {},
         }
 
     def load(self) -> dict[str, Any]:
@@ -56,6 +57,7 @@ class JsonStorage:
             data.setdefault("names", {})
             data.setdefault("link_codes", {})
             data.setdefault("site_sessions", {})
+            data.setdefault("admin_panel_sessions", {})
             return data
 
     def save(self, data: dict[str, Any]) -> None:

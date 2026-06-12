@@ -161,20 +161,29 @@
   {
     "id": "raw_meat",
     "name_ru": "Сырое мясо",
-    "category": "ingredients",
-    "subtype": "meat",
-    "item_class": "common_ingredient",
+    "category": "meat",
+    "subtype": "raw_meat",
+    "item_class": "mob_loot",
     "quality": "common",
     "stackable": true,
     "stack_size": 20,
     "icon": "assets/items/hilly_meadows/ingredients/raw_meat.png",
-    "source_location": "beast_trophy_or_vendor",
+    "source_location": "mob_drop",
     "integration_tags": [
       "inventory_item",
-      "ingredient"
+      "loot",
+      "mob_drop",
+      "cooking_ingredient"
     ],
     "can_sell": true,
-    "sell_price_copper": 5
+    "sell_price_copper": 5,
+    "name": "Сырое мясо",
+    "category_ru": "мясо",
+    "inventory_section": "loot",
+    "inventory_section_ru": "добыча",
+    "type": "meat",
+    "max_stack": 20,
+    "description": "Выпадает из некоторых мобов. Нужен для готовки."
   },
   {
     "id": "meadow_mint",
@@ -468,102 +477,30 @@
     "sell_price_copper": 6
   },
   {
-    "id": "gopher_claw",
-    "name_ru": "Коготок суслика",
-    "category": "trophies",
-    "subtype": "claw",
-    "item_class": "beast_trophy",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 30,
-    "icon": "assets/items/hilly_meadows/trophies/gopher_claw.png",
-    "source_location": "oversized_gopher",
-    "integration_tags": [
-      "inventory_item",
-      "trophy",
-      "crafting_material"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 6,
-    "max_stack": 30
-  },
-  {
-    "id": "jackal_fang",
-    "name_ru": "Клык шакала",
-    "category": "trophies",
-    "subtype": "fang",
-    "item_class": "beast_trophy",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 30,
-    "icon": "assets/items/hilly_meadows/trophies/jackal_fang.png",
-    "source_location": "wild_jackal",
-    "integration_tags": [
-      "inventory_item",
-      "trophy",
-      "crafting_material"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 6,
-    "max_stack": 30
-  },
-  {
     "id": "meat_piece",
-    "name_ru": "Кусочек мяса",
-    "category": "trophies",
-    "subtype": "meat",
-    "item_class": "food_trophy",
+    "name_ru": "Маленький кусок сырого мяса",
+    "category": "meat",
+    "subtype": "small_raw_meat",
+    "item_class": "mob_loot",
     "quality": "common",
     "stackable": true,
-    "stack_size": 20,
+    "stack_size": 30,
     "icon": "assets/items/hilly_meadows/trophies/meat_piece.png",
-    "source_location": "oversized_gopher",
+    "source_location": "mob_drop",
     "integration_tags": [
       "inventory_item",
-      "trophy",
-      "crafting_material"
+      "loot",
+      "mob_drop",
+      "cooking_ingredient"
     ],
     "can_sell": true,
-    "sell_price_copper": 5
-  },
-  {
-    "id": "rabid_rabbit_tooth",
-    "name_ru": "Зуб бешеного кролика",
-    "category": "trophies",
-    "subtype": "tooth",
-    "item_class": "beast_trophy",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 30,
-    "icon": "assets/items/hilly_meadows/trophies/rabid_rabbit_tooth.png",
-    "source_location": "rabid_rabbit",
-    "integration_tags": [
-      "inventory_item",
-      "trophy",
-      "crafting_material"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 6,
-    "max_stack": 30
-  },
-  {
-    "id": "sharp_tooth",
-    "name_ru": "Острый зуб",
-    "category": "trophies",
-    "subtype": "tooth",
-    "item_class": "beast_trophy",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 30,
-    "icon": "assets/items/hilly_meadows/trophies/sharp_tooth.png",
-    "source_location": "oversized_gopher",
-    "integration_tags": [
-      "inventory_item",
-      "trophy",
-      "crafting_material"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 6,
-    "max_stack": 30
+    "sell_price_copper": 3,
+    "name": "Маленький кусок сырого мяса",
+    "category_ru": "мясо",
+    "inventory_section": "loot",
+    "inventory_section_ru": "добыча",
+    "type": "meat",
+    "max_stack": 30,
+    "description": "Выпадает из некоторых мобов. Нужно для готовки."
   }
 ]

@@ -189,95 +189,27 @@
     "unit": "1 item"
   },
   {
-    "id": "wolf_fang",
-    "name_ru": "Волчий клык",
-    "sell_price_copper": 8,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "animal_fat",
-    "name_ru": "Жир зверя",
-    "sell_price_copper": 10,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "rabid_rabbit_tooth",
-    "name_ru": "Зуб бешеного кролика",
-    "sell_price_copper": 6,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "boar_tusk",
-    "name_ru": "Кабаний клык",
-    "sell_price_copper": 6,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "jackal_fang",
-    "name_ru": "Клык шакала",
-    "sell_price_copper": 6,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "gopher_claw",
-    "name_ru": "Коготок суслика",
-    "sell_price_copper": 6,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
     "id": "meat_piece",
-    "name_ru": "Кусочек мяса",
-    "sell_price_copper": 5,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "bear_fang",
-    "name_ru": "Медвежий клык",
-    "sell_price_copper": 9,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "bear_claw",
-    "name_ru": "Медвежий коготь",
-    "sell_price_copper": 6,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "sharp_tooth",
-    "name_ru": "Острый зуб",
-    "sell_price_copper": 6,
-    "currency": "copper",
-    "unit": "1 item"
-  },
-  {
-    "id": "deer_antler",
-    "name_ru": "Рог оленя",
-    "sell_price_copper": 8,
+    "name_ru": "Маленький кусок сырого мяса",
+    "sell_price_copper": 3,
     "currency": "copper",
     "unit": "1 item"
   },
   {
     "id": "decent_belt",
-    "name_ru": "Неплохой пояс",
-    "sell_price_copper": 100,
+    "name_ru": "Неплохой пояс (необычные)",
+    "sell_price_copper": 300,
     "currency": "copper",
-    "unit": "1 item"
+    "unit": "1 item",
+    "level_scaled_note": "Стоимость продажи зависит от уровня игрока, нашедшего предмет."
   },
   {
     "id": "old_gloves",
-    "name_ru": "Старые перчатки",
-    "sell_price_copper": 30,
+    "name_ru": "Старые перчатки (необычные)",
+    "sell_price_copper": 300,
     "currency": "copper",
-    "unit": "1 item"
+    "unit": "1 item",
+    "level_scaled_note": "Стоимость продажи зависит от уровня игрока, нашедшего предмет."
   },
   {
     "id": "old_knife",
@@ -480,11 +412,57 @@
   {
     "id": "simple_hide",
     "name_ru": "Простая шкура",
-    "sell_price_copper": 10
+    "sell_price_copper": 8,
+    "currency": "copper",
+    "unit": "1 item"
   },
   {
     "id": "simple_tendon",
-    "name_ru": "Простое сухожилие",
-    "sell_price_copper": 10
+    "name_ru": "Сухожилия",
+    "sell_price_copper": 8,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "simple_fang",
+    "name_ru": "Простой клык",
+    "sell_price_copper": 7,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "simple_claw",
+    "name_ru": "Простой коготь",
+    "sell_price_copper": 7,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "deer_antlers",
+    "name_ru": "Оленьи рога",
+    "sell_price_copper": 10,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "fat_piece",
+    "name_ru": "Кусок жира",
+    "sell_price_copper": 9,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "old_brooch",
+    "name_ru": "старая брошь",
+    "sell_price_copper": 50,
+    "currency": "copper",
+    "unit": "1 item"
+  },
+  {
+    "id": "old_medallion",
+    "name_ru": "старый медальон",
+    "sell_price_copper": 60,
+    "currency": "copper",
+    "unit": "1 item"
   }
 ]

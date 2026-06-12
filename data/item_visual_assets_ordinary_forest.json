@@ -36,26 +36,26 @@
     },
     {
       "id": "old_gloves",
-      "name_ru": "Старые перчатки",
+      "name_ru": "Старые перчатки (необычные)",
       "category": "equipment",
       "section": "equipment",
       "source": "Обыкновенный лес / небольшая нора",
-      "rarity": "ordinary",
+      "rarity": "uncommon",
       "slot": "gloves",
-      "note": "Обычная стартовая экипировка; зачарование нельзя.",
+      "note": "Необычные перчатки: +X к ловкости и +X,X% к шансу крита; сила зависит от уровня игрока, нашедшего предмет.",
       "image": "assets/items/ordinary_forest/equipment/old_gloves.png",
       "image_1024": "assets_1024/items/ordinary_forest/equipment/old_gloves.png",
       "image_256": "assets_256/items/ordinary_forest/equipment/old_gloves.png"
     },
     {
       "id": "decent_belt",
-      "name_ru": "Неплохой пояс",
+      "name_ru": "Неплохой пояс (необычные)",
       "category": "equipment",
       "section": "equipment",
       "source": "Обыкновенный лес / небольшая нора",
       "rarity": "uncommon",
       "slot": "belt",
-      "note": "Редкая находка ранней локации; возможен малый бонус к энергии или переносимому весу; зачарование нельзя.",
+      "note": "Необычный пояс: +2 слота инвентаря, +X к броне и +X к уклонению; сила зависит от уровня игрока, нашедшего предмет.",
       "image": "assets/items/ordinary_forest/equipment/decent_belt.png",
       "image_1024": "assets_1024/items/ordinary_forest/equipment/decent_belt.png",
       "image_256": "assets_256/items/ordinary_forest/equipment/decent_belt.png"
@@ -121,18 +121,6 @@
       "image_256": "assets_256/items/ordinary_forest/events/forest_tick.png"
     },
     {
-      "id": "deer_antler",
-      "name_ru": "Рог оленя",
-      "category": "trophies",
-      "section": "loot",
-      "source": "Обыкновенный лес / разъярённый олень",
-      "rarity": "common",
-      "note": "Звериный трофей.",
-      "image": "assets/items/ordinary_forest/trophies/deer_antler.png",
-      "image_1024": "assets_1024/items/ordinary_forest/trophies/deer_antler.png",
-      "image_256": "assets_256/items/ordinary_forest/trophies/deer_antler.png"
-    },
-    {
       "id": "old_bear_trap",
       "name_ru": "Старый капкан",
       "category": "events",
@@ -145,18 +133,6 @@
       "image_256": "assets_256/items/ordinary_forest/events/old_bear_trap.png"
     },
     {
-      "id": "bear_fang",
-      "name_ru": "Медвежий клык",
-      "category": "trophies",
-      "section": "loot",
-      "source": "Обыкновенный лес / медведь",
-      "rarity": "common",
-      "note": "Звериный трофей.",
-      "image": "assets/items/ordinary_forest/trophies/bear_fang.png",
-      "image_1024": "assets_1024/items/ordinary_forest/trophies/bear_fang.png",
-      "image_256": "assets_256/items/ordinary_forest/trophies/bear_fang.png"
-    },
-    {
       "id": "mire_trap",
       "name_ru": "Трясина",
       "category": "events",
@@ -167,54 +143,14 @@
       "image": "assets/items/ordinary_forest/events/mire_trap.png",
       "image_1024": "assets_1024/items/ordinary_forest/events/mire_trap.png",
       "image_256": "assets_256/items/ordinary_forest/events/mire_trap.png"
-    },
-    {
-      "id": "wolf_fang",
-      "name_ru": "Волчий клык",
-      "category": "trophies",
-      "section": "loot",
-      "source": "Обыкновенный лес / волки",
-      "rarity": "common",
-      "note": "Звериный трофей.",
-      "image": "assets/items/ordinary_forest/trophies/wolf_fang.png",
-      "image_1024": "assets_1024/items/ordinary_forest/trophies/wolf_fang.png",
-      "image_256": "assets_256/items/ordinary_forest/trophies/wolf_fang.png"
-    },
-    {
-      "id": "animal_fat",
-      "name_ru": "Жир зверя",
-      "category": "trophies",
-      "section": "loot",
-      "source": "Обыкновенный лес / кабаны, медведь",
-      "rarity": "common",
-      "note": "Звериный трофей.",
-      "image": "assets/items/ordinary_forest/trophies/animal_fat.png",
-      "image_1024": "assets_1024/items/ordinary_forest/trophies/animal_fat.png",
-      "image_256": "assets_256/items/ordinary_forest/trophies/animal_fat.png"
-    },
-    {
-      "id": "bear_claw",
-      "name_ru": "Медвежий коготь",
-      "category": "trophies",
-      "section": "loot",
-      "source": "Обыкновенный лес / медведь",
-      "rarity": "common",
-      "note": "Звериный трофей.",
-      "image": "assets/items/ordinary_forest/trophies/bear_claw.png",
-      "image_1024": "assets_1024/items/ordinary_forest/trophies/bear_claw.png",
-      "image_256": "assets_256/items/ordinary_forest/trophies/bear_claw.png"
-    },
-    {
-      "id": "boar_tusk",
-      "name_ru": "Кабаний клык",
-      "category": "trophies",
-      "section": "loot",
-      "source": "Обыкновенный лес / кабаны",
-      "rarity": "common",
-      "note": "Звериный трофей.",
-      "image": "assets/items/ordinary_forest/trophies/boar_tusk.png",
-      "image_1024": "assets_1024/items/ordinary_forest/trophies/boar_tusk.png",
-      "image_256": "assets_256/items/ordinary_forest/trophies/boar_tusk.png"
     }
-  ]
+  ],
+  "aliases": {
+    "wolf_fang": "simple_fang",
+    "boar_tusk": "simple_fang",
+    "bear_fang": "simple_fang",
+    "bear_claw": "simple_claw",
+    "deer_antler": "deer_antlers",
+    "animal_fat": "fat_piece"
+  }
 }

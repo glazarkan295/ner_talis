@@ -38,6 +38,7 @@ __pycache__/
 venv/
 .idea/
 .vscode/
+.kilo/
 *.log
 *.rar
 *.zip
@@ -47,6 +48,9 @@ venv/
 .DS_Store
 Thumbs.db
 data/players.json
+data/promo_codes.json
+data/promo_codes.json.lock
+data/public_uploads/
 
 data/players.sqlite3
 data/players.sqlite3-*

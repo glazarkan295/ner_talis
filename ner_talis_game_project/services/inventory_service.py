@@ -82,6 +82,60 @@ def _base_sell_price(item: dict[str, Any]) -> int:
     return max(0, safe_int(raw, 0))
 
 
+
+def _scaled_effect_value(player_level: int, rule: Any) -> int:
+    if not isinstance(rule, dict):
+        return 0
+    base = float(rule.get("base", 0) or 0)
+    sqrt_multiplier = float(rule.get("sqrt_multiplier", 0) or 0)
+    raw = base + sqrt_multiplier * math.sqrt(max(1, int(player_level or 1)))
+    rounding = str(rule.get("rounding") or "round").strip().casefold()
+    if rounding == "floor":
+        value = math.floor(raw)
+    elif rounding == "ceil":
+        value = math.ceil(raw)
+    else:
+        value = round(raw)
+    min_value = rule.get("min")
+    max_value = rule.get("max")
+    if min_value is not None:
+        value = max(int(min_value), int(value))
+    if max_value is not None:
+        value = min(int(max_value), int(value))
+    return int(value)
+
+
+def apply_found_level_effect_scaling(player: dict[str, Any], item: dict[str, Any], player_level: int) -> dict[str, Any]:
+    """Materialize level-dependent found-equipment modifiers.
+
+    Some location rewards describe effects as "+X" where X depends on the level
+    of the player who found the item.  The registry keeps formulas for design
+    clarity, while this helper writes concrete modifiers onto the generated
+    inventory instance so the existing equipment stat pipeline can use them.
+    """
+
+    scaling = item.get("found_level_effect_scaling")
+    if not isinstance(scaling, dict):
+        return item
+
+    modifiers = dict(item.get("stat_modifiers") or {})
+    fixed = scaling.get("fixed_modifiers")
+    if isinstance(fixed, dict):
+        for key, value in fixed.items():
+            modifiers[str(key)] = safe_int(value, 0)
+
+    scaled = scaling.get("stat_modifiers")
+    if isinstance(scaled, dict):
+        for key, rule in scaled.items():
+            modifiers[str(key)] = _scaled_effect_value(player_level, rule)
+
+    if modifiers:
+        item["stat_modifiers"] = modifiers
+    item["found_by_player_level"] = player_level
+    item["effects_scaled_from_player_level"] = True
+    return item
+
+
 def calculate_generated_item_sell_price(item: dict[str, Any]) -> int:
     base = _base_sell_price(item)
     if base <= 0:
@@ -124,6 +178,8 @@ def apply_generated_item_level_and_price(
 
     item["level"] = level
     item["required_level"] = level
+    if generation_type == "found":
+        apply_found_level_effect_scaling(player if isinstance(player, dict) else {}, item, player_level)
     if item.get("base_sell_price_copper") is None:
         base = item.get("sell_price_copper", item.get("sellPriceCopper"))
         if base is not None:
@@ -153,16 +209,37 @@ class InventoryAddResult:
         return self.discarded > 0
 
 
+def equipment_inventory_slot_bonus(player: dict[str, Any]) -> int:
+    """Return temporary inventory slots granted by equipped items."""
+    total = 0
+    equipment = player.get("equipment") or {}
+    if not isinstance(equipment, dict):
+        return 0
+    for item in equipment.values():
+        if not isinstance(item, dict):
+            continue
+        total += safe_int(item.get("inventory_slots_bonus"), 0)
+        modifiers = item.get("stat_modifiers") or {}
+        if isinstance(modifiers, dict):
+            total += safe_int(modifiers.get("inventory_slots_bonus"), 0)
+            total += safe_int(modifiers.get("bonus_inventory_slots"), 0)
+        effects = item.get("effects") or []
+        if isinstance(effects, list):
+            for effect in effects:
+                if isinstance(effect, dict):
+                    total += safe_int(effect.get("inventory_slots_bonus"), 0)
+                    total += safe_int(effect.get("bonus_inventory_slots"), 0)
+    return max(0, total)
+
+
 def max_regular_slots(player: dict[str, Any]) -> int:
-    return max(
-        0,
-        safe_int(
-            player.get("inventory_capacity")
-            or player.get("max_inventory_slots")
-            or player.get("inventory_slots"),
-            20,
-        ),
+    base_slots = safe_int(
+        player.get("inventory_capacity")
+        or player.get("max_inventory_slots")
+        or player.get("inventory_slots"),
+        20,
     )
+    return max(0, base_slots + equipment_inventory_slot_bonus(player))
 
 
 def max_overflow_slots(player: dict[str, Any]) -> int:
@@ -219,11 +296,26 @@ def _stack_protection_marker(item: dict[str, Any]) -> str:
 
 
 def _stack_identifier(item: dict[str, Any]) -> str:
-    """Canonical key used only for merging stackable inventory entries."""
+    """Canonical key used only for merging stackable inventory entries.
+
+    ``evidence_bag`` stacks are named by the killed player.  Bags from
+    different targets must stay in separate stacks even though they share the
+    same registry item id.
+    """
 
     if _is_stackable_item(item):
         item_id = item.get("item_id")
         if item_id:
+            if str(item_id) == "evidence_bag":
+                victim_key = (
+                    item.get("evidence_victim_id")
+                    or item.get("victim_player_id")
+                    or item.get("evidence_victim_name")
+                    or item.get("victim_name")
+                    or item.get("named_stack_key")
+                )
+                if victim_key:
+                    return f"{item_id}::{victim_key}::{_stack_protection_marker(item)}"
             return f"{item_id}::{_stack_protection_marker(item)}"
     return _item_identifier(item)
 

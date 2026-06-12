@@ -1,0 +1,62 @@
+[
+  {
+    "id": "old_brooch",
+    "item_id": "old_brooch",
+    "name": "старая брошь",
+    "name_ru": "старая брошь",
+    "category": "junk",
+    "category_ru": "хлам",
+    "inventory_section": "misc",
+    "inventory_section_ru": "прочее",
+    "subtype": "junk",
+    "type": "junk",
+    "item_class": "resource",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 10,
+    "max_stack": 10,
+    "icon": "/assets/items/junk/old_brooch.jpg",
+    "asset_path": "/assets/items/junk/old_brooch.jpg",
+    "asset_filename": "old_brooch.jpg",
+    "source_location": "small_plateau",
+    "description": "Очень старая брошь с потускневшим полудрагоценным камнем. Кажется, она пролежала в руинах не одно столетие.",
+    "integration_tags": [
+      "inventory_item",
+      "small_plateau",
+      "junk",
+      "sellable"
+    ],
+    "can_sell": true,
+    "sell_price_copper": 50
+  },
+  {
+    "id": "old_medallion",
+    "item_id": "old_medallion",
+    "name": "старый медальон",
+    "name_ru": "старый медальон",
+    "category": "junk",
+    "category_ru": "хлам",
+    "inventory_section": "misc",
+    "inventory_section_ru": "прочее",
+    "subtype": "junk",
+    "type": "junk",
+    "item_class": "resource",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 10,
+    "max_stack": 10,
+    "icon": "/assets/items/junk/old_medallion.jpg",
+    "asset_path": "/assets/items/junk/old_medallion.jpg",
+    "asset_filename": "old_medallion.jpg",
+    "source_location": "small_plateau",
+    "description": "Очень древний слегка приоткрытый медальон с выцветшим безликим портретом женщины внутри.",
+    "integration_tags": [
+      "inventory_item",
+      "small_plateau",
+      "junk",
+      "sellable"
+    ],
+    "can_sell": true,
+    "sell_price_copper": 60
+  }
+]

@@ -631,9 +631,10 @@ class ProfileSiteFixesTest(unittest.TestCase):
             app.include_router(create_profile_api_router(lambda: storage))
             client = TestClient(app)
             first = client.post(f"/api/profile/{token}/inventory/use", json={"item_id": "food"})
-            second = client.post(f"/api/profile/{token}/inventory/use", json={"item_id": "food"})
-
             self.assertEqual(first.status_code, 200, first.text)
+            active_token = first.json()["profile"]["sessionToken"]
+            second = client.post(f"/api/profile/{active_token}/inventory/use", json={"item_id": "food"})
+
             self.assertEqual(second.status_code, 200, second.text)
             restored = storage.get_player_by_game_id(player["game_id"])
             self.assertEqual(restored["max_energy"], 100)
@@ -645,7 +646,7 @@ class ProfileSiteFixesTest(unittest.TestCase):
         player["inventory"] = [
             {"id": "tea", "name": "Травяной чай", "category": "Еда", "amount": 1, "energy_restore": 20},
             {"id": "ore", "name": "Кусок медной руды", "category": "resources", "subtype": "ore", "amount": 1},
-            {"id": "fang", "name": "Клык шакала", "category": "Трофеи", "source": "mob", "amount": 1},
+            {"id": "fang", "name": "Простой клык", "category": "Трофеи", "source": "mob", "amount": 1},
             {"id": "glass_ruby", "item_id": "glass_ruby", "name": "Стекляшки: Рубин", "category": "resources", "subtype": "glass_gem", "amount": 1},
         ]
 
@@ -654,7 +655,7 @@ class ProfileSiteFixesTest(unittest.TestCase):
 
         self.assertEqual(categories["Травяной чай"], "Расходники")
         self.assertEqual(categories["Кусок медной руды"], "Ресурсы")
-        self.assertEqual(categories["Клык шакала"], "Добыча")
+        self.assertEqual(categories["Простой клык"], "Добыча")
         self.assertEqual(categories["Стекляшки: Рубин"], "Материалы")
         glass_item = next(item for item in profile["inventory"] if item["name"] == "Стекляшки: Рубин")
         self.assertEqual(glass_item["type"], "драг. камень")
@@ -710,8 +711,9 @@ class ProfileSiteFixesTest(unittest.TestCase):
             self.assertIn("basic_attack", equipped_names)
             self.assertNotIn("basic_attack", active_names)
 
+            active_token = equip_response.json()["profile"]["sessionToken"]
             unequip_response = client.post(
-                f"/api/profile/{token}/skills/unequip",
+                f"/api/profile/{active_token}/skills/unequip",
                 json={"skill_id": "basic_attack"},
             )
             self.assertEqual(unequip_response.status_code, 200, unequip_response.text)
@@ -734,11 +736,13 @@ class ProfileSiteFixesTest(unittest.TestCase):
 
             profile_response = client.get(f"/api/profile/{token}")
             self.assertEqual(profile_response.status_code, 200, profile_response.text)
-            passive_skill = next(skill for skill in profile_response.json()["skills"]["passive"] if skill["id"] == "focus")
+            profile_payload = profile_response.json()
+            passive_skill = next(skill for skill in profile_payload["skills"]["passive"] if skill["id"] == "focus")
             self.assertFalse(passive_skill["equippable"])
+            active_token = profile_payload["sessionToken"]
 
             equip_response = client.post(
-                f"/api/profile/{token}/skills/equip",
+                f"/api/profile/{active_token}/skills/equip",
                 json={"skill_id": "focus"},
             )
             self.assertEqual(equip_response.status_code, 400)
@@ -760,6 +764,61 @@ class ProfileSiteFixesTest(unittest.TestCase):
                 json={"skill_id": "focus", "modifier_id": "main", "amount": 1},
             )
 
+            self.assertEqual(response.status_code, 401)
+
+
+    def test_profile_url_token_is_one_time_and_exchanged_for_active_session(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            client = TestClient(app)
+
+            first = client.get(f"/api/profile/{token}")
+            self.assertEqual(first.status_code, 200, first.text)
+            active_token = first.json()["sessionToken"]
+            self.assertTrue(active_token)
+            self.assertNotEqual(active_token, token)
+
+            reused = client.get(f"/api/profile/{token}")
+            self.assertEqual(reused.status_code, 401)
+
+            active = client.get(f"/api/profile/{active_token}")
+            self.assertEqual(active.status_code, 200, active.text)
+
+    def test_new_profile_token_invalidates_previous_active_session(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            storage.save_new_player(player, "telegram", "111")
+            first_token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            client = TestClient(app)
+            first_active = client.get(f"/api/profile/{first_token}").json()["sessionToken"]
+
+            second_token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+            old_active = client.get(f"/api/profile/{first_active}")
+            self.assertEqual(old_active.status_code, 401)
+
+            second_active = client.get(f"/api/profile/{second_token}")
+            self.assertEqual(second_active.status_code, 200, second_active.text)
+            self.assertNotEqual(second_active.json()["sessionToken"], first_active)
+
+    def test_public_id_does_not_open_full_profile_json(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            storage.save_new_player(player, "telegram", "111")
+
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            response = TestClient(app).get(f"/api/profile/{player['public_id']}")
             self.assertEqual(response.status_code, 401)
 
 
@@ -966,12 +1025,15 @@ class PromoAndEffectFixesTest(unittest.TestCase):
             app = FastAPI()
             app.include_router(create_profile_api_router(lambda: storage))
             client = TestClient(app)
-            base_values = {row["label"]: row["value"] for row in client.get(f"/api/profile/{token}").json()["parameters"]}
+            profile_payload = client.get(f"/api/profile/{token}").json()
+            base_values = {row["label"]: row["value"] for row in profile_payload["parameters"]}
+            active_token = profile_payload["sessionToken"]
 
-            first = client.post(f"/api/profile/{token}/inventory/use", json={"item_id": "focus_food"})
-            second = client.post(f"/api/profile/{token}/inventory/use", json={"item_id": "focus_food"})
-
+            first = client.post(f"/api/profile/{active_token}/inventory/use", json={"item_id": "focus_food"})
             self.assertEqual(first.status_code, 200, first.text)
+            active_token = first.json()["profile"]["sessionToken"]
+            second = client.post(f"/api/profile/{active_token}/inventory/use", json={"item_id": "focus_food"})
+
             self.assertEqual(second.status_code, 200, second.text)
             restored = storage.get_player_by_game_id(player["game_id"])
             self.assertEqual(len(restored.get("active_effects", [])), 1)
