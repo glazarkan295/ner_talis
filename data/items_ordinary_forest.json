@@ -47,35 +47,72 @@
   },
   {
     "id": "old_gloves",
-    "name_ru": "Старые перчатки",
-    "category": "items",
+    "name_ru": "Старые перчатки (необычные)",
+    "category": "перчатки",
     "subtype": "gloves",
     "item_class": "equipment",
-    "quality": "common",
+    "quality": "uncommon",
     "stackable": false,
     "stack_size": 1,
     "icon": "assets/items/ordinary_forest/equipment/old_gloves.png",
     "icon_256": "assets_256/items/ordinary_forest/equipment/old_gloves.png",
     "icon_1024": "assets_1024/items/ordinary_forest/equipment/old_gloves.png",
     "source_location": "ordinary_forest",
-    "description": "Обычная стартовая экипировка; зачарование нельзя.",
+    "description": "Потрёпанная пара старых перчаток необычного качества. Сила эффектов зависит от уровня игрока, нашедшего предмет.",
     "integration_tags": [
       "inventory_item",
-      "ordinary_forest"
+      "ordinary_forest",
+      "equipment",
+      "found_level_scaled"
     ],
     "slot": "gloves",
     "stat_modifiers": {
-      "armor": 1,
-      "physical_defense": 1
+      "bonus_agility": 1,
+      "bonus_crit_chance": 5
     },
     "max_stack": 1,
     "can_sell": true,
-    "sell_price_copper": 30
+    "sell_price_copper": 300,
+    "inventory": "снаряжение",
+    "quality_ru": "необычные",
+    "source_note": "Находится в некоторых событиях локаций: Обыкновенный лес / небольшая нора.",
+    "equipment_slot": "gloves",
+    "base_sell_price_copper": 300,
+    "effect_description": "+X к ловкости, +X,X% к шансу крита. X зависит мягко от уровня игрока, нашедшего предмет.",
+    "found_level_effect_scaling": {
+      "level_source": "finder_player_level",
+      "stat_modifiers": {
+        "bonus_agility": {
+          "formula": "floor(1 + 0.08 * sqrt(player_level))",
+          "base": 1,
+          "sqrt_multiplier": 0.08,
+          "rounding": "floor",
+          "min": 1
+        },
+        "bonus_crit_chance": {
+          "formula": "round(5 + 0.4 * sqrt(player_level))",
+          "base": 5,
+          "sqrt_multiplier": 0.4,
+          "rounding": "round",
+          "min": 5
+        }
+      },
+      "display_effects": [
+        {
+          "label": "+X к ловкости",
+          "formula": "floor(1 + 0.08 * sqrt(player_level))"
+        },
+        {
+          "label": "+X,X% к шансу крита",
+          "formula": "round(0.5 + 0.03 * sqrt(player_level), 1)"
+        }
+      ]
+    }
   },
   {
     "id": "decent_belt",
-    "name_ru": "Неплохой пояс",
-    "category": "items",
+    "name_ru": "Неплохой пояс (необычные)",
+    "category": "пояс",
     "subtype": "belt",
     "item_class": "equipment",
     "quality": "uncommon",
@@ -85,18 +122,65 @@
     "icon_256": "assets_256/items/ordinary_forest/equipment/decent_belt.png",
     "icon_1024": "assets_1024/items/ordinary_forest/equipment/decent_belt.png",
     "source_location": "ordinary_forest",
-    "description": "Редкая находка ранней локации; возможен малый бонус к энергии или переносимому весу; зачарование нельзя.",
+    "description": "Крепкий пояс необычного качества. Даёт +2 слота инвентаря, а броня и уклонение зависят от уровня игрока, нашедшего предмет.",
     "integration_tags": [
       "inventory_item",
-      "ordinary_forest"
+      "ordinary_forest",
+      "equipment",
+      "found_level_scaled",
+      "inventory_slots_bonus"
     ],
     "slot": "belt",
     "stat_modifiers": {
-      "bonus_max_energy": 5
+      "inventory_slots_bonus": 2,
+      "armor": 1,
+      "bonus_dodge": 1
     },
     "max_stack": 1,
     "can_sell": true,
-    "sell_price_copper": 100
+    "sell_price_copper": 300,
+    "inventory": "снаряжение",
+    "quality_ru": "необычные",
+    "source_note": "Находится в некоторых событиях локаций: Обыкновенный лес / небольшая нора.",
+    "equipment_slot": "belt",
+    "base_sell_price_copper": 300,
+    "effect_description": "+2 слота к инвентарю, +X к броне, +X к уклонению. X зависит мягко от уровня игрока, нашедшего предмет.",
+    "found_level_effect_scaling": {
+      "level_source": "finder_player_level",
+      "fixed_modifiers": {
+        "inventory_slots_bonus": 2
+      },
+      "stat_modifiers": {
+        "armor": {
+          "formula": "floor(1 + 0.10 * sqrt(player_level))",
+          "base": 1,
+          "sqrt_multiplier": 0.1,
+          "rounding": "floor",
+          "min": 1
+        },
+        "bonus_dodge": {
+          "formula": "floor(1 + 0.08 * sqrt(player_level))",
+          "base": 1,
+          "sqrt_multiplier": 0.08,
+          "rounding": "floor",
+          "min": 1
+        }
+      },
+      "display_effects": [
+        {
+          "label": "+2 слота к инвентарю",
+          "formula": "fixed 2"
+        },
+        {
+          "label": "+X к броне",
+          "formula": "floor(1 + 0.10 * sqrt(player_level))"
+        },
+        {
+          "label": "+X к уклонению",
+          "formula": "floor(1 + 0.08 * sqrt(player_level))"
+        }
+      ]
+    }
   },
   {
     "id": "dry_log",
@@ -209,28 +293,6 @@
     ]
   },
   {
-    "id": "deer_antler",
-    "name_ru": "Рог оленя",
-    "category": "trophies",
-    "subtype": "horn",
-    "item_class": "trophies",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 20,
-    "icon": "assets/items/ordinary_forest/trophies/deer_antler.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/deer_antler.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/deer_antler.png",
-    "source_location": "ordinary_forest",
-    "description": "Звериный трофей.",
-    "integration_tags": [
-      "inventory_item",
-      "ordinary_forest",
-      "mob_loot"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 8
-  },
-  {
     "id": "old_bear_trap",
     "name_ru": "Старый капкан",
     "category": "events",
@@ -250,29 +312,6 @@
     ]
   },
   {
-    "id": "bear_fang",
-    "name_ru": "Медвежий клык",
-    "category": "trophies",
-    "subtype": "fang",
-    "item_class": "trophies",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 30,
-    "icon": "assets/items/ordinary_forest/trophies/bear_fang.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/bear_fang.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/bear_fang.png",
-    "source_location": "ordinary_forest",
-    "description": "Звериный трофей.",
-    "integration_tags": [
-      "inventory_item",
-      "ordinary_forest",
-      "mob_loot"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 9,
-    "max_stack": 30
-  },
-  {
     "id": "mire_trap",
     "name_ru": "Трясина",
     "category": "events",
@@ -290,96 +329,5 @@
       "inventory_item",
       "ordinary_forest"
     ]
-  },
-  {
-    "id": "wolf_fang",
-    "name_ru": "Волчий клык",
-    "category": "trophies",
-    "subtype": "fang",
-    "item_class": "trophies",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 30,
-    "icon": "assets/items/ordinary_forest/trophies/wolf_fang.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/wolf_fang.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/wolf_fang.png",
-    "source_location": "ordinary_forest",
-    "description": "Звериный трофей.",
-    "integration_tags": [
-      "inventory_item",
-      "ordinary_forest",
-      "mob_loot"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 8,
-    "max_stack": 30
-  },
-  {
-    "id": "animal_fat",
-    "name_ru": "Жир зверя",
-    "category": "trophies",
-    "subtype": "fat",
-    "item_class": "trophies",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 20,
-    "icon": "assets/items/ordinary_forest/trophies/animal_fat.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/animal_fat.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/animal_fat.png",
-    "source_location": "ordinary_forest",
-    "description": "Звериный трофей.",
-    "integration_tags": [
-      "inventory_item",
-      "ordinary_forest",
-      "mob_loot"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 10
-  },
-  {
-    "id": "bear_claw",
-    "name_ru": "Медвежий коготь",
-    "category": "trophies",
-    "subtype": "claw",
-    "item_class": "trophies",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 30,
-    "icon": "assets/items/ordinary_forest/trophies/bear_claw.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/bear_claw.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/bear_claw.png",
-    "source_location": "ordinary_forest",
-    "description": "Звериный трофей.",
-    "integration_tags": [
-      "inventory_item",
-      "ordinary_forest",
-      "mob_loot"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 6,
-    "max_stack": 30
-  },
-  {
-    "id": "boar_tusk",
-    "name_ru": "Кабаний клык",
-    "category": "trophies",
-    "subtype": "fang",
-    "item_class": "trophies",
-    "quality": "common",
-    "stackable": true,
-    "stack_size": 30,
-    "icon": "assets/items/ordinary_forest/trophies/boar_tusk.png",
-    "icon_256": "assets_256/items/ordinary_forest/trophies/boar_tusk.png",
-    "icon_1024": "assets_1024/items/ordinary_forest/trophies/boar_tusk.png",
-    "source_location": "ordinary_forest",
-    "description": "Звериный трофей.",
-    "integration_tags": [
-      "inventory_item",
-      "ordinary_forest",
-      "mob_loot"
-    ],
-    "can_sell": true,
-    "sell_price_copper": 6,
-    "max_stack": 30
   }
 ]

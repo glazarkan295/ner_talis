@@ -106,6 +106,8 @@ def create_player(
     name: str,
     race_id: str,
     races: dict[str, Any],
+    gender_id: str | None = None,
+    gender_label: str | None = None,
 ) -> dict[str, Any]:
     race = races[race_id]
     return {
@@ -117,6 +119,8 @@ def create_player(
             platform: external_user_id,
         },
         "name": name,
+        "gender": gender_id or "not_selected",
+        "gender_label": gender_label or "Не выбран",
         "race_id": race_id,
         "race_name": race["name"],
         "level": 1,

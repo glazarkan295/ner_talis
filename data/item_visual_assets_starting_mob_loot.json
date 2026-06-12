@@ -3,14 +3,38 @@
     {
       "id": "simple_hide",
       "name_ru": "Простая шкура",
-      "category": "trophies",
+      "category": "hide",
       "image": "/assets/items/starter_loot/simple_hide.png"
     },
     {
       "id": "simple_tendon",
-      "name_ru": "Простое сухожилие",
-      "category": "trophies",
+      "name_ru": "Сухожилия",
+      "category": "tendons",
       "image": "/assets/items/starter_loot/simple_tendon.png"
+    },
+    {
+      "id": "simple_fang",
+      "name_ru": "Простой клык",
+      "category": "fangs",
+      "image": "/assets/items/starter_loot/simple_fang.png"
+    },
+    {
+      "id": "simple_claw",
+      "name_ru": "Простой коготь",
+      "category": "claws",
+      "image": "/assets/items/starter_loot/simple_claw.png"
+    },
+    {
+      "id": "deer_antlers",
+      "name_ru": "Оленьи рога",
+      "category": "horns",
+      "image": "/assets/items/starter_loot/deer_antlers.png"
+    },
+    {
+      "id": "fat_piece",
+      "name_ru": "Кусок жира",
+      "category": "fat",
+      "image": "/assets/items/starter_loot/fat_piece.png"
     }
   ]
 }

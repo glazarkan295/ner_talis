@@ -12,7 +12,7 @@ except Exception:  # pragma: no cover - для локальных проверо
     def get_random_id() -> int:
         return random.randint(1, 2_147_483_647)
 
-from services.admin_access import check_vk_admin
+from services.admin_access import check_vk_admin, is_vk_admin_peer
 from services.admin_command_service import execute_admin_command, is_admin_command
 
 
@@ -63,6 +63,10 @@ def try_handle_vk_admin_command(*, text: str, peer_id: str | int | None, externa
         return True
 
     if not is_admin_command(stripped):
+        # В разрешённой админ-беседе обычные игровые команды и кнопки не должны
+        # попадать в игровой роутер. Просто глушим такие сообщения.
+        if is_vk_admin_peer(peer_id):
+            return True
         return False
 
     access = check_vk_admin(peer_id, external_user_id)

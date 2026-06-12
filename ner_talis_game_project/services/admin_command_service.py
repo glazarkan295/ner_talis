@@ -8,7 +8,19 @@ from dataclasses import dataclass
 from typing import Any
 
 from services.admin_audit import write_admin_audit
-from services.admin_player_service import add_item_to_player, delete_player_profile, reset_player_progress
+from services.admin_panel_service import create_admin_panel_activation_token, build_admin_panel_url
+from services.admin_player_service import (
+    add_experience_to_player,
+    add_item_to_player,
+    add_money_to_player,
+    add_skill_points_to_player,
+    add_stat_points_to_player,
+    delete_player_profile,
+    find_players,
+    format_player_admin_summary,
+    kick_player_profile_sessions,
+    reset_player_progress,
+)
 from services.promo_service import add_promo_code, deactivate_promo_code, import_promo_codes, list_promo_codes
 
 ADMIN_COMMAND_PREFIX = "/admin"
@@ -28,16 +40,25 @@ def admin_help_text() -> str:
     return (
         "Админ-команды Нер-Талис:\n\n"
         "/admin_id — показать ID текущего чата/беседы и пользователя.\n"
-        "/admin_help — показать эту справку.\n\n"
+        "/admin_help — показать эту справку.\n"
+        "/admin_panel — получить одноразовую ссылку в защищённую админ-панель сайта.\n\n"
+        "Старые текстовые админ-команды оставлены как аварийный режим; основная работа теперь через админ-панель.\n\n"
         "Промокоды:\n"
         "/admin_promo_add CODE USES REWARD_JSON\n"
-        "Пример: /admin_promo_add START100 100 {\"money\":1000,\"items\":[{\"item_id\":\"small_potion\",\"amount\":3}]}\n"
+        "Пример: /admin_promo_add START100 100 {\"money\":1000,\"items\":[{\"item_id\":\"simple_healing_potion\",\"amount\":3}]}\n"
         "Пример опыта: /admin_promo_add EXP4500 100 {\"experience\":4500}\n"
         "/admin_promo_bulk JSON_ARRAY — загрузить сразу несколько промокодов.\n"
         "Пример: /admin_promo_bulk [{\"code\":\"A1\",\"uses_left\":10,\"reward\":{\"money\":500}}]\n"
         "/admin_promo_off CODE — отключить промокод.\n"
         "/admin_promo_list — показать последние промокоды.\n\n"
         "Игроки:\n"
+        "/admin_find_player QUERY — найти игрока по game_id, имени, public_id, Telegram/VK id.\n"
+        "/admin_player_info GAME_ID — показать короткую админ-карточку игрока.\n"
+        "/admin_add_money GAME_ID AMOUNT CONFIRM — добавить/списать медные монеты.\n"
+        "/admin_add_experience GAME_ID AMOUNT CONFIRM — начислить крупицы опыта, 1 крупица = 1 опыт.\n"
+        "/admin_add_stat_points GAME_ID AMOUNT CONFIRM — добавить/списать очки характеристик, 1 к 1.\n"
+        "/admin_add_skill_points GAME_ID AMOUNT CONFIRM — добавить/списать очки навыков, 1 к 1.\n"
+        "/admin_kick_profile_sessions GAME_ID CONFIRM — отключить активные web-сессии профиля.\n"
         "/admin_reset_player GAME_ID CONFIRM — обнулить прогресс игрока.\n"
         "/admin_delete_player NT-XXXXXXXXXX CONFIRM_DELETE — полностью удалить профиль игрока и вернуть его на регистрацию.\n"
         "Удаление работает только по игровому ID вида NT-XXXXXXXXXX.\n"
@@ -93,6 +114,31 @@ def execute_admin_command(*, text: str, storage: Any, platform: str, admin_user_
     if command == "/admin_help":
         return AdminCommandResult(True, admin_help_text())
 
+    if command == "/admin_panel":
+        try:
+            token = create_admin_panel_activation_token(
+                storage,
+                platform=platform,
+                admin_user_id=admin_user_id,
+            )
+            url = build_admin_panel_url(token)
+        except Exception as exc:
+            return AdminCommandResult(True, f"Не удалось создать ссылку админ-панели: {exc}")
+        write_admin_audit(
+            platform=platform,
+            admin_user_id=admin_user_id,
+            command=text,
+            action="admin_panel_token",
+            details={"scope": "admin_panel"},
+        )
+        return AdminCommandResult(
+            True,
+            "🛡 Админ-панель Нер-Талис готова.\n\n"
+            f"Открыть: {url}\n\n"
+            "Ссылка одноразовая: после первой активации повторно по ней войти нельзя. "
+            "Новая ссылка отключит старую активную админ-сессию этого админа.",
+        )
+
     if command == "/admin_promo_add":
         if len(parts) < 4:
             return AdminCommandResult(True, "Формат: /admin_promo_add CODE USES REWARD_JSON")
@@ -138,6 +184,146 @@ def execute_admin_command(*, text: str, storage: Any, platform: str, admin_user_
             status = "активен" if promo.get("active") else "отключён"
             lines.append(f"{promo.get('code')} — {status}, использований осталось: {promo.get('uses_left')}")
         return AdminCommandResult(True, "\n".join(lines))
+
+
+    if command == "/admin_find_player":
+        if len(parts) < 2:
+            return AdminCommandResult(True, "Формат: /admin_find_player QUERY")
+        query = _json_after_tokens(text, 1) or parts[1]
+        matches = find_players(storage, query, limit=10)
+        if not matches:
+            return AdminCommandResult(True, "Игроки не найдены.")
+        lines = [f"Найдено игроков: {len(matches)}"]
+        for player in matches:
+            linked = player.get("linked_accounts") if isinstance(player.get("linked_accounts"), dict) else {}
+            linked_text = ", ".join(f"{k}:{v}" for k, v in linked.items() if v) or "нет"
+            lines.append(
+                f"- {player.get('game_id') or player.get('id')} | {player.get('name') or 'без имени'} | "
+                f"ур. {player.get('level', 1)} | {linked_text}"
+            )
+        return AdminCommandResult(True, "\n".join(lines))
+
+    if command == "/admin_player_info":
+        if len(parts) < 2:
+            return AdminCommandResult(True, "Формат: /admin_player_info GAME_ID")
+        game_id = parts[1]
+        if _looks_like_placeholder(game_id):
+            return AdminCommandResult(True, "GAME_ID — это пример. Укажи настоящий игровой ID игрока вида NT-XXXXXXXXXX.")
+        matches = find_players(storage, game_id, limit=1)
+        if not matches:
+            return AdminCommandResult(True, f"Игрок {game_id} не найден.")
+        return AdminCommandResult(True, format_player_admin_summary(matches[0]))
+
+    if command == "/admin_add_money":
+        if len(parts) < 4:
+            return AdminCommandResult(True, "Формат: /admin_add_money GAME_ID AMOUNT CONFIRM")
+        game_id, raw_amount, confirm = parts[1], parts[2], parts[3]
+        if _looks_like_placeholder(game_id):
+            return AdminCommandResult(True, "GAME_ID — это пример. Укажи настоящий игровой ID игрока вида NT-XXXXXXXXXX.")
+        if confirm != "CONFIRM":
+            return AdminCommandResult(True, "Для изменения монет нужно явно написать CONFIRM четвёртым аргументом.")
+        try:
+            amount = int(raw_amount)
+        except ValueError:
+            return AdminCommandResult(True, "AMOUNT должен быть целым числом. Для списания можно указать отрицательное число.")
+        ok, message, player = add_money_to_player(storage, game_id=game_id, amount=amount)
+        if ok:
+            write_admin_audit(
+                platform=platform,
+                admin_user_id=admin_user_id,
+                command=text,
+                action="add_money",
+                details={"game_id": player.get("game_id") if player else game_id, "amount": amount},
+            )
+        return AdminCommandResult(True, message)
+
+    if command in {"/admin_add_experience", "/admin_add_exp"}:
+        if len(parts) < 4:
+            return AdminCommandResult(True, "Формат: /admin_add_experience GAME_ID AMOUNT CONFIRM")
+        game_id, raw_amount, confirm = parts[1], parts[2], parts[3]
+        if _looks_like_placeholder(game_id):
+            return AdminCommandResult(True, "GAME_ID — это пример. Укажи настоящий игровой ID игрока вида NT-XXXXXXXXXX.")
+        if confirm != "CONFIRM":
+            return AdminCommandResult(True, "Для начисления опыта нужно явно написать CONFIRM четвёртым аргументом.")
+        try:
+            amount = int(raw_amount)
+        except ValueError:
+            return AdminCommandResult(True, "AMOUNT должен быть целым положительным числом.")
+        ok, message, player = add_experience_to_player(storage, game_id=game_id, amount=amount)
+        if ok:
+            write_admin_audit(
+                platform=platform,
+                admin_user_id=admin_user_id,
+                command=text,
+                action="add_experience",
+                details={"game_id": player.get("game_id") if player else game_id, "amount": amount},
+            )
+        return AdminCommandResult(True, message)
+
+    if command in {"/admin_add_stat_points", "/admin_add_attribute_points"}:
+        if len(parts) < 4:
+            return AdminCommandResult(True, "Формат: /admin_add_stat_points GAME_ID AMOUNT CONFIRM")
+        game_id, raw_amount, confirm = parts[1], parts[2], parts[3]
+        if _looks_like_placeholder(game_id):
+            return AdminCommandResult(True, "GAME_ID — это пример. Укажи настоящий игровой ID игрока вида NT-XXXXXXXXXX.")
+        if confirm != "CONFIRM":
+            return AdminCommandResult(True, "Для изменения очков характеристик нужно явно написать CONFIRM четвёртым аргументом.")
+        try:
+            amount = int(raw_amount)
+        except ValueError:
+            return AdminCommandResult(True, "AMOUNT должен быть целым числом. Для списания можно указать отрицательное число.")
+        ok, message, player = add_stat_points_to_player(storage, game_id=game_id, amount=amount)
+        if ok:
+            write_admin_audit(
+                platform=platform,
+                admin_user_id=admin_user_id,
+                command=text,
+                action="add_stat_points",
+                details={"game_id": player.get("game_id") if player else game_id, "amount": amount},
+            )
+        return AdminCommandResult(True, message)
+
+    if command == "/admin_add_skill_points":
+        if len(parts) < 4:
+            return AdminCommandResult(True, "Формат: /admin_add_skill_points GAME_ID AMOUNT CONFIRM")
+        game_id, raw_amount, confirm = parts[1], parts[2], parts[3]
+        if _looks_like_placeholder(game_id):
+            return AdminCommandResult(True, "GAME_ID — это пример. Укажи настоящий игровой ID игрока вида NT-XXXXXXXXXX.")
+        if confirm != "CONFIRM":
+            return AdminCommandResult(True, "Для изменения очков навыков нужно явно написать CONFIRM четвёртым аргументом.")
+        try:
+            amount = int(raw_amount)
+        except ValueError:
+            return AdminCommandResult(True, "AMOUNT должен быть целым числом. Для списания можно указать отрицательное число.")
+        ok, message, player = add_skill_points_to_player(storage, game_id=game_id, amount=amount)
+        if ok:
+            write_admin_audit(
+                platform=platform,
+                admin_user_id=admin_user_id,
+                command=text,
+                action="add_skill_points",
+                details={"game_id": player.get("game_id") if player else game_id, "amount": amount},
+            )
+        return AdminCommandResult(True, message)
+
+    if command == "/admin_kick_profile_sessions":
+        if len(parts) < 3:
+            return AdminCommandResult(True, "Формат: /admin_kick_profile_sessions GAME_ID CONFIRM")
+        game_id, confirm = parts[1], parts[2]
+        if _looks_like_placeholder(game_id):
+            return AdminCommandResult(True, "GAME_ID — это пример. Укажи настоящий игровой ID игрока вида NT-XXXXXXXXXX.")
+        if confirm != "CONFIRM":
+            return AdminCommandResult(True, "Для отключения сессий нужно явно написать CONFIRM третьим аргументом.")
+        ok, message, deleted = kick_player_profile_sessions(storage, game_id=game_id)
+        if ok:
+            write_admin_audit(
+                platform=platform,
+                admin_user_id=admin_user_id,
+                command=text,
+                action="kick_profile_sessions",
+                details={"game_id": game_id, "deleted_sessions": deleted},
+            )
+        return AdminCommandResult(True, message)
 
     if command == "/admin_reset_player":
         if len(parts) < 3:

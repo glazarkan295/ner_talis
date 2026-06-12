@@ -36,6 +36,17 @@ ENV_ALIASES = {
 }
 
 
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = _clean_env_value(name, os.getenv(name))
+    if not raw:
+        return default
+    return raw.strip().casefold() in {"1", "true", "yes", "on", "да"}
+
+
+def _admin_chat_required() -> bool:
+    return _env_bool("ADMIN_COMMANDS_REQUIRE_CHAT", False)
+
 def _parse_id_set(name: str) -> set[str]:
     values: set[str] = set()
     for env_name in ENV_ALIASES.get(name, (name,)):
@@ -56,6 +67,22 @@ def _id_in_config(value: str | int | None, config_name: str) -> bool:
     return str(value) in _parse_id_set(config_name)
 
 
+def telegram_admin_chat_ids() -> set[str]:
+    return _parse_id_set("TELEGRAM_ADMIN_CHAT_IDS")
+
+
+def vk_admin_peer_ids() -> set[str]:
+    return _parse_id_set("VK_ADMIN_PEER_IDS")
+
+
+def is_telegram_admin_chat(chat_id: str | int | None) -> bool:
+    return chat_id is not None and str(chat_id) in telegram_admin_chat_ids()
+
+
+def is_vk_admin_peer(peer_id: str | int | None) -> bool:
+    return peer_id is not None and str(peer_id) in vk_admin_peer_ids()
+
+
 def check_telegram_admin(chat_id: str | int | None, user_id: str | int | None) -> AdminAccessResult:
     """Проверяет доступ Telegram-админа.
 
@@ -73,6 +100,9 @@ def check_telegram_admin(chat_id: str | int | None, user_id: str | int | None) -
 
     if not _id_in_config(user_id, "TELEGRAM_ADMIN_USER_IDS"):
         return AdminAccessResult(False, "Пользователь не входит в список Telegram админов.")
+
+    if _admin_chat_required() and not allowed_chats:
+        return AdminAccessResult(False, "Включён ADMIN_COMMANDS_REQUIRE_CHAT, но TELEGRAM_ADMIN_CHAT_IDS не настроен.")
 
     if allowed_chats and not _id_in_config(chat_id, "TELEGRAM_ADMIN_CHAT_IDS"):
         return AdminAccessResult(False, "Команда доступна только в разрешённом Telegram админ-чате.")
@@ -96,6 +126,9 @@ def check_vk_admin(peer_id: str | int | None, user_id: str | int | None) -> Admi
 
     if not _id_in_config(user_id, "VK_ADMIN_USER_IDS"):
         return AdminAccessResult(False, "Пользователь не входит в список VK админов.")
+
+    if _admin_chat_required() and not allowed_peers:
+        return AdminAccessResult(False, "Включён ADMIN_COMMANDS_REQUIRE_CHAT, но VK_ADMIN_PEER_IDS не настроен.")
 
     if allowed_peers and not _id_in_config(peer_id, "VK_ADMIN_PEER_IDS"):
         return AdminAccessResult(False, "Команда доступна только в разрешённой VK админ-беседе.")

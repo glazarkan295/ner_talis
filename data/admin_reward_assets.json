@@ -1,0 +1,27 @@
+{
+  "version": "admin_reward_assets_v1",
+  "source_note": "Очки навыков, очки характеристик и крупицы опыта считаются по правилу 1 единица = 1 очко/опыт.",
+  "rewards": {
+    "skill_points": {
+      "name": "очки навыков",
+      "field": "free_skill_points",
+      "amount_per_unit": 1,
+      "asset_path": "/assets/admin_rewards/skill_points.png",
+      "description": "1 очко навыков = 1 свободное очко навыков."
+    },
+    "stat_points": {
+      "name": "очки характеристик",
+      "field": "free_stat_points",
+      "amount_per_unit": 1,
+      "asset_path": "/assets/admin_rewards/stat_points.png",
+      "description": "1 очко характеристик = 1 свободное очко характеристик."
+    },
+    "experience_shards": {
+      "name": "крупицы опыта",
+      "field": "experience",
+      "amount_per_unit": 1,
+      "asset_path": "/assets/admin_rewards/experience_shards.png",
+      "description": "1 крупица опыта = 1 единица опыта."
+    }
+  }
+}

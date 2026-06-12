@@ -465,7 +465,7 @@ function RaceInfoPopover({ profile, onClose }) {
   );
 }
 
-function ItemModal({ item, slotKey, position, onClose, onEquipItem, onUnequipItem, onUseItem, onRequestDrop, onRequestSell }) {
+function ItemModal({ item, slotKey, position, readOnly = false, onClose, onEquipItem, onUnequipItem, onUseItem, onRequestDrop, onRequestSell }) {
   if (!item) return null;
   const actions = item.actions || [];
   const itemStats = statLines(item);
@@ -494,11 +494,12 @@ function ItemModal({ item, slotKey, position, onClose, onEquipItem, onUnequipIte
           <div className="nt-modal-block"><h4>Зачарования</h4><StatLines lines={item.enchantments} /></div>
         ) : null}
         <footer className="nt-modal-actions">
-          {actions.includes("Надеть") || (!slotKey && itemSlot(item)) ? <button type="button" onClick={() => onEquipItem?.(item)}>Надеть</button> : null}
-          {actions.includes("Снять") || slotKey ? <button type="button" onClick={() => onUnequipItem?.(slotKey || itemSlot(item), item)}>Снять</button> : null}
-          {actions.includes("Использовать") ? <button type="button" onClick={() => onUseItem?.(item)}>Использовать</button> : null}
-          {!slotKey && actions.includes("Продать") ? <button type="button" onClick={() => onRequestSell?.(item)}>Продать</button> : null}
-          {!slotKey ? <button className="nt-danger" type="button" onClick={() => onRequestDrop?.(item)}>Выбросить</button> : null}
+          {!readOnly && (actions.includes("Надеть") || (!slotKey && itemSlot(item))) ? <button type="button" onClick={() => onEquipItem?.(item)}>Надеть</button> : null}
+          {!readOnly && (actions.includes("Снять") || slotKey) ? <button type="button" onClick={() => onUnequipItem?.(slotKey || itemSlot(item), item)}>Снять</button> : null}
+          {!readOnly && actions.includes("Использовать") ? <button type="button" onClick={() => onUseItem?.(item)}>Использовать</button> : null}
+          {!readOnly && !slotKey && actions.includes("Продать") ? <button type="button" onClick={() => onRequestSell?.(item)}>Продать</button> : null}
+          {!readOnly && !slotKey ? <button className="nt-danger" type="button" onClick={() => onRequestDrop?.(item)}>Выбросить</button> : null}
+          {readOnly ? <span className="nt-readonly-note">Только просмотр</span> : null}
           <button className="nt-secondary" type="button" onClick={onClose}>Закрыть</button>
         </footer>
       </article>
@@ -569,7 +570,7 @@ function SellItemModal({ item, position, onClose, onConfirm }) {
   );
 }
 
-function SlotItemsModal({ slot, items, selectedItem, position, onSelectItem, onClose, onEquipItem }) {
+function SlotItemsModal({ slot, items, selectedItem, position, readOnly = false, onSelectItem, onClose, onEquipItem }) {
   if (!slot) return null;
   return (
     <div className="nt-modal-layer" onMouseDown={onClose}>
@@ -594,7 +595,7 @@ function SlotItemsModal({ slot, items, selectedItem, position, onSelectItem, onC
                   <p>{selectedItem.description || "Можно надеть в выбранный слот."}</p>
                   <StatLines lines={statLines(selectedItem)} />
                   <footer className="nt-modal-actions">
-                    <button type="button" onClick={() => onEquipItem?.(selectedItem)}>Надеть</button>
+                    {!readOnly ? <button type="button" onClick={() => onEquipItem?.(selectedItem)}>Надеть</button> : <span className="nt-readonly-note">Только просмотр</span>}
                   </footer>
                 </>
               ) : null}
@@ -606,7 +607,7 @@ function SlotItemsModal({ slot, items, selectedItem, position, onSelectItem, onC
   );
 }
 
-function EquipmentPanel({ profile, onOpenItem, onOpenSlot }) {
+function EquipmentPanel({ profile, readOnly = false, onOpenItem, onOpenSlot }) {
   const slots = profile.equipmentSlots?.length ? profile.equipmentSlots : DEFAULT_SLOTS;
   const equipment = profile.equipment || {};
   return (
@@ -623,7 +624,7 @@ function EquipmentPanel({ profile, onOpenItem, onOpenSlot }) {
               type="button"
               disabled={blocked}
               title={blocked ? slot.blockedReason || "Слот заблокирован" : undefined}
-              onClick={(event) => item ? onOpenItem(item, slot.key, event) : onOpenSlot(slot, event)}
+              onClick={(event) => item ? onOpenItem(item, slot.key, event) : (!readOnly ? onOpenSlot(slot, event) : null)}
             >
               <ItemArt item={item} fallback={blocked ? "×" : "+"} className="nt-equip-art" />
               {blocked ? <span className="nt-slot-blocked-badge">блок</span> : null}
@@ -666,7 +667,7 @@ function EffectsRow({ profile }) {
   );
 }
 
-function CharacterTab({ profile, onOpenItem, onOpenSlot, onConfirmAttributePoints }) {
+function CharacterTab({ profile, readOnly = false, onOpenItem, onOpenSlot, onConfirmAttributePoints }) {
   const [attributeAmounts, setAttributeAmounts] = useState({});
   const [pendingAttributes, setPendingAttributes] = useState({});
   const xpCurrent = Number(profile.player?.experienceCurrent || 0);
@@ -715,7 +716,7 @@ function CharacterTab({ profile, onOpenItem, onOpenSlot, onConfirmAttributePoint
         <div className="nt-progress-label">Опыт: {xpCurrent} / {xpNext}</div>
         <div className="nt-progress"><i style={{ width: `${xpPercent}%` }} /></div>
       </Panel>
-      <EquipmentPanel profile={profile} onOpenItem={onOpenItem} onOpenSlot={onOpenSlot} />
+      <EquipmentPanel profile={profile} readOnly={readOnly} onOpenItem={onOpenItem} onOpenSlot={onOpenSlot} />
       <Panel title="Характеристики" right={<span className="nt-badge">Свободно: {remainingFreeStats}</span>}>
         <div className="nt-lines">
           {(profile.attributes || []).map((attribute) => {
@@ -723,7 +724,7 @@ function CharacterTab({ profile, onOpenItem, onOpenSlot, onConfirmAttributePoint
             const displayValue = pending > 0 ? `${attribute.value} + ${pending}` : attribute.value;
             return (
               <Row key={attribute.key || attribute.label} label={attribute.label} value={displayValue}>
-                {remainingFreeStats > 0 ? (
+                {!readOnly && remainingFreeStats > 0 ? (
                   <div className="nt-attribute-controls">
                     <input type="number" min="1" max={Math.max(1, remainingFreeStats)} value={attributeAmounts[attribute.key] || 1} onChange={(event) => changeAttribute(attribute.key, event.target.value)} />
                     <button type="button" onClick={() => spend(attribute.key)}>+</button>
@@ -733,7 +734,7 @@ function CharacterTab({ profile, onOpenItem, onOpenSlot, onConfirmAttributePoint
             );
           })}
         </div>
-        {hasPendingAttributes ? (
+        {!readOnly && hasPendingAttributes ? (
           <div className="nt-attribute-actions">
             <button type="button" className="nt-secondary-button" onClick={resetPendingAttributes}>Сбросить</button>
             <button type="button" className="nt-primary-button" onClick={confirmPendingAttributes}>Подтвердить</button>
@@ -763,7 +764,7 @@ function InventoryTab({ profile, onOpenItem }) {
   return (
     <div className="nt-stack">
       <Panel title="Инвентарь" right={<span className="nt-badge">Свободно: {freeSlots} / {capacity}</span>}>
-        {profile.market?.sellFromProfile ? <p className="nt-market-sell-hint">Вы на рынке в разделе продажи: откройте предмет и нажмите «Продать».</p> : null}
+        {!profile.readOnly && !profile.adminView && profile.market?.sellFromProfile ? <p className="nt-market-sell-hint">Вы на рынке в разделе продажи: откройте предмет и нажмите «Продать».</p> : null}
         <div className="nt-toolbar">
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск предмета" />
           <div className="nt-category-row">{INVENTORY_CATEGORIES.map((item) => <button key={item} className={category === item ? "active" : ""} type="button" onClick={() => setCategory(item)}>{item}</button>)}</div>
@@ -831,9 +832,9 @@ function SkillUpgradeModal({ skill, freePoints, position, onClose, onSpendSkillP
   );
 }
 
-function SkillCard({ skill, freePoints, mode = "available", onShowModifier, onOpenUpgrade, onEquipSkill, onUnequipSkill }) {
+function SkillCard({ skill, freePoints, mode = "available", readOnly = false, onShowModifier, onOpenUpgrade, onEquipSkill, onUnequipSkill }) {
   const modifiers = skill.modifiers || [];
-  const canUpgrade = freePoints > 0 && skill.upgradeable;
+  const canUpgrade = !readOnly && freePoints > 0 && skill.upgradeable;
   const details = [
     skill.damage !== undefined && skill.damage !== null ? `Урон: ${skill.damage}` : null,
     skillCostText(skill),
@@ -841,7 +842,7 @@ function SkillCard({ skill, freePoints, mode = "available", onShowModifier, onOp
   ].filter(Boolean);
   const actionLabel = mode === "equipped" ? "Снять" : "Использовать";
   const actionHandler = mode === "equipped" ? onUnequipSkill : onEquipSkill;
-  const showAction = mode === "equipped" || canEquipSkill(skill);
+  const showAction = !readOnly && (mode === "equipped" || canEquipSkill(skill));
   return (
     <article className="nt-skill-card">
       <div className="nt-skill-main">
@@ -859,7 +860,7 @@ function SkillCard({ skill, freePoints, mode = "available", onShowModifier, onOp
   );
 }
 
-function SkillsTab({ profile, onSpendSkillPoints, onEquipSkill, onUnequipSkill }) {
+function SkillsTab({ profile, readOnly = false, onSpendSkillPoints, onEquipSkill, onUnequipSkill }) {
   const [modifierHelp, setModifierHelp] = useState(null);
   const [upgradeSkill, setUpgradeSkill] = useState(null);
   const freePoints = profile.player?.freeSkillPoints || 0;
@@ -869,10 +870,11 @@ function SkillsTab({ profile, onSpendSkillPoints, onEquipSkill, onUnequipSkill }
   const passive = (profile.skills?.passive || []).filter((skill) => !equippedKeys.has(skillKey(skill)));
   const sharedProps = {
     freePoints,
+    readOnly,
     onShowModifier: (modifier, event) => setModifierHelp({ modifier, position: getFloatingPosition(event, 360, 300) }),
-    onOpenUpgrade: (skillToUpgrade, event) => setUpgradeSkill({ skill: skillToUpgrade, position: getFloatingPosition(event, 390, 360) }),
-    onEquipSkill,
-    onUnequipSkill,
+    onOpenUpgrade: !readOnly ? (skillToUpgrade, event) => setUpgradeSkill({ skill: skillToUpgrade, position: getFloatingPosition(event, 390, 360) }) : undefined,
+    onEquipSkill: !readOnly ? onEquipSkill : undefined,
+    onUnequipSkill: !readOnly ? onUnequipSkill : undefined,
   };
   const equipCapacity = skillEquipCapacity(profile);
   const equipUsed = skillEquipUsed(profile, equipped);
@@ -901,7 +903,7 @@ function SkillsTab({ profile, onSpendSkillPoints, onEquipSkill, onUnequipSkill }
       <Panel title="Активные навыки"><div className="nt-skills-list">{active.length ? active.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Активных навыков пока нет.</p>}</div></Panel>
       <Panel title="Пассивные навыки"><div className="nt-skills-list">{passive.length ? passive.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Пассивных навыков пока нет.</p>}</div></Panel>
       <ModifierHelpModal modifier={modifierHelp?.modifier} position={modifierHelp?.position} onClose={() => setModifierHelp(null)} />
-      <SkillUpgradeModal skill={upgradeSkill?.skill} freePoints={freePoints} position={upgradeSkill?.position} onClose={() => setUpgradeSkill(null)} onSpendSkillPoints={onSpendSkillPoints} />
+      {!readOnly ? <SkillUpgradeModal skill={upgradeSkill?.skill} freePoints={freePoints} position={upgradeSkill?.position} onClose={() => setUpgradeSkill(null)} onSpendSkillPoints={onSpendSkillPoints} /> : null}
     </div>
   );
 }
@@ -919,13 +921,14 @@ function InfoTab({ profile }) {
   );
 }
 
-export function PlayerProfile({ profile, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill }) {
+export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill }) {
   const data = profileOrMock(profile);
   const [tab, setTab] = useState("character");
   const [modal, setModal] = useState(null);
   const [slotModal, setSlotModal] = useState(null);
   const [dropModal, setDropModal] = useState(null);
   const [sellModal, setSellModal] = useState(null);
+  const effectiveReadOnly = Boolean(readOnly || data.readOnly || data.adminView);
   const background = data.assets?.background || "/assets/profile/backgrounds/1.png";
 
   const equipmentBySlot = data.equipment || {};
@@ -936,7 +939,7 @@ export function PlayerProfile({ profile, onSpendAttributePoints, onConfirmAttrib
   }
 
   function openSlot(slot, event = null) {
-    if (slot?.blocked) return;
+    if (effectiveReadOnly || slot?.blocked) return;
     const items = inventory.filter((item) => {
       const target = itemSlot(item);
       if (target === slot.key) return true;
@@ -947,66 +950,74 @@ export function PlayerProfile({ profile, onSpendAttributePoints, onConfirmAttrib
   }
 
   async function equipFromSlot(item) {
+    if (effectiveReadOnly) return;
     await onEquipItem?.(item, slotModal?.slot?.key || null);
     setSlotModal(null);
   }
 
   async function equipAndClose(item) {
+    if (effectiveReadOnly) return;
     await onEquipItem?.(item);
     setModal(null);
   }
 
   async function unequipAndClose(slotKey, item) {
+    if (effectiveReadOnly) return;
     await onUnequipItem?.(slotKey || itemSlot(item), item);
     setModal(null);
   }
 
   async function useAndClose(item) {
+    if (effectiveReadOnly) return;
     await onUseItem?.(item);
     setModal(null);
   }
 
   async function dropAndClose(item, amount) {
+    if (effectiveReadOnly) return;
     await onDropItem?.(item, amount);
     setDropModal(null);
     setModal(null);
   }
 
   async function sellAndClose(item, amount) {
+    if (effectiveReadOnly) return;
     await onSellItem?.(item, amount);
     setSellModal(null);
     setModal(null);
   }
 
   function requestDrop(item) {
+    if (effectiveReadOnly) return;
     setDropModal({ item, position: modal?.position || null });
   }
 
   function requestSell(item) {
+    if (effectiveReadOnly) return;
     setSellModal({ item, position: modal?.position || null });
   }
 
   return (
-    <main className="nt-profile" style={{ backgroundImage: `linear-gradient(rgba(5, 7, 7, .32), rgba(4, 4, 4, .50)), url(${background})` }}>
+    <main className={`nt-profile ${effectiveReadOnly ? "nt-profile-readonly" : ""}`.trim()} style={{ backgroundImage: `linear-gradient(rgba(5, 7, 7, .32), rgba(4, 4, 4, .50)), url(${background})` }}>
       <div className="nt-shell">
         <header className="nt-top">
-          <div className="nt-title-block"><h1>Профиль персонажа</h1></div>
+          <div className="nt-title-block"><h1>Профиль персонажа</h1>{effectiveReadOnly ? <p className="nt-readonly-banner">Админский режим: только просмотр, изменения отключены.</p> : null}</div>
           <div className="nt-id">{data.player?.userGlobalId || data.player?.publicId || "NT-UNKNOWN"}</div>
         </header>
         <nav className="nt-tabs" aria-label="Разделы профиля">
           {TABS.map(({ id, label, icon }) => <button key={id} className={tab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon"><TabIcon type={icon} /></span><span className="nt-tab-text">{label}</span></button>)}
         </nav>
         <section className="nt-content">
-          {tab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} /> : null}
+          {tab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} readOnly={effectiveReadOnly} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} /> : null}
           {tab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
-          {tab === "skills" ? <SkillsTab profile={data} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
+          {tab === "skills" ? <SkillsTab profile={data} readOnly={effectiveReadOnly} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
           {tab === "info" ? <InfoTab profile={data} /> : null}
         </section>
       </div>
-      <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRequestDrop={requestDrop} onRequestSell={requestSell} />
-      <DropItemModal item={dropModal?.item} position={dropModal?.position} onClose={() => setDropModal(null)} onConfirm={dropAndClose} />
-      <SellItemModal item={sellModal?.item} position={sellModal?.position} onClose={() => setSellModal(null)} onConfirm={sellAndClose} />
-      <SlotItemsModal slot={slotModal?.slot} items={slotModal?.items || []} selectedItem={slotModal?.selectedItem} position={slotModal?.position} onSelectItem={(item) => setSlotModal((current) => ({ ...current, selectedItem: item }))} onClose={() => setSlotModal(null)} onEquipItem={equipFromSlot} />
+      <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} readOnly={effectiveReadOnly} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRequestDrop={requestDrop} onRequestSell={requestSell} />
+      {!effectiveReadOnly ? <DropItemModal item={dropModal?.item} position={dropModal?.position} onClose={() => setDropModal(null)} onConfirm={dropAndClose} /> : null}
+      {!effectiveReadOnly ? <SellItemModal item={sellModal?.item} position={sellModal?.position} onClose={() => setSellModal(null)} onConfirm={sellAndClose} /> : null}
+      <SlotItemsModal slot={slotModal?.slot} items={slotModal?.items || []} selectedItem={slotModal?.selectedItem} position={slotModal?.position} onSelectItem={(item) => setSlotModal((current) => ({ ...current, selectedItem: item }))} onClose={() => setSlotModal(null)} readOnly={effectiveReadOnly} onEquipItem={equipFromSlot} />
     </main>
   );
 }

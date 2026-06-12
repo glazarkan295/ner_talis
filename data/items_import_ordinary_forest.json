@@ -138,20 +138,6 @@
       "description": "Иконка опасности/ловушки; не предмет обычной добычи."
     },
     {
-      "item_id": "deer_antler",
-      "name": "Рог оленя",
-      "category": "trophies",
-      "inventory_section": "loot",
-      "rarity": "common",
-      "source": "Обыкновенный лес / разъярённый олень",
-      "icon": "assets/items/ordinary_forest/trophies/deer_antler.png",
-      "icon_1024": "assets_1024/items/ordinary_forest/trophies/deer_antler.png",
-      "icon_256": "assets_256/items/ordinary_forest/trophies/deer_antler.png",
-      "description": "Звериный трофей.",
-      "can_sell": true,
-      "sell_price_copper": 8
-    },
-    {
       "item_id": "old_bear_trap",
       "name": "Старый капкан",
       "category": "events",
@@ -164,20 +150,6 @@
       "description": "Иконка ловушки; накладывает временный дебаф."
     },
     {
-      "item_id": "bear_fang",
-      "name": "Медвежий клык",
-      "category": "trophies",
-      "inventory_section": "loot",
-      "rarity": "common",
-      "source": "Обыкновенный лес / медведь",
-      "icon": "assets/items/ordinary_forest/trophies/bear_fang.png",
-      "icon_1024": "assets_1024/items/ordinary_forest/trophies/bear_fang.png",
-      "icon_256": "assets_256/items/ordinary_forest/trophies/bear_fang.png",
-      "description": "Звериный трофей.",
-      "can_sell": true,
-      "sell_price_copper": 9
-    },
-    {
       "item_id": "mire_trap",
       "name": "Трясина",
       "category": "events",
@@ -188,62 +160,14 @@
       "icon_1024": "assets_1024/items/ordinary_forest/events/mire_trap.png",
       "icon_256": "assets_256/items/ordinary_forest/events/mire_trap.png",
       "description": "Иконка ловушки; не предмет обычной добычи."
-    },
-    {
-      "item_id": "wolf_fang",
-      "name": "Волчий клык",
-      "category": "trophies",
-      "inventory_section": "loot",
-      "rarity": "common",
-      "source": "Обыкновенный лес / волки",
-      "icon": "assets/items/ordinary_forest/trophies/wolf_fang.png",
-      "icon_1024": "assets_1024/items/ordinary_forest/trophies/wolf_fang.png",
-      "icon_256": "assets_256/items/ordinary_forest/trophies/wolf_fang.png",
-      "description": "Звериный трофей.",
-      "can_sell": true,
-      "sell_price_copper": 8
-    },
-    {
-      "item_id": "animal_fat",
-      "name": "Жир зверя",
-      "category": "trophies",
-      "inventory_section": "loot",
-      "rarity": "common",
-      "source": "Обыкновенный лес / кабаны, медведь",
-      "icon": "assets/items/ordinary_forest/trophies/animal_fat.png",
-      "icon_1024": "assets_1024/items/ordinary_forest/trophies/animal_fat.png",
-      "icon_256": "assets_256/items/ordinary_forest/trophies/animal_fat.png",
-      "description": "Звериный трофей.",
-      "can_sell": true,
-      "sell_price_copper": 10
-    },
-    {
-      "item_id": "bear_claw",
-      "name": "Медвежий коготь",
-      "category": "trophies",
-      "inventory_section": "loot",
-      "rarity": "common",
-      "source": "Обыкновенный лес / медведь",
-      "icon": "assets/items/ordinary_forest/trophies/bear_claw.png",
-      "icon_1024": "assets_1024/items/ordinary_forest/trophies/bear_claw.png",
-      "icon_256": "assets_256/items/ordinary_forest/trophies/bear_claw.png",
-      "description": "Звериный трофей.",
-      "can_sell": true,
-      "sell_price_copper": 6
-    },
-    {
-      "item_id": "boar_tusk",
-      "name": "Кабаний клык",
-      "category": "trophies",
-      "inventory_section": "loot",
-      "rarity": "common",
-      "source": "Обыкновенный лес / кабаны",
-      "icon": "assets/items/ordinary_forest/trophies/boar_tusk.png",
-      "icon_1024": "assets_1024/items/ordinary_forest/trophies/boar_tusk.png",
-      "icon_256": "assets_256/items/ordinary_forest/trophies/boar_tusk.png",
-      "description": "Звериный трофей.",
-      "can_sell": true,
-      "sell_price_copper": 6
     }
-  ]
+  ],
+  "aliases": {
+    "wolf_fang": "simple_fang",
+    "boar_tusk": "simple_fang",
+    "bear_fang": "simple_fang",
+    "bear_claw": "simple_claw",
+    "deer_antler": "deer_antlers",
+    "animal_fat": "fat_piece"
+  }
 }

@@ -14,12 +14,12 @@
     "Вернуться в город"
   ],
   "events": {
-    "alchemy_ingredient": 25,
-    "stone_or_ore": 17,
-    "berries": 20,
+    "alchemy_ingredient": 26,
+    "berries": 21,
+    "stone_or_ore": 18,
     "trap": 10,
-    "glint": 8,
-    "battle": 20
+    "glint": 9,
+    "battle": 16
   },
   "glint_variants": {
     "old_knife_up_slope": {
@@ -63,5 +63,666 @@
         "Съедобный лесной гриб": 1
       }
     }
+  },
+  "resource_list_version": "hilly_meadows_resources_v1",
+  "resource_find_tables": {
+    "alchemy_ingredient": [
+      {
+        "item_id": "meadow_mint",
+        "name_ru": "Луговая мята",
+        "weight": 20,
+        "amount_min": 1,
+        "amount_max": 2,
+        "role": [
+          "crafting",
+          "food",
+          "alchemy"
+        ]
+      },
+      {
+        "item_id": "silver_chamomile",
+        "name_ru": "Серебристая ромашка",
+        "weight": 20,
+        "amount_min": 1,
+        "amount_max": 2,
+        "role": [
+          "alchemy"
+        ]
+      },
+      {
+        "item_id": "yellow_clover",
+        "name_ru": "Жёлтый клевер",
+        "weight": 20,
+        "amount_min": 1,
+        "amount_max": 2,
+        "role": [
+          "alchemy"
+        ]
+      },
+      {
+        "item_id": "mountain_wormwood",
+        "name_ru": "Горная полынь",
+        "weight": 20,
+        "amount_min": 1,
+        "amount_max": 2,
+        "role": [
+          "alchemy"
+        ]
+      },
+      {
+        "item_id": "meadow_root",
+        "name_ru": "Луговой корень",
+        "weight": 20,
+        "amount_min": 1,
+        "amount_max": 2,
+        "role": [
+          "food",
+          "alchemy",
+          "crafting"
+        ]
+      }
+    ],
+    "berries": [
+      {
+        "item_id": "sweet_meadow_berry",
+        "name_ru": "Сладкая луговая ягода",
+        "weight": 50,
+        "amount_min": 2,
+        "amount_max": 5,
+        "role": [
+          "food",
+          "alchemy"
+        ]
+      },
+      {
+        "item_id": "tart_blue_berry",
+        "name_ru": "Терпкая синяя ягода",
+        "weight": 50,
+        "amount_min": 2,
+        "amount_max": 5,
+        "role": [
+          "food",
+          "alchemy"
+        ]
+      }
+    ],
+    "stone_or_ore": [
+      {
+        "item_id": "common_stone",
+        "name_ru": "Обычный камень",
+        "weight": 92,
+        "amount_min": 1,
+        "amount_max": 3,
+        "role": [
+          "crafting"
+        ]
+      },
+      {
+        "item_id": "copper_ore_chunk",
+        "name_ru": "Кусок медной руды",
+        "weight": 5,
+        "amount_min": 1,
+        "amount_max": 2,
+        "role": [
+          "smelting",
+          "crafting"
+        ]
+      },
+      {
+        "item_id": "iron_ore_chunk",
+        "name_ru": "Кусок железной руды",
+        "weight": 3,
+        "amount_min": 1,
+        "amount_max": 2,
+        "role": [
+          "smelting",
+          "crafting"
+        ]
+      }
+    ],
+    "glint_old_knife_up_slope": [
+      {
+        "item_id": "iron_scrap",
+        "name_ru": "Железный лом",
+        "weight": 70,
+        "amount_min": 1,
+        "amount_max": 1,
+        "role": [
+          "smelting",
+          "sale"
+        ]
+      },
+      {
+        "item_id": "old_knife",
+        "name_ru": "Старый нож",
+        "weight": 30,
+        "amount_min": 1,
+        "amount_max": 1,
+        "role": [
+          "sale",
+          "dismantle"
+        ]
+      }
+    ],
+    "glint_search_traces_down_slope": [
+      {
+        "currency": "copper",
+        "name_ru": "Медные монеты",
+        "weight": 75,
+        "amount_min": 1,
+        "amount_max": 10,
+        "role": [
+          "currency"
+        ]
+      },
+      {
+        "currency": "silver",
+        "name_ru": "Серебряная монета",
+        "weight": 2,
+        "amount_min": 1,
+        "amount_max": 1,
+        "copper_equivalent": 1000,
+        "role": [
+          "currency"
+        ]
+      },
+      {
+        "nothing": true,
+        "name_ru": "Ничего",
+        "weight": 23,
+        "amount_min": 0,
+        "amount_max": 0,
+        "role": [
+          "empty_find"
+        ]
+      }
+    ]
+  },
+  "resource_find_overview": {
+    "version": "hilly_meadows_resources_v1",
+    "description": "Явный список ресурсов и находок Холмистых лугов. События пересобраны в hilly_meadows_events_v2; waterside_loot не используется.",
+    "tables": {
+      "alchemy_ingredient": [
+        {
+          "item_id": "meadow_mint",
+          "name_ru": "Луговая мята",
+          "weight": 20,
+          "amount_min": 1,
+          "amount_max": 2,
+          "role": [
+            "crafting",
+            "food",
+            "alchemy"
+          ]
+        },
+        {
+          "item_id": "silver_chamomile",
+          "name_ru": "Серебристая ромашка",
+          "weight": 20,
+          "amount_min": 1,
+          "amount_max": 2,
+          "role": [
+            "alchemy"
+          ]
+        },
+        {
+          "item_id": "yellow_clover",
+          "name_ru": "Жёлтый клевер",
+          "weight": 20,
+          "amount_min": 1,
+          "amount_max": 2,
+          "role": [
+            "alchemy"
+          ]
+        },
+        {
+          "item_id": "mountain_wormwood",
+          "name_ru": "Горная полынь",
+          "weight": 20,
+          "amount_min": 1,
+          "amount_max": 2,
+          "role": [
+            "alchemy"
+          ]
+        },
+        {
+          "item_id": "meadow_root",
+          "name_ru": "Луговой корень",
+          "weight": 20,
+          "amount_min": 1,
+          "amount_max": 2,
+          "role": [
+            "food",
+            "alchemy",
+            "crafting"
+          ]
+        }
+      ],
+      "berries": [
+        {
+          "item_id": "sweet_meadow_berry",
+          "name_ru": "Сладкая луговая ягода",
+          "weight": 50,
+          "amount_min": 2,
+          "amount_max": 5,
+          "role": [
+            "food",
+            "alchemy"
+          ]
+        },
+        {
+          "item_id": "tart_blue_berry",
+          "name_ru": "Терпкая синяя ягода",
+          "weight": 50,
+          "amount_min": 2,
+          "amount_max": 5,
+          "role": [
+            "food",
+            "alchemy"
+          ]
+        }
+      ],
+      "stone_or_ore": [
+        {
+          "item_id": "common_stone",
+          "name_ru": "Обычный камень",
+          "weight": 92,
+          "amount_min": 1,
+          "amount_max": 3,
+          "role": [
+            "crafting"
+          ]
+        },
+        {
+          "item_id": "copper_ore_chunk",
+          "name_ru": "Кусок медной руды",
+          "weight": 5,
+          "amount_min": 1,
+          "amount_max": 2,
+          "role": [
+            "smelting",
+            "crafting"
+          ]
+        },
+        {
+          "item_id": "iron_ore_chunk",
+          "name_ru": "Кусок железной руды",
+          "weight": 3,
+          "amount_min": 1,
+          "amount_max": 2,
+          "role": [
+            "smelting",
+            "crafting"
+          ]
+        }
+      ],
+      "glint_old_knife_up_slope": [
+        {
+          "item_id": "iron_scrap",
+          "name_ru": "Железный лом",
+          "weight": 70,
+          "amount_min": 1,
+          "amount_max": 1,
+          "role": [
+            "smelting",
+            "sale"
+          ]
+        },
+        {
+          "item_id": "old_knife",
+          "name_ru": "Старый нож",
+          "weight": 30,
+          "amount_min": 1,
+          "amount_max": 1,
+          "role": [
+            "sale",
+            "dismantle"
+          ]
+        }
+      ],
+      "glint_search_traces_down_slope": [
+        {
+          "currency": "copper",
+          "name_ru": "Медные монеты",
+          "weight": 75,
+          "amount_min": 1,
+          "amount_max": 10,
+          "role": [
+            "currency"
+          ]
+        },
+        {
+          "currency": "silver",
+          "name_ru": "Серебряная монета",
+          "weight": 2,
+          "amount_min": 1,
+          "amount_max": 1,
+          "copper_equivalent": 1000,
+          "role": [
+            "currency"
+          ]
+        },
+        {
+          "nothing": true,
+          "name_ru": "Ничего",
+          "weight": 23,
+          "amount_min": 0,
+          "amount_max": 0,
+          "role": [
+            "empty_find"
+          ]
+        }
+      ]
+    },
+    "excluded_events": [
+      "waterside_loot"
+    ]
+  },
+  "event_list_version": "hilly_meadows_events_v2",
+  "event_flow": {
+    "version": "hilly_meadows_events_v2",
+    "description": "Пересобранная таблица событий Холмистых лугов без водных/береговых находок. Сумма весов = 100.",
+    "search_result_types": [
+      {
+        "event_type": "alchemy_ingredient",
+        "weight": 26,
+        "button": "Собрать",
+        "resolution": "выдаёт 1–2 луговых алхимических растения из resource_find_tables.alchemy_ingredient"
+      },
+      {
+        "event_type": "berries",
+        "weight": 21,
+        "button": "Собрать",
+        "resolution": "выдаёт 2–5 ягод из resource_find_tables.berries"
+      },
+      {
+        "event_type": "stone_or_ore",
+        "weight": 18,
+        "button": "Осмотреть и забрать",
+        "resolution": "выдаёт обычный камень или небольшой кусок медной/железной руды"
+      },
+      {
+        "event_type": "trap",
+        "weight": 10,
+        "button": null,
+        "resolution": "разрешается сразу после таймера и может снять немного HP/энергии/меди"
+      },
+      {
+        "event_type": "glint",
+        "weight": 9,
+        "button": "Посмотреть",
+        "resolution": "50/50: блик выше по склону или следы ниже по склону"
+      },
+      {
+        "event_type": "battle",
+        "weight": 16,
+        "button": null,
+        "resolution": "создаёт PVE-бой после завершения таймера"
+      }
+    ],
+    "excluded_events": [
+      "waterside_loot"
+    ]
+  },
+  "event_texts": {
+    "alchemy_ingredient": {
+      "discovery": [
+        "🌱 На вершине холма среди бесконечной травы вы замечаете несколько растений, чуть отличающихся от остальных. Их стебли плотнее, а листья имеют необычный оттенок.",
+        "🌼 На склоне холма из высокой травы выглядывает небольшой цветок. Он едва заметен, но его запах выбивается из обычного лугового аромата.",
+        "🍃 Между камней и плотной травы тянется пучок луговых растений. Похоже, среди них есть полезные алхимические ингредиенты."
+      ]
+    },
+    "berries": {
+      "discovery": [
+        "🫐 В низине между холмами вы замечаете кустик ягод. С виду они съедобные, хотя проверять это лучше осторожно.",
+        "🍓 У подножья склона растёт несколько ягодных кустов. Самые спелые ягоды прячутся под листьями.",
+        "🫐 Между высокой травой виднеются тёмные и красноватые ягоды. Их можно аккуратно собрать в дорогу."
+      ]
+    },
+    "stone_or_ore": {
+      "discovery": [
+        "🪨 У подножья холма вы замечаете подозрительный камень. Он выделяется среди обычной россыпи и выглядит так, будто его недавно вымыло дождём из земли.",
+        "⛏ На осыпи склона лежит несколько тяжёлых камней. Один из них отличается цветом и может оказаться полезным ресурсом.",
+        "🪨 В траве у холма что-то твёрдо звякает под ногой. Стоит осмотреть находку внимательнее."
+      ]
+    },
+    "glint": {
+      "discovery": [
+        "✨ Солнечный луч на мгновение отражается от чего-то в траве.",
+        "✨ Среди склонов появляется короткий блеск, слишком резкий для обычной росы."
+      ]
+    }
+  },
+  "battle_mobs_version": "hilly_meadows_mobs_drop_v2_generic_loot",
+  "battle_rank_chances": {
+    "early_player_level_max": 3,
+    "early": {
+      "normal": 92,
+      "empowered": 8,
+      "elite": 0
+    },
+    "default": {
+      "normal": 70,
+      "empowered": 24,
+      "elite": 6
+    },
+    "note": "Обычные бои стартовой локации остаются мягкими; элитный бой в Холмистых лугах — одиночный бык."
+  },
+  "battle_mob_tables": {
+    "normal": [
+      {
+        "mob_id": "overgrown_gopher",
+        "name_ru": "Суслик-переросток",
+        "weight": 40,
+        "group_min": 2,
+        "group_max": 4
+      },
+      {
+        "mob_id": "rabid_rabbit",
+        "name_ru": "Бешеный кролик",
+        "weight": 35,
+        "group_min": 1,
+        "group_max": 1
+      },
+      {
+        "mob_id": "wild_jackal",
+        "name_ru": "Дикий шакал",
+        "weight": 25,
+        "group_min": 1,
+        "group_max": 2
+      }
+    ],
+    "empowered_early": [
+      {
+        "mob_id": "overgrown_gopher",
+        "name_ru": "Суслик-переросток",
+        "weight": 40,
+        "group_min": 2,
+        "group_max": 3
+      },
+      {
+        "mob_id": "rabid_rabbit",
+        "name_ru": "Бешеный кролик",
+        "weight": 35,
+        "group_min": 1,
+        "group_max": 1
+      },
+      {
+        "mob_id": "wild_jackal",
+        "name_ru": "Дикий шакал",
+        "weight": 25,
+        "group_min": 1,
+        "group_max": 2
+      }
+    ],
+    "empowered": [
+      {
+        "mob_id": "wild_jackal",
+        "name_ru": "Дикий шакал",
+        "weight": 35,
+        "group_min": 1,
+        "group_max": 2
+      },
+      {
+        "mob_id": "overgrown_gopher",
+        "name_ru": "Суслик-переросток",
+        "weight": 30,
+        "group_min": 2,
+        "group_max": 3
+      },
+      {
+        "mob_id": "rabid_rabbit",
+        "name_ru": "Бешеный кролик",
+        "weight": 25,
+        "group_min": 1,
+        "group_max": 1
+      },
+      {
+        "mob_id": "hill_bull",
+        "name_ru": "Бык",
+        "weight": 10,
+        "group_min": 1,
+        "group_max": 1,
+        "min_player_level": 4
+      }
+    ],
+    "elite": [
+      {
+        "mob_id": "hill_bull",
+        "name_ru": "Бык",
+        "weight": 100,
+        "group_min": 1,
+        "group_max": 1
+      }
+    ]
+  },
+  "battle_drop_tables": {
+    "overgrown_gopher": [
+      {
+        "item_id": "simple_hide",
+        "name_ru": "Простая шкура",
+        "chance": 60,
+        "amount_min": 1,
+        "amount_max": 1
+      },
+      {
+        "item_id": "meat_piece",
+        "name_ru": "Маленький кусок сырого мяса",
+        "chance": 45,
+        "amount_min": 1,
+        "amount_max": 1
+      },
+      {
+        "item_id": "simple_fang",
+        "name_ru": "Простой клык",
+        "chance": 20,
+        "amount_min": 1,
+        "amount_max": 1
+      },
+      {
+        "item_id": "simple_claw",
+        "name_ru": "Простой коготь",
+        "chance": 10,
+        "amount_min": 1,
+        "amount_max": 1
+      }
+    ],
+    "wild_jackal": [
+      {
+        "item_id": "simple_hide",
+        "name_ru": "Простая шкура",
+        "chance": 65,
+        "amount_min": 1,
+        "amount_max": 1
+      },
+      {
+        "item_id": "raw_meat",
+        "name_ru": "Сырое мясо",
+        "chance": 55,
+        "amount_min": 1,
+        "amount_max": 2
+      },
+      {
+        "item_id": "simple_fang",
+        "name_ru": "Простой клык",
+        "chance": 25,
+        "amount_min": 1,
+        "amount_max": 1
+      },
+      {
+        "item_id": "simple_tendon",
+        "name_ru": "Сухожилия",
+        "chance": 20,
+        "amount_min": 1,
+        "amount_max": 1
+      }
+    ],
+    "rabid_rabbit": [
+      {
+        "item_id": "simple_hide",
+        "name_ru": "Простая шкура",
+        "chance": 55,
+        "amount_min": 1,
+        "amount_max": 1
+      },
+      {
+        "item_id": "raw_meat",
+        "name_ru": "Сырое мясо",
+        "chance": 45,
+        "amount_min": 1,
+        "amount_max": 1
+      },
+      {
+        "item_id": "simple_fang",
+        "name_ru": "Простой клык",
+        "chance": 18,
+        "amount_min": 1,
+        "amount_max": 1
+      }
+    ],
+    "hill_bull": [
+      {
+        "item_id": "simple_hide",
+        "name_ru": "Простая шкура",
+        "chance": 80,
+        "amount_min": 1,
+        "amount_max": 1
+      },
+      {
+        "item_id": "raw_meat",
+        "name_ru": "Сырое мясо",
+        "chance": 85,
+        "amount_min": 2,
+        "amount_max": 3
+      },
+      {
+        "item_id": "bull_horn",
+        "name_ru": "Бычий рог",
+        "chance": 30,
+        "amount_min": 1,
+        "amount_max": 1
+      },
+      {
+        "item_id": "simple_tendon",
+        "name_ru": "Сухожилия",
+        "chance": 35,
+        "amount_min": 1,
+        "amount_max": 1
+      }
+    ]
+  },
+  "battle_drop_rules": {
+    "normal": "Шанс и количество по таблице моба.",
+    "empowered": "Шанс добычи умножается на 1.1, количество не повышается.",
+    "elite": "Шанс добычи умножается на 1.5, количество повышается: min ×1.5, max ×1.7 с округлением вверх.",
+    "inventory_item_id_policy": "Добыча Холмистых лугов выдаётся через канонические общие item_id: simple_hide, raw_meat, meat_piece, simple_fang, simple_claw, simple_tendon, bull_horn. Старые точечные клыки/зубы/коготь больше не выпадают."
+  },
+  "search_rules": {
+    "version": "hilly_meadows_search_timing_v1",
+    "energy_cost": 2,
+    "base_time_seconds": 30,
+    "positive_energy_max_time_seconds": 300,
+    "zero_energy_time_seconds": 600,
+    "description": "Поиск тратит 2 энергии. При полной энергии длится 30 секунд. При низкой положительной энергии замедляется, но не выше 5 минут. При 0 энергии длится 10 минут и энергии не тратит."
   }
 }

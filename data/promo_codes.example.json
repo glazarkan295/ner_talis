@@ -9,7 +9,7 @@
         "energy": 20,
         "items": [
           {
-            "item_id": "small_potion",
+            "item_id": "simple_healing_potion",
             "name": "Малое зелье лечения",
             "amount": 3
           }

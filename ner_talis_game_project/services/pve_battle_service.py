@@ -58,6 +58,10 @@ BATTLE_POUCH_PAGE_SIZE = 8
 BATTLE_POUCH_NEXT = "Подсумок далее"
 BATTLE_POUCH_PREV = "Подсумок назад"
 BATTLE_POUCH_ITEM_PREFIX = "Предмет "
+BATTLE_THROW_TARGET_PROMPT = "Выберите цель для расходника"
+OLD_IRON_SWORD_IDS = {"old_iron_sword"}
+TARGETED_POUCH_EFFECTS = {"throw_damage"}
+
 
 # В интерфейсе боя показываются только подсумок, побег и экипированные активные навыки.
 # Обычная атака и защита оставлены как внутренние fallback-действия для старых сохранений.
@@ -101,50 +105,69 @@ HILLY_MEADOWS_MOBS = {
     "overgrown_gopher": {
         "name": "Суслик-переросток",
         "biological_type": "beast",
-        "role": "attacker",
+        "role": "small_pack_attacker",
         "damage_type": DamageType.PHYSICAL,
         "damage_split": DamageSplit(physical=100, magic=0),
-        "group": {EnemyRank.NORMAL: (2, 5), EnemyRank.EMPOWERED: (2, 4), EnemyRank.ELITE: (1, 1)},
+        "group": {EnemyRank.NORMAL: (2, 4), EnemyRank.EMPOWERED: (2, 3), EnemyRank.ELITE: (1, 1)},
         "skills": ["Укус", "Рывок из норы"],
         "features": ["Стайный инстинкт"],
         "text": "Земля впереди начинает шевелиться. Из нор выбираются крупные суслики с непропорционально большими зубами.",
-        "loot": [("Простая шкура", 60, 1, 1), ("Кусочек мяса", 50, 1, 1), ("Острый зуб", 20, 1, 1), ("Коготок суслика", 10, 1, 1)],
+        "loot": [
+            ("Простая шкура", 60, 1, 1),
+            ("Маленький кусок сырого мяса", 45, 1, 1),
+            ("Простой клык", 20, 1, 1),
+            ("Простой коготь", 10, 1, 1),
+        ],
     },
     "wild_jackal": {
         "name": "Дикий шакал",
         "biological_type": "beast",
-        "role": "attacker",
+        "role": "fast_attacker",
         "damage_type": DamageType.PHYSICAL,
         "damage_split": DamageSplit(physical=100, magic=0),
-        "group": {EnemyRank.NORMAL: (1, 4), EnemyRank.EMPOWERED: (1, 3), EnemyRank.ELITE: (1, 1)},
+        "group": {EnemyRank.NORMAL: (1, 2), EnemyRank.EMPOWERED: (1, 2), EnemyRank.ELITE: (1, 1)},
         "skills": ["Укус", "Рывок"],
         "features": ["Прыжок хищника"],
         "text": "Из-за холма доносится низкое рычание. Из травы выходят дикие шакалы, отрезая путь назад.",
-        "loot": [("Простая шкура", 70, 1, 1), ("Клык шакала", 25, 1, 1), ("Простое сухожилие", 20, 1, 1), ("Сырое мясо", 60, 1, 2)],
+        "loot": [
+            ("Простая шкура", 65, 1, 1),
+            ("Сырое мясо", 55, 1, 2),
+            ("Простой клык", 25, 1, 1),
+            ("Сухожилия", 20, 1, 1),
+        ],
     },
     "rabid_rabbit": {
         "name": "Бешеный кролик",
         "biological_type": "beast",
-        "role": "attacker",
+        "role": "single_fast_attacker",
         "damage_type": DamageType.PHYSICAL,
         "damage_split": DamageSplit(physical=100, magic=0),
         "group": {EnemyRank.NORMAL: (1, 1), EnemyRank.EMPOWERED: (1, 1), EnemyRank.ELITE: (1, 1)},
         "skills": ["Резкий прыжок", "Укус"],
         "features": ["Прыжок хищника"],
         "text": "Из высокой травы выскакивает кролик. Мутные глаза и пена у пасти быстро меняют первое впечатление.",
-        "loot": [("Простая шкура", 60, 1, 1), ("Сырое мясо", 50, 1, 1), ("Зуб бешеного кролика", 15, 1, 1)],
+        "loot": [
+            ("Простая шкура", 55, 1, 1),
+            ("Сырое мясо", 45, 1, 1),
+            ("Простой клык", 18, 1, 1),
+        ],
     },
     "hill_bull": {
         "name": "Бык",
         "biological_type": "beast",
-        "role": "defender",
+        "role": "heavy_defender",
         "damage_type": DamageType.PHYSICAL,
         "damage_split": DamageSplit(physical=100, magic=0),
         "group": {EnemyRank.NORMAL: (1, 1), EnemyRank.EMPOWERED: (1, 1), EnemyRank.ELITE: (1, 1)},
         "skills": ["Удар рогами", "Тяжёлый рывок"],
         "features": ["Толстая шкура"],
         "text": "На соседнем склоне пасётся огромный бык. Зверь резко поднимает голову и начинает рыть землю копытом.",
-        "loot": [("Простая шкура", 75, 1, 1), ("Сырое мясо", 80, 1, 3), ("Бычий рог", 25, 1, 1), ("Простое сухожилие", 25, 1, 1)],
+        "loot": [
+            ("Простая шкура", 80, 1, 1),
+            ("Сырое мясо", 85, 2, 3),
+            ("Бычий рог", 30, 1, 1),
+            ("Сухожилия", 35, 1, 1),
+        ],
         "hp_base": 85,
         "hp_per_level": 16,
         "armor_factor": 2.6,
@@ -153,6 +176,13 @@ HILLY_MEADOWS_MOBS = {
     },
 }
 
+
+HILLY_MEADOWS_MOB_WEIGHTS = {
+    EnemyRank.NORMAL: [("overgrown_gopher", 40), ("rabid_rabbit", 35), ("wild_jackal", 25)],
+    "empowered_early": [("overgrown_gopher", 40), ("rabid_rabbit", 35), ("wild_jackal", 25)],
+    EnemyRank.EMPOWERED: [("wild_jackal", 35), ("overgrown_gopher", 30), ("rabid_rabbit", 25), ("hill_bull", 10)],
+    EnemyRank.ELITE: [("hill_bull", 100)],
+}
 
 ORDINARY_FOREST_MOBS = {
     "forest_wolf": {
@@ -165,7 +195,7 @@ ORDINARY_FOREST_MOBS = {
         "skills": ["Укус", "Рывок", "Стайный натиск"],
         "features": ["Окружение"],
         "text": "Из-за деревьев доносится протяжный вой. Через несколько мгновений из тени выходят волки. Они медленно расходятся в стороны, пытаясь окружить вас.",
-        "loot": [("Сырое мясо", 60, 1, 2), ("Простая шкура", 65, 1, 1), ("Волчий клык", 25, 1, 1), ("Простое сухожилие", 20, 1, 1)],
+        "loot": [("Сырое мясо", 60, 1, 2), ("Простая шкура", 65, 1, 1), ("Простой клык", 25, 1, 1), ("Сухожилия", 20, 1, 1)],
         "hp_base": 34,
         "hp_per_level": 9,
         "armor_factor": 1.1,
@@ -181,7 +211,7 @@ ORDINARY_FOREST_MOBS = {
         "skills": ["Удар рогами", "Резкий рывок"],
         "features": ["Защита территории"],
         "text": "На небольшой прогалине вы замечаете оленя. Он резко опускает голову, выставляет рога и начинает бить копытом землю.",
-        "loot": [("Сырое мясо", 70, 1, 2), ("Простая шкура", 60, 1, 1), ("Рог оленя", 30, 1, 1), ("Простое сухожилие", 25, 1, 1)],
+        "loot": [("Сырое мясо", 70, 1, 2), ("Простая шкура", 60, 1, 1), ("Оленьи рога", 30, 1, 1), ("Сухожилия", 25, 1, 1)],
         "hp_base": 42,
         "hp_per_level": 10,
         "armor_factor": 1.0,
@@ -197,7 +227,7 @@ ORDINARY_FOREST_MOBS = {
         "skills": ["Рывок", "Удар клыками"],
         "features": ["Толстая шкура"],
         "text": "Из кустов раздаётся тяжёлое сопение. На тропу выходит кабан; судя по шуму, вы оказались слишком близко к месту кормёжки.",
-        "loot": [("Сырое мясо", 75, 1, 3), ("Простая шкура", 65, 1, 1), ("Кабаний клык", 30, 1, 1), ("Жир зверя", 25, 1, 1)],
+        "loot": [("Сырое мясо", 75, 1, 3), ("Простая шкура", 65, 1, 1), ("Простой клык", 30, 1, 1), ("Кусок жира", 25, 1, 1)],
         "hp_base": 55,
         "hp_per_level": 12,
         "armor_factor": 1.8,
@@ -213,13 +243,21 @@ ORDINARY_FOREST_MOBS = {
         "skills": ["Удар лапой", "Рёв", "Тяжёлый рывок"],
         "features": ["Толстая шкура"],
         "text": "Впереди трескаются ветки. Из-за стволов выходит огромный медведь, поднимается на задние лапы и тяжело рычит.",
-        "loot": [("Сырое мясо", 85, 1, 3), ("Простая шкура", 75, 1, 1), ("Медвежий коготь", 35, 1, 1), ("Медвежий клык", 30, 1, 1), ("Жир зверя", 25, 1, 1)],
+        "loot": [("Сырое мясо", 85, 1, 3), ("Простая шкура", 75, 1, 1), ("Простой коготь", 35, 1, 1), ("Простой клык", 30, 1, 1), ("Кусок жира", 25, 1, 1)],
         "hp_base": 115,
         "hp_per_level": 20,
         "armor_factor": 2.8,
         "dodge_per_level": 0.7,
         "damage_bonus_per_level": 2.0,
     },
+}
+
+
+ORDINARY_FOREST_MOB_WEIGHTS = {
+    EnemyRank.NORMAL: [("forest_wolf", 34), ("angry_deer", 33), ("forest_boar", 33)],
+    "empowered_early": [("forest_wolf", 34), ("angry_deer", 33), ("forest_boar", 33)],
+    EnemyRank.EMPOWERED: [("forest_wolf", 25), ("angry_deer", 25), ("forest_boar", 25), ("forest_bear", 25)],
+    EnemyRank.ELITE: [("forest_bear", 100)],
 }
 
 BATTLE_MOB_CATALOGS = {
@@ -230,25 +268,23 @@ BATTLE_MOB_CATALOGS = {
 BATTLE_LOOT_ITEM_IDS = {
     "hilly_meadows": {
         "Простая шкура": "simple_hide",
-        "Простое сухожилие": "simple_tendon",
-        "Кусочек мяса": "meat_piece",
-        "Острый зуб": "sharp_tooth",
-        "Коготок суслика": "gopher_claw",
-        "Клык шакала": "jackal_fang",
+        "Сухожилия": "simple_tendon",
+        "Маленький кусок сырого мяса": "meat_piece",
+        "Простой клык": "simple_fang",
+        "Простой коготь": "simple_claw",
+        "Простой клык": "simple_fang",
         "Сырое мясо": "raw_meat",
-        "Зуб бешеного кролика": "rabid_rabbit_tooth",
+        "Простой клык": "simple_fang",
         "Бычий рог": "bull_horn",
     },
     "ordinary_forest": {
         "Простая шкура": "simple_hide",
-        "Простое сухожилие": "simple_tendon",
+        "Сухожилия": "simple_tendon",
         "Сырое мясо": "raw_meat",
-        "Волчий клык": "wolf_fang",
-        "Рог оленя": "deer_antler",
-        "Кабаний клык": "boar_tusk",
-        "Жир зверя": "animal_fat",
-        "Медвежий коготь": "bear_claw",
-        "Медвежий клык": "bear_fang",
+        "Простой клык": "simple_fang",
+        "Простой коготь": "simple_claw",
+        "Оленьи рога": "deer_antlers",
+        "Кусок жира": "fat_piece",
     },
 }
 
@@ -377,6 +413,47 @@ def make_player_battle_state(player: dict[str, Any]) -> PlayerBattleState:
     )
 
 
+
+
+def active_battle_stimulant_bonuses(player: dict[str, Any]) -> tuple[int, int]:
+    """Return active inventory-used battle stimulant bonuses.
+
+    The item is consumed from inventory, not the pouch. Active effects are pruned
+    by ensure_player_resources before a battle state is created, so the remaining
+    effects can be read directly here.
+    """
+
+    damage_bonus = 0
+    resource_bonus = 0
+    effects = player.get("active_effects", [])
+    if not isinstance(effects, list):
+        return 0, 0
+    for effect in effects:
+        if not isinstance(effect, dict):
+            continue
+        if str(effect.get("id") or "") != "effect_battle_stimulant" and str(effect.get("source") or "") != "battle_stimulant":
+            continue
+        damage_bonus = max(damage_bonus, safe_int(effect.get("combat_damage_bonus_percent"), 0))
+        resource_bonus = max(resource_bonus, safe_int(effect.get("resource_max_bonus_percent"), 0))
+    return damage_bonus, resource_bonus
+
+
+def apply_inventory_battle_stimulant_to_battle(player: dict[str, Any], battle: dict[str, Any]) -> None:
+    damage_bonus, resource_bonus = active_battle_stimulant_bonuses(player)
+    if damage_bonus <= 0 and resource_bonus <= 0:
+        return
+    player_state = battle.setdefault("player_state", {})
+    if damage_bonus > 0:
+        player_state["battle_stimulant_active"] = True
+        player_state["combat_damage_bonus_percent"] = max(safe_int(player_state.get("combat_damage_bonus_percent"), 0), damage_bonus)
+    if resource_bonus > 0 and not player_state.get("_inventory_battle_stimulant_applied"):
+        for current_key, max_key in (("current_spirit", "max_spirit"), ("current_mana", "max_mana")):
+            base_max = max(1, safe_int(player_state.get(max_key), 1))
+            bonus = math.floor(base_max * resource_bonus / 100)
+            player_state[max_key] = safe_int(player_state.get(max_key), 0) + bonus
+            player_state[current_key] = safe_int(player_state.get(current_key), 0) + bonus
+        player_state["_inventory_battle_stimulant_applied"] = True
+
 def normalize_battle_location(location_id: str | None) -> str:
     value = str(location_id or "hilly_meadows")
     if value.endswith("_battle"):
@@ -465,24 +542,31 @@ def enemy_level_for_rank(player_level: int, rank: EnemyRank, rng: random.Random,
     return max(floor_level, min(cap, level))
 
 
+
+
+def weighted_mob_choice(entries: list[tuple[str, int]], rng: random.Random) -> str:
+    if not entries:
+        return "overgrown_gopher"
+    total = sum(max(0, safe_int(weight, 0)) for _key, weight in entries)
+    if total <= 0:
+        return entries[0][0]
+    roll = rng.uniform(0, total)
+    current = 0.0
+    for key, weight in entries:
+        current += max(0, safe_int(weight, 0))
+        if roll <= current:
+            return key
+    return entries[-1][0]
+
 def choose_mob_key(rank: EnemyRank, rng: random.Random, player_level: int = 1, location_id: str = "hilly_meadows") -> str:
     location_id = normalize_battle_location(location_id)
     if location_id == "ordinary_forest":
-        if rank == EnemyRank.ELITE:
-            return "forest_bear"
-        if rank == EnemyRank.EMPOWERED:
-            choices = ["forest_wolf", "angry_deer", "forest_boar"]
-            if player_level >= 4:
-                choices.append("forest_bear")
-            return rng.choice(choices)
-        return rng.choice(["forest_wolf", "angry_deer", "forest_boar"])
-    if rank == EnemyRank.ELITE:
-        return "hill_bull"
-    if rank == EnemyRank.EMPOWERED:
-        if player_level <= 3:
-            return rng.choice(["overgrown_gopher", "wild_jackal", "rabid_rabbit"])
-        return rng.choice(["overgrown_gopher", "wild_jackal", "rabid_rabbit", "hill_bull"])
-    return rng.choice(["overgrown_gopher", "wild_jackal", "rabid_rabbit"])
+        if rank == EnemyRank.EMPOWERED and player_level <= 3:
+            return weighted_mob_choice(ORDINARY_FOREST_MOB_WEIGHTS["empowered_early"], rng)
+        return weighted_mob_choice(ORDINARY_FOREST_MOB_WEIGHTS.get(rank, ORDINARY_FOREST_MOB_WEIGHTS[EnemyRank.NORMAL]), rng)
+    if rank == EnemyRank.EMPOWERED and player_level <= 3:
+        return weighted_mob_choice(HILLY_MEADOWS_MOB_WEIGHTS["empowered_early"], rng)
+    return weighted_mob_choice(HILLY_MEADOWS_MOB_WEIGHTS.get(rank, HILLY_MEADOWS_MOB_WEIGHTS[EnemyRank.NORMAL]), rng)
 
 
 def build_enemy(mob_key: str, rank: EnemyRank, level: int, index: int, location_id: str = "hilly_meadows") -> EnemyBattleState:
@@ -564,6 +648,7 @@ def create_location_battle(player: dict[str, Any], rng: random.Random | None = N
         battle_log=[template["text"]],
     )
     battle_dict = serialize_battle(battle)
+    apply_inventory_battle_stimulant_to_battle(player, battle_dict)
     battle_dict["origin_location_id"] = location_id
     battle_dict["return_location"] = location_id
     battle_dict["player_name"] = player_display_name(player)
@@ -657,6 +742,100 @@ def enemy_raw_damage(enemy: dict[str, Any]) -> int:
     return max(1, math.ceil(base * mult["damage"]))
 
 
+def equipped_items(player: dict[str, Any]) -> list[dict[str, Any]]:
+    equipment = player.get("equipment") if isinstance(player, dict) else {}
+    if not isinstance(equipment, dict):
+        return []
+    return [item for item in equipment.values() if isinstance(item, dict)]
+
+
+def has_old_iron_sword_equipped(player: dict[str, Any]) -> bool:
+    for item in equipped_items(player):
+        identity = item_identity(item)
+        name = item_name_value(item).casefold()
+        if identity in OLD_IRON_SWORD_IDS or "старый железный меч" in name:
+            return True
+    return False
+
+
+def old_iron_sword_scaling(player_level: int) -> dict[str, float]:
+    root = math.sqrt(max(1, player_level))
+    return {
+        "bonus_damage": math.floor(3 + 0.35 * root),
+        "poison_chance_percent": min(12.0, 3.0 + 0.08 * root),
+        "mob_xp_penalty_percent": min(12.0, 2.0 + 0.07 * root),
+        "mob_money_penalty_percent": min(12.0, 2.0 + 0.07 * root),
+    }
+
+
+def old_iron_sword_bonus_damage(player: dict[str, Any]) -> int:
+    if not has_old_iron_sword_equipped(player):
+        return 0
+    return int(old_iron_sword_scaling(max(1, safe_int(player.get("level"), 1)))["bonus_damage"])
+
+
+def old_iron_sword_penalty_percent(player: dict[str, Any], key: str) -> float:
+    if not has_old_iron_sword_equipped(player):
+        return 0.0
+    return float(old_iron_sword_scaling(max(1, safe_int(player.get("level"), 1))).get(key, 0.0))
+
+
+def money_copper(player: dict[str, Any]) -> int:
+    return max(0, safe_int(player.get("money_copper", player.get("money", 0)), 0))
+
+
+def set_money_copper(player: dict[str, Any], amount: int) -> None:
+    amount = max(0, safe_int(amount, 0))
+    player["money_copper"] = amount
+    player["money"] = amount
+
+
+def spend_copper_for_poverty(player: dict[str, Any], rng: random.Random) -> tuple[int, int]:
+    roll = int(rng.randint(1, 1000))
+    current = money_copper(player)
+    spent = min(roll, current)
+    set_money_copper(player, current - spent)
+    return roll, spent
+
+
+def apply_battle_damage_bonuses(player: dict[str, Any], battle: dict[str, Any], raw_damage: int, damage_type: DamageType, *, is_skill: bool = False) -> int:
+    result = max(1, safe_int(raw_damage, 1))
+    if damage_type in {DamageType.PHYSICAL, DamageType.MIXED}:
+        result += old_iron_sword_bonus_damage(player)
+    player_state = battle.get("player_state") if isinstance(battle.get("player_state"), dict) else {}
+    bonus_percent = safe_int(player_state.get("combat_damage_bonus_percent"), 0) if is_skill else 0
+    if bonus_percent:
+        result = max(1, math.ceil(result * (1 + bonus_percent / 100)))
+    return result
+
+
+def maybe_apply_old_sword_on_hit(player: dict[str, Any], battle: dict[str, Any], target: dict[str, Any], rng: random.Random, log: list[str]) -> int:
+    if not has_old_iron_sword_equipped(player):
+        return 0
+    roll, spent = spend_copper_for_poverty(player, rng)
+    if spent > 0:
+        target["current_hp"] = max(0, safe_int(target.get("current_hp"), 0) - spent)
+        log.append(f"💰 Эффект «Бедность»: брошено {roll} медных, списано {spent}; {target.get('name')} получает {spent} чистого урона.")
+    else:
+        log.append(f"💰 Эффект «Бедность»: медных монет нет, чистый урон равен 0.")
+    scaling = old_iron_sword_scaling(max(1, safe_int(player.get("level"), 1)))
+    chance = float(scaling["poison_chance_percent"])
+    if rng.uniform(0, 100) <= chance and safe_int(target.get("current_hp"), 0) > 0:
+        statuses = target.setdefault("statuses", [])
+        if not isinstance(statuses, list):
+            statuses = []
+            target["statuses"] = statuses
+        poison_damage = max(1, math.floor(1 + 0.10 * math.sqrt(max(1, safe_int(player.get("level"), 1)))))
+        existing = next((entry for entry in statuses if isinstance(entry, dict) and entry.get("id") == "old_iron_sword_poison"), None)
+        payload = {"id": "old_iron_sword_poison", "name": "Отравление старым мечом", "turns": 2, "damage": poison_damage}
+        if existing is not None:
+            existing.update(payload)
+        else:
+            statuses.append(payload)
+        log.append(f"☠️ Старый железный меч накладывает отравление: {poison_damage} урона/ход на 2 хода.")
+    return spent
+
+
 def player_attack_raw_damage(player: dict[str, Any], action: str) -> tuple[int, DamageType, str]:
     stats = calculate_player_derived_stats(player)
     level = stats["level"]
@@ -712,6 +891,51 @@ def player_skill_raw_damage(player: dict[str, Any], skill: dict[str, Any]) -> tu
     return max(1, safe_int(damage, 1)), damage_type, str(result.get("name") or skill.get("name") or "навыком")
 
 
+def item_identity(item: dict[str, Any] | None) -> str:
+    if not isinstance(item, dict):
+        return ""
+    return str(item.get("item_id") or item.get("id") or "").strip()
+
+
+def item_name_value(item: dict[str, Any] | None) -> str:
+    if not isinstance(item, dict):
+        return ""
+    return str(item.get("name") or item.get("name_ru") or item_identity(item) or "Предмет")
+
+
+def combat_effect_data(item: dict[str, Any]) -> dict[str, Any]:
+    for key in ("combat_effect", "battle_effect", "use_effect"):
+        value = item.get(key)
+        if isinstance(value, dict):
+            return value
+    return {}
+
+
+def combat_effect_type(item: dict[str, Any]) -> str:
+    effect = combat_effect_data(item)
+    raw = str(
+        effect.get("type")
+        or effect.get("battle_action")
+        or effect.get("combat_action")
+        or item.get("combat_action")
+        or item.get("pouch_action")
+        or ""
+    ).strip().casefold()
+    item_id = item_identity(item)
+    aliases = {
+        "old_throwing_knife": "throw_damage",
+        "decent_throwing_knife": "throw_damage",
+        "good_throwing_knife": "throw_damage",
+        "homemade_smoke_bomb": "escape_bonus",
+        "minor_regeneration_potion": "battle_regeneration",
+        "small_regeneration_potion": "battle_regeneration",
+        "common_cleansing_potion": "cleanse_debuffs",
+        "ordinary_cleansing_potion": "cleanse_debuffs",
+        "battle_stimulant": "battle_stimulant",
+    }
+    return aliases.get(item_id, raw)
+
+
 def is_food_item(item: dict[str, Any]) -> bool:
     category = str(item.get("category") or item.get("type") or item.get("subtype") or "").casefold()
     item_class = str(item.get("item_class") or "").casefold()
@@ -743,9 +967,24 @@ def combat_restore_amount(item: dict[str, Any]) -> int:
 def is_combat_pouch_item(item: dict[str, Any]) -> bool:
     if not isinstance(item, dict) or is_food_item(item):
         return False
-    category = str(item.get("category") or item.get("type") or "")
-    allowed_categories = {"Алхимия", "Расходник", "Расходники"}
-    return category in allowed_categories or combat_restore_amount(item) > 0
+    # Боевой стимулятор принимается из инвентаря заранее и не должен появляться в подсумке.
+    if item_identity(item) == "battle_stimulant" or bool(item.get("pouch_excluded")):
+        return False
+    category = str(item.get("category") or item.get("type") or item.get("subtype") or "").casefold()
+    tags = {str(tag).casefold() for tag in item.get("integration_tags", []) if isinstance(tag, str)}
+    allowed_categories = {"алхимия", "расходник", "расходники", "consumable", "consumables", "метательное", "зелья", "зелье"}
+    return bool(
+        category in allowed_categories
+        or "combat_pouch" in tags
+        or "battle_consumable" in tags
+        or combat_effect_type(item)
+        or combat_restore_amount(item) > 0
+    )
+
+
+def pouch_item_needs_target(item: dict[str, Any]) -> bool:
+    return combat_effect_type(item) in TARGETED_POUCH_EFFECTS
+
 
 
 def pouch_items(player: dict[str, Any]) -> list[dict[str, Any]]:
@@ -797,7 +1036,8 @@ def format_pouch(player: dict[str, Any], battle: dict[str, Any] | None = None, p
         item = entry["item"]
         name = str(item.get("name") or "Предмет")
         amount = safe_int(item.get("amount"), 1)
-        lines.append(f"{local_index}. {name} ×{amount}")
+        target_note = " — выберите цель" if pouch_item_needs_target(item) else ""
+        lines.append(f"{local_index}. {name} ×{amount}{target_note}")
         context_items[str(local_index)] = str(entry["ref"])
         current_row.append(f"{BATTLE_POUCH_ITEM_PREFIX}{local_index}")
         if len(current_row) == 2:
@@ -859,7 +1099,7 @@ def remove_inventory_item_by_name(player: dict[str, Any], name: str, amount: int
     return None
 
 
-def use_pouch_item_by_ref(player: dict[str, Any], battle: dict[str, Any], ref: str) -> tuple[str, bool]:
+def use_pouch_item_by_ref(player: dict[str, Any], battle: dict[str, Any], ref: str, *, target_number: int | None = None, rng: random.Random | None = None) -> tuple[str, bool]:
     inventory = player.get("inventory", [])
     try:
         index = int(str(ref))
@@ -870,13 +1110,14 @@ def use_pouch_item_by_ref(player: dict[str, Any], battle: dict[str, Any], ref: s
     source_item = inventory[index]
     if not isinstance(source_item, dict):
         return "🎒 Такой предмет уже недоступен. Откройте подсумок заново.", False
-    return use_pouch_item(player, battle, source_item, ref=str(index))
+    return use_pouch_item(player, battle, source_item, ref=str(index), target_number=target_number, rng=rng)
 
 
-def use_pouch_item(player: dict[str, Any], battle: dict[str, Any], item_name_or_item: str | dict[str, Any], *, ref: str | None = None) -> tuple[str, bool]:
+def use_pouch_item(player: dict[str, Any], battle: dict[str, Any], item_name_or_item: str | dict[str, Any], *, ref: str | None = None, target_number: int | None = None, rng: random.Random | None = None) -> tuple[str, bool]:
+    rng = rng or random.Random()
     if isinstance(item_name_or_item, dict):
         source_item = item_name_or_item
-        item_name = str(source_item.get("name") or "Предмет")
+        item_name = item_name_value(source_item)
     else:
         item_name = str(item_name_or_item)
         source_item = next((item for item in player.get("inventory", []) if isinstance(item, dict) and str(item.get("name") or "") == item_name), None)
@@ -885,32 +1126,122 @@ def use_pouch_item(player: dict[str, Any], battle: dict[str, Any], item_name_or_
     if not is_combat_pouch_item(source_item):
         return "🎒 Этот предмет нельзя использовать в бою.", False
 
-    player_state = battle.setdefault("player_state", {})
-    restored_parts: list[str] = []
-    effect = source_item.get("use_effect") if isinstance(source_item.get("use_effect"), dict) else {}
-    for current_key, max_key, labels in (("current_hp", "max_hp", ("restore_hp", "hp_restore")), ("current_spirit", "max_spirit", ("restore_spirit", "spirit_restore")), ("current_mana", "max_mana", ("restore_mana", "mana_restore"))):
-        restore = 0
-        for label in labels:
-            restore = max(restore, safe_int(source_item.get(label), 0))
-            restore = max(restore, safe_int(effect.get(label), 0))
-        if restore <= 0:
-            continue
-        before = safe_int(player_state.get(current_key), safe_int(player.get(current_key.removeprefix("current_")), 0))
-        maximum = safe_int(player_state.get(max_key), safe_int(player.get(max_key.removeprefix("current_")), 0))
-        after = min(maximum, before + restore)
-        player_state[current_key] = after
-        actual = after - before
-        if actual > 0:
-            restored_parts.append(f"+{actual} {current_key.removeprefix('current_')}")
-    if not restored_parts:
-        return "🎒 Предмет не дал боевого эффекта.", False
+    effect_type = combat_effect_type(source_item)
+    if pouch_item_needs_target(source_item) and target_number is None:
+        return "🎯 Для этого предмета нужно выбрать цель.", False
 
-    if ref is not None:
-        remove_inventory_item_by_ref(player, ref, 1)
+    player_state = battle.setdefault("player_state", {})
+    consumed = False
+    message = ""
+
+    if effect_type == "throw_damage":
+        target = enemy_by_stable_number(battle, target_number or 1)
+        if target is None:
+            return "🎯 Эта цель уже побеждена или недоступна. Выберите живого противника.", False
+        damage = throwable_damage(player, source_item)
+        target["current_hp"] = max(0, safe_int(target.get("current_hp"), 0) - damage)
+        message = f"🎒 {player_display_name(player)} бросает {item_name}: {target.get('name')} получает {damage} урона."
+        consumed = True
+
+    elif effect_type == "escape_bonus":
+        effect = combat_effect_data(source_item)
+        bonus = safe_int(effect.get("escape_bonus_percent"), 20)
+        turns = safe_int(effect.get("duration_turns"), 2)
+        player_state["escape_bonus_chance_percent"] = max(safe_int(player_state.get("escape_bonus_chance_percent"), 0), bonus)
+        player_state["escape_bonus_turns"] = max(safe_int(player_state.get("escape_bonus_turns"), 0), turns)
+        message = f"🎒 {player_display_name(player)} использует {item_name}: шанс сбежать повышен на +{bonus}% на {turns} хода."
+        consumed = True
+
+    elif effect_type == "battle_regeneration":
+        effect = combat_effect_data(source_item)
+        max_hp = max(1, safe_int(player_state.get("max_hp"), safe_int(player.get("max_hp"), 1)))
+        flat = safe_int(effect.get("regen_flat"), 30)
+        percent = float(effect.get("regen_max_hp_percent", 2) or 0)
+        amount = max(1, flat + math.floor(max_hp * percent / 100))
+        turns = safe_int(effect.get("duration_turns"), 2)
+        source_id = item_identity(source_item) or item_name
+        regens = player_state.setdefault("battle_regeneration_effects", [])
+        if not isinstance(regens, list):
+            regens = []
+            player_state["battle_regeneration_effects"] = regens
+        existing = next((entry for entry in regens if isinstance(entry, dict) and entry.get("source_id") == source_id), None)
+        payload = {"source_id": source_id, "name": item_name, "amount": amount, "turns": turns}
+        if existing is not None:
+            existing.update(payload)
+        else:
+            regens.append(payload)
+        message = f"🎒 {player_display_name(player)} использует {item_name}: регенерация {amount} HP/ход на {turns} хода."
+        consumed = True
+
+    elif effect_type == "cleanse_debuffs":
+        debuffs = player_state.setdefault("debuffs", [])
+        if not isinstance(debuffs, list):
+            debuffs = []
+            player_state["debuffs"] = debuffs
+        removed: list[Any] = []
+        if debuffs:
+            removed.append(debuffs.pop(0))
+        if debuffs and rng.random() < 0.10:
+            removed.append(debuffs.pop(0))
+        if not removed:
+            return f"🎒 {item_name} не использовано: на игроке нет боевых дебафов.", False
+        message = f"🎒 {player_display_name(player)} использует {item_name}: снято дебафов — {len(removed)}."
+        consumed = True
+
+    elif effect_type == "battle_stimulant":
+        effect = combat_effect_data(source_item)
+        damage_bonus = safe_int(effect.get("damage_bonus_percent"), 30)
+        resource_bonus = safe_int(effect.get("resource_max_bonus_percent"), 20)
+        player_state["battle_stimulant_active"] = True
+        player_state["combat_damage_bonus_percent"] = max(safe_int(player_state.get("combat_damage_bonus_percent"), 0), damage_bonus)
+        for current_key, max_key in (("current_spirit", "max_spirit"), ("current_mana", "max_mana")):
+            original_key = f"_{max_key}_before_battle_stimulant"
+            if original_key not in player_state:
+                player_state[original_key] = safe_int(player_state.get(max_key), 0)
+                bonus = math.floor(max(1, safe_int(player_state.get(max_key), 1)) * resource_bonus / 100)
+                player_state[max_key] = safe_int(player_state.get(max_key), 0) + bonus
+                player_state[current_key] = safe_int(player_state.get(current_key), 0) + bonus
+        message = f"🎒 {player_display_name(player)} использует {item_name}: урон навыков +{damage_bonus}%, максимум духа и маны +{resource_bonus}%."
+        consumed = True
+
     else:
-        remove_inventory_item_by_name(player, item_name, 1)
-    sync_player_from_battle(player, battle)
-    return f"🎒 {player_display_name(player)} использует {item_name}: " + ", ".join(restored_parts) + ".", True
+        restored_parts: list[str] = []
+        effect = source_item.get("use_effect") if isinstance(source_item.get("use_effect"), dict) else {}
+        for current_key, max_key, labels in (("current_hp", "max_hp", ("restore_hp", "hp_restore")), ("current_spirit", "max_spirit", ("restore_spirit", "spirit_restore")), ("current_mana", "max_mana", ("restore_mana", "mana_restore"))):
+            restore = 0
+            for label in labels:
+                restore = max(restore, safe_int(source_item.get(label), 0))
+                restore = max(restore, safe_int(effect.get(label), 0))
+            if restore <= 0:
+                continue
+            before = safe_int(player_state.get(current_key), safe_int(player.get(current_key.removeprefix("current_")), 0))
+            maximum = safe_int(player_state.get(max_key), safe_int(player.get(max_key.removeprefix("current_")), 0))
+            after = min(maximum, before + restore)
+            player_state[current_key] = after
+            actual = after - before
+            if actual > 0:
+                restored_parts.append(f"+{actual} {current_key.removeprefix('current_')}")
+        if not restored_parts:
+            return "🎒 Предмет не дал боевого эффекта.", False
+        message = f"🎒 {player_display_name(player)} использует {item_name}: " + ", ".join(restored_parts) + "."
+        consumed = True
+
+    if consumed:
+        if ref is not None:
+            remove_inventory_item_by_ref(player, ref, 1)
+        else:
+            remove_inventory_item_by_name(player, item_name, 1)
+        sync_player_from_battle(player, battle)
+    return message, consumed
+
+
+def throwable_damage(player: dict[str, Any], item: dict[str, Any]) -> int:
+    effect = combat_effect_data(item)
+    level = max(1, safe_int(player.get("level"), 1))
+    base = safe_int(effect.get("base_from_player_level"), level)
+    percent = float(effect.get("bonus_player_level_percent", 0) or 0)
+    return max(1, math.floor(base + level * percent / 100))
+
 
 
 def sync_player_from_battle(player: dict[str, Any], battle: dict[str, Any]) -> None:
@@ -934,13 +1265,23 @@ def format_enemy_line(enemy: dict[str, Any], index: int | None = None) -> str:
     )
 
 
+
+def battle_location_label(location_id: str | None) -> str:
+    labels = {
+        "hilly_meadows": "Холмистые луга",
+        "ordinary_forest": "Обыкновенный лес",
+    }
+    normalized = normalize_battle_location(location_id)
+    return labels.get(normalized, normalized or "неизвестная локация")
+
 def format_battle_started_text(battle: dict[str, Any]) -> str:
     intro = battle.get("battle_log", ["Начался бой."])[0]
     enemy_lines = "\n".join(format_enemy_line(enemy, index + 1) for index, enemy in enumerate(battle.get("enemies", [])))
     player_state = battle.get("player_state") or {}
     player_name = battle_player_name(battle)
+    location_label = battle_location_label(str(battle.get("location_id") or battle.get("return_location") or "hilly_meadows"))
     return (
-        f"⚔️ Бой начался!\n{intro}\n\n"
+        f"⚔️ Бой начался!\n📍 Локация: {location_label}\n{intro}\n\n"
         f"Ход: {battle.get('round_number', 1)}.\n\n"
         f"🧍 {player_name}:\n"
         f"❤️ {player_state.get('current_hp')}/{player_state.get('max_hp')} · "
@@ -1024,9 +1365,14 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
     # After reaching level 10, mob experience is reduced by an additional 30%.
     if player_level >= 10 and xp_total > 0:
         xp_total = max(1, math.floor(xp_total * 0.7))
+    old_sword_xp_penalty = old_iron_sword_penalty_percent(player, "mob_xp_penalty_percent")
+    if old_sword_xp_penalty and xp_total > 0:
+        xp_total = max(1, math.floor(xp_total * (1 - old_sword_xp_penalty / 100)))
     progress = grant_experience(player, xp_total)
     player["pve_kills"] = safe_int(player.get("pve_kills"), 0) + len(enemies)
     rewards = [f"Опыт: +{progress['gained']}"]
+    if old_sword_xp_penalty:
+        rewards.append(f"Старый железный меч: опыт с мобов -{old_sword_xp_penalty:.2f}%")
     if progress["level_ups"]:
         rewards.append(
             f"Уровень повышен: {progress['level']} "
@@ -1078,8 +1424,62 @@ def skill_uses_without_target(skill: dict[str, Any]) -> bool:
     return mode in {"self", "ally", "all", "aoe", "area", "random", "no_target", "без цели", "все", "себя"}
 
 
+def apply_enemy_status_effects(battle: dict[str, Any], log: list[str]) -> None:
+    for enemy in alive_enemies(battle):
+        statuses = enemy.get("statuses")
+        if not isinstance(statuses, list):
+            continue
+        kept: list[dict[str, Any]] = []
+        for status in statuses:
+            if not isinstance(status, dict):
+                continue
+            if status.get("id") == "old_iron_sword_poison":
+                damage = max(1, safe_int(status.get("damage"), 1))
+                enemy["current_hp"] = max(0, safe_int(enemy.get("current_hp"), 0) - damage)
+                log.append(f"☠️ {enemy.get('name')} получает {damage} урона от отравления.")
+                status["turns"] = safe_int(status.get("turns"), 1) - 1
+                if status["turns"] > 0 and safe_int(enemy.get("current_hp"), 0) > 0:
+                    kept.append(status)
+            else:
+                kept.append(status)
+        enemy["statuses"] = kept
+
+
+def apply_player_regeneration_effects(player: dict[str, Any], battle: dict[str, Any], log: list[str]) -> None:
+    player_state = battle.setdefault("player_state", {})
+    regens = player_state.get("battle_regeneration_effects")
+    if not isinstance(regens, list) or safe_int(player_state.get("current_hp"), 0) <= 0:
+        return
+    max_hp = max(1, safe_int(player_state.get("max_hp"), 1))
+    kept: list[dict[str, Any]] = []
+    for regen in regens:
+        if not isinstance(regen, dict):
+            continue
+        amount = max(1, safe_int(regen.get("amount"), 1))
+        before = safe_int(player_state.get("current_hp"), 0)
+        player_state["current_hp"] = min(max_hp, before + amount)
+        actual = player_state["current_hp"] - before
+        if actual > 0:
+            log.append(f"🧪 {regen.get('name') or 'Регенерация'} восстанавливает {actual} HP.")
+        regen["turns"] = safe_int(regen.get("turns"), 1) - 1
+        if regen["turns"] > 0:
+            kept.append(regen)
+    player_state["battle_regeneration_effects"] = kept
+
+
+def tick_player_battle_effects(player: dict[str, Any], battle: dict[str, Any], log: list[str]) -> None:
+    player_state = battle.setdefault("player_state", {})
+    if safe_int(player_state.get("escape_bonus_turns"), 0) > 0:
+        player_state["escape_bonus_turns"] = safe_int(player_state.get("escape_bonus_turns"), 0) - 1
+        if player_state["escape_bonus_turns"] <= 0:
+            player_state.pop("escape_bonus_turns", None)
+            player_state.pop("escape_bonus_chance_percent", None)
+            log.append("💨 Дым рассеивается: бонус к побегу закончился.")
+
+
 def apply_enemy_phase(player: dict[str, Any], battle: dict[str, Any], rng: random.Random, log: list[str], *, defending: bool = False) -> bool:
     player_state = battle.setdefault("player_state", {})
+    apply_enemy_status_effects(battle, log)
     for enemy in alive_enemies(battle):
         hit_chance = calculate_hit_chance(safe_int(enemy.get("accuracy"), 1), safe_int(player_state.get("dodge"), 1))
         if rng.random() > hit_chance:
@@ -1111,6 +1511,9 @@ def apply_enemy_phase(player: dict[str, Any], battle: dict[str, Any], rng: rando
         actual = player_state["current_hp"] - before
         if actual:
             log.append(f"🦎 Регенерация расы восстанавливает {actual} HP.")
+
+    apply_player_regeneration_effects(player, battle, log)
+    tick_player_battle_effects(player, battle, log)
 
     battle["round_number"] = safe_int(battle.get("round_number"), 1) + 1
     battle["last_turn_log"] = log[:]
@@ -1172,7 +1575,8 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         if player.get("inventory_overflow_no_escape"):
             return "🎒 Вы перегружены: при 4+ занятых доп. слотах нельзя сбежать от противника.", battle_buttons(player)
         decrement_cooldowns_once_at_player_turn(battle, player_state)
-        if rng.random() < 0.4:
+        escape_chance = min(0.95, 0.4 + safe_int(player_state.get("escape_bonus_chance_percent"), 0) / 100)
+        if rng.random() < escape_chance:
             player["in_battle"] = False
             player["active_battle"] = None
             player["active_event"] = None
@@ -1204,7 +1608,35 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         ref = context_items.get(local_number)
         if ref is None:
             return "🎒 Этот пункт подсумка уже устарел. Откройте подсумок заново.", battle_buttons(player)
-        item_text, consumed = use_pouch_item_by_ref(player, battle, ref)
+        try:
+            source_index = int(str(ref))
+            source_item = player.get("inventory", [])[source_index]
+        except Exception:
+            source_item = None
+        if isinstance(source_item, dict) and pouch_item_needs_target(source_item):
+            battle["pending_pouch_item"] = {"ref": str(ref), "name": item_name_value(source_item)}
+            player["active_battle"] = battle
+            return f"🎯 Выберите противника для предмета «{item_name_value(source_item)}».", target_buttons(battle, player)
+        item_text, consumed = use_pouch_item_by_ref(player, battle, ref, rng=rng)
+        log = [item_text]
+        if consumed:
+            log.append("Дополнительное действие выполнено: ход не завершён. Выберите основное действие.")
+        battle["last_turn_log"] = log
+        battle.setdefault("battle_log", []).extend(log)
+        sync_player_from_battle(player, battle)
+        if not alive_enemies(battle):
+            player["in_battle"] = False
+            player["active_battle"] = None
+            player["active_event"] = None
+            move_player_to_battle_return_location(player, battle)
+            rewards = grant_battle_rewards(player, battle, rng)
+            return f"{chr(10).join(log)}\n\n✅ Победа!\n\n{rewards}", []
+        player["active_battle"] = battle
+        return format_battle_status(battle), battle_buttons(player)
+
+    if action.startswith("Использовать: "):
+        item_name = action.removeprefix("Использовать: ").strip()
+        item_text, consumed = use_pouch_item(player, battle, item_name, rng=rng)
         log = [item_text]
         if consumed:
             log.append("Дополнительное действие выполнено: ход не завершён. Выберите основное действие.")
@@ -1214,15 +1646,29 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         player["active_battle"] = battle
         return format_battle_status(battle), battle_buttons(player)
 
-    if action.startswith("Использовать: "):
-        item_name = action.removeprefix("Использовать: ").strip()
-        item_text, consumed = use_pouch_item(player, battle, item_name)
+    pending_pouch = battle.get("pending_pouch_item") if isinstance(battle.get("pending_pouch_item"), dict) else None
+    if action.startswith("Цель: ") and pending_pouch:
+        raw_target = action.removeprefix("Цель: ").strip().split()[0]
+        try:
+            target_number = max(1, int(raw_target))
+        except ValueError:
+            target_number = 1
+        ref = str(pending_pouch.get("ref") or "")
+        item_text, consumed = use_pouch_item_by_ref(player, battle, ref, target_number=target_number, rng=rng)
+        battle.pop("pending_pouch_item", None)
         log = [item_text]
         if consumed:
             log.append("Дополнительное действие выполнено: ход не завершён. Выберите основное действие.")
         battle["last_turn_log"] = log
         battle.setdefault("battle_log", []).extend(log)
         sync_player_from_battle(player, battle)
+        if not alive_enemies(battle):
+            player["in_battle"] = False
+            player["active_battle"] = None
+            player["active_event"] = None
+            move_player_to_battle_return_location(player, battle)
+            rewards = grant_battle_rewards(player, battle, rng)
+            return f"{chr(10).join(log)}\n\n✅ Победа!\n\n{rewards}", []
         player["active_battle"] = battle
         return format_battle_status(battle), battle_buttons(player)
 
@@ -1307,6 +1753,7 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
             action_text = f"навыком «{action_text}»"
         else:
             raw_damage, damage_type, action_text = player_attack_raw_damage(player, action)
+        raw_damage = apply_battle_damage_bonuses(player, battle, raw_damage, damage_type, is_skill=equipped_skill is not None)
         hit_chance = calculate_hit_chance(safe_int(player_state.get("accuracy"), 1), safe_int(target.get("dodge"), 1))
         if rng.random() <= hit_chance:
             final_damage = calculate_final_damage(
@@ -1318,6 +1765,8 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
             )
             target["current_hp"] = max(0, safe_int(target.get("current_hp"), 0) - final_damage)
             log.append(f"{player_name} бьёт {action_text}: {target.get('name')} получает {final_damage} урона.")
+            if damage_type in {DamageType.PHYSICAL, DamageType.MIXED}:
+                maybe_apply_old_sword_on_hit(player, battle, target, rng, log)
         else:
             log.append(f"{player_name} промахивается: {target.get('name')} успевает уйти с линии атаки.")
 

@@ -12,15 +12,21 @@ from __future__ import annotations
 
 import html
 import logging
+import os
+import time
+from collections import defaultdict, deque
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from project_paths import resolve_project_path
 from services.web_profile import PAVILION_SCOPE, PROFILE_SCOPE
+from admin_panel_api import create_admin_panel_router
 from site_api import (
     create_profile_api_router,
     frontend_profile,
@@ -34,6 +40,7 @@ WEB_DIR = resolve_project_path("web")
 WEB_DIST_DIR = WEB_DIR / "dist"
 WEB_PUBLIC_DIR = WEB_DIR / "public"
 WEB_INDEX_FILE = WEB_DIST_DIR / "index.html"
+PUBLIC_UPLOADS_ASSETS_DIR = resolve_project_path(os.getenv("PUBLIC_UPLOADS_ASSETS_DIR", "data/public_uploads/assets"))
 
 
 def _safe_text(value: Any, default: str = "—") -> str:
@@ -43,21 +50,14 @@ def _safe_text(value: Any, default: str = "—") -> str:
 
 
 def _public_player(player: dict[str, Any]) -> dict[str, Any]:
+    # Public view intentionally excludes inventory, equipment, money, stats,
+    # linked accounts and other gameplay details. Full profile data is private
+    # and available only through a bot-issued active session.
     return {
-        "game_id": player.get("game_id") or player.get("id"),
         "public_id": player.get("public_id"),
         "name": player.get("name"),
         "race_name": player.get("race_name"),
         "level": player.get("level", 1),
-        "experience": player.get("experience", 0),
-        "current_city": player.get("current_city", "seldar"),
-        "current_zone": player.get("current_zone"),
-        "money": player.get("money", 0),
-        "debt": player.get("debt", 0),
-        "energy": player.get("energy", 100),
-        "max_energy": player.get("max_energy", 100),
-        "stats": player.get("stats", {}),
-        "linked_accounts": sorted((player.get("linked_accounts") or {}).keys()),
     }
 
 
@@ -101,9 +101,9 @@ def _render_profile_html(player: dict[str, Any], session: dict[str, Any] | None 
 h1{{margin:0 0 8px;font-size:34px;color:#ffd98f}}h2{{margin-top:28px;color:#ffd98f}}.muted{{color:#b9a27c}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:22px}}.box{{border:1px solid rgba(255,217,143,.18);border-radius:16px;padding:16px;background:rgba(255,255,255,.035)}}.label{{color:#a99471;font-size:13px}}.value{{font-size:20px;margin-top:4px}}table{{width:100%;border-collapse:collapse;margin-top:14px}}td{{border-bottom:1px solid rgba(255,217,143,.12);padding:10px 0}}td:last-child{{text-align:right;color:#ffd98f}}.footer{{margin-top:18px;font-size:13px;color:#8f7c5d}}
 </style></head><body><main class="wrap"><section class="card">
 <div class="muted">Мир Нер-Талис</div><h1>{_safe_text(public_player.get('name'))}</h1>
-<div class="muted">Единый игровой ID: {_safe_text(public_player.get('game_id'))}</div>
-<div class="grid"><div class="box"><div class="label">Раса</div><div class="value">{_safe_text(public_player.get('race_name'))}</div></div><div class="box"><div class="label">Уровень</div><div class="value">{_safe_text(public_player.get('level'))}</div></div><div class="box"><div class="label">Опыт</div><div class="value">{_safe_text(public_player.get('experience'))}</div></div><div class="box"><div class="label">Энергия</div><div class="value">{_safe_text(public_player.get('energy'))}/{_safe_text(public_player.get('max_energy'))}</div></div><div class="box"><div class="label">Город</div><div class="value">{_safe_text(public_player.get('current_city'))}</div></div><div class="box"><div class="label">Зона</div><div class="value">{_safe_text(public_player.get('current_zone'))}</div></div></div>
-<h2>Характеристики</h2><table>{stat_rows}</table><div class="footer">Платформы: {_safe_text(linked_accounts)} · Сессия: {expires_text}</div>
+<div class="muted">Профиль открыт по защищённой временной ссылке.</div>
+<div class="grid"><div class="box"><div class="label">Раса</div><div class="value">{_safe_text(public_player.get('race_name'))}</div></div><div class="box"><div class="label">Уровень</div><div class="value">{_safe_text(public_player.get('level'))}</div></div></div>
+<div class="footer">Сессия: {expires_text}</div>
 </section></main></body></html>"""
 
 
@@ -118,10 +118,123 @@ def _react_index_or_none() -> FileResponse | None:
     return None
 
 
+def _csv_env(name: str, default: str) -> list[str]:
+    raw = os.getenv(name, default)
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+def _truthy_env(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).strip().casefold() in {"1", "true", "yes", "on", "да"}
+
+
+def _client_ip_for_rate_limit(request: Request) -> str:
+    direct_ip = request.client.host if request.client else "unknown"
+    # Do not trust spoofable proxy headers by default. X-Forwarded-For is used
+    # only when explicitly enabled and the immediate peer is a known proxy.
+    if _truthy_env("TRUST_PROXY_HEADERS", "false"):
+        trusted_proxies = set(_csv_env("TRUSTED_PROXY_IPS", "127.0.0.1,::1"))
+        if direct_ip in trusted_proxies:
+            forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            if forwarded:
+                return forwarded
+    return direct_ip
+
+
+def _safe_uploaded_asset_path(asset_path: str) -> Path | None:
+    relative = Path(str(asset_path or ""))
+    if relative.is_absolute() or ".." in relative.parts:
+        return None
+    candidate = (PUBLIC_UPLOADS_ASSETS_DIR / "admin_uploads" / relative).resolve()
+    base = (PUBLIC_UPLOADS_ASSETS_DIR / "admin_uploads").resolve()
+    try:
+        candidate.relative_to(base)
+    except ValueError:
+        return None
+    return candidate
+
+
+def _security_headers_for(path: str) -> dict[str, str]:
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "no-referrer",
+        "Permissions-Policy": "geolocation=(), microphone=(), camera=(), payment=(), usb=()",
+        "Content-Security-Policy": (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "font-src 'self' data:; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
+            "frame-ancestors 'none'"
+        ),
+    }
+    if os.getenv("ENABLE_HSTS", "true").strip().casefold() in {"1", "true", "yes", "on", "да"}:
+        headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    if path.startswith("/api/") or path.startswith("/profile") or path.startswith("/pavilion"):
+        headers["Cache-Control"] = "no-store, max-age=0"
+        headers["Pragma"] = "no-cache"
+    return headers
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="Ner-Talis", version="0.4.1")
+    app = FastAPI(title="Ner-Talis", version="0.4.2")
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=_csv_env(
+            "ALLOWED_HOSTS",
+            "ner-talis-game.ru,www.ner-talis-game.ru,localhost,127.0.0.1,testserver",
+        ),
+    )
     app.state.storage = None
     app.state.storage_error = None
+    app.state.rate_limit_hits = defaultdict(deque)
+
+    @app.middleware("http")
+    async def security_and_rate_limit_middleware(request: Request, call_next):
+        path = request.url.path
+        if _truthy_env("FORCE_HTTPS", "false") and path != "/health":
+            forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+            is_https = request.url.scheme == "https" or forwarded_proto == "https"
+            host = request.headers.get("host", "")
+            if not is_https and not host.startswith(("localhost", "127.0.0.1")):
+                secure_url = request.url.replace(scheme="https")
+                return JSONResponse({"detail": "HTTPS required", "redirect": str(secure_url)}, status_code=426)
+        now = time.monotonic()
+        window_seconds = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60") or "60")
+        if request.method.upper() == "POST" and path.startswith("/api/profile"):
+            max_requests = int(os.getenv("PROFILE_POST_RATE_LIMIT", "40") or "40")
+        elif request.method.upper() == "POST" and path.startswith("/api/admin"):
+            max_requests = int(os.getenv("ADMIN_POST_RATE_LIMIT", "60") or "60")
+        elif path.startswith("/api/admin"):
+            max_requests = int(os.getenv("ADMIN_GET_RATE_LIMIT", "180") or "180")
+        elif path.startswith("/api/profile") or path.startswith("/api/player/profile"):
+            max_requests = int(os.getenv("PROFILE_GET_RATE_LIMIT", "120") or "120")
+        else:
+            max_requests = 0
+
+        if max_requests > 0:
+            client_ip = _client_ip_for_rate_limit(request)
+            bucket_key = (client_ip, request.method.upper(), path.rsplit("/", 1)[0] if "/" in path else path)
+            hits = app.state.rate_limit_hits[bucket_key]
+            while hits and now - hits[0] > window_seconds:
+                hits.popleft()
+            if len(hits) >= max_requests:
+                response = JSONResponse(
+                    {"detail": "Слишком много запросов. Подождите немного и повторите действие."},
+                    status_code=429,
+                )
+            else:
+                hits.append(now)
+                response = await call_next(request)
+        else:
+            response = await call_next(request)
+
+        for header, value in _security_headers_for(path).items():
+            response.headers.setdefault(header, value)
+        return response
 
     def storage():
         if getattr(app.state, "storage", None) is None:
@@ -142,6 +255,14 @@ def create_app() -> FastAPI:
         return app.state.storage
 
     app.include_router(create_profile_api_router(storage))
+    app.include_router(create_admin_panel_router(storage))
+
+    @app.get("/assets/admin_uploads/{asset_path:path}", include_in_schema=False)
+    async def runtime_uploaded_asset(asset_path: str):
+        file_path = _safe_uploaded_asset_path(asset_path)
+        if file_path is None or not file_path.is_file():
+            raise HTTPException(status_code=404, detail="Ассет не найден.")
+        return FileResponse(file_path)
 
     # Static files generated by Vite. During local Python-only checks web/dist may
     # be absent; in that case /profile falls back to server-rendered HTML.
@@ -176,12 +297,9 @@ def create_app() -> FastAPI:
 
     def render_profile_by_identifier(identifier: str) -> str:
         player, session = get_session_and_player(identifier, PROFILE_SCOPE)
-        if player is not None:
+        if player is not None and session is not None:
             return _render_profile_html(player, session)
-        player = get_player_by_public_id(storage(), identifier)
-        if player is not None:
-            return _render_profile_html(player, None)
-        raise HTTPException(status_code=404, detail="Профиль не найден или ссылка истекла.")
+        raise HTTPException(status_code=401, detail="Профиль доступен только по свежей ссылке из бота.")
 
     @app.exception_handler(Exception)
     async def unhandled_error_handler(request: Request, exc: Exception):
@@ -235,21 +353,43 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="Некорректная ссылка профиля.")
         return HTMLResponse(render_profile_by_identifier(identifier))
 
+    @app.get("/admin_panel", response_class=HTMLResponse, response_model=None)
+    def admin_panel_page(token: str | None = Query(default=None)):
+        react = _react_index_or_none()
+        if react:
+            return react
+        if not token:
+            raise HTTPException(status_code=400, detail="В ссылке нет token админ-панели.")
+        return HTMLResponse("<h1>Админ-панель Нер-Талис</h1><p>Соберите web/dist, чтобы открыть React-интерфейс админ-панели.</p>")
+
+    @app.get("/admin_view_profile", response_class=HTMLResponse, response_model=None)
+    def admin_view_profile_page(token: str | None = Query(default=None)):
+        react = _react_index_or_none()
+        if react:
+            return react
+        if not token:
+            raise HTTPException(status_code=400, detail="В ссылке нет token просмотра профиля.")
+        return HTMLResponse("<h1>Просмотр профиля игрока</h1><p>Соберите web/dist, чтобы открыть профиль в стиле сайта.</p>")
+
     @app.get("/api/player/profile", response_model=None)
     def profile_api(token: str = Query(..., min_length=16)):
         player, session = get_session_and_player(token, PROFILE_SCOPE)
         if player is None or session is None:
             raise HTTPException(status_code=401, detail="Недействительная или истёкшая ссылка.")
-        return JSONResponse({"player": _public_player(player), "profile": frontend_profile(player), "session": session})
+        profile = frontend_profile(player)
+        if session.get("token"):
+            profile["sessionToken"] = session.get("token")
+        return JSONResponse({"player": _public_player(player), "profile": profile, "session": session})
 
     @app.get("/api/player/profile/{identifier}", response_model=None)
     def profile_api_path(identifier: str):
         player, session = get_session_and_player(identifier, PROFILE_SCOPE)
-        if player is None:
-            player = get_player_by_public_id(storage(), identifier)
-        if player is None:
-            raise HTTPException(status_code=404, detail="Профиль не найден или ссылка истекла.")
-        return JSONResponse({"player": _public_player(player), "profile": frontend_profile(player), "session": session})
+        if player is None or session is None:
+            raise HTTPException(status_code=401, detail="Профиль доступен только по свежей ссылке из бота.")
+        profile = frontend_profile(player)
+        if session.get("token"):
+            profile["sessionToken"] = session.get("token")
+        return JSONResponse({"player": _public_player(player), "profile": profile, "session": session})
 
     def render_pavilion_by_token(token: str) -> str:
         player, session = get_session_and_player(token, PAVILION_SCOPE)

@@ -30,6 +30,26 @@ def start_keyboard() -> ReplyKeyboardMarkup:
     ])
 
 
+def name_confirm_keyboard() -> ReplyKeyboardMarkup:
+    return make_keyboard([
+        ["Подтвердить"],
+        ["Ввести заново"],
+    ])
+
+
+def gender_keyboard() -> ReplyKeyboardMarkup:
+    return make_keyboard([
+        ["Муж.", "Жен."],
+    ])
+
+
+def gender_confirm_keyboard() -> ReplyKeyboardMarkup:
+    return make_keyboard([
+        ["Да"],
+        ["Нет"],
+    ])
+
+
 def race_keyboard() -> ReplyKeyboardMarkup:
     return make_keyboard([
         ["Человек", "Эльф"],

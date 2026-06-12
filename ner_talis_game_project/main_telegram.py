@@ -93,20 +93,26 @@ def _import_telegram_runtime():
 
     from handlers.city import CITY_BUTTON_PATTERN, city_command, city_message
     from handlers.registration import (
+        AWAITING_GENDER,
         AWAITING_NAME,
         AWAITING_RACE,
+        GENDER_CONFIRM,
+        NAME_CONFIRM,
         RACE_CARD,
         RACE_CONFIRM,
         START_MENU,
         begin_registration,
         cancel,
         connect_command,
+        handle_gender_confirmation,
+        handle_name_confirmation,
         handle_race_card,
         handle_race_confirmation,
         link_command,
         profile_button,
         profile_command,
         promo_command,
+        receive_gender,
         receive_name,
         receive_race,
         show_world_short,
@@ -124,20 +130,26 @@ def _import_telegram_runtime():
         "CITY_BUTTON_PATTERN": CITY_BUTTON_PATTERN,
         "city_command": city_command,
         "city_message": city_message,
+        "AWAITING_GENDER": AWAITING_GENDER,
         "AWAITING_NAME": AWAITING_NAME,
         "AWAITING_RACE": AWAITING_RACE,
+        "GENDER_CONFIRM": GENDER_CONFIRM,
+        "NAME_CONFIRM": NAME_CONFIRM,
         "RACE_CARD": RACE_CARD,
         "RACE_CONFIRM": RACE_CONFIRM,
         "START_MENU": START_MENU,
         "begin_registration": begin_registration,
         "cancel": cancel,
         "connect_command": connect_command,
+        "handle_gender_confirmation": handle_gender_confirmation,
+        "handle_name_confirmation": handle_name_confirmation,
         "handle_race_card": handle_race_card,
         "handle_race_confirmation": handle_race_confirmation,
         "link_command": link_command,
         "profile_button": profile_button,
         "profile_command": profile_command,
         "promo_command": promo_command,
+        "receive_gender": receive_gender,
         "receive_name": receive_name,
         "receive_race": receive_race,
         "show_world_short": show_world_short,
@@ -180,7 +192,7 @@ def build_application():
     )
     application.add_error_handler(log_telegram_error)
 
-    runtime["register_telegram_admin_handlers"](application, CommandHandler)
+    runtime["register_telegram_admin_handlers"](application, CommandHandler, MessageHandler, filters)
 
     registration_conversation = ConversationHandler(
         entry_points=[
@@ -195,6 +207,15 @@ def build_application():
             ],
             runtime["AWAITING_NAME"]: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, runtime["receive_name"]),
+            ],
+            runtime["NAME_CONFIRM"]: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, runtime["handle_name_confirmation"]),
+            ],
+            runtime["AWAITING_GENDER"]: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, runtime["receive_gender"]),
+            ],
+            runtime["GENDER_CONFIRM"]: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, runtime["handle_gender_confirmation"]),
             ],
             runtime["AWAITING_RACE"]: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, runtime["receive_race"]),

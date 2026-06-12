@@ -1,0 +1,220 @@
+[
+  {
+    "id": "old_throwing_knife",
+    "item_id": "old_throwing_knife",
+    "name": "Старый метательный нож",
+    "name_ru": "Старый метательный нож",
+    "category": "consumables",
+    "type": "throwable",
+    "subtype": "throwing_knife",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 30,
+    "description": "Метательный расходник Чёрного рынка. В бою через подсумок наносит выбранному противнику урон от уровня игрока.",
+    "integration_tags": [
+      "inventory_item",
+      "combat_pouch",
+      "battle_consumable",
+      "black_market"
+    ],
+    "combat_effect": {
+      "type": "throw_damage",
+      "base_from_player_level": true,
+      "bonus_player_level_percent": 0,
+      "target": "enemy"
+    },
+    "can_sell": true,
+    "sell_price_copper": 30,
+    "buy_price_copper": 40
+  },
+  {
+    "id": "decent_throwing_knife",
+    "item_id": "decent_throwing_knife",
+    "name": "Неплохой метательный нож",
+    "name_ru": "Неплохой метательный нож",
+    "category": "consumables",
+    "type": "throwable",
+    "subtype": "throwing_knife",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 30,
+    "description": "Метательный расходник Чёрного рынка. В бою через подсумок наносит выбранному противнику урон от уровня игрока +2%.",
+    "integration_tags": [
+      "inventory_item",
+      "combat_pouch",
+      "battle_consumable",
+      "black_market"
+    ],
+    "combat_effect": {
+      "type": "throw_damage",
+      "base_from_player_level": true,
+      "bonus_player_level_percent": 2,
+      "target": "enemy"
+    },
+    "can_sell": true,
+    "sell_price_copper": 45,
+    "buy_price_copper": 60
+  },
+  {
+    "id": "homemade_smoke_bomb",
+    "item_id": "homemade_smoke_bomb",
+    "name": "Самодельная дымовая бомбочка",
+    "name_ru": "Самодельная дымовая бомбочка",
+    "category": "consumables",
+    "type": "throwable",
+    "subtype": "smoke_bomb",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 20,
+    "description": "Боевой расходник для подсумка. Повышает шанс сбежать из боя на +20% на 2 хода.",
+    "integration_tags": [
+      "inventory_item",
+      "combat_pouch",
+      "battle_consumable",
+      "black_market"
+    ],
+    "combat_effect": {
+      "type": "escape_bonus",
+      "escape_bonus_percent": 20,
+      "duration_turns": 2
+    },
+    "can_sell": true,
+    "sell_price_copper": 40,
+    "buy_price_copper": 80
+  },
+  {
+    "id": "minor_regeneration_potion",
+    "item_id": "minor_regeneration_potion",
+    "name": "Малое зелье регенерации",
+    "name_ru": "Малое зелье регенерации",
+    "category": "consumables",
+    "type": "potion",
+    "subtype": "regeneration_potion",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 10,
+    "description": "Боевое зелье для подсумка. Накладывает регенерацию HP на 2 хода.",
+    "integration_tags": [
+      "inventory_item",
+      "combat_pouch",
+      "battle_consumable",
+      "port_market"
+    ],
+    "combat_effect": {
+      "type": "battle_regeneration",
+      "regen_flat": 30,
+      "regen_max_hp_percent": 2,
+      "duration_turns": 2
+    },
+    "can_sell": true,
+    "sell_price_copper": 500,
+    "buy_price_copper": 4000
+  },
+  {
+    "id": "common_cleansing_potion",
+    "item_id": "common_cleansing_potion",
+    "name": "Обычное зелье очищения",
+    "name_ru": "Обычное зелье очищения",
+    "category": "consumables",
+    "type": "potion",
+    "subtype": "cleansing_potion",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 10,
+    "description": "Боевое зелье для подсумка. Снимает 1 дебаф гарантированно и второй дебаф с шансом 10%.",
+    "integration_tags": [
+      "inventory_item",
+      "combat_pouch",
+      "battle_consumable",
+      "port_market"
+    ],
+    "combat_effect": {
+      "type": "cleanse_debuffs",
+      "guaranteed_remove": 1,
+      "second_remove_chance_percent": 10
+    },
+    "can_sell": true,
+    "sell_price_copper": 300,
+    "buy_price_copper": 1000
+  },
+  {
+    "id": "battle_stimulant",
+    "item_id": "battle_stimulant",
+    "name": "Боевой стимулятор",
+    "name_ru": "Боевой стимулятор",
+    "category": "consumables",
+    "type": "potion",
+    "subtype": "stimulant",
+    "quality": "common",
+    "stackable": true,
+    "max_stack": 10,
+    "description": "Опасный расходник Чёрного рынка. Принимается из инвентаря, не отображается в боевом подсумке; временно усиливает урон навыков и повышает максимум Духа и Маны.",
+    "integration_tags": [
+      "inventory_item",
+      "black_market",
+      "inventory_usable",
+      "battle_preparation_consumable"
+    ],
+    "combat_effect": {
+      "type": "battle_stimulant",
+      "damage_bonus_percent": 30,
+      "resource_max_bonus_percent": 20,
+      "inventory_only": true
+    },
+    "can_sell": true,
+    "sell_price_copper": 200,
+    "buy_price_copper": 3000,
+    "use_effect": {
+      "type": "battle_stimulant",
+      "duration_seconds": 1800,
+      "damage_bonus_percent": 30,
+      "resource_max_bonus_percent": 20,
+      "description": "На 30 минут: +30% к урону навыков, +20% к максимуму Духа и Маны. Используется из инвентаря."
+    },
+    "pouch_excluded": true
+  },
+  {
+    "id": "old_iron_sword",
+    "item_id": "old_iron_sword",
+    "name": "Старый железный меч",
+    "name_ru": "Старый железный меч",
+    "category": "weapon",
+    "type": "weapon",
+    "subtype": "sword",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "slot": "weapon1",
+    "targetSlotKey": "weapon1",
+    "equipment_slot": "weapon1",
+    "description": "Старый меч, выловленный из океана. Даёт мягкий бонус к базовому урону и шанс отравления, но снижает опыт и монеты с мобов. Эффект «Бедность» каждый удар тратит 1–1000 медных и превращает фактически списанную сумму в чистый урон.",
+    "integration_tags": [
+      "inventory_item",
+      "equipment",
+      "weapon",
+      "sword",
+      "fishing_loot"
+    ],
+    "combat_effect": {
+      "type": "old_iron_sword",
+      "bonus_damage_formula": "floor(3 + 0.35 * sqrt(player_level))",
+      "poison_chance_formula": "min(12%, 3% + 0.08 * sqrt(player_level))",
+      "mob_xp_penalty_formula": "min(12%, 2% + 0.07 * sqrt(player_level))",
+      "mob_money_penalty_formula": "min(12%, 2% + 0.07 * sqrt(player_level))",
+      "poverty_damage": {
+        "roll_min_copper": 1,
+        "roll_max_copper": 1000,
+        "cannot_go_negative": true
+      }
+    },
+    "stats": [
+      "++ базовый урон",
+      "++ шанс отравления",
+      "- опыт с мобов",
+      "- монеты с мобов",
+      "Бедность: тратит медные на чистый урон"
+    ],
+    "can_sell": true,
+    "sell_price_copper": 50
+  }
+]

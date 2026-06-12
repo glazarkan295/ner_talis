@@ -50,7 +50,7 @@ class AssetsAndPveIntegrationTest(unittest.TestCase):
 
     def test_hilly_meadows_item_registry_is_loaded(self):
         items = load_item_definitions()
-        self.assertEqual(len(items), 29)
+        self.assertEqual(len(items), 25)
         mint = get_item_definition_by_name("Луговая мята")
         self.assertIsNotNone(mint)
         self.assertEqual(mint["id"], "meadow_mint")

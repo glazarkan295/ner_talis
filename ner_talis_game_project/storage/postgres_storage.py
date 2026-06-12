@@ -62,6 +62,7 @@ class PostgresStorage:
             "link_codes": {},
             "web_sessions": {},
             "site_sessions": {},
+            "admin_panel_sessions": {},
             "promo_codes": {"codes": {}},
         }
 
@@ -154,6 +155,14 @@ class PostgresStorage:
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_platform_links_game_id ON platform_links(game_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_web_sessions_game_id ON web_sessions(game_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_web_sessions_expires_at ON web_sessions(expires_at)"))
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS admin_panel_sessions (
+                    token TEXT PRIMARY KEY,
+                    data JSONB NOT NULL,
+                    expires_at TIMESTAMPTZ NOT NULL
+                )
+            """))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_admin_panel_sessions_expires_at ON admin_panel_sessions(expires_at)"))
             connection.execute(text("""
                 CREATE TABLE IF NOT EXISTS promo_codes (
                     code TEXT PRIMARY KEY,
@@ -500,6 +509,16 @@ class PostgresStorage:
             connection.execute(text("DELETE FROM link_codes WHERE code = :code"), {"code": normalized_code})
         return True, "Платформа успешно привязана к персонажу.", self.get_player_by_game_id(game_id)
 
+    def _new_web_session_token(self, connection) -> str:
+        while True:
+            token = secrets.token_urlsafe(32)
+            exists = connection.execute(
+                text("SELECT 1 FROM web_sessions WHERE token = :token"),
+                {"token": token},
+            ).first()
+            if not exists:
+                return token
+
     def create_web_session(
         self,
         game_id: str,
@@ -512,12 +531,18 @@ class PostgresStorage:
         if not self.get_player_by_game_id(game_id):
             raise ValueError("Игрок не найден.")
         self.cleanup_expired_web_sessions()
-        token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=max(1, int(minutes)))
         with self.engine.begin() as connection:
+            # A new bot link invalidates all older activation tokens and active
+            # browser sessions for this player/scope.
             connection.execute(text("""
-                INSERT INTO web_sessions(token, game_id, scope, platform, expires_at)
-                VALUES (:token, :game_id, :scope, :platform, :expires_at)
+                DELETE FROM web_sessions
+                WHERE game_id = :game_id AND scope = :scope
+            """), {"game_id": str(game_id), "scope": scope})
+            token = self._new_web_session_token(connection)
+            connection.execute(text("""
+                INSERT INTO web_sessions(token, game_id, scope, platform, expires_at, used)
+                VALUES (:token, :game_id, :scope, :platform, :expires_at, FALSE)
             """), {
                 "token": token,
                 "game_id": str(game_id),
@@ -546,7 +571,41 @@ class PostgresStorage:
                 return None
             if scope and row["scope"] != scope:
                 return None
+
+            if not bool(row["used"]):
+                # Consume the one-time URL token and replace it with an active
+                # browser session token. The old URL token is deleted, so it
+                # cannot be reused after first activation.
+                active_token = self._new_web_session_token(connection)
+                connection.execute(text("""
+                    DELETE FROM web_sessions
+                    WHERE game_id = :game_id AND scope = :scope
+                """), {"game_id": row["game_id"], "scope": row["scope"]})
+                connection.execute(text("""
+                    INSERT INTO web_sessions(token, game_id, scope, platform, expires_at, used)
+                    VALUES (:token, :game_id, :scope, :platform, :expires_at, TRUE)
+                """), {
+                    "token": active_token,
+                    "game_id": row["game_id"],
+                    "scope": row["scope"],
+                    "platform": row["platform"],
+                    "expires_at": expires_at,
+                })
+                session = {
+                    "token": active_token,
+                    "game_id": row["game_id"],
+                    "scope": row["scope"],
+                    "platform": row["platform"],
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "expires_at": expires_at.isoformat(),
+                    "used": True,
+                    "kind": "active",
+                }
+                return session
+
             session = dict(row)
+            session["token"] = row["token"]
+            session["kind"] = "active"
             session["created_at"] = session["created_at"].isoformat() if hasattr(session["created_at"], "isoformat") else session["created_at"]
             session["expires_at"] = expires_at.isoformat()
             return session
@@ -595,6 +654,7 @@ class PostgresStorage:
             sessions = connection.execute(text("SELECT * FROM web_sessions")).mappings().all()
             codes = connection.execute(text("SELECT * FROM link_codes")).mappings().all()
             promos = connection.execute(text("SELECT code, data FROM promo_codes")).mappings().all()
+            admin_sessions = connection.execute(text("SELECT token, data FROM admin_panel_sessions")).mappings().all()
         for row in players:
             player = self._row_to_player(row)
             if player:
@@ -609,6 +669,8 @@ class PostgresStorage:
             data["site_sessions"][row["token"]] = session
         for row in codes:
             data["link_codes"][row["code"]] = {"game_id": row["game_id"], "expires_at": row["expires_at"].isoformat()}
+        for row in admin_sessions:
+            data["admin_panel_sessions"][row["token"]] = self._loads(row["data"], {})
         for row in promos:
             data["promo_codes"]["codes"][row["code"]] = self._loads(row["data"], {})
         return data
@@ -617,5 +679,15 @@ class PostgresStorage:
         for player in (data.get("players") or {}).values():
             if isinstance(player, dict):
                 self._upsert_player(player)
+        if "admin_panel_sessions" in data:
+            with self.engine.begin() as connection:
+                connection.execute(text("DELETE FROM admin_panel_sessions"))
+                for token, session in (data.get("admin_panel_sessions") or {}).items():
+                    if not isinstance(session, dict):
+                        continue
+                    connection.execute(
+                        text("INSERT INTO admin_panel_sessions(token, data, expires_at) VALUES (:token, :data, :expires_at)"),
+                        {"token": token, "data": self._dumps(session), "expires_at": session.get("expires_at") or datetime.now(timezone.utc)},
+                    )
         if "promo_codes" in data:
             self.save_promo_data(data.get("promo_codes") or {"codes": {}})

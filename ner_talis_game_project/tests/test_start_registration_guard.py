@@ -57,8 +57,26 @@ if "vk_api" not in sys.modules:
     sys.modules["vk_api.utils"] = utils_stub
     sys.modules["vk_api.keyboard"] = keyboard_stub
 
-from handlers.registration import TELEGRAM_PLATFORM, start_command
-from handlers.vk_registration import VK_PLATFORM, STATE_AWAITING_RACE, VkRegistrationBot, VkRegistrationSession
+from handlers.registration import (
+    AWAITING_GENDER,
+    AWAITING_NAME,
+    AWAITING_RACE,
+    GENDER_CONFIRM,
+    NAME_CONFIRM,
+    TELEGRAM_PLATFORM,
+    connect_command,
+    handle_gender_confirmation,
+    handle_name_confirmation,
+    handle_race_confirmation,
+    link_command,
+    profile_command,
+    promo_command,
+    receive_gender,
+    receive_name,
+    start_command,
+)
+from handlers.vk_registration import VK_PLATFORM, STATE_AWAITING_RACE, STATE_AWAITING_NAME, VkRegistrationBot, VkRegistrationSession
+from services.registration_service import create_player, load_races
 from storage.json_storage import JsonStorage
 
 
@@ -159,12 +177,14 @@ class VkRegistrationFullFlowTest(unittest.TestCase):
         temp_dir, storage, bot, sent = self._make_bot()
         self.addCleanup(temp_dir.cleanup)
 
-        for text in ["/start", "Начать", "Тестовый", "Человек", "Выбрать", "Да"]:
+        for text in ["/start", "Начать", "Тестовый", "Подтвердить", "Муж.", "Да", "Человек", "Выбрать", "Да"]:
             bot.handle_message("333", 1001, text)
 
         player = storage.get_player_by_platform(VK_PLATFORM, "333")
         self.assertIsNotNone(player)
         self.assertEqual(player["name"], "Тестовый")
+        self.assertEqual(player["gender"], "male")
+        self.assertEqual(player["gender_label"], "Муж.")
         self.assertEqual(player["race_name"], "Человек")
         self.assertNotIn(f"{VK_PLATFORM}:333", bot.sessions)
         self.assertTrue(sent)
@@ -175,7 +195,7 @@ class VkRegistrationFullFlowTest(unittest.TestCase):
         temp_dir, _storage, bot, sent = self._make_bot()
         self.addCleanup(temp_dir.cleanup)
 
-        for text in ["/start", "Начать", "ИгрокНазад", "Эльф", "Назад"]:
+        for text in ["/start", "Начать", "ИгрокНазад", "Подтвердить", "Жен.", "Да", "Эльф", "Назад"]:
             bot.handle_message("444", 1002, text)
 
         session = bot.sessions.get(f"{VK_PLATFORM}:444")
@@ -183,6 +203,262 @@ class VkRegistrationFullFlowTest(unittest.TestCase):
         self.assertEqual(session.state, STATE_AWAITING_RACE)
         self.assertIn("Выбери расу", sent[-1][1])
         self.assertFalse(any("Сначала нужно создать персонажа" in message for _peer, message, _keyboard in sent[-2:]))
+
+    def test_vk_registration_can_reenter_name_before_gender_choice(self):
+        temp_dir, _storage, bot, sent = self._make_bot()
+        self.addCleanup(temp_dir.cleanup)
+
+        for text in ["/start", "Начать", "ПервоеИмя", "Ввести заново"]:
+            bot.handle_message("445", 1004, text)
+
+        session = bot.sessions.get(f"{VK_PLATFORM}:445")
+        self.assertIsNotNone(session)
+        self.assertEqual(session.state, STATE_AWAITING_NAME)
+        self.assertIsNone(session.name)
+        self.assertIsNone(session.pending_name)
+        self.assertIn("Назовите своё имя", sent[-1][1])
+
+
+class FakeContextWithArgs(FakeContext):
+    def __init__(self, storage, args=None, user_data=None):
+        super().__init__(storage)
+        self.args = list(args or [])
+        if user_data is not None:
+            self.user_data = dict(user_data)
+
+
+def create_saved_player(storage, platform, external_user_id, name="Связной"):
+    races = load_races("data/races.json")
+    player = create_player(
+        game_id=storage.generate_game_id(),
+        platform=platform,
+        external_user_id=external_user_id,
+        name=name,
+        race_id="human",
+        races=races,
+    )
+    storage.save_new_player(player, platform, external_user_id)
+    return player
+
+
+class TelegramRegistrationNameGenderFlowTest(unittest.TestCase):
+    def _make_storage(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        storage = JsonStorage(str(Path(temp_dir.name) / "players.json"))
+        self.addCleanup(temp_dir.cleanup)
+        return storage
+
+    def test_telegram_name_requires_confirmation_before_gender(self):
+        storage = self._make_storage()
+        update = FakeUpdate()
+        update.message.text = "НовыйИгрок"
+        context = FakeContextWithArgs(storage, user_data={})
+
+        result = asyncio.run(receive_name(update, context))
+
+        self.assertEqual(result, NAME_CONFIRM)
+        self.assertEqual(context.user_data["registration_pending_name"], "НовыйИгрок")
+        self.assertIn("НовыйИгрок", update.message.replies[-1][0])
+        self.assertEqual(update.message.replies[-1][1].keyboard, [["Подтвердить"], ["Ввести заново"]])
+
+    def test_telegram_can_reenter_name_from_confirmation(self):
+        storage = self._make_storage()
+        update = FakeUpdate()
+        update.message.text = "Ввести заново"
+        context = FakeContextWithArgs(storage, user_data={"registration_pending_name": "СтарыйНик"})
+
+        result = asyncio.run(handle_name_confirmation(update, context))
+
+        self.assertEqual(result, AWAITING_NAME)
+        self.assertEqual(context.user_data, {})
+        self.assertIn("Назовите своё имя", update.message.replies[-1][0])
+
+    def test_telegram_gender_choice_has_confirmation_and_can_return_to_choice(self):
+        storage = self._make_storage()
+        update = FakeUpdate()
+        context = FakeContextWithArgs(storage, user_data={"registration_pending_name": "ИгрокПол"})
+
+        update.message.text = "Подтвердить"
+        result = asyncio.run(handle_name_confirmation(update, context))
+
+        self.assertEqual(result, AWAITING_GENDER)
+        self.assertEqual(context.user_data["registration_name"], "ИгрокПол")
+        self.assertIn("Какого вы пола", update.message.replies[-2][0])
+        self.assertIn("Внимание", update.message.replies[-1][0])
+        self.assertEqual(update.message.replies[-1][1].keyboard, [["Муж.", "Жен."]])
+
+        update.message.text = "Жен."
+        result = asyncio.run(receive_gender(update, context))
+        self.assertEqual(result, GENDER_CONFIRM)
+        self.assertIn("Вы уверены", update.message.replies[-1][0])
+
+        update.message.text = "Нет"
+        result = asyncio.run(handle_gender_confirmation(update, context))
+        self.assertEqual(result, AWAITING_GENDER)
+        self.assertNotIn("registration_gender", context.user_data)
+        self.assertIn("Какого вы пола", update.message.replies[-1][0])
+
+        update.message.text = "Муж."
+        result = asyncio.run(receive_gender(update, context))
+        self.assertEqual(result, GENDER_CONFIRM)
+
+        update.message.text = "Да"
+        result = asyncio.run(handle_gender_confirmation(update, context))
+        self.assertEqual(result, AWAITING_RACE)
+        self.assertEqual(context.user_data["registration_gender"], "male")
+        self.assertEqual(context.user_data["registration_gender_label"], "Муж.")
+        self.assertIn("ваша раса", update.message.replies[-1][0])
+
+    def test_telegram_final_registration_saves_gender(self):
+        storage = self._make_storage()
+        update = FakeUpdate()
+        update.message.text = "Да"
+        context = FakeContextWithArgs(
+            storage,
+            user_data={
+                "registration_name": "ГендерТест",
+                "registration_gender": "female",
+                "registration_gender_label": "Жен.",
+                "registration_race_id": "human",
+            },
+        )
+
+        result = asyncio.run(handle_race_confirmation(update, context))
+
+        self.assertEqual(result, -1)
+        player = storage.get_player_by_platform(TELEGRAM_PLATFORM, str(update.effective_user.id))
+        self.assertIsNotNone(player)
+        self.assertEqual(player["gender"], "female")
+        self.assertEqual(player["gender_label"], "Жен.")
+
+
+class TelegramRegistrationFallbackCleanupTest(unittest.TestCase):
+    def _make_storage(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        storage = JsonStorage(str(Path(temp_dir.name) / "players.json"))
+        self.addCleanup(temp_dir.cleanup)
+        return storage
+
+    def test_telegram_connect_success_ends_stale_registration_conversation(self):
+        storage = self._make_storage()
+        source_player = create_saved_player(storage, VK_PLATFORM, "vk-source")
+        code = storage.create_link_code(source_player["game_id"])
+        update = FakeUpdate()
+        context = FakeContextWithArgs(
+            storage,
+            args=[code],
+            user_data={"registration_name": "Черновик", "registration_race_id": "human"},
+        )
+
+        result = asyncio.run(connect_command(update, context))
+
+        self.assertEqual(result, -1)
+        self.assertEqual(context.user_data, {})
+        linked = storage.get_player_by_platform(TELEGRAM_PLATFORM, str(update.effective_user.id))
+        self.assertIsNotNone(linked)
+        self.assertEqual(linked["game_id"], source_player["game_id"])
+        self.assertIn("Платформа успешно привязана", update.message.replies[-1][0])
+
+    def test_telegram_profile_command_ends_stale_registration_for_registered_player(self):
+        storage = self._make_storage()
+        create_saved_player(storage, TELEGRAM_PLATFORM, "111")
+        update = FakeUpdate()
+        context = FakeContextWithArgs(storage, user_data={"registration_name": "Черновик"})
+
+        result = asyncio.run(profile_command(update, context))
+
+        self.assertEqual(result, -1)
+        self.assertEqual(context.user_data, {})
+        self.assertIn("Временная ссылка", update.message.replies[-1][0])
+
+    def test_telegram_link_command_ends_stale_registration_for_registered_player(self):
+        storage = self._make_storage()
+        create_saved_player(storage, TELEGRAM_PLATFORM, "111")
+        update = FakeUpdate()
+        context = FakeContextWithArgs(storage, user_data={"registration_name": "Черновик"})
+
+        result = asyncio.run(link_command(update, context))
+
+        self.assertEqual(result, -1)
+        self.assertEqual(context.user_data, {})
+        self.assertIn("Код привязки создан", update.message.replies[-1][0])
+
+    def test_telegram_promo_command_ends_stale_registration_for_registered_player(self):
+        storage = self._make_storage()
+        create_saved_player(storage, TELEGRAM_PLATFORM, "111")
+        update = FakeUpdate()
+        context = FakeContextWithArgs(storage, args=["UNKNOWN_PROMO"], user_data={"registration_name": "Черновик"})
+
+        result = asyncio.run(promo_command(update, context))
+
+        self.assertEqual(result, -1)
+        self.assertEqual(context.user_data, {})
+        self.assertTrue(update.message.replies[-1][0].startswith("⚠️"))
+
+
+class VkRegistrationConnectCleanupTest(unittest.TestCase):
+    def test_vk_connect_success_clears_stale_registration_session_immediately(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        storage = JsonStorage(str(Path(temp_dir.name) / "players.json"))
+        source_player = create_saved_player(storage, TELEGRAM_PLATFORM, "tg-source")
+        code = storage.create_link_code(source_player["game_id"])
+        bot = object.__new__(VkRegistrationBot)
+        bot.storage = storage
+        bot.sessions = {f"{VK_PLATFORM}:999": VkRegistrationSession(state="awaiting_name", name="Черновик")}
+        sent = []
+        bot.send = lambda peer_id, text, keyboard=None: sent.append((peer_id, text, keyboard))
+
+        bot.handle_message("999", 1003, f"/connect {code}")
+
+        self.assertNotIn(f"{VK_PLATFORM}:999", bot.sessions)
+        linked = storage.get_player_by_platform(VK_PLATFORM, "999")
+        self.assertIsNotNone(linked)
+        self.assertEqual(linked["game_id"], source_player["game_id"])
+        self.assertIn("Платформа успешно привязана", sent[-1][1])
+
+
+class VkRegisteredPlayerCityRoutingTest(unittest.TestCase):
+    def _make_bot_with_player(self, external_user_id="777"):
+        temp_dir = tempfile.TemporaryDirectory()
+        storage = JsonStorage(str(Path(temp_dir.name) / "players.json"))
+        player = create_saved_player(storage, VK_PLATFORM, external_user_id, name="Городской")
+        bot = object.__new__(VkRegistrationBot)
+        bot.storage = storage
+        bot.sessions = {}
+        sent = []
+        bot.send = lambda peer_id, text, keyboard=None: sent.append((peer_id, text, keyboard))
+        bot.schedule_timer_notification = lambda peer_id, timer_data: None
+        self.addCleanup(temp_dir.cleanup)
+        return storage, player, bot, sent
+
+    def test_vk_registered_player_free_text_stays_in_city_router(self):
+        storage, player, bot, sent = self._make_bot_with_player("777")
+
+        bot.handle_message("777", 2001, "случайный текст")
+
+        self.assertTrue(sent)
+        self.assertIn("Неизвестное городское действие", sent[-1][1])
+        self.assertNotIn("Нажми /start", sent[-1][1])
+        updated = storage.get_player_by_game_id(player["game_id"])
+        self.assertEqual(updated.get("current_zone"), "seldar_central_square")
+
+    def test_vk_registered_player_free_text_stays_at_outside_crossroads(self):
+        storage, player, bot, sent = self._make_bot_with_player("778")
+        player["current_city"] = "outside_seldar"
+        player["current_zone"] = "outside_city_crossroads"
+        player["location_id"] = "outside_city_crossroads"
+        player["current_location"] = "outside_city_crossroads"
+        storage.update_player(player)
+
+        bot.handle_message("778", 2002, "случайный текст")
+
+        self.assertTrue(sent)
+        self.assertIn("Неизвестное действие внешней локации", sent[-1][1])
+        self.assertNotIn("Нажми /start", sent[-1][1])
+        updated = storage.get_player_by_game_id(player["game_id"])
+        self.assertEqual(updated.get("current_city"), "outside_seldar")
+        self.assertEqual(updated.get("current_zone"), "outside_city_crossroads")
 
 
 class TelegramRegistrationEntryPointGuardTest(unittest.TestCase):

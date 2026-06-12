@@ -1,0 +1,44 @@
+.nt-admin { min-height: 100vh; color: #f1dfbd; background: radial-gradient(circle at top, #241c16 0, #080706 56%, #030303 100%); font-family: Georgia, 'Times New Roman', serif; padding: 18px; }
+.nt-admin-shell { max-width: 1180px; margin: 0 auto; }
+.nt-admin h1 { color: #ffd98f; margin: 0 0 12px; }
+.nt-admin-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.nt-admin button, .nt-admin input, .nt-admin select { border: 1px solid rgba(214,172,91,.45); border-radius: 10px; background: rgba(20,16,12,.92); color: #f1dfbd; padding: 9px 12px; }
+.nt-admin button { cursor: pointer; background: linear-gradient(145deg, #47351f, #1b1410); }
+.nt-admin button.active { color: #1c1208; background: #ffd98f; }
+.nt-admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.nt-admin-card { border: 1px solid rgba(214,172,91,.25); border-radius: 16px; background: rgba(255,255,255,.04); padding: 12px; }
+.nt-admin-card img { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 12px; background: rgba(0,0,0,.2); }
+.nt-admin-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+.nt-admin-list { display: grid; gap: 10px; }
+.nt-admin-modal { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: grid; place-items: center; padding: 18px; z-index: 50; }
+.nt-admin-modal-card { max-width: 760px; width: 100%; max-height: 86vh; overflow: auto; border: 1px solid rgba(214,172,91,.55); border-radius: 18px; background: #15100d; padding: 18px; }
+.nt-admin-error { background: rgba(145,35,20,.35); border: 1px solid rgba(255,120,90,.5); border-radius: 12px; padding: 10px; margin: 10px 0; }
+.nt-admin-ok { background: rgba(40,115,65,.28); border: 1px solid rgba(135,220,150,.45); border-radius: 12px; padding: 10px; margin: 10px 0; }
+.nt-admin-pre { white-space: pre-wrap; background: rgba(0,0,0,.25); border-radius: 10px; padding: 10px; overflow:auto; }
+
+@media (max-width: 720px) {
+  .nt-admin { padding: 10px; }
+  .nt-admin-shell { max-width: none; }
+  .nt-admin h1 { font-size: 24px; line-height: 1.15; }
+  .nt-admin-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    margin: 0 -10px 14px;
+    padding: 8px 10px;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    background: rgba(8, 7, 6, .94);
+    backdrop-filter: blur(8px);
+  }
+  .nt-admin-tabs button { flex: 0 0 auto; white-space: nowrap; }
+  .nt-admin-row { display: grid; grid-template-columns: 1fr; align-items: stretch; }
+  .nt-admin-row input,
+  .nt-admin-row select,
+  .nt-admin-row button { width: 100%; box-sizing: border-box; }
+  .nt-admin-grid { grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 8px; }
+  .nt-admin-card { padding: 9px; border-radius: 13px; overflow-wrap: anywhere; }
+  .nt-admin-modal { align-items: end; padding: 8px; }
+  .nt-admin-modal-card { max-height: 92vh; border-radius: 16px 16px 10px 10px; padding: 14px; }
+  .nt-admin-pre { max-width: 100%; font-size: 12px; }
+}

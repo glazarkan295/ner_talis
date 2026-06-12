@@ -1,0 +1,54 @@
+[
+  {
+    "id": "evidence_bag",
+    "item_id": "evidence_bag",
+    "name": "мешок с доказательством",
+    "name_ru": "мешок с доказательством",
+    "category": "evidence",
+    "category_ru": "Добыча",
+    "inventory_section": "misc",
+    "inventory_section_ru": "прочее",
+    "subtype": "criminal_evidence",
+    "type": "evidence_bag",
+    "item_class": "quest_item",
+    "quality": "common",
+    "stackable": true,
+    "stack_size": 10,
+    "max_stack": 10,
+    "icon": "/assets/items/fortress/criminal/evidence_bag.png",
+    "icon_256": "/assets_256/items/fortress/criminal/evidence_bag.png",
+    "icon_1024": "/assets_1024/items/fortress/criminal/evidence_bag.png",
+    "asset_path": "/assets/items/fortress/criminal/evidence_bag.png",
+    "asset_filename": "evidence_bag.png",
+    "source": "pvp_contract_kill",
+    "source_location": "fortress_in_gorge",
+    "description": "Именной мешок с доказательством убийства заказанного игрока. В описании конкретного мешка указывается, из какого игрока он выбит. Мешки с доказательствами от разных игроков вместе не стакаются.",
+    "integration_tags": [
+      "inventory_item",
+      "fortress_in_gorge",
+      "coordinator",
+      "criminal_order",
+      "pvp_contract",
+      "quest_item"
+    ],
+    "needed_for": [
+      "coordinator_bounty_order_turn_in"
+    ],
+    "can_buy": false,
+    "can_sell": false,
+    "buy_price_copper": null,
+    "sell_price_copper": null,
+    "quest_item": true,
+    "protected": true,
+    "evidence_bag_rules": {
+      "named": true,
+      "description_includes_victim": true,
+      "stack_key_fields": [
+        "evidence_victim_id",
+        "evidence_victim_name"
+      ],
+      "cannot_stack_different_players": true,
+      "max_stack_per_victim": 10
+    }
+  }
+]

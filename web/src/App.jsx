@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { PlayerProfile } from "./components/player-profile";
+import { AdminPanel } from "./components/admin-panel";
 import "./components/player-profile/PlayerProfile.css";
 import {
   dropItem,
@@ -15,16 +16,43 @@ import {
   unequipSkill,
   useItem,
 } from "./api/profileApi.js";
+import { isAdminPanelPath, isAdminViewProfilePath, getAdminViewTokenFromUrl, loadAdminPlayerView } from "./api/adminApi.js";
 
-function App() {
+function AdminProfileView() {
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const profileIdentifier = getProfileIdentifierFromUrl();
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const token = getAdminViewTokenFromUrl();
+        if (!token) throw new Error("Нет token для админского просмотра профиля.");
+        const payload = await loadAdminPlayerView(token);
+        setProfile({ ...(payload.profile || {}), readOnly: true, adminView: true });
+      } catch (requestError) {
+        setError(requestError.message || "Не удалось открыть профиль игрока.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  if (loading) return <div className="nt-profile-loading">Загрузка профиля...</div>;
+  if (error || !profile) return <div className="nt-profile-loading nt-profile-error">{error || "Профиль недоступен."}</div>;
+  return <PlayerProfile profile={profile} readOnly />;
+}
+
+function ProfileApp() {
+  const [profile, setProfile] = useState(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [profileIdentifier] = useState(() => getProfileIdentifierFromUrl());
 
   const reloadProfile = useCallback(async () => {
     if (!profileIdentifier || profileIdentifier === "profile") {
-      setError("В ссылке нет token или public_id игрока. Открой профиль кнопкой «Профиль» в боте.");
+      setError("В ссылке нет token игрока. Открой профиль кнопкой «Профиль» в боте.");
       setLoading(false);
       return;
     }
@@ -114,6 +142,12 @@ function App() {
       />
     </>
   );
+}
+
+function App() {
+  if (isAdminPanelPath()) return <AdminPanel />;
+  if (isAdminViewProfilePath()) return <AdminProfileView />;
+  return <ProfileApp />;
 }
 
 export default App;

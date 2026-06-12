@@ -112,7 +112,7 @@ class CollectedItemsIntegrationTest(unittest.TestCase):
         process_world_action(storage, player, "Кожевенная мастерская", "telegram")
         result = process_world_action(storage, storage.get_player_by_game_id("NT-COLLECTED"), "Заготовки", "telegram")
         self.assertIn("✅ Верёвка", result.text)
-        self.assertIn("Простое сухожилие ×3", result.text)
+        self.assertIn("Сухожилия ×3", result.text)
         self.assertIn("✅ Выделанная кожа", result.text)
         self.assertIn("Простая шкура ×1", result.text)
 

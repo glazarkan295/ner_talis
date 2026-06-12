@@ -40,6 +40,7 @@ class SQLiteStorage:
             "names": {},
             "link_codes": {},
             "site_sessions": {},
+            "admin_panel_sessions": {},
             "promo_codes": {"codes": {}},
         }
 
@@ -109,8 +110,16 @@ class SQLiteStorage:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS admin_panel_sessions (
+                    token TEXT PRIMARY KEY,
+                    data TEXT NOT NULL,
+                    expires_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_site_sessions_expires_at
                     ON site_sessions(expires_at);
+                CREATE INDEX IF NOT EXISTS idx_admin_panel_sessions_expires_at
+                    ON admin_panel_sessions(expires_at);
                 """
             )
 
@@ -196,6 +205,9 @@ class SQLiteStorage:
                     "used": bool(row["used"]),
                 }
 
+            for row in connection.execute("SELECT token, data FROM admin_panel_sessions"):
+                data["admin_panel_sessions"][row["token"]] = self._deserialize(row["data"])
+
             promo_data = {"codes": {}}
             for row in connection.execute("SELECT code, data FROM promo_codes"):
                 promo_data["codes"][row["code"]] = self._deserialize(row["data"])
@@ -209,6 +221,7 @@ class SQLiteStorage:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 connection.execute("DELETE FROM site_sessions")
+                connection.execute("DELETE FROM admin_panel_sessions")
                 connection.execute("DELETE FROM link_codes")
                 connection.execute("DELETE FROM platform_links")
                 connection.execute("DELETE FROM players")
@@ -289,6 +302,14 @@ class SQLiteStorage:
                             session.get("expires_at") or now,
                             1 if session.get("used") else 0,
                         ),
+                    )
+
+                for token, session in data.get("admin_panel_sessions", {}).items():
+                    if not isinstance(session, dict):
+                        continue
+                    connection.execute(
+                        "INSERT OR REPLACE INTO admin_panel_sessions(token, data, expires_at) VALUES (?, ?, ?)",
+                        (token, self._serialize(session), session.get("expires_at") or now),
                     )
 
                 if "promo_codes" in data:

@@ -3,6 +3,9 @@ from telegram.ext import ContextTypes, ConversationHandler
 
 from keyboards.reply_keyboards import (
     after_registration_keyboard,
+    gender_confirm_keyboard,
+    gender_keyboard,
+    name_confirm_keyboard,
     race_card_keyboard,
     race_confirm_keyboard,
     race_keyboard,
@@ -19,13 +22,26 @@ from services.registration_service import (
 from services.web_profile import create_profile_site_link
 from storage.base import PlayerStorage
 from texts.registration_texts import (
+    ASK_GENDER_TEXT,
+    ASK_NAME_AGAIN_TEXT,
     ASK_NAME_TEXT,
     ASK_RACE_TEXT,
     FINAL_REGISTRATION_TEXT,
+    GENDER_WARNING_TEXT,
+    NAME_CONFIRM_TEXT_TEMPLATE,
     WORLD_SHORT_TEXT,
 )
 
-START_MENU, AWAITING_NAME, AWAITING_RACE, RACE_CARD, RACE_CONFIRM = range(5)
+(
+    START_MENU,
+    AWAITING_NAME,
+    NAME_CONFIRM,
+    AWAITING_GENDER,
+    GENDER_CONFIRM,
+    AWAITING_RACE,
+    RACE_CARD,
+    RACE_CONFIRM,
+) = range(8)
 TELEGRAM_PLATFORM = "telegram"
 
 
@@ -95,7 +111,117 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         )
         return AWAITING_NAME
 
-    context.user_data["registration_name"] = result
+    context.user_data["registration_pending_name"] = result
+
+    await update.message.reply_text(
+        NAME_CONFIRM_TEXT_TEMPLATE.format(player_name=result),
+        reply_markup=name_confirm_keyboard(),
+    )
+    return NAME_CONFIRM
+
+
+async def handle_name_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    storage = get_storage(context)
+    text = update.message.text
+
+    if text == "Ввести заново":
+        context.user_data.pop("registration_pending_name", None)
+        context.user_data.pop("registration_name", None)
+        await update.message.reply_text(ASK_NAME_AGAIN_TEXT)
+        return AWAITING_NAME
+
+    if text != "Подтвердить":
+        await update.message.reply_text(
+            "Выбери действие на клавиатуре: «Подтвердить» или «Ввести заново».",
+            reply_markup=name_confirm_keyboard(),
+        )
+        return NAME_CONFIRM
+
+    pending_name = context.user_data.get("registration_pending_name")
+    if not pending_name:
+        await update.message.reply_text(ASK_NAME_AGAIN_TEXT)
+        return AWAITING_NAME
+
+    if storage.is_name_taken(pending_name):
+        context.user_data.pop("registration_pending_name", None)
+        await update.message.reply_text(
+            "Пока ты подтверждал имя, его уже заняли. Введи другое имя."
+        )
+        return AWAITING_NAME
+
+    context.user_data["registration_name"] = pending_name
+    context.user_data.pop("registration_pending_name", None)
+
+    await update.message.reply_text(ASK_GENDER_TEXT)
+    await update.message.reply_text(
+        GENDER_WARNING_TEXT,
+        reply_markup=gender_keyboard(),
+    )
+    return AWAITING_GENDER
+
+
+def _gender_choice_from_text(text: str) -> tuple[str, str] | None:
+    if text == "Муж.":
+        return "male", "Муж."
+    if text == "Жен.":
+        return "female", "Жен."
+    return None
+
+
+async def receive_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    choice = _gender_choice_from_text(update.message.text)
+
+    if choice is None:
+        await update.message.reply_text(
+            "Выбери пол кнопкой на клавиатуре.",
+            reply_markup=gender_keyboard(),
+        )
+        return AWAITING_GENDER
+
+    gender_id, gender_label = choice
+    context.user_data["registration_pending_gender"] = gender_id
+    context.user_data["registration_pending_gender_label"] = gender_label
+
+    await update.message.reply_text(
+        "— Вы уверены?",
+        reply_markup=gender_confirm_keyboard(),
+    )
+    return GENDER_CONFIRM
+
+
+async def handle_gender_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text
+
+    if text == "Нет":
+        context.user_data.pop("registration_pending_gender", None)
+        context.user_data.pop("registration_pending_gender_label", None)
+        await update.message.reply_text(
+            "— Какого вы пола?",
+            reply_markup=gender_keyboard(),
+        )
+        return AWAITING_GENDER
+
+    if text != "Да":
+        await update.message.reply_text(
+            "Выбери действие на клавиатуре: «Да» или «Нет».",
+            reply_markup=gender_confirm_keyboard(),
+        )
+        return GENDER_CONFIRM
+
+    gender_id = context.user_data.get("registration_pending_gender")
+    gender_label = context.user_data.get("registration_pending_gender_label")
+
+    if not gender_id or not gender_label:
+        await update.message.reply_text(
+            "— Какого вы пола?",
+            reply_markup=gender_keyboard(),
+        )
+        return AWAITING_GENDER
+
+    context.user_data["registration_gender"] = gender_id
+    context.user_data["registration_gender_label"] = gender_label
+    context.user_data.pop("registration_pending_gender", None)
+    context.user_data.pop("registration_pending_gender_label", None)
 
     await update.message.reply_text(
         ASK_RACE_TEXT,
@@ -191,7 +317,10 @@ async def handle_race_confirmation(
     external_user_id = get_external_user_id(update)
     name = context.user_data.get("registration_name")
 
-    if not name or not race_id:
+    gender_id = context.user_data.get("registration_gender")
+    gender_label = context.user_data.get("registration_gender_label")
+
+    if not name or not race_id or not gender_id or not gender_label:
         context.user_data.clear()
         await update.message.reply_text(
             "Данные регистрации потеряны. Нажми /start и начни заново.",
@@ -220,6 +349,8 @@ async def handle_race_confirmation(
         name=name,
         race_id=race_id,
         races=races,
+        gender_id=context.user_data.get("registration_gender"),
+        gender_label=context.user_data.get("registration_gender_label"),
     )
     storage.save_new_player(player, TELEGRAM_PLATFORM, external_user_id)
     context.user_data.clear()
@@ -231,7 +362,7 @@ async def handle_race_confirmation(
     return ConversationHandler.END
 
 
-async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int | None:
     storage = get_storage(context)
     external_user_id = get_external_user_id(update)
     player = storage.get_player_by_platform(TELEGRAM_PLATFORM, external_user_id)
@@ -242,7 +373,7 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "Если персонаж уже создан в VK, введи /connect код_привязки.",
             reply_markup=start_keyboard(),
         )
-        return
+        return None
 
     profile_url = create_profile_site_link(storage, player, TELEGRAM_PLATFORM)
     # Не передаём reply_markup: кнопка «Профиль» должна выдать ссылку,
@@ -254,13 +385,15 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         "Ссылка действует ограниченное время. Когда она истечёт, нажми «Профиль» ещё раз.",
         disable_web_page_preview=True,
     )
+    context.user_data.clear()
+    return ConversationHandler.END
 
 
 async def profile_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await profile_command(update, context)
 
 
-async def link_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def link_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int | None:
     storage = get_storage(context)
     external_user_id = get_external_user_id(update)
     player = storage.get_player_by_platform(TELEGRAM_PLATFORM, external_user_id)
@@ -270,7 +403,7 @@ async def link_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "Сначала нужно создать персонажа. Нажми /start и выбери «Начать».",
             reply_markup=start_keyboard(),
         )
-        return
+        return None
 
     code = storage.create_link_code(player["game_id"])
     await update.message.reply_text(
@@ -282,9 +415,11 @@ async def link_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "Код одноразовый и действует 15 минут.",
         reply_markup=after_registration_keyboard(),
     )
+    context.user_data.clear()
+    return ConversationHandler.END
 
 
-async def connect_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def connect_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int | None:
     storage = get_storage(context)
     external_user_id = get_external_user_id(update)
     code = "".join(context.args).strip() if context.args else ""
@@ -294,7 +429,7 @@ async def connect_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "Введите код привязки. Пример:\n/connect AB12CD",
             reply_markup=start_keyboard(),
         )
-        return
+        return None
 
     ok, message, player = storage.connect_platform_by_code(
         code=code,
@@ -304,14 +439,16 @@ async def connect_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     if not ok:
         await update.message.reply_text(message, reply_markup=start_keyboard())
-        return
+        return None
 
+    context.user_data.clear()
     await update.message.reply_text(
         f"✅ {message}\n\n"
         f"Персонаж: {player['name']}\n"
         f"Единый игровой ID: {player['game_id']}",
         reply_markup=after_registration_keyboard(),
     )
+    return ConversationHandler.END
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -323,7 +460,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
-async def promo_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def promo_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int | None:
     storage = get_storage(context)
     external_user_id = get_external_user_id(update)
     player = storage.get_player_by_platform(TELEGRAM_PLATFORM, external_user_id)
@@ -332,14 +469,16 @@ async def promo_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             "Сначала нужно создать персонажа. Нажми /start и выбери «Начать».",
             reply_markup=start_keyboard(),
         )
-        return
+        return None
 
     args = getattr(context, "args", []) or []
     code = " ".join(str(arg) for arg in args).strip()
     if not code:
         await update.message.reply_text("Формат: /promo CODE")
-        return
+        return None
 
     ok, message = redeem_promo_code(storage, str(player.get("game_id")), code)
     prefix = "✅" if ok else "⚠️"
     await update.message.reply_text(f"{prefix} {message}")
+    context.user_data.clear()
+    return ConversationHandler.END
