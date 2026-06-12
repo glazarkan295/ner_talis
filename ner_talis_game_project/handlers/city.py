@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 
 from keyboards.reply_keyboards import make_keyboard, start_keyboard
 from services.city_service import CITY_BUTTONS, process_world_action
+from services.chat_log_service import append_player_chat_log, pop_pending_bot_messages
 from services.external_location_service import complete_active_timer
 from services.runtime_timer_scheduler import attach_timer_notification, schedule_timer_delivery
 from storage.base import PlayerStorage
@@ -88,6 +89,7 @@ async def send_city_response(
         )
         return
 
+    append_player_chat_log(player, direction="player", text=action, platform=TELEGRAM_PLATFORM)
     result = process_world_action(
         storage=storage,
         player=player,
@@ -95,15 +97,18 @@ async def send_city_response(
         platform=TELEGRAM_PLATFORM,
     )
 
-    for message in getattr(result, "extra_messages", ()):
+    for message in [*pop_pending_bot_messages(player), *getattr(result, "extra_messages", ())]:
+        append_player_chat_log(player, direction="bot", text=message, platform=TELEGRAM_PLATFORM)
         await update.message.reply_text(
             message,
             disable_web_page_preview=True,
         )
 
+    append_player_chat_log(player, direction="bot", text=result.text, platform=TELEGRAM_PLATFORM)
     await update.message.reply_text(
         result.text,
         reply_markup=make_keyboard(result.buttons),
         disable_web_page_preview=True,
     )
+    storage.update_player(player)
     schedule_telegram_timer(context, update.effective_chat.id, result.scheduled_timer)

@@ -19,7 +19,7 @@
     "asset_path": "/assets/items/junk/old_brooch.jpg",
     "asset_filename": "old_brooch.jpg",
     "source_location": "small_plateau",
-    "description": "Очень старая брошь с потускневшим полудрагоценным камнем. Кажется, она пролежала в руинах не одно столетие.",
+    "description": "Старая брошь с потускневшим полудрагоценным камнем. Хлам из редких событий локаций; нужен для продажи.",
     "integration_tags": [
       "inventory_item",
       "small_plateau",
@@ -27,7 +27,11 @@
       "sellable"
     ],
     "can_sell": true,
-    "sell_price_copper": 50
+    "sell_price_copper": 50,
+    "found_in": "некоторые события локаций",
+    "used_for": "продажа",
+    "base_buy_price_copper": null,
+    "base_sell_price_copper": 50
   },
   {
     "id": "old_medallion",
@@ -49,7 +53,7 @@
     "asset_path": "/assets/items/junk/old_medallion.jpg",
     "asset_filename": "old_medallion.jpg",
     "source_location": "small_plateau",
-    "description": "Очень древний слегка приоткрытый медальон с выцветшим безликим портретом женщины внутри.",
+    "description": "Старый медальон с выцветшим безликим портретом женщины. Хлам из редких событий локаций; нужен для продажи.",
     "integration_tags": [
       "inventory_item",
       "small_plateau",
@@ -57,6 +61,10 @@
       "sellable"
     ],
     "can_sell": true,
-    "sell_price_copper": 60
+    "sell_price_copper": 60,
+    "found_in": "некоторые события локаций",
+    "used_for": "продажа",
+    "base_buy_price_copper": null,
+    "base_sell_price_copper": 60
   }
 ]

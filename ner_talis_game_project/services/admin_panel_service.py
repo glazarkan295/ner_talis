@@ -38,7 +38,7 @@ from services.item_registry import (
     registry_item_to_inventory_item,
 )
 from services.progression_service import experience_to_next_level
-from services.promo_service import add_promo_code, list_promo_codes, load_promo_data
+from services.promo_service import add_promo_code, delete_promo_code, list_promo_codes, load_promo_data
 
 ADMIN_PANEL_SCOPE = "admin_panel"
 ADMIN_PLAYER_VIEW_SCOPE = "admin_player_view"
@@ -83,6 +83,46 @@ SYNTHETIC_REWARD_IDS = {
         "icon": "/assets/admin_rewards/experience_shards.png",
     },
 }
+
+CATEGORY_RU_LABELS = {
+    "admin-resources": "Админ-ресурсы",
+    "admin_resources": "Админ-ресурсы",
+    "weapon": "Оружие",
+    "weapons": "Оружие",
+    "armor": "Снаряжение",
+    "equipment": "Снаряжение",
+    "jewelry": "Бижутерия",
+    "accessory": "Бижутерия",
+    "consumable": "Расходники",
+    "consumables": "Расходники",
+    "potion": "Расходники",
+    "resource": "Ресурсы",
+    "resources": "Ресурсы",
+    "material": "Материалы",
+    "materials": "Материалы",
+    "crafting_material": "Материалы",
+    "loot": "Добыча",
+    "mob_loot": "Добыча",
+    "drop": "Добыча",
+    "junk": "Хлам",
+    "trash": "Хлам",
+    "misc": "Прочее",
+    "other": "Прочее",
+    "special": "Особое",
+    "artifact": "Артефакты",
+    "ammunition": "Боеприпасы",
+    "quiver": "Колчаны",
+}
+
+
+def _category_ru(value: Any, fallback: str = "Прочее") -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return fallback
+    if any("А" <= ch <= "я" or ch == "ё" or ch == "Ё" for ch in raw):
+        return raw[:1].upper() + raw[1:]
+    normalized = raw.casefold().replace(" ", "_")
+    return CATEGORY_RU_LABELS.get(normalized, fallback if raw in {"", "None"} else raw)
 
 
 def _now() -> datetime:
@@ -251,7 +291,7 @@ def _item_name(item: dict[str, Any]) -> str:
 
 
 def _item_category(item: dict[str, Any]) -> str:
-    return str(item.get("category") or item.get("type") or "Прочее").strip() or "Прочее"
+    return _category_ru(item.get("category_ru") or item.get("inventory_section_ru") or item.get("category") or item.get("type"), "Прочее")
 
 
 def _public_icon(item: dict[str, Any]) -> str | None:
@@ -472,7 +512,7 @@ def deliver_rewards_to_player(storage: Any, *, target_game_id: str, rewards: lis
         raise ValueError(f"Игрок {game_id} не найден.")
     backup_player(player, "before_admin_panel_delivery")
     lines = _apply_rewards_to_player(player, normalized, source="admin_panel_delivery")
-    text = "🎁 Вам пришёл Дар свыше.\n\n" + "\n".join(f"• {line}" for line in lines)
+    text = "Вы получили в дар от высших сил:\n" + "\n".join(f"• {line}" for line in lines)
     player.setdefault("pending_bot_messages", []).append({
         "type": "admin_gift",
         "text": text,
@@ -555,6 +595,20 @@ def create_admin_promo(storage: Any, *, code: str, uses_left: int, duration: str
     )
     return promo
 
+
+
+
+def delete_admin_promo(storage: Any, *, code: str, admin_session: dict[str, Any]) -> bool:
+    ok = delete_promo_code(code, storage=storage)
+    if ok:
+        write_admin_audit(
+            platform=str(admin_session.get("platform") or "admin_panel"),
+            admin_user_id=str(admin_session.get("admin_user_id") or "unknown"),
+            command="admin_panel_promo_delete",
+            action="admin_panel_promo_delete",
+            details={"code": str(code or "")},
+        )
+    return ok
 
 def promo_list_payload(storage: Any) -> list[dict[str, Any]]:
     data = load_promo_data(storage)
@@ -774,4 +828,21 @@ def player_logs_last_24h(storage: Any, *, game_id: str, limit: int = 200) -> lis
                     logs.append({"source": "admin_audit", "entry": line})
         except Exception:
             pass
+    return logs[-max(1, min(limit, 500)):]
+
+
+def player_chat_last_24h(storage: Any, *, game_id: str, limit: int = 200) -> list[dict[str, Any]]:
+    normalized = normalize_game_id(game_id)
+    data = storage.load() if hasattr(storage, "load") else {}
+    player = (data.get("players") or {}).get(normalized)
+    logs: list[dict[str, Any]] = []
+    if isinstance(player, dict):
+        value = player.get("chat_log")
+        if isinstance(value, list):
+            logs.extend(entry for entry in value[-limit:] if isinstance(entry, dict))
+        # До появления полноценного chat_log показываем очередь сообщений бота как часть переписки.
+        pending = player.get("pending_bot_messages")
+        if isinstance(pending, list):
+            for entry in pending[-limit:]:
+                logs.append({"direction": "bot_pending", "text": entry.get("text") if isinstance(entry, dict) else str(entry), "created_at": entry.get("created_at") if isinstance(entry, dict) else ""})
     return logs[-max(1, min(limit, 500)):]

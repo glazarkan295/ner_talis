@@ -13,9 +13,11 @@ from services.admin_panel_service import (
     admin_player_detail,
     create_admin_player_view_token,
     create_admin_promo,
+    delete_admin_promo,
     deliver_rewards_to_player,
     get_admin_player_view_profile,
     list_admin_players,
+    player_chat_last_24h,
     player_logs_last_24h,
     promo_list_payload,
     require_admin_session,
@@ -190,6 +192,12 @@ def create_admin_panel_router(get_storage) -> APIRouter:
         _session_or_403(storage, request, token)
         return {"logs": player_logs_last_24h(storage, game_id=game_id, limit=limit)}
 
+    @router.get("/players/{game_id}/chat")
+    def player_chat(game_id: str, request: Request, token: str | None = Query(default=None, min_length=16), limit: int = 200) -> dict[str, Any]:
+        storage = get_storage()
+        _session_or_403(storage, request, token)
+        return {"chat": player_chat_last_24h(storage, game_id=game_id, limit=limit)}
+
     @router.post("/delivery/send")
     def send_delivery(payload: AdminDeliveryRequest, request: Request) -> dict[str, Any]:
         storage = get_storage()
@@ -226,6 +234,15 @@ def create_admin_panel_router(get_storage) -> APIRouter:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"ok": True, "promo": promo}
+
+    @router.delete("/promos/{code:path}")
+    def delete_promo(code: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session_or_403(storage, request, token)
+        ok = delete_admin_promo(storage, code=code, admin_session=session)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Промокод не найден.")
+        return {"ok": True, "code": code}
 
     @router.get("/player-view")
     def get_admin_player_view(request: Request) -> dict[str, Any]:

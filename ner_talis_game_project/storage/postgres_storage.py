@@ -170,6 +170,83 @@ class PostgresStorage:
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
                 )
             """))
+            self.ensure_schema_compatibility(connection)
+
+    def ensure_schema_compatibility(self, connection) -> None:
+        """Idempotent PostgreSQL schema upgrade for existing production DBs.
+
+        Timeweb deployments can keep the same managed PostgreSQL database while
+        the bot container is rebuilt from a newer archive. ``CREATE TABLE IF NOT
+        EXISTS`` is not enough for that case: old tables remain without newly
+        added columns. These ALTER statements are intentionally conservative and
+        safe to run on every startup.
+        """
+        # Players table: add every column the current storage layer reads or
+        # writes.  Avoid strict NOT NULL changes during automatic startup so an
+        # old partially-filled production table cannot block the container.
+        for ddl in (
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS public_id TEXT",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS name TEXT",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS race_id TEXT",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS race_name TEXT",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS experience INTEGER DEFAULT 0",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS money BIGINT DEFAULT 0",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS debt BIGINT DEFAULT 0",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS energy INTEGER DEFAULT 100",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS max_energy INTEGER DEFAULT 100",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS current_city TEXT DEFAULT 'seldar'",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS current_zone TEXT",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS stats JSONB DEFAULT '{}'::jsonb",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS inventory JSONB DEFAULT '[]'::jsonb",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS crafting_levels JSONB DEFAULT '{}'::jsonb",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS housing JSONB DEFAULT '{}'::jsonb",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS extra JSONB DEFAULT '{}'::jsonb",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()",
+            "ALTER TABLE players ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now()",
+        ):
+            connection.execute(text(ddl))
+
+        connection.execute(text("""
+            UPDATE players SET
+                public_id = COALESCE(NULLIF(public_id, ''), game_id),
+                name = COALESCE(NULLIF(name, ''), game_id),
+                level = COALESCE(level, 1),
+                experience = COALESCE(experience, 0),
+                money = COALESCE(money, 0),
+                debt = COALESCE(debt, 0),
+                energy = COALESCE(energy, 100),
+                max_energy = COALESCE(max_energy, 100),
+                current_city = COALESCE(NULLIF(current_city, ''), 'seldar'),
+                stats = COALESCE(stats, '{}'::jsonb),
+                inventory = COALESCE(inventory, '[]'::jsonb),
+                crafting_levels = COALESCE(crafting_levels, '{}'::jsonb),
+                housing = COALESCE(housing, '{}'::jsonb),
+                extra = COALESCE(extra, '{}'::jsonb),
+                created_at = COALESCE(created_at, now()),
+                updated_at = COALESCE(updated_at, now())
+        """))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_players_public_id ON players(public_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_players_lower_name ON players(lower(name))"))
+
+        # Existing auxiliary tables from older deployments may miss fields used
+        # by profile sessions, one-time admin links or promocodes.
+        for ddl in (
+            "ALTER TABLE platform_links ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()",
+            "ALTER TABLE link_codes ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT now()",
+            "ALTER TABLE link_codes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()",
+            "ALTER TABLE web_sessions ADD COLUMN IF NOT EXISTS scope TEXT DEFAULT 'profile'",
+            "ALTER TABLE web_sessions ADD COLUMN IF NOT EXISTS platform TEXT",
+            "ALTER TABLE web_sessions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()",
+            "ALTER TABLE web_sessions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT now()",
+            "ALTER TABLE web_sessions ADD COLUMN IF NOT EXISTS used BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE admin_panel_sessions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT now()",
+            "ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now()",
+        ):
+            connection.execute(text(ddl))
+
+        connection.execute(text("UPDATE web_sessions SET scope = COALESCE(NULLIF(scope, ''), 'profile'), used = COALESCE(used, FALSE)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_players_lower_game_id ON players(upper(game_id))"))
 
     def check_connection(self) -> bool:
         with self.engine.begin() as connection:

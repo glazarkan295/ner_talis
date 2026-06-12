@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+!.env.timeweb.postgresql.example
 .venv/
 venv/
 __pycache__/
