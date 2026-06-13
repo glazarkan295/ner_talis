@@ -25,7 +25,9 @@
     },
     "can_sell": true,
     "sell_price_copper": 30,
-    "buy_price_copper": 40
+    "buy_price_copper": 40,
+    "icon": "/assets/items/consumables/throwables/old_throwing_knife.png",
+    "asset_icon": "/assets/items/consumables/throwables/old_throwing_knife.png"
   },
   {
     "id": "decent_throwing_knife",
@@ -53,7 +55,9 @@
     },
     "can_sell": true,
     "sell_price_copper": 45,
-    "buy_price_copper": 60
+    "buy_price_copper": 60,
+    "icon": "/assets/items/consumables/throwables/decent_throwing_knife.png",
+    "asset_icon": "/assets/items/consumables/throwables/decent_throwing_knife.png"
   },
   {
     "id": "homemade_smoke_bomb",
@@ -80,7 +84,9 @@
     },
     "can_sell": true,
     "sell_price_copper": 40,
-    "buy_price_copper": 80
+    "buy_price_copper": 80,
+    "icon": "/assets/items/consumables/throwables/homemade_smoke_bomb.png",
+    "asset_icon": "/assets/items/consumables/throwables/homemade_smoke_bomb.png"
   },
   {
     "id": "minor_regeneration_potion",
@@ -108,7 +114,9 @@
     },
     "can_sell": true,
     "sell_price_copper": 500,
-    "buy_price_copper": 4000
+    "buy_price_copper": 4000,
+    "icon": "/assets/items/consumables/potions/small_regeneration_potion.png",
+    "asset_icon": "/assets/items/consumables/potions/small_regeneration_potion.png"
   },
   {
     "id": "common_cleansing_potion",
@@ -135,7 +143,9 @@
     },
     "can_sell": true,
     "sell_price_copper": 300,
-    "buy_price_copper": 1000
+    "buy_price_copper": 1000,
+    "icon": "/assets/items/consumables/potions/ordinary_cleansing_potion.png",
+    "asset_icon": "/assets/items/consumables/potions/ordinary_cleansing_potion.png"
   },
   {
     "id": "battle_stimulant",
@@ -171,7 +181,9 @@
       "resource_max_bonus_percent": 20,
       "description": "На 30 минут: +30% к урону навыков, +20% к максимуму Духа и Маны. Используется из инвентаря."
     },
-    "pouch_excluded": true
+    "pouch_excluded": true,
+    "icon": "/assets/items/consumables/potions/battle_stimulant.png",
+    "asset_icon": "/assets/items/consumables/potions/battle_stimulant.png"
   },
   {
     "id": "old_iron_sword",
@@ -215,6 +227,8 @@
       "Бедность: тратит медные на чистый урон"
     ],
     "can_sell": true,
-    "sell_price_copper": 50
+    "sell_price_copper": 50,
+    "icon": "/assets/items/weapons/swords/old_iron_sword.png",
+    "asset_icon": "/assets/items/weapons/swords/old_iron_sword.png"
   }
 ]

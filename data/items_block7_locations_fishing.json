@@ -17,7 +17,9 @@
       "inventory_item",
       "fishing_tool",
       "location_fishing"
-    ]
+    ],
+    "icon": "/assets/items/catalog/fishing_rod.png",
+    "asset_icon": "/assets/items/catalog/fishing_rod.png"
   },
   {
     "id": "seaweed",
@@ -40,7 +42,9 @@
       "crafting",
       "food",
       "alchemy"
-    ]
+    ],
+    "icon": "/assets/items/resources/fishing/seaweed.png",
+    "asset_icon": "/assets/items/resources/fishing/seaweed.png"
   },
   {
     "id": "golden_fish",
@@ -63,7 +67,9 @@
       "crafting",
       "food",
       "alchemy"
-    ]
+    ],
+    "icon": "/assets/items/resources/fishing/golden_fish.png",
+    "asset_icon": "/assets/items/resources/fishing/golden_fish.png"
   },
   {
     "id": "large_fish",
@@ -86,7 +92,9 @@
       "crafting",
       "food",
       "alchemy"
-    ]
+    ],
+    "icon": "/assets/items/resources/fishing/large_fish.png",
+    "asset_icon": "/assets/items/resources/fishing/large_fish.png"
   },
   {
     "id": "jellyfish",
@@ -109,7 +117,9 @@
       "crafting",
       "food",
       "alchemy"
-    ]
+    ],
+    "icon": "/assets/items/resources/fishing/jellyfish.png",
+    "asset_icon": "/assets/items/resources/fishing/jellyfish.png"
   },
   {
     "id": "mollusk",
@@ -133,7 +143,9 @@
       "location_event_loot",
       "fishing_loot",
       "openable"
-    ]
+    ],
+    "icon": "/assets/items/resources/fishing/mollusk.png",
+    "asset_icon": "/assets/items/resources/fishing/mollusk.png"
   },
   {
     "id": "simple_pearl",
@@ -155,7 +167,9 @@
       "mollusk_loot",
       "crafting",
       "alchemy"
-    ]
+    ],
+    "icon": "/assets/items/resources/pearls/simple_pearl.png",
+    "asset_icon": "/assets/items/resources/pearls/simple_pearl.png"
   },
   {
     "id": "uncommon_pearl",
@@ -178,7 +192,9 @@
       "mollusk_loot",
       "crafting",
       "alchemy"
-    ]
+    ],
+    "icon": "/assets/items/resources/pearls/unusual_pearl.png",
+    "asset_icon": "/assets/items/resources/pearls/unusual_pearl.png"
   },
   {
     "id": "rare_pearl",
@@ -201,7 +217,9 @@
       "mollusk_loot",
       "crafting",
       "alchemy"
-    ]
+    ],
+    "icon": "/assets/items/resources/pearls/rare_pearl.png",
+    "asset_icon": "/assets/items/resources/pearls/rare_pearl.png"
   },
   {
     "id": "pearlescent_fish",
@@ -225,7 +243,9 @@
       "crafting",
       "food",
       "alchemy"
-    ]
+    ],
+    "icon": "/assets/items/resources/fishing/pearlescent_fish.png",
+    "asset_icon": "/assets/items/resources/fishing/pearlescent_fish.png"
   },
   {
     "id": "small_fish",
@@ -248,7 +268,9 @@
       "crafting",
       "food",
       "alchemy"
-    ]
+    ],
+    "icon": "/assets/items/resources/fishing/small_simple_fish.png",
+    "asset_icon": "/assets/items/resources/fishing/small_simple_fish.png"
   },
   {
     "id": "eel",
@@ -271,7 +293,9 @@
       "crafting",
       "food",
       "alchemy"
-    ]
+    ],
+    "icon": "/assets/items/resources/fishing/eel.png",
+    "asset_icon": "/assets/items/resources/fishing/eel.png"
   },
   {
     "id": "shell",
@@ -293,7 +317,9 @@
       "fishing_loot",
       "crafting",
       "alchemy"
-    ]
+    ],
+    "icon": "/assets/items/resources/fishing/seashell.png",
+    "asset_icon": "/assets/items/resources/fishing/seashell.png"
   },
   {
     "id": "old_torn_boot",
@@ -313,7 +339,9 @@
       "inventory_item",
       "location_event_loot",
       "fishing_trash"
-    ]
+    ],
+    "icon": "/assets/items/resources/junk/old_torn_boot.png",
+    "asset_icon": "/assets/items/resources/junk/old_torn_boot.png"
   },
   {
     "id": "old_small_chest",
@@ -337,7 +365,9 @@
       "location_event_loot",
       "fishing_loot",
       "openable"
-    ]
+    ],
+    "icon": "/assets/items/containers/old_small_chest.png",
+    "asset_icon": "/assets/items/containers/old_small_chest.png"
   },
   {
     "id": "aquamarine_shards",
@@ -357,7 +387,9 @@
       "inventory_item",
       "old_small_chest_loot",
       "crafting"
-    ]
+    ],
+    "icon": "/assets/items/catalog/aquamarine_shards.png",
+    "asset_icon": "/assets/items/catalog/aquamarine_shards.png"
   },
   {
     "id": "diamond_shards",
@@ -377,7 +409,9 @@
       "inventory_item",
       "old_small_chest_loot",
       "crafting"
-    ]
+    ],
+    "icon": "/assets/items/catalog/diamond_shards.png",
+    "asset_icon": "/assets/items/catalog/diamond_shards.png"
   },
   {
     "id": "amethyst_shards",
@@ -397,7 +431,9 @@
       "inventory_item",
       "old_small_chest_loot",
       "crafting"
-    ]
+    ],
+    "icon": "/assets/items/catalog/amethyst_shards.png",
+    "asset_icon": "/assets/items/catalog/amethyst_shards.png"
   },
   {
     "id": "emerald_shards",
@@ -417,7 +453,9 @@
       "inventory_item",
       "old_small_chest_loot",
       "crafting"
-    ]
+    ],
+    "icon": "/assets/items/catalog/emerald_shards.png",
+    "asset_icon": "/assets/items/catalog/emerald_shards.png"
   },
   {
     "id": "ruby_shards",
@@ -437,7 +475,9 @@
       "inventory_item",
       "old_small_chest_loot",
       "crafting"
-    ]
+    ],
+    "icon": "/assets/items/catalog/ruby_shards.png",
+    "asset_icon": "/assets/items/catalog/ruby_shards.png"
   },
   {
     "id": "sapphire_shards",
@@ -457,7 +497,9 @@
       "inventory_item",
       "old_small_chest_loot",
       "crafting"
-    ]
+    ],
+    "icon": "/assets/items/catalog/sapphire_shards.png",
+    "asset_icon": "/assets/items/catalog/sapphire_shards.png"
   },
   {
     "id": "topaz_shards",
@@ -477,6 +519,8 @@
       "inventory_item",
       "old_small_chest_loot",
       "crafting"
-    ]
+    ],
+    "icon": "/assets/items/catalog/topaz_shards.png",
+    "asset_icon": "/assets/items/catalog/topaz_shards.png"
   }
 ]
