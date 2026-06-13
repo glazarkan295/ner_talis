@@ -516,6 +516,174 @@ class SQLiteStorage:
                 connection.execute("ROLLBACK")
                 raise
 
+    def save_promo_code(self, code: str, promo: dict[str, Any]) -> None:
+        """Upsert одного промокода без полной перезаписи таблицы."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                "INSERT OR REPLACE INTO promo_codes(code, data, updated_at) VALUES (?, ?, ?)",
+                (str(code), self._serialize(promo), promo.get("updated_at") or now),
+            )
+
+    def delete_promo_code(self, code: str) -> bool:
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute("DELETE FROM promo_codes WHERE code = ?", (str(code),))
+            return cursor.rowcount > 0
+
+    def claim_promo_use(self, code: str, game_id: str, *, one_use_per_player: bool = True) -> tuple[bool, str, dict[str, Any] | None]:
+        """Атомарно занимает одно использование промокода.
+
+        BEGIN IMMEDIATE берёт write-lock SQLite, поэтому read-modify-write над
+        одной строкой не пересекается с другим погашением того же кода.
+        """
+        now = datetime.now(timezone.utc)
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT data FROM promo_codes WHERE code = ?",
+                    (str(code),),
+                ).fetchone()
+                if not row:
+                    connection.execute("ROLLBACK")
+                    return False, "not_found", None
+                promo = self._deserialize(row["data"])
+                if not isinstance(promo, dict) or not promo.get("active"):
+                    connection.execute("ROLLBACK")
+                    return False, "inactive", None
+                raw_expires = promo.get("expires_at")
+                if raw_expires:
+                    try:
+                        expires_at = datetime.fromisoformat(str(raw_expires).replace("Z", "+00:00"))
+                        if expires_at.tzinfo is None:
+                            expires_at = expires_at.replace(tzinfo=timezone.utc)
+                    except ValueError:
+                        connection.execute("ROLLBACK")
+                        return False, "broken_expiry", None
+                    if expires_at < now:
+                        connection.execute("ROLLBACK")
+                        return False, "expired", None
+                used_by = {str(value) for value in promo.get("used_by", [])}
+                if one_use_per_player and promo.get("one_use_per_player", True) and str(game_id) in used_by:
+                    connection.execute("ROLLBACK")
+                    return False, "already_used", None
+                uses_left = int(promo.get("uses_left", 0) or 0)
+                if uses_left <= 0:
+                    connection.execute("ROLLBACK")
+                    return False, "exhausted", None
+                promo["uses_left"] = uses_left - 1
+                promo.setdefault("used_by", []).append(str(game_id))
+                promo["updated_at"] = now.isoformat()
+                connection.execute(
+                    "UPDATE promo_codes SET data = ?, updated_at = ? WHERE code = ?",
+                    (self._serialize(promo), now.isoformat(), str(code)),
+                )
+                connection.execute("COMMIT")
+                return True, "ok", promo.get("reward") or {}
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+
+    def refund_promo_use(self, code: str, game_id: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT data FROM promo_codes WHERE code = ?",
+                    (str(code),),
+                ).fetchone()
+                if not row:
+                    connection.execute("ROLLBACK")
+                    return
+                promo = self._deserialize(row["data"])
+                if not isinstance(promo, dict):
+                    connection.execute("ROLLBACK")
+                    return
+                promo["uses_left"] = int(promo.get("uses_left", 0) or 0) + 1
+                used_by = [str(value) for value in promo.get("used_by", [])]
+                if str(game_id) in used_by:
+                    used_by.remove(str(game_id))
+                promo["used_by"] = used_by
+                connection.execute(
+                    "UPDATE promo_codes SET data = ?, updated_at = ? WHERE code = ?",
+                    (self._serialize(promo), now, str(code)),
+                )
+                connection.execute("COMMIT")
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+
+    # --- Точечные методы админ-сессий -------------------------------------
+    # admin_panel_service использует их вместо load()/save(), чтобы запросы
+    # админ-панели не переписывали таблицу игроков целиком.
+
+    def get_admin_panel_session(self, token: str) -> dict[str, Any] | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT data FROM admin_panel_sessions WHERE token = ?",
+                (str(token),),
+            ).fetchone()
+            return self._deserialize(row["data"]) if row else None
+
+    def put_admin_panel_session(self, token: str, session: dict[str, Any]) -> None:
+        expires_at = session.get("expires_at") or datetime.now(timezone.utc).isoformat()
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                "INSERT OR REPLACE INTO admin_panel_sessions(token, data, expires_at) VALUES (?, ?, ?)",
+                (str(token), self._serialize(session), str(expires_at)),
+            )
+
+    def delete_admin_panel_session(self, token: str) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute("DELETE FROM admin_panel_sessions WHERE token = ?", (str(token),))
+
+    def delete_admin_panel_sessions_for_admin(self, admin_key: str, scope: str) -> int:
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM admin_panel_sessions"
+                " WHERE json_extract(data, '$.admin_key') = ? AND json_extract(data, '$.scope') = ?",
+                (str(admin_key), str(scope)),
+            )
+            return cursor.rowcount
+
+    def cleanup_expired_admin_panel_sessions(self) -> int:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM admin_panel_sessions WHERE expires_at <= ?",
+                (now,),
+            )
+            return cursor.rowcount
+
+    def list_admin_player_cards(self, query: str = "", limit: int = 200) -> list[dict[str, Any]]:
+        """Лёгкий список игроков для админ-панели без чтения полных профилей."""
+        limit = max(1, min(int(limit or 200), 1000))
+        needle = f"%{str(query or '').strip().casefold()}%"
+        with self._lock, self._connect() as connection:
+            if str(query or "").strip():
+                rows = connection.execute(
+                    "SELECT game_id, public_id, data FROM players"
+                    " WHERE name_key LIKE ? OR lower(game_id) LIKE ? OR lower(public_id) LIKE ?"
+                    " ORDER BY name_key, game_id LIMIT ?",
+                    (needle, needle, needle, limit),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT game_id, public_id, data FROM players ORDER BY name_key, game_id LIMIT ?",
+                    (limit,),
+                ).fetchall()
+        cards = []
+        for row in rows:
+            player = self._deserialize(row["data"])
+            cards.append({
+                "game_id": row["game_id"],
+                "name": player.get("name") or "без имени",
+                "level": int(player.get("level") or 1),
+                "public_id": row["public_id"],
+            })
+        return cards
+
 
     def claim_active_timer_for_delivery(
         self,

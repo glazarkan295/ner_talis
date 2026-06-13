@@ -396,6 +396,8 @@ def battle_stimulant_effect_from_item(item: dict[str, Any]) -> dict[str, Any]:
 def apply_battle_stimulant_inventory_effect(player: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
     """Apply the battle stimulant from inventory, not from the combat pouch."""
 
+    from services.battle_stimulant_service import register_battle_stimulant_use
+
     effect = battle_stimulant_effect_from_item(item)
     effects = player.setdefault("active_effects", [])
     if not isinstance(effects, list):
@@ -408,10 +410,19 @@ def apply_battle_stimulant_inventory_effect(player: dict[str, Any], item: dict[s
         if isinstance(active, dict) and str(active.get("id") or "") == effect_id:
             effects.pop(index)
     effects.append(effect)
-    addiction = player.setdefault("battle_stimulant_addiction", {"level": 0})
-    if isinstance(addiction, dict):
-        addiction["level"] = safe_int(addiction.get("level"), 0) + 1
+    # Re-use refreshes the active duration, schedules the 2h withdrawal and grows
+    # the permanent "Зависимость" stack. While active, addiction stays blocked.
+    register_battle_stimulant_use(player)
     return effect
+
+
+def _battle_stimulant_status_effects(player: dict[str, Any]) -> list[dict[str, Any]]:
+    """Withdrawal / addiction cards for the profile effects list."""
+
+    from services.battle_stimulant_service import battle_stimulant_status_effect
+
+    status = battle_stimulant_status_effect(player)
+    return [status] if status else []
 
 def apply_energy_restore(player: dict[str, Any], item: dict[str, Any]) -> int:
     restore = item_energy_restore(item)
@@ -1134,7 +1145,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             {"label": "Шанс крита", "value": f"{crit_chance_percent}%"},
             {"label": "Урон крита", "value": f"{crit_damage}%"},
         ],
-        "effects": [effect for effect in (normalize_effect_for_frontend(raw_effect) for raw_effect in player.get("active_effects", [])) if effect],
+        "effects": [effect for effect in (normalize_effect_for_frontend(raw_effect) for raw_effect in [*player.get("active_effects", []), *_battle_stimulant_status_effects(player)]) if effect],
         "activeSets": player.get("active_sets", []),
         "equipmentSlots": equipment_slots_for_frontend(player.get("equipment") or {}),
         "equipment": equipment,

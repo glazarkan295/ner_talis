@@ -3,16 +3,8 @@
   "version": "2026-05-23",
   "background": "transparent_alpha_after_processing",
   "asset_size": "1024x1024 PNG",
-  "items_count": 25,
+  "items_count": 19,
   "items": [
-    {
-      "id": "simple_healing_potion",
-      "name_ru": "Простое зелье лечения",
-      "category": "seldar_market",
-      "image": "assets/items/seldar_market/simple_healing_potion.png",
-      "source_pack": "Архив ZIP - WinRAR (3).zip",
-      "processing": "background_removed_centered_1024_png"
-    },
     {
       "id": "mining_pickaxe",
       "name_ru": "Шахтёрская кирка",
@@ -162,46 +154,6 @@
       "name_ru": "Болт для арбалета",
       "category": "ammunition_quiver",
       "image": "assets/items/ammo/bolt_for_crossbow.png",
-      "source_pack": "Архив ZIP - WinRAR (3).zip",
-      "processing": "background_removed_centered_1024_png"
-    },
-    {
-      "id": "copper_coin",
-      "name_ru": "Медная монета",
-      "category": "currency",
-      "image": "assets/items/currency/copper_coin.png",
-      "source_pack": "Архив ZIP - WinRAR (3).zip",
-      "processing": "background_removed_centered_1024_png"
-    },
-    {
-      "id": "silver_coin",
-      "name_ru": "Серебряная монета",
-      "category": "currency",
-      "image": "assets/items/currency/silver_coin.png",
-      "source_pack": "Архив ZIP - WinRAR (3).zip",
-      "processing": "background_removed_centered_1024_png"
-    },
-    {
-      "id": "gold_coin",
-      "name_ru": "Золотая монета",
-      "category": "currency",
-      "image": "assets/items/currency/gold_coin.png",
-      "source_pack": "Архив ZIP - WinRAR (3).zip",
-      "processing": "background_removed_centered_1024_png"
-    },
-    {
-      "id": "magic_gold_coin",
-      "name_ru": "Магическое золото",
-      "category": "currency",
-      "image": "assets/items/currency/magic_gold_coin.png",
-      "source_pack": "Архив ZIP - WinRAR (3).zip",
-      "processing": "background_removed_centered_1024_png"
-    },
-    {
-      "id": "ancient_coin",
-      "name_ru": "Древняя монета",
-      "category": "currency",
-      "image": "assets/items/currency/ancient_coin.png",
       "source_pack": "Архив ZIP - WinRAR (3).zip",
       "processing": "background_removed_centered_1024_png"
     }

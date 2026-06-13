@@ -451,7 +451,7 @@ def calculate_player_derived_stats(player: dict[str, Any]) -> dict[str, int]:
 
     energy = calculate_energy_stats(player, bonus_modifiers)
 
-    return {
+    result = {
         "level": level,
         "soft_level": s_level,
         "max_hp": max(1, max_hp),
@@ -477,6 +477,11 @@ def calculate_player_derived_stats(player: dict[str, Any]) -> dict[str, int]:
         "wisdom": wisdom,
         "bonus_modifiers": bonus_modifiers,
     }
+    # Откат боевого стимулятора и «Зависимость» применяются как процентные
+    # модификаторы поверх итоговых статов (активный бафф считается в бою).
+    from services.battle_stimulant_service import apply_percent_modifiers_to_stats
+    apply_percent_modifiers_to_stats(player, result)
+    return result
 
 
 def skill_damage_type_key(skill: dict[str, Any]) -> str:
@@ -540,6 +545,10 @@ def calculate_player_skill_raw_damage(player: dict[str, Any], skill: dict[str, A
 
     raw_damage = ceil(base_damage + bonus_damage)
     raw_damage = ceil(raw_damage * outgoing_damage_multiplier(player, damage_type))
+    # «Зависимость» от боевого стимулятора слегка меняет базовый урон навыков
+    # (активный +30% применяется боевым движком отдельно, не здесь).
+    from services.battle_stimulant_service import skill_damage_multiplier
+    raw_damage = ceil(raw_damage * skill_damage_multiplier(player))
     return {"damage": max(1, raw_damage), "damage_type": damage_type, "name": skill_name}
 
 

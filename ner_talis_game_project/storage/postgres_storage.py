@@ -697,10 +697,160 @@ class PostgresStorage:
         with self.engine.begin() as connection:
             connection.execute(text("DELETE FROM web_sessions WHERE expires_at <= now()"))
 
+    # --- Точечные методы админ-сессий -------------------------------------
+    # Используются admin_panel_service вместо load()/save(): каждый запрос
+    # админ-панели не должен читать и перезаписывать всех игроков.
+
+    def get_admin_panel_session(self, token: str) -> dict[str, Any] | None:
+        with self.engine.begin() as connection:
+            row = connection.execute(
+                text("SELECT data FROM admin_panel_sessions WHERE token = :token"),
+                {"token": str(token)},
+            ).mappings().first()
+        return self._loads(row["data"], {}) if row else None
+
+    def put_admin_panel_session(self, token: str, session: dict[str, Any]) -> None:
+        expires_at = session.get("expires_at") or datetime.now(timezone.utc).isoformat()
+        with self.engine.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO admin_panel_sessions(token, data, expires_at)
+                VALUES (:token, CAST(:data AS jsonb), CAST(:expires_at AS timestamptz))
+                ON CONFLICT (token) DO UPDATE SET data = EXCLUDED.data, expires_at = EXCLUDED.expires_at
+            """), {"token": str(token), "data": self._dumps(session), "expires_at": str(expires_at)})
+
+    def delete_admin_panel_session(self, token: str) -> None:
+        with self.engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM admin_panel_sessions WHERE token = :token"),
+                {"token": str(token)},
+            )
+
+    def delete_admin_panel_sessions_for_admin(self, admin_key: str, scope: str) -> int:
+        with self.engine.begin() as connection:
+            result = connection.execute(text("""
+                DELETE FROM admin_panel_sessions
+                WHERE data->>'admin_key' = :admin_key AND data->>'scope' = :scope
+            """), {"admin_key": str(admin_key), "scope": str(scope)})
+        return int(result.rowcount or 0)
+
+    def cleanup_expired_admin_panel_sessions(self) -> int:
+        with self.engine.begin() as connection:
+            result = connection.execute(text("DELETE FROM admin_panel_sessions WHERE expires_at <= now()"))
+        return int(result.rowcount or 0)
+
+    def list_admin_player_cards(self, query: str = "", limit: int = 200) -> list[dict[str, Any]]:
+        """Лёгкий список игроков для админ-панели без чтения полных профилей."""
+        limit = max(1, min(int(limit or 200), 1000))
+        needle = f"%{str(query or '').strip().casefold()}%"
+        with self.engine.begin() as connection:
+            if str(query or "").strip():
+                rows = connection.execute(text("""
+                    SELECT game_id, name, level, public_id FROM players
+                    WHERE lower(name) LIKE :needle OR lower(game_id) LIKE :needle OR lower(public_id) LIKE :needle
+                    ORDER BY lower(name), game_id LIMIT :limit
+                """), {"needle": needle, "limit": limit}).mappings().all()
+            else:
+                rows = connection.execute(text("""
+                    SELECT game_id, name, level, public_id FROM players
+                    ORDER BY lower(name), game_id LIMIT :limit
+                """), {"limit": limit}).mappings().all()
+        return [
+            {
+                "game_id": row["game_id"],
+                "name": row["name"] or "без имени",
+                "level": int(row["level"] or 1),
+                "public_id": row["public_id"],
+            }
+            for row in rows
+        ]
+
     def load_promo_data(self) -> dict[str, Any]:
         with self.engine.begin() as connection:
             rows = connection.execute(text("SELECT code, data FROM promo_codes")).mappings().all()
         return {"codes": {row["code"]: self._loads(row["data"], {}) for row in rows}}
+
+    def save_promo_code(self, code: str, promo: dict[str, Any]) -> None:
+        """Upsert одного промокода без полной перезаписи таблицы."""
+        with self.engine.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO promo_codes(code, data, updated_at)
+                VALUES (:code, CAST(:data AS jsonb), now())
+                ON CONFLICT (code) DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+            """), {"code": str(code), "data": self._dumps(promo)})
+
+    def delete_promo_code(self, code: str) -> bool:
+        with self.engine.begin() as connection:
+            result = connection.execute(
+                text("DELETE FROM promo_codes WHERE code = :code"),
+                {"code": str(code)},
+            )
+        return bool(result.rowcount)
+
+    def claim_promo_use(self, code: str, game_id: str, *, one_use_per_player: bool = True) -> tuple[bool, str, dict[str, Any] | None]:
+        """Атомарно занимает одно использование промокода.
+
+        SELECT ... FOR UPDATE сериализует параллельные погашения одного кода:
+        две заявки не могут превысить uses_left и не дадут двойную награду тому
+        же игроку. Возвращает (ok, reason, reward). reward отдаётся только при
+        успешном claim, начисление награды игроку делает вызывающий код.
+        """
+        now = datetime.now(timezone.utc)
+        with self.engine.begin() as connection:
+            row = connection.execute(
+                text("SELECT data FROM promo_codes WHERE code = :code FOR UPDATE"),
+                {"code": str(code)},
+            ).mappings().first()
+            if not row:
+                return False, "not_found", None
+            promo = self._loads(row["data"], {})
+            if not isinstance(promo, dict) or not promo.get("active"):
+                return False, "inactive", None
+            raw_expires = promo.get("expires_at")
+            if raw_expires:
+                try:
+                    expires_at = datetime.fromisoformat(str(raw_expires).replace("Z", "+00:00"))
+                    if expires_at.tzinfo is None:
+                        expires_at = expires_at.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    return False, "broken_expiry", None
+                if expires_at < now:
+                    return False, "expired", None
+            used_by = {str(value) for value in promo.get("used_by", [])}
+            if one_use_per_player and promo.get("one_use_per_player", True) and str(game_id) in used_by:
+                return False, "already_used", None
+            uses_left = int(promo.get("uses_left", 0) or 0)
+            if uses_left <= 0:
+                return False, "exhausted", None
+            promo["uses_left"] = uses_left - 1
+            promo.setdefault("used_by", []).append(str(game_id))
+            promo["updated_at"] = now.isoformat()
+            connection.execute(
+                text("UPDATE promo_codes SET data = CAST(:data AS jsonb), updated_at = now() WHERE code = :code"),
+                {"code": str(code), "data": self._dumps(promo)},
+            )
+            return True, "ok", promo.get("reward") or {}
+
+    def refund_promo_use(self, code: str, game_id: str) -> None:
+        """Возвращает использование, если начисление награды не удалось."""
+        with self.engine.begin() as connection:
+            row = connection.execute(
+                text("SELECT data FROM promo_codes WHERE code = :code FOR UPDATE"),
+                {"code": str(code)},
+            ).mappings().first()
+            if not row:
+                return
+            promo = self._loads(row["data"], {})
+            if not isinstance(promo, dict):
+                return
+            promo["uses_left"] = int(promo.get("uses_left", 0) or 0) + 1
+            used_by = [str(value) for value in promo.get("used_by", [])]
+            if str(game_id) in used_by:
+                used_by.remove(str(game_id))
+            promo["used_by"] = used_by
+            connection.execute(
+                text("UPDATE promo_codes SET data = CAST(:data AS jsonb), updated_at = now() WHERE code = :code"),
+                {"code": str(code), "data": self._dumps(promo)},
+            )
 
     def save_promo_data(self, data: dict[str, Any]) -> None:
         with self.engine.begin() as connection:

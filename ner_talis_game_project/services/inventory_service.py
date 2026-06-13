@@ -587,7 +587,6 @@ def add_inventory_item(
         remaining -= added
         if remaining <= 0:
             result.added = amount
-            recalculate_inventory_overflow(player)
             counts = recalculate_inventory_overflow(player)
             result.overflow_slots_used = int(counts["overflow_used"])
             result.overflow_slots_max = int(counts["overflow_max"])
