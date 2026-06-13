@@ -1256,5 +1256,86 @@
     ],
     "icon": "/assets/items/equipment/jewelry/silver_rings/silver_ring_with_amethyst.png",
     "asset_icon": "/assets/items/equipment/jewelry/silver_rings/silver_ring_with_amethyst.png"
+  },
+  {
+    "id": "artifact_free_space",
+    "item_id": "artifact_free_space",
+    "name": "Артефакт Свободного Пространства",
+    "name_ru": "Артефакт Свободного Пространства",
+    "category": "equipment",
+    "type": "artifact",
+    "subtype": "artifact",
+    "item_class": "artifact",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "slot": "special",
+    "targetSlotKey": "special",
+    "slotKey": "special",
+    "description": "При экипировке увеличивает инвентарь на +20 слотов.",
+    "can_sell": true,
+    "sell_price_copper": 500000,
+    "buy_price_copper": 1000000,
+    "integration_tags": [
+      "port_market"
+    ],
+    "icon": "/assets/items/artifacts/artifact_free_space.png",
+    "asset_icon": "/assets/items/artifacts/artifact_free_space.png",
+    "stat_modifiers": {
+      "bonus_inventory_slots": 20
+    },
+    "stats": [
+      "Инвентарь: +20 слотов"
+    ]
+  },
+  {
+    "id": "artifact_lucky_buyer",
+    "item_id": "artifact_lucky_buyer",
+    "name": "Артефакт Счастливого покупателя",
+    "name_ru": "Артефакт Счастливого покупателя",
+    "category": "equipment",
+    "type": "artifact",
+    "subtype": "artifact",
+    "item_class": "artifact",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "slot": "special",
+    "targetSlotKey": "special",
+    "slotKey": "special",
+    "description": "При экипировке: -10% к стоимости покупки у NPC, +10% к стоимости продажи у NPC.",
+    "can_sell": true,
+    "sell_price_copper": 1,
+    "buy_price_copper": 20000000,
+    "integration_tags": [
+      "port_market"
+    ],
+    "icon": "/assets/items/artifacts/artifact_lucky_buyer.png",
+    "asset_icon": "/assets/items/artifacts/artifact_lucky_buyer.png"
+  },
+  {
+    "id": "one_time_artifact_last_chance",
+    "item_id": "one_time_artifact_last_chance",
+    "name": "Одноразовый Артефакт Последнего Шанса",
+    "name_ru": "Одноразовый Артефакт Последнего Шанса",
+    "category": "equipment",
+    "type": "artifact",
+    "subtype": "artifact",
+    "item_class": "artifact",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "slot": "special",
+    "targetSlotKey": "special",
+    "slotKey": "special",
+    "description": "Одноразовый. При смерти в бою воскрешает игрока со 100% HP/маны/духа и даёт неуязвимость на 1 ход, затем разрушается.",
+    "can_sell": true,
+    "sell_price_copper": 300000,
+    "buy_price_copper": 10000000,
+    "integration_tags": [
+      "port_market"
+    ],
+    "icon": "/assets/items/artifacts/one_time_artifact_last_chance.png",
+    "asset_icon": "/assets/items/artifacts/one_time_artifact_last_chance.png"
   }
 ]
