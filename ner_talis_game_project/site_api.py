@@ -999,6 +999,8 @@ EFFECT_MODIFIER_LABELS = {
     "bonus_blind_resist_chance": "Сопротивление ослеплению",
     "bonus_bleed_resist_chance": "Сопротивление кровотечению",
     "bonus_poison_resist_chance": "Сопротивление отравлению",
+    "bonus_npc_buy_discount_percent": "Скидка у NPC",
+    "bonus_npc_sell_bonus_percent": "Надбавка при продаже NPC",
 }
 
 

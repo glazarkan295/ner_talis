@@ -126,6 +126,8 @@ KNOWN_MODIFIER_KEYS = {
     "bonus_blind_resist_chance",
     "bonus_bleed_resist_chance",
     "bonus_poison_resist_chance",
+    "bonus_npc_buy_discount_percent",
+    "bonus_npc_sell_bonus_percent",
 }
 
 EXTERNAL_EFFECT_FIELDS = (

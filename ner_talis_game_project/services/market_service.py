@@ -8,6 +8,7 @@ sell checks.
 from __future__ import annotations
 
 import json
+import math
 import random
 from copy import deepcopy
 from dataclasses import dataclass
@@ -17,7 +18,7 @@ from typing import Any
 
 from project_paths import project_path
 from services.currency import format_price
-from services.derived_stats_service import safe_int
+from services.derived_stats_service import equipment_modifier_totals, safe_int
 from services.inventory_service import (
     add_inventory_item,
     inventory_add_result_notice,
@@ -358,6 +359,23 @@ def market_buy_buttons(kind: str = MARKET_KIND_NPC, page: int = 0) -> list[list[
     return rows + market_list_back_buttons()
 
 
+def _npc_buy_discount_percent(player: dict[str, Any]) -> int:
+    mods = equipment_modifier_totals(player)
+    return max(0, min(90, safe_int(mods.get("bonus_npc_buy_discount_percent"), 0)))
+
+
+def _npc_sell_bonus_percent(player: dict[str, Any]) -> int:
+    mods = equipment_modifier_totals(player)
+    return max(0, safe_int(mods.get("bonus_npc_sell_bonus_percent"), 0))
+
+
+def _discounted_buy_price(player: dict[str, Any], unit_price: int) -> int:
+    discount = _npc_buy_discount_percent(player)
+    if discount <= 0:
+        return max(0, unit_price)
+    return max(0, math.floor(unit_price * (100 - discount) / 100))
+
+
 def _money(player: dict[str, Any]) -> int:
     return max(0, safe_int(player.get("money_copper", player.get("money", 0)), 0))
 
@@ -507,11 +525,12 @@ def handle_buy_quantity(storage: Any, player: dict[str, Any], item: MarketItem, 
             buy_zone,
         )
 
-    total_price = item.buy_price_copper * quantity
+    unit_price = _discounted_buy_price(player, item.buy_price_copper)
+    total_price = unit_price * quantity
     balance = _money(player)
     if balance < total_price:
         return MarketResult(
-            f"Недостаточно монет. Нужно: {total_price}. На балансе: {balance}. Не хватает: {total_price - balance}.",
+            f"Недостаточно монет. Нужно: {format_price(total_price)}. На балансе: {format_price(balance)}. Не хватает: {format_price(total_price - balance)}.",
             [[MARKET_BACK]],
             buy_zone,
         )
@@ -735,6 +754,8 @@ def handle_sell_quantity(storage: Any, player: dict[str, Any], entry: dict[str, 
 
     remove_empty_stacks_and_recalculate(player)
     total = quantity * safe_int(entry.get("price"), 0)
+    artifact_bonus = math.floor(total * _npc_sell_bonus_percent(player) / 100)
+    total += artifact_bonus
     bonus = npc_transaction_bonus_amount(player, total)
     _set_money(player, _money(player) + total + bonus)
     list_result = open_sell_list(player)

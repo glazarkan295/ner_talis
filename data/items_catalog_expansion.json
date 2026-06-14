@@ -1311,7 +1311,15 @@
       "port_market"
     ],
     "icon": "/assets/items/artifacts/artifact_lucky_buyer.png",
-    "asset_icon": "/assets/items/artifacts/artifact_lucky_buyer.png"
+    "asset_icon": "/assets/items/artifacts/artifact_lucky_buyer.png",
+    "stat_modifiers": {
+      "bonus_npc_buy_discount_percent": 10,
+      "bonus_npc_sell_bonus_percent": 10
+    },
+    "stats": [
+      "Скидка у NPC: +10%",
+      "Надбавка при продаже NPC: +10%"
+    ]
   },
   {
     "id": "one_time_artifact_last_chance",
