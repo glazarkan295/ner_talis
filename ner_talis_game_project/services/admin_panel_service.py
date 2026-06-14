@@ -16,6 +16,7 @@ import re
 import secrets
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +38,7 @@ from services.item_registry import (
     load_all_item_definitions,
     registry_item_to_inventory_item,
 )
-from services.progression_service import experience_to_next_level
+from services.progression_service import grant_exact_experience
 from services.promo_service import add_promo_code, delete_promo_code, list_promo_codes, load_promo_data
 
 ADMIN_PANEL_SCOPE = "admin_panel"
@@ -197,22 +198,42 @@ def _save_data(storage: Any, data: dict[str, Any]) -> None:
     raise ValueError("Хранилище не поддерживает сохранение админ-сессий.")
 
 
+def _storage_supports_admin_sessions(storage: Any) -> bool:
+    """Хранилище умеет работать с админ-сессиями точечно, без load()/save().
+
+    Точечные методы критичны для PostgreSQL/SQLite: старый путь load()+save()
+    на каждом запросе админ-панели перечитывал и перезаписывал всех игроков,
+    что и медленно, и затирает параллельные действия игроков устаревшим
+    снапшотом.
+    """
+    return all(
+        callable(getattr(storage, name, None))
+        for name in (
+            "get_admin_panel_session",
+            "put_admin_panel_session",
+            "delete_admin_panel_session",
+            "delete_admin_panel_sessions_for_admin",
+            "cleanup_expired_admin_panel_sessions",
+        )
+    )
+
+
+def _new_storage_session_token(storage: Any) -> str:
+    while True:
+        token = secrets.token_urlsafe(32)
+        if storage.get_admin_panel_session(token) is None:
+            return token
+
+
 def create_admin_panel_activation_token(storage: Any, *, platform: str, admin_user_id: str | int, chat_id: str | int | None = None) -> str:
     """Создаёт одноразовый URL-токен админ-панели.
 
     Новая ссылка для того же админа отключает все старые ссылки и активные
     сессии этого админа. Это защищает от пересланных/забытых ссылок.
     """
-    data = storage.load()
-    sessions = _session_bucket(data)
-    _cleanup_expired_admin_sessions(data)
     admin_key = f"{platform}:{admin_user_id}"
-    for token, session in list(sessions.items()):
-        if isinstance(session, dict) and session.get("admin_key") == admin_key and session.get("scope") == ADMIN_PANEL_SCOPE:
-            sessions.pop(token, None)
-    token = _new_token(sessions)
     now = _now()
-    sessions[token] = {
+    session = {
         "scope": ADMIN_PANEL_SCOPE,
         "kind": "activation",
         "used": False,
@@ -223,22 +244,69 @@ def create_admin_panel_activation_token(storage: Any, *, platform: str, admin_us
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(minutes=_admin_panel_ttl_minutes())).isoformat(),
     }
+
+    if _storage_supports_admin_sessions(storage):
+        storage.cleanup_expired_admin_panel_sessions()
+        storage.delete_admin_panel_sessions_for_admin(admin_key, ADMIN_PANEL_SCOPE)
+        token = _new_storage_session_token(storage)
+        storage.put_admin_panel_session(token, session)
+        return token
+
+    data = storage.load()
+    sessions = _session_bucket(data)
+    _cleanup_expired_admin_sessions(data)
+    for old_token, old_session in list(sessions.items()):
+        if isinstance(old_session, dict) and old_session.get("admin_key") == admin_key and old_session.get("scope") == ADMIN_PANEL_SCOPE:
+            sessions.pop(old_token, None)
+    token = _new_token(sessions)
+    sessions[token] = session
     _save_data(storage, data)
     return token
+
+
+def _activated_admin_session(session: dict[str, Any], raw_token: str) -> dict[str, Any]:
+    active_session = dict(session)
+    active_session.update({
+        "kind": "active",
+        "used": True,
+        "activated_at": _now().isoformat(),
+        "activation_token_used": raw_token,
+    })
+    return active_session
 
 
 def consume_or_read_admin_session(storage: Any, token: str) -> dict[str, Any] | None:
     raw_token = str(token or "").strip()
     if not raw_token:
         return None
+
+    if _storage_supports_admin_sessions(storage):
+        session = storage.get_admin_panel_session(raw_token)
+        if not isinstance(session, dict) or session.get("scope") != ADMIN_PANEL_SCOPE:
+            return None
+        expires_at = _parse_datetime(session.get("expires_at"))
+        if expires_at is None or expires_at <= _now():
+            storage.delete_admin_panel_session(raw_token)
+            return None
+        if not bool(session.get("used")):
+            active_session = _activated_admin_session(session, raw_token)
+            active_token = _new_storage_session_token(storage)
+            storage.put_admin_panel_session(active_token, active_session)
+            storage.delete_admin_panel_session(raw_token)
+            result = dict(active_session)
+            result["token"] = active_token
+            return result
+        result = dict(session)
+        result["token"] = raw_token
+        return result
+
     data = storage.load()
     sessions = _session_bucket(data)
-    _cleanup_expired_admin_sessions(data)
+    removed = _cleanup_expired_admin_sessions(data)
     session = sessions.get(raw_token)
-    if not isinstance(session, dict):
-        _save_data(storage, data)
-        return None
-    if session.get("scope") != ADMIN_PANEL_SCOPE:
+    if not isinstance(session, dict) or session.get("scope") != ADMIN_PANEL_SCOPE:
+        if removed:
+            _save_data(storage, data)
         return None
     expires_at = _parse_datetime(session.get("expires_at"))
     if expires_at is None or expires_at <= _now():
@@ -246,23 +314,20 @@ def consume_or_read_admin_session(storage: Any, token: str) -> dict[str, Any] | 
         _save_data(storage, data)
         return None
     if not bool(session.get("used")):
+        active_session = _activated_admin_session(session, raw_token)
         active_token = _new_token(sessions)
-        active_session = dict(session)
-        active_session.update({
-            "kind": "active",
-            "used": True,
-            "activated_at": _now().isoformat(),
-            "activation_token_used": raw_token,
-        })
         sessions.pop(raw_token, None)
         sessions[active_token] = active_session
         _save_data(storage, data)
         result = dict(active_session)
         result["token"] = active_token
         return result
+    # Чистое чтение активной сессии ничего не меняет — не сохраняем,
+    # чтобы не перезаписывать игроков устаревшим снапшотом.
+    if removed:
+        _save_data(storage, data)
     result = dict(session)
     result["token"] = raw_token
-    _save_data(storage, data)
     return result
 
 
@@ -321,9 +386,27 @@ def _catalog_card(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+@lru_cache(maxsize=1)
+def _catalog_cards_cache() -> tuple[tuple[dict[str, Any], ...], tuple[dict[str, Any], ...]]:
+    """Build catalog cards once and reuse them across requests.
+
+    Rebuilding ~150 cards on every admin keystroke is wasteful. The cache is
+    cleared together with the item registry (see invalidate_admin_catalog_cache),
+    so an admin icon change is still reflected immediately.
+    """
+    synthetic = tuple(dict(value) for value in SYNTHETIC_REWARD_IDS.values())
+    definitions = tuple(_catalog_card(item) for item in load_all_item_definitions() if _item_id(item))
+    return synthetic, definitions
+
+
+def invalidate_admin_catalog_cache() -> None:
+    _catalog_cards_cache.cache_clear()
+
+
 def admin_catalog(*, query: str = "", category: str = "") -> dict[str, Any]:
-    definitions = [_catalog_card(item) for item in load_all_item_definitions() if _item_id(item)]
-    synthetic = [dict(value) for value in SYNTHETIC_REWARD_IDS.values()]
+    synthetic_t, definitions_t = _catalog_cards_cache()
+    synthetic = [dict(card) for card in synthetic_t]
+    definitions = [dict(card) for card in definitions_t]
     cards = synthetic + definitions
     query_cf = str(query or "").strip().casefold()
     category_cf = str(category or "").strip().casefold()
@@ -395,7 +478,12 @@ def _collect_needs_text(item: dict[str, Any]) -> str:
 
 def list_admin_players(storage: Any, *, query: str = "", limit: int = 200) -> list[dict[str, Any]]:
     if query:
+        # find_players уже использует быстрые точечные методы и ищет в т.ч. по
+        # Telegram/VK id, поэтому оставляем его на путь поиска.
         players = find_players(storage, query, limit=limit)
+    elif callable(getattr(storage, "list_admin_player_cards", None)):
+        # Просмотр всех: лёгкий путь без чтения полных профилей всех игроков.
+        return storage.list_admin_player_cards(query="", limit=limit)
     else:
         data = storage.load()
         players = [player for player in (data.get("players") or {}).values() if isinstance(player, dict)]
@@ -451,25 +539,6 @@ def _normalize_rewards(rewards: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return normalized
 
 
-def _grant_exact_experience(player: dict[str, Any], amount: int) -> dict[str, int]:
-    gained = max(0, _safe_int(amount, 0))
-    player["experience"] = max(0, _safe_int(player.get("experience"), 0)) + gained
-    player["total_experience"] = max(0, _safe_int(player.get("total_experience"), 0)) + gained
-    level_ups = 0
-    while True:
-        level = max(1, _safe_int(player.get("level"), 1))
-        required = experience_to_next_level(level)
-        if player["experience"] < required:
-            player["experience_to_next"] = required
-            break
-        player["experience"] -= required
-        player["level"] = level + 1
-        player["free_stat_points"] = _safe_int(player.get("free_stat_points"), 0) + 5
-        player["free_skill_points"] = _safe_int(player.get("free_skill_points"), 0) + 2
-        level_ups += 1
-    return {"level_ups": level_ups, "level": _safe_int(player.get("level"), 1), "experience": _safe_int(player.get("experience"), 0)}
-
-
 def _apply_rewards_to_player(player: dict[str, Any], rewards: list[dict[str, Any]], *, source: str) -> list[str]:
     lines: list[str] = []
     for reward in rewards:
@@ -489,7 +558,7 @@ def _apply_rewards_to_player(player: dict[str, Any], rewards: list[dict[str, Any
             player["free_stat_points"] = _safe_int(player.get("free_stat_points"), 0) + amount
             lines.append(f"Очки характеристик ×{amount}")
         elif kind == "experience":
-            _grant_exact_experience(player, amount)
+            grant_exact_experience(player, amount)
             lines.append(f"Крупицы опыта ×{amount}")
         else:
             definition = get_item_definition_by_id(item_id)
@@ -639,12 +708,8 @@ def create_admin_player_view_token(storage: Any, *, target_game_id: str, admin_s
     game_id = normalize_game_id(target_game_id)
     if not hasattr(storage, "get_player_by_game_id") or storage.get_player_by_game_id(game_id) is None:
         raise ValueError(f"Игрок {game_id} не найден.")
-    data = storage.load()
-    sessions = _session_bucket(data)
-    _cleanup_expired_admin_sessions(data)
-    token = _new_token(sessions)
     now = _now()
-    sessions[token] = {
+    session = {
         "scope": ADMIN_PLAYER_VIEW_SCOPE,
         "kind": "active",
         "used": True,
@@ -655,25 +720,49 @@ def create_admin_player_view_token(storage: Any, *, target_game_id: str, admin_s
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(minutes=30)).isoformat(),
     }
+    if _storage_supports_admin_sessions(storage):
+        storage.cleanup_expired_admin_panel_sessions()
+        token = _new_storage_session_token(storage)
+        storage.put_admin_panel_session(token, session)
+        return token
+    data = storage.load()
+    sessions = _session_bucket(data)
+    _cleanup_expired_admin_sessions(data)
+    token = _new_token(sessions)
+    sessions[token] = session
     _save_data(storage, data)
     return token
 
 
 def get_admin_player_view_profile(storage: Any, token: str) -> dict[str, Any] | None:
-    data = storage.load()
-    sessions = _session_bucket(data)
-    _cleanup_expired_admin_sessions(data)
-    session = sessions.get(str(token or ""))
-    if not isinstance(session, dict) or session.get("scope") != ADMIN_PLAYER_VIEW_SCOPE:
-        _save_data(storage, data)
-        return None
-    expires_at = _parse_datetime(session.get("expires_at"))
-    if expires_at is None or expires_at <= _now():
-        sessions.pop(str(token or ""), None)
-        _save_data(storage, data)
-        return None
+    raw_token = str(token or "")
+
+    if _storage_supports_admin_sessions(storage):
+        session = storage.get_admin_panel_session(raw_token)
+        if not isinstance(session, dict) or session.get("scope") != ADMIN_PLAYER_VIEW_SCOPE:
+            return None
+        expires_at = _parse_datetime(session.get("expires_at"))
+        if expires_at is None or expires_at <= _now():
+            storage.delete_admin_panel_session(raw_token)
+            return None
+    else:
+        data = storage.load()
+        sessions = _session_bucket(data)
+        removed = _cleanup_expired_admin_sessions(data)
+        session = sessions.get(raw_token)
+        if not isinstance(session, dict) or session.get("scope") != ADMIN_PLAYER_VIEW_SCOPE:
+            if removed:
+                _save_data(storage, data)
+            return None
+        expires_at = _parse_datetime(session.get("expires_at"))
+        if expires_at is None or expires_at <= _now():
+            sessions.pop(raw_token, None)
+            _save_data(storage, data)
+            return None
+        if removed:
+            _save_data(storage, data)
+
     player = storage.get_player_by_game_id(str(session.get("target_game_id") or "")) if hasattr(storage, "get_player_by_game_id") else None
-    _save_data(storage, data)
     if not player:
         return None
     from site_api import frontend_profile
@@ -755,18 +844,17 @@ def update_item_image_from_base64(storage: Any, *, item_id: str, filename: str, 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_bytes(normalized_blob)
 
-    changed_files: list[str] = []
-    data_dir = resolve_project_path("data")
-    for path in sorted(data_dir.glob("*.json")):
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        changed = _replace_item_icon_in_payload(payload, cleaned_item_id, rel_public)
-        if changed:
-            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-            changed_files.append(str(path.relative_to(resolve_project_path("."))))
+    # Durable source of truth lives in the uploads volume, not in data/*.json
+    # (those are baked into the image and reset on every container rebuild).
+    # Pin the overrides file to the same uploads dir we just wrote the image to,
+    # so it shares the persistent volume (and test redirects stay isolated).
+    from services.item_registry import set_icon_override
 
+    overrides_path = resolve_project_path(PUBLIC_UPLOADS_ASSETS_DIR) / "admin_uploads" / "icon_overrides.json"
+    set_icon_override(cleaned_item_id, rel_public, overrides_path=overrides_path)
+
+    # Player inventories are stored in the DB volume, so existing copies of the
+    # item still need their icon refreshed once.
     if hasattr(storage, "load") and hasattr(storage, "save"):
         data = storage.load()
         player_changes = 0
@@ -780,14 +868,9 @@ def update_item_image_from_base64(storage: Any, *, item_id: str, filename: str, 
         admin_user_id=str(admin_session.get("admin_user_id") or "unknown"),
         command="admin_panel_change_item_image",
         action="admin_panel_change_item_image",
-        details={"item_id": cleaned_item_id, "asset_path": rel_public, "changed_files": changed_files},
+        details={"item_id": cleaned_item_id, "asset_path": rel_public, "persisted": "icon_overrides"},
     )
-    try:
-        from services.item_registry import load_all_item_definitions as _defs, load_item_definitions as _load_defs, _indexes as _idx
-        _defs.cache_clear(); _load_defs.cache_clear(); _idx.cache_clear()
-    except Exception:
-        pass
-    return {"ok": True, "item_id": cleaned_item_id, "asset_path": rel_public, "content_type": normalized_content_type, "changed_files": changed_files}
+    return {"ok": True, "item_id": cleaned_item_id, "asset_path": rel_public, "content_type": normalized_content_type, "changed_files": []}
 
 
 def _replace_item_icon_in_payload(value: Any, item_id: str, new_path: str) -> int:

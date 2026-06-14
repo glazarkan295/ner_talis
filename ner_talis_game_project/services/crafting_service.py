@@ -745,7 +745,18 @@ def _quality_variant_stat_key(raw_type: str) -> str:
         "magical_defense": "bonus_magic_defense",
         "magic_defense": "bonus_magic_defense",
         "magic_armor": "magic_armor",
+        "hp": "bonus_hp",
+        "max_hp": "bonus_hp",
+        "spirit": "bonus_spirit",
+        "inventory_slots": "bonus_inventory_slots",
         "stun_resist_chance": "bonus_stun_resist_chance",
+        "stun_resist": "bonus_stun_resist_chance",
+        "blind_resist_chance": "bonus_blind_resist_chance",
+        "blind_resist": "bonus_blind_resist_chance",
+        "bleed_resist_chance": "bonus_bleed_resist_chance",
+        "bleed_resist": "bonus_bleed_resist_chance",
+        "poison_resist_chance": "bonus_poison_resist_chance",
+        "poison_resist": "bonus_poison_resist_chance",
         "crit_chance": "bonus_crit_chance",
         "crit_damage": "bonus_crit_damage",
         "bonus_max_mana": "bonus_mana",
@@ -756,14 +767,25 @@ def _quality_variant_stat_key(raw_type: str) -> str:
     return mapping.get(str(raw_type or ""), str(raw_type or ""))
 
 
+RESIST_VARIANT_KEYS = {
+    "bonus_stun_resist_chance",
+    "bonus_blind_resist_chance",
+    "bonus_bleed_resist_chance",
+    "bonus_poison_resist_chance",
+}
+
+
 def _quality_variant_value(key: str, quality: str) -> int:
     if key == "bonus_crit_damage":
         return 5 if quality == "common" else 8 if quality == "uncommon" else 12
-    if key in {"bonus_mana", "bonus_spirit"}:
+    if key in {"bonus_mana", "bonus_spirit", "bonus_hp"}:
         return 5 if quality == "common" else 8 if quality == "uncommon" else 12
     if key == "bonus_crit_chance":
         return 1 if quality != "rare" else 2
-    if key in {"armor", "magic_armor", "bonus_dodge", "bonus_physical_defense", "bonus_magic_defense", "bonus_stun_resist_chance"}:
+    if key in RESIST_VARIANT_KEYS:
+        # Сопротивления указываются в процентах.
+        return 2 if quality == "common" else 4 if quality == "uncommon" else 6
+    if key in {"armor", "magic_armor", "bonus_dodge", "bonus_physical_defense", "bonus_magic_defense", "bonus_inventory_slots"}:
         return 1 if quality != "rare" else 2
     return 1 if quality != "rare" else 2
 
@@ -782,7 +804,12 @@ def _quality_variant_label(key: str) -> str:
         "magic_armor": "Магическая броня",
         "bonus_physical_defense": "Физическая защита",
         "bonus_magic_defense": "Магическая защита",
+        "bonus_hp": "HP",
+        "bonus_inventory_slots": "Слоты инвентаря",
         "bonus_stun_resist_chance": "Сопротивление оглушению",
+        "bonus_blind_resist_chance": "Сопротивление ослеплению",
+        "bonus_bleed_resist_chance": "Сопротивление кровотечению",
+        "bonus_poison_resist_chance": "Сопротивление отравлению",
         "bonus_crit_chance": "Шанс крита",
         "bonus_crit_damage": "Урон крита",
         "bonus_mana": "Мана",
@@ -853,7 +880,7 @@ def _crafted_output_item(item_id: str, item_name: str, amount: int) -> dict[str,
         key = _quality_variant_stat_key(str(entry.get("type") or ""))
         value = _quality_variant_value(key, quality)
         stat_modifiers[key] = stat_modifiers.get(key, 0) + value
-        suffix = "%" if key in {"bonus_crit_chance", "bonus_crit_damage"} else ""
+        suffix = "%" if key in {"bonus_crit_chance", "bonus_crit_damage"} or key in RESIST_VARIANT_KEYS else ""
         stats.append(f"{_quality_variant_label(key)}: +{value}{suffix}")
     item["stat_modifiers"] = stat_modifiers
     item["stats"] = stats

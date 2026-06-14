@@ -26,3 +26,7 @@ data/players.sqlite3-*
 
 web/node_modules/
 web/dist/
+_catalog_work/
+
+# Local art archives / work dirs
+*.zip

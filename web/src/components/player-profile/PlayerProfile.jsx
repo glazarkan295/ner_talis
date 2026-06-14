@@ -510,6 +510,9 @@ function ItemModal({ item, slotKey, position, readOnly = false, onClose, onEquip
 function DropItemModal({ item, position, onClose, onConfirm }) {
   const maxAmount = Math.max(1, Number(item?.amount || 1));
   const [amount, setAmount] = useState(1);
+  // Reset the quantity whenever a different item stack is opened, otherwise the
+  // field keeps the previous item's number.
+  useEffect(() => { setAmount(1); }, [item?.id, item?.inventoryIndex]);
   if (!item) return null;
 
   function submit() {
@@ -540,6 +543,8 @@ function SellItemModal({ item, position, onClose, onConfirm }) {
   const maxAmount = Math.max(1, Number(item?.amount || 1));
   const [amount, setAmount] = useState(1);
   const sellPriceText = itemSellPriceText(item);
+  // Reset the quantity when switching to a different item stack.
+  useEffect(() => { setAmount(1); }, [item?.id, item?.inventoryIndex]);
   if (!item) return null;
 
   function submit() {

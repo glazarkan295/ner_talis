@@ -284,6 +284,68 @@ def consumable_effect_stack_rule(item: dict[str, Any], effect_payload: dict[str,
     return "refresh"
 
 
+def inventory_pocket_spec(item: dict[str, Any]) -> dict[str, int] | None:
+    """Read an inventory-pocket consumable spec: per-use bonus and its cap."""
+    payload = item.get("use_effect") if isinstance(item.get("use_effect"), dict) else item
+    if not isinstance(payload, dict):
+        return None
+    per_use = safe_int(payload.get("pocket_bonus_per_use"), 0)
+    cap = safe_int(payload.get("pocket_cap"), 0)
+    if per_use <= 0 or cap <= 0:
+        return None
+    return {"per_use": per_use, "cap": cap}
+
+
+def apply_inventory_pocket(player: dict[str, Any], item: dict[str, Any]) -> tuple[bool, str]:
+    """Apply a permanent inventory expansion from a pocket, respecting its cap."""
+    spec = inventory_pocket_spec(item)
+    if not spec:
+        return False, "Этот предмет не расширяет инвентарь."
+    current = max(0, safe_int(player.get("inventory_pocket_bonus"), 0))
+    if current >= spec["cap"]:
+        return False, f"Этим типом кармана инвентарь уже расширен до предела (+{spec['cap']} слотов). Нужен карман более высокого уровня."
+    gain = min(spec["per_use"], spec["cap"] - current)
+    player["inventory_pocket_bonus"] = current + gain
+    return True, f"Инвентарь расширен на +{gain} слот. Всего от карманов: +{current + gain}."
+
+
+def resource_max_percent_from_item(item: dict[str, Any]) -> dict[str, int] | None:
+    """Read a resource_max_percent payload (mana/spirit/life crystals)."""
+    payload = item.get("use_effect") if isinstance(item.get("use_effect"), dict) else item
+    raw = payload.get("resource_max_percent") if isinstance(payload, dict) else None
+    if not isinstance(raw, dict):
+        return None
+    percents: dict[str, int] = {}
+    for key in ("max_hp", "max_spirit", "max_mana"):
+        value = safe_int(raw.get(key), 0)
+        if value:
+            percents[key] = value
+    return percents or None
+
+
+def resource_crystal_effect_from_item(item: dict[str, Any]) -> dict[str, Any] | None:
+    """Build a temporary active effect for a resource crystal consumable."""
+    percents = resource_max_percent_from_item(item)
+    if not percents:
+        return None
+    payload = item.get("use_effect") if isinstance(item.get("use_effect"), dict) else {}
+    duration_seconds = safe_int(payload.get("duration_seconds") or item.get("duration_seconds"), 3600)
+    if duration_seconds <= 0:
+        duration_seconds = 3600
+    now = datetime.now(timezone.utc)
+    item_id = str(item.get("id") or item.get("item_id") or item.get("name") or "crystal")
+    return {
+        "id": f"effect_{item_id}",
+        "name": item.get("effect_name") or payload.get("name") or item.get("name") or "Кристалл",
+        "source": "resource_crystal",
+        "resource_max_percent": percents,
+        "duration_seconds": duration_seconds,
+        "expires_at": (now + timedelta(seconds=duration_seconds)).isoformat(),
+        "stack_rule": "refresh",
+        "description": item.get("effect_description") or payload.get("description") or item.get("description") or "Временное изменение максимума ресурсов.",
+    }
+
+
 def consumable_effect_from_item(item: dict[str, Any]) -> dict[str, Any] | None:
     effect_payload = item.get("use_effect") or item.get("active_effect") or item.get("consumable_effect")
     if effect_payload is None and any(field in item for field in ("stat_modifiers", "modifiers", "bonus_modifiers", "effect_modifiers", "bonuses")):
@@ -396,6 +458,8 @@ def battle_stimulant_effect_from_item(item: dict[str, Any]) -> dict[str, Any]:
 def apply_battle_stimulant_inventory_effect(player: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
     """Apply the battle stimulant from inventory, not from the combat pouch."""
 
+    from services.battle_stimulant_service import register_battle_stimulant_use
+
     effect = battle_stimulant_effect_from_item(item)
     effects = player.setdefault("active_effects", [])
     if not isinstance(effects, list):
@@ -408,10 +472,19 @@ def apply_battle_stimulant_inventory_effect(player: dict[str, Any], item: dict[s
         if isinstance(active, dict) and str(active.get("id") or "") == effect_id:
             effects.pop(index)
     effects.append(effect)
-    addiction = player.setdefault("battle_stimulant_addiction", {"level": 0})
-    if isinstance(addiction, dict):
-        addiction["level"] = safe_int(addiction.get("level"), 0) + 1
+    # Re-use refreshes the active duration, schedules the 2h withdrawal and grows
+    # the permanent "Зависимость" stack. While active, addiction stays blocked.
+    register_battle_stimulant_use(player)
     return effect
+
+
+def _battle_stimulant_status_effects(player: dict[str, Any]) -> list[dict[str, Any]]:
+    """Withdrawal / addiction cards for the profile effects list."""
+
+    from services.battle_stimulant_service import battle_stimulant_status_effect
+
+    status = battle_stimulant_status_effect(player)
+    return [status] if status else []
 
 def apply_energy_restore(player: dict[str, Any], item: dict[str, Any]) -> int:
     restore = item_energy_restore(item)
@@ -438,17 +511,7 @@ def apply_energy_restore(player: dict[str, Any], item: dict[str, Any]) -> int:
 
 
 
-def format_money(copper: int) -> str:
-    copper = max(0, int(copper or 0))
-    values = [(500_000_000_000, "древн."), (1_000_000_000, "маг. зол."), (1_000_000, "зол."), (1_000, "сер.")]
-    parts: list[str] = []
-    for cost, label in values:
-        amount, copper = divmod(copper, cost)
-        if amount:
-            parts.append(f"{amount} {label}")
-    if copper or not parts:
-        parts.append(f"{copper} мед.")
-    return " ".join(parts)
+from services.currency import format_money, format_price  # noqa: E402  (shared denomination formatter)
 
 
 def format_date(raw_value: str | None) -> str:
@@ -764,7 +827,7 @@ def is_inventory_item_usable(item: dict[str, Any]) -> bool:
         return False
     if is_direct_profile_use_disabled(item):
         return False
-    return is_ammunition_item(item) or item_energy_restore(item) > 0 or has_explicit_consumable_effect(item) or category == "расходники" or bool(parts & usable_markers)
+    return is_ammunition_item(item) or item_energy_restore(item) > 0 or has_explicit_consumable_effect(item) or resource_max_percent_from_item(item) is not None or inventory_pocket_spec(item) is not None or category == "расходники" or bool(parts & usable_markers)
 
 def normalize_item(item: dict[str, Any], default_category: str = "Прочее") -> dict[str, Any]:
     item = enrich_inventory_item(item)
@@ -804,7 +867,7 @@ def normalize_item(item: dict[str, Any], default_category: str = "Прочее")
     if sell_price >= 0:
         normalized["sell_price_copper"] = sell_price
         normalized["sellPriceCopper"] = sell_price
-        normalized["sellPriceText"] = f"{sell_price} медных"
+        normalized["sellPriceText"] = format_price(sell_price)
     elif can_sell is False:
         normalized["sellPriceText"] = "не продаётся"
 
@@ -931,6 +994,13 @@ EFFECT_MODIFIER_LABELS = {
     "bonus_damage": "Урон",
     "bonus_physical_damage": "Физический урон",
     "bonus_magic_damage": "Магический урон",
+    "bonus_inventory_slots": "Слоты инвентаря",
+    "bonus_stun_resist_chance": "Сопротивление оглушению",
+    "bonus_blind_resist_chance": "Сопротивление ослеплению",
+    "bonus_bleed_resist_chance": "Сопротивление кровотечению",
+    "bonus_poison_resist_chance": "Сопротивление отравлению",
+    "bonus_npc_buy_discount_percent": "Скидка у NPC",
+    "bonus_npc_sell_bonus_percent": "Надбавка при продаже NPC",
 }
 
 
@@ -953,11 +1023,33 @@ def normalize_effect_for_frontend(effect: Any) -> dict[str, Any] | None:
         for key, value in sorted(totals.items())
         if safe_int(value, 0) != 0
     ]
+    # Percentage modifiers to max resources (mana/spirit/life crystals).
+    percent_labels = {"max_hp": "Максимум HP", "max_spirit": "Максимум духа", "max_mana": "Максимум маны"}
+    resource_percent = normalized.get("resource_max_percent")
+    if isinstance(resource_percent, dict):
+        for key, raw in resource_percent.items():
+            value = safe_int(raw, 0)
+            if value == 0:
+                continue
+            label = percent_labels.get(str(key), str(key))
+            modifiers.append({
+                "key": str(key),
+                "label": label,
+                "value": value,
+                "text": f"{label} {'+' if value > 0 else ''}{value}%",
+            })
     has_negative = any(safe_int(item.get("value"), 0) < 0 for item in modifiers)
     has_positive = any(safe_int(item.get("value"), 0) > 0 for item in modifiers)
     source = str(normalized.get("source") or "").casefold()
     raw_kind = str(normalized.get("kind") or normalized.get("type") or normalized.get("effect_type") or "").casefold()
-    if has_negative or source in {"inventory_overflow", "debuff", "curse"} or raw_kind in {"negative", "debuff", "curse", "penalty"}:
+    forced_negative = source in {"inventory_overflow", "debuff", "curse", "battle_stimulant_withdrawal", "battle_stimulant_addiction"} or raw_kind in {"negative", "debuff", "curse", "penalty"}
+    if forced_negative:
+        kind = "negative"
+    elif has_positive and has_negative:
+        # Mixed consumable buffs (e.g. crystals: +max mana, -max hp) are chosen
+        # trade-offs, not pure penalties.
+        kind = "neutral"
+    elif has_negative:
         kind = "negative"
     elif has_positive or raw_kind in {"positive", "buff", "bonus"}:
         kind = "positive"
@@ -1134,7 +1226,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             {"label": "Шанс крита", "value": f"{crit_chance_percent}%"},
             {"label": "Урон крита", "value": f"{crit_damage}%"},
         ],
-        "effects": [effect for effect in (normalize_effect_for_frontend(raw_effect) for raw_effect in player.get("active_effects", [])) if effect],
+        "effects": [effect for effect in (normalize_effect_for_frontend(raw_effect) for raw_effect in [*player.get("active_effects", []), *_battle_stimulant_status_effects(player)]) if effect],
         "activeSets": player.get("active_sets", []),
         "equipmentSlots": equipment_slots_for_frontend(player.get("equipment") or {}),
         "equipment": equipment,
@@ -2022,6 +2114,24 @@ def create_profile_api_router(get_storage) -> APIRouter:
             sync_player_parameters_for_bots(player)
             save_player(storage, player)
             return {"ok": True, "message": "Боевой стимулятор принят. Эффект активен 30 минут.", "effect": effect, "profile": frontend_profile_payload(player, session)}
+        if inventory_pocket_spec(item) is not None:
+            ok, message = apply_inventory_pocket(player, item)
+            if not ok:
+                raise HTTPException(status_code=400, detail=message)
+            remove_inventory_amount_at_index(inventory, item_index, 1)
+            recalculate_inventory_overflow(player)
+            sync_player_parameters_for_bots(player)
+            save_player(storage, player)
+            return {"ok": True, "message": message, "profile": frontend_profile_payload(player, session)}
+        crystal_effect = resource_crystal_effect_from_item(item)
+        if crystal_effect is not None:
+            add_active_consumable_effect(player, crystal_effect)
+            remove_inventory_amount_at_index(inventory, item_index, 1)
+            recalculate_inventory_overflow(player)
+            sync_player_parameters_for_bots(player)
+            save_player(storage, player)
+            minutes = max(1, safe_int(crystal_effect.get("duration_seconds"), 3600) // 60)
+            return {"ok": True, "message": f"{crystal_effect.get('name')} использован. Эффект активен {minutes} мин.", "effect": crystal_effect, "profile": frontend_profile_payload(player, session)}
         restored_energy = apply_energy_restore(player, item)
         effect = consumable_effect_from_item(item)
         if effect is not None:

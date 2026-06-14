@@ -121,6 +121,13 @@ KNOWN_MODIFIER_KEYS = {
     "bonus_damage",
     "bonus_physical_damage",
     "bonus_magic_damage",
+    "bonus_inventory_slots",
+    "bonus_stun_resist_chance",
+    "bonus_blind_resist_chance",
+    "bonus_bleed_resist_chance",
+    "bonus_poison_resist_chance",
+    "bonus_npc_buy_discount_percent",
+    "bonus_npc_sell_bonus_percent",
 }
 
 EXTERNAL_EFFECT_FIELDS = (
@@ -353,6 +360,29 @@ def external_effect_modifier_totals(player: dict[str, Any]) -> dict[str, int]:
     return totals
 
 
+def active_resource_max_percent(player: dict[str, Any], now: datetime | None = None) -> dict[str, int]:
+    """Sum percentage modifiers to max HP/spirit/mana from active consumable effects.
+
+    Consumables (mana/spirit/life crystals) add an active effect that carries a
+    ``resource_max_percent`` payload like ``{"max_mana": 20, "max_hp": -5}``.
+    Expired effects are ignored.
+    """
+    now = now or datetime.now(timezone.utc)
+    totals: dict[str, int] = {}
+    for field in EXTERNAL_EFFECT_FIELDS:
+        value = player.get(field)
+        if not isinstance(value, list):
+            continue
+        for effect in value:
+            if not isinstance(effect, dict) or not is_effect_active(effect, now):
+                continue
+            percents = effect.get("resource_max_percent")
+            if isinstance(percents, dict):
+                for key, raw in percents.items():
+                    totals[str(key)] = totals.get(str(key), 0) + safe_int(raw, 0)
+    return totals
+
+
 def merge_modifier_totals(*sources: dict[str, int]) -> dict[str, int]:
     totals: dict[str, int] = {}
     for source in sources:
@@ -437,6 +467,12 @@ def calculate_player_derived_stats(player: dict[str, Any]) -> dict[str, int]:
     max_hp = ceil((100 + endurance * 4.0 + strength * 0.8 + s_level * 4 + bonus_hp) * hp_multiplier(player))
     max_spirit = ceil(20 + endurance * 1.2 + strength * 1.0 + dexterity * 0.7 + s_level * 1.2 + bonus_spirit)
     max_mana = ceil(20 + intelligence * 1.6 + wisdom * 1.3 + s_level * 1.2 + bonus_mana)
+    # Временные %-баффы к максимуму ресурсов от расходников (кристаллы маны/духа/жизни).
+    resource_percent = active_resource_max_percent(player)
+    if resource_percent:
+        max_hp = max(1, ceil(max_hp * (1 + safe_int(resource_percent.get("max_hp"), 0) / 100)))
+        max_spirit = max(0, ceil(max_spirit * (1 + safe_int(resource_percent.get("max_spirit"), 0) / 100)))
+        max_mana = max(0, ceil(max_mana * (1 + safe_int(resource_percent.get("max_mana"), 0) / 100)))
     physical_defense = ceil(armor * 1.5 + endurance * 0.9 + strength * 0.6 + dexterity * 0.2 + bonus_physical_defense)
     # Магическая защита теперь строится от общей брони, эффективной мудрости,
     # интеллекта, выносливости и прямого бонуса магической защиты.
@@ -451,7 +487,7 @@ def calculate_player_derived_stats(player: dict[str, Any]) -> dict[str, int]:
 
     energy = calculate_energy_stats(player, bonus_modifiers)
 
-    return {
+    result = {
         "level": level,
         "soft_level": s_level,
         "max_hp": max(1, max_hp),
@@ -477,6 +513,11 @@ def calculate_player_derived_stats(player: dict[str, Any]) -> dict[str, int]:
         "wisdom": wisdom,
         "bonus_modifiers": bonus_modifiers,
     }
+    # Откат боевого стимулятора и «Зависимость» применяются как процентные
+    # модификаторы поверх итоговых статов (активный бафф считается в бою).
+    from services.battle_stimulant_service import apply_percent_modifiers_to_stats
+    apply_percent_modifiers_to_stats(player, result)
+    return result
 
 
 def skill_damage_type_key(skill: dict[str, Any]) -> str:
@@ -540,6 +581,10 @@ def calculate_player_skill_raw_damage(player: dict[str, Any], skill: dict[str, A
 
     raw_damage = ceil(base_damage + bonus_damage)
     raw_damage = ceil(raw_damage * outgoing_damage_multiplier(player, damage_type))
+    # «Зависимость» от боевого стимулятора слегка меняет базовый урон навыков
+    # (активный +30% применяется боевым движком отдельно, не здесь).
+    from services.battle_stimulant_service import skill_damage_multiplier
+    raw_damage = ceil(raw_damage * skill_damage_multiplier(player))
     return {"damage": max(1, raw_damage), "damage_type": damage_type, "name": skill_name}
 
 

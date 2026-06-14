@@ -218,7 +218,8 @@ def create_app() -> FastAPI:
         if max_requests > 0:
             client_ip = _client_ip_for_rate_limit(request)
             bucket_key = (client_ip, request.method.upper(), path.rsplit("/", 1)[0] if "/" in path else path)
-            hits = app.state.rate_limit_hits[bucket_key]
+            buckets = app.state.rate_limit_hits
+            hits = buckets[bucket_key]
             while hits and now - hits[0] > window_seconds:
                 hits.popleft()
             if len(hits) >= max_requests:
@@ -229,6 +230,16 @@ def create_app() -> FastAPI:
             else:
                 hits.append(now)
                 response = await call_next(request)
+            # Periodically drop empty/stale buckets so per-IP keys do not pile up
+            # forever (slow memory growth over weeks of uptime).
+            app.state.rate_limit_sweep_counter = getattr(app.state, "rate_limit_sweep_counter", 0) + 1
+            if app.state.rate_limit_sweep_counter >= int(os.getenv("RATE_LIMIT_SWEEP_EVERY", "500") or "500"):
+                app.state.rate_limit_sweep_counter = 0
+                for stale_key, stale_hits in list(buckets.items()):
+                    while stale_hits and now - stale_hits[0] > window_seconds:
+                        stale_hits.popleft()
+                    if not stale_hits:
+                        buckets.pop(stale_key, None)
         else:
             response = await call_next(request)
 

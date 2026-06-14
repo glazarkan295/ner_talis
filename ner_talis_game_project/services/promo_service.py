@@ -100,20 +100,25 @@ def add_promo_code(*, code: str, uses_left: int, reward: dict[str, Any], expires
     if uses <= 0:
         raise ValueError("Количество использований должно быть больше 0.")
 
+    promo = {
+        "code": normalized_code,
+        "active": True,
+        "uses_left": uses,
+        "reward": reward,
+        "expires_at": expires_at,
+        "one_use_per_player": bool(one_use_per_player),
+        "used_by": [],
+        "note": note,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    # Single-row upsert avoids the "DELETE all + reinsert all" rewrite that could
+    # drop a concurrently created code.
+    if storage is not None and callable(getattr(storage, "save_promo_code", None)):
+        storage.save_promo_code(normalized_code, promo)
+        return promo
     with _file_locked() if storage is None else _null_context():
         data = load_promo_data(storage)
-        promo = {
-            "code": normalized_code,
-            "active": True,
-            "uses_left": uses,
-            "reward": reward,
-            "expires_at": expires_at,
-            "one_use_per_player": bool(one_use_per_player),
-            "used_by": [],
-            "note": note,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
         data["codes"][normalized_code] = promo
         save_promo_data(data, storage)
         return promo
@@ -141,9 +146,17 @@ def import_promo_codes(items: list[dict[str, Any]], storage: Any | None = None) 
 
 
 def deactivate_promo_code(code: str, storage: Any | None = None) -> bool:
+    normalized_code = _normalize_code(code)
+    if storage is not None and callable(getattr(storage, "save_promo_code", None)):
+        promo = (load_promo_data(storage).get("codes") or {}).get(normalized_code)
+        if not promo:
+            return False
+        promo["active"] = False
+        promo["updated_at"] = datetime.now(timezone.utc).isoformat()
+        storage.save_promo_code(normalized_code, promo)
+        return True
     with _file_locked() if storage is None else _null_context():
         data = load_promo_data(storage)
-        normalized_code = _normalize_code(code)
         promo = data.get("codes", {}).get(normalized_code)
         if not promo:
             return False
@@ -154,9 +167,11 @@ def deactivate_promo_code(code: str, storage: Any | None = None) -> bool:
 
 
 def delete_promo_code(code: str, storage: Any | None = None) -> bool:
+    normalized_code = _normalize_code(code)
+    if storage is not None and callable(getattr(storage, "delete_promo_code", None)):
+        return bool(storage.delete_promo_code(normalized_code))
     with _file_locked() if storage is None else _null_context():
         data = load_promo_data(storage)
-        normalized_code = _normalize_code(code)
         if normalized_code not in data.get("codes", {}):
             return False
         data["codes"].pop(normalized_code, None)
@@ -258,9 +273,50 @@ def apply_reward_to_player(player: dict[str, Any], reward: dict[str, Any]) -> di
     return player
 
 
+_CLAIM_FAILURE_MESSAGES = {
+    "not_found": "Промокод не найден или отключён.",
+    "inactive": "Промокод не найден или отключён.",
+    "broken_expiry": "Промокод повреждён: неверный expires_at.",
+    "expired": "Срок действия промокода истёк.",
+    "already_used": "Этот промокод уже использован этим игроком.",
+    "exhausted": "Лимит использований промокода закончился.",
+}
+
+
+def _redeem_with_atomic_claim(storage: Any, game_id: str, code: str) -> tuple[bool, str]:
+    """Atomic redemption: storage reserves one use before the reward is granted.
+
+    The storage-level claim (SELECT ... FOR UPDATE / BEGIN IMMEDIATE / lock)
+    guarantees two concurrent redemptions cannot exceed ``uses_left`` nor grant a
+    second reward to the same player. If the player update then fails, the use is
+    refunded so the code is not silently consumed.
+    """
+    player = storage.get_player_by_game_id(game_id)
+    if player is None:
+        return False, "Игрок не найден."
+
+    ok, reason, reward = storage.claim_promo_use(code, str(game_id))
+    if not ok:
+        return False, _CLAIM_FAILURE_MESSAGES.get(reason, "Промокод не найден или отключён.")
+
+    try:
+        player = apply_reward_to_player(player, reward or {})
+        storage.update_player(player)
+    except Exception:
+        try:
+            storage.refund_promo_use(code, str(game_id))
+        except Exception:
+            pass
+        raise
+    return True, "Промокод успешно применён."
+
+
 def redeem_promo_code(storage: Any, game_id: str, code: str) -> tuple[bool, str]:
-    # For file fallback, guard read-modify-write. For DB-backed storage the storage
-    # implementation stores promo data in the same persistent DB and serializes writes.
+    # Preferred path: the storage exposes an atomic claim/refund pair.
+    if callable(getattr(storage, "claim_promo_use", None)) and callable(getattr(storage, "refund_promo_use", None)):
+        return _redeem_with_atomic_claim(storage, game_id, code)
+
+    # File fallback: guard read-modify-write with a file lock.
     with _file_locked() if not _storage_supports_promo(storage) else _null_context():
         data = load_promo_data(storage)
         normalized_code = _normalize_code(code)

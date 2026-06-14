@@ -474,6 +474,125 @@ class JsonStorage:
             self.save(data)
             return token
 
+    # --- Точечные методы админ-сессий -------------------------------------
+    # Те же сигнатуры, что у SQLite/PostgreSQL: admin_panel_service работает
+    # с сессиями без полного load()/save() на каждом запросе. Для JSON чтение
+    # и запись держатся под одним локом, чтобы не терять параллельные правки.
+
+    @staticmethod
+    def _admin_sessions_bucket(data: dict[str, Any]) -> dict[str, Any]:
+        sessions = data.setdefault("admin_panel_sessions", {})
+        if not isinstance(sessions, dict):
+            sessions = {}
+            data["admin_panel_sessions"] = sessions
+        return sessions
+
+    @staticmethod
+    def _admin_session_expired(session: Any, now: datetime) -> bool:
+        if not isinstance(session, dict):
+            return True
+        raw = session.get("expires_at")
+        try:
+            expires_at = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return True
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        return expires_at <= now
+
+    def get_admin_panel_session(self, token: str) -> dict[str, Any] | None:
+        with self._lock:
+            session = self._admin_sessions_bucket(self.load()).get(str(token))
+            return dict(session) if isinstance(session, dict) else None
+
+    def put_admin_panel_session(self, token: str, session: dict[str, Any]) -> None:
+        with self._lock:
+            data = self.load()
+            self._admin_sessions_bucket(data)[str(token)] = dict(session)
+            self.save(data)
+
+    def delete_admin_panel_session(self, token: str) -> None:
+        with self._lock:
+            data = self.load()
+            if self._admin_sessions_bucket(data).pop(str(token), None) is not None:
+                self.save(data)
+
+    def delete_admin_panel_sessions_for_admin(self, admin_key: str, scope: str) -> int:
+        with self._lock:
+            data = self.load()
+            sessions = self._admin_sessions_bucket(data)
+            removed = 0
+            for token, session in list(sessions.items()):
+                if not isinstance(session, dict):
+                    continue
+                if str(session.get("admin_key") or "") == str(admin_key) and str(session.get("scope") or "") == str(scope):
+                    sessions.pop(token, None)
+                    removed += 1
+            if removed:
+                self.save(data)
+            return removed
+
+    def cleanup_expired_admin_panel_sessions(self) -> int:
+        with self._lock:
+            data = self.load()
+            sessions = self._admin_sessions_bucket(data)
+            now = datetime.now(timezone.utc)
+            removed = 0
+            for token, session in list(sessions.items()):
+                if self._admin_session_expired(session, now):
+                    sessions.pop(token, None)
+                    removed += 1
+            if removed:
+                self.save(data)
+            return removed
+
+    def claim_promo_use(self, code: str, game_id: str, *, one_use_per_player: bool = True) -> tuple[bool, str, dict[str, Any] | None]:
+        """Атомарно занимает одно использование промокода под общим локом."""
+        from services.promo_service import load_promo_data, save_promo_data, _normalize_code
+
+        now = datetime.now(timezone.utc)
+        with self._lock:
+            data = load_promo_data(self)
+            promo = (data.get("codes") or {}).get(_normalize_code(code))
+            if not isinstance(promo, dict) or not promo.get("active"):
+                return False, "inactive", None
+            raw_expires = promo.get("expires_at")
+            if raw_expires:
+                try:
+                    expires_at = datetime.fromisoformat(str(raw_expires).replace("Z", "+00:00"))
+                    if expires_at.tzinfo is None:
+                        expires_at = expires_at.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    return False, "broken_expiry", None
+                if expires_at < now:
+                    return False, "expired", None
+            used_by = {str(value) for value in promo.get("used_by", [])}
+            if one_use_per_player and promo.get("one_use_per_player", True) and str(game_id) in used_by:
+                return False, "already_used", None
+            uses_left = int(promo.get("uses_left", 0) or 0)
+            if uses_left <= 0:
+                return False, "exhausted", None
+            promo["uses_left"] = uses_left - 1
+            promo.setdefault("used_by", []).append(str(game_id))
+            promo["updated_at"] = now.isoformat()
+            save_promo_data(data, self)
+            return True, "ok", promo.get("reward") or {}
+
+    def refund_promo_use(self, code: str, game_id: str) -> None:
+        from services.promo_service import load_promo_data, save_promo_data, _normalize_code
+
+        with self._lock:
+            data = load_promo_data(self)
+            promo = (data.get("codes") or {}).get(_normalize_code(code))
+            if not isinstance(promo, dict):
+                return
+            promo["uses_left"] = int(promo.get("uses_left", 0) or 0) + 1
+            used_by = [str(value) for value in promo.get("used_by", [])]
+            if str(game_id) in used_by:
+                used_by.remove(str(game_id))
+            promo["used_by"] = used_by
+            save_promo_data(data, self)
+
     def clear_expired_link_codes(self, data: dict[str, Any]) -> None:
         now = datetime.now(timezone.utc)
         expired_codes: list[str] = []

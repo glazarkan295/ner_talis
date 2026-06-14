@@ -74,10 +74,17 @@ function ProfileApp() {
 
   useEffect(() => {
     if (!profile?.market?.sellFromProfile) return undefined;
+    // Poll less aggressively (20s) to save mobile traffic, and refresh on tab
+    // focus so the player still sees fresh state when they come back.
     const intervalId = window.setInterval(() => {
-      reloadProfile();
-    }, 8000);
-    return () => window.clearInterval(intervalId);
+      if (!document.hidden) reloadProfile();
+    }, 20000);
+    const onVisible = () => { if (!document.hidden) reloadProfile(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [profile?.market?.sellFromProfile, reloadProfile]);
 
   async function runProfileAction(action) {
@@ -100,8 +107,9 @@ function ProfileApp() {
     return <div className="nt-profile-loading">Загрузка профиля...</div>;
   }
 
-  if (error && !profile) {
-    return <div className="nt-profile-loading nt-profile-error">{error}</div>;
+  if (!profile) {
+    // No real profile loaded: never fall back to demo/mock data on the live site.
+    return <div className="nt-profile-loading nt-profile-error">{error || "Профиль недоступен. Откройте новую ссылку из бота."}</div>;
   }
 
   return (

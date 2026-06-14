@@ -109,8 +109,9 @@ class CraftingWorkshopsAndAlchemyTest(unittest.TestCase):
         self.assertNotIn("Крафт №10", sum(result.buttons, []))
 
         result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT"), "Броня", "telegram")
-        self.assertIn("В этом разделе пока нет доступных рецептов.", result.text)
-        self.assertNotIn("Крафт №1", sum(result.buttons, []))
+        self.assertIn("Что можно создать", result.text)
+        self.assertIn("Простой железный пояс", result.text)
+        self.assertIn("Крафт №1", sum(result.buttons, []))
 
         result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT"), "Рецепты", "telegram")
         self.assertIn("В этом разделе пока нет доступных рецептов.", result.text)

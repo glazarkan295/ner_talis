@@ -256,12 +256,104 @@ def load_item_definitions(path: str | Path | None = None) -> list[dict[str, Any]
     return [item for item in payload if isinstance(item, dict)]
 
 
+ICON_OVERRIDE_KEYS = ("icon", "asset_icon", "asset_path", "asset_filename", "image")
+
+
+def _icon_overrides_path() -> Path:
+    import os
+
+    raw = os.getenv("ICON_OVERRIDES_PATH")
+    if raw:
+        return resolve_project_path(raw)
+    # By default the overrides file lives next to the uploaded item images, in
+    # the same persistent uploads volume.
+    base = os.getenv("PUBLIC_UPLOADS_ASSETS_DIR", "data/public_uploads/assets")
+    return resolve_project_path(base) / "admin_uploads" / "icon_overrides.json"
+
+
+@lru_cache(maxsize=1)
+def load_icon_overrides() -> dict[str, str]:
+    """Admin icon overrides persisted in the runtime volume.
+
+    The admin panel can change an item's image. Writing that into ``data/*.json``
+    does not survive a container rebuild (those files are baked into the image),
+    so the durable source of truth is this JSON file inside the uploads volume.
+    """
+
+    path = _icon_overrides_path()
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    result: dict[str, str] = {}
+    for item_id, icon in payload.items():
+        if isinstance(item_id, str) and isinstance(icon, str) and item_id.strip() and icon.strip():
+            result[item_id.strip()] = icon.strip()
+    return result
+
+
+def set_icon_override(item_id: str, icon_path: str, overrides_path: str | Path | None = None) -> None:
+    """Persist one item icon override and refresh registry caches.
+
+    ``overrides_path`` lets the caller pin the file to a specific uploads volume
+    (the admin image handler passes the dir it actually wrote the image into, so
+    tests that redirect the uploads dir stay isolated).
+    """
+
+    cleaned_id = str(item_id or "").strip()
+    cleaned_icon = str(icon_path or "").strip()
+    if not cleaned_id or not cleaned_icon:
+        return
+    path = Path(overrides_path) if overrides_path else _icon_overrides_path()
+    existing: dict[str, str] = {}
+    if path.exists():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                existing = {str(k): str(v) for k, v in payload.items() if isinstance(k, str) and isinstance(v, str)}
+        except Exception:
+            existing = {}
+    existing[cleaned_id] = cleaned_icon
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
+    invalidate_registry_caches()
+
+
+def invalidate_registry_caches() -> None:
+    load_icon_overrides.cache_clear()
+    load_all_item_definitions.cache_clear()
+    _indexes.cache_clear()
+    # Downstream caches that derive from the registry (e.g. the admin catalog).
+    try:
+        from services.admin_panel_service import invalidate_admin_catalog_cache
+        invalidate_admin_catalog_cache()
+    except Exception:
+        pass
+
+
+def _apply_icon_override(item: dict[str, Any], overrides: dict[str, str]) -> dict[str, Any]:
+    item_id = str(item.get("id") or item.get("item_id") or "").strip()
+    icon = overrides.get(item_id)
+    if not icon:
+        return item
+    patched = dict(item)
+    for key in ICON_OVERRIDE_KEYS:
+        if key in patched or key in {"icon", "asset_icon"}:
+            patched[key] = icon
+    return patched
+
+
 @lru_cache(maxsize=8)
 def load_all_item_definitions() -> list[dict[str, Any]]:
     """Load every gameplay item registry from ``data/items_*.json``."""
 
     paths = _item_registry_paths()
     validate_item_registry_duplicates(paths)
+    overrides = load_icon_overrides()
 
     definitions: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -272,7 +364,7 @@ def load_all_item_definitions() -> list[dict[str, Any]]:
                 continue
             if item_id:
                 seen_ids.add(item_id)
-            definitions.append(item)
+            definitions.append(_apply_icon_override(item, overrides) if overrides else item)
 
     # Starter gear lives in Python game-data, not in data/items_*.json.
     # Include it in runtime lookups so old saved starter items can be enriched
@@ -287,7 +379,7 @@ def load_all_item_definitions() -> list[dict[str, Any]]:
             continue
         if item_id:
             seen_ids.add(item_id)
-        definitions.append(item)
+        definitions.append(_apply_icon_override(item, overrides) if overrides else item)
     return definitions
 
 

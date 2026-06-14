@@ -1480,6 +1480,15 @@ def tick_player_battle_effects(player: dict[str, Any], battle: dict[str, Any], l
 def apply_enemy_phase(player: dict[str, Any], battle: dict[str, Any], rng: random.Random, log: list[str], *, defending: bool = False) -> bool:
     player_state = battle.setdefault("player_state", {})
     apply_enemy_status_effects(battle, log)
+    if safe_int(player_state.get("invulnerable_turns"), 0) > 0:
+        # One-turn invulnerability (e.g. Last Chance artifact resurrection).
+        player_state["invulnerable_turns"] = safe_int(player_state.get("invulnerable_turns"), 0) - 1
+        log.append("✨ Неуязвимость: весь урон этого хода заблокирован.")
+        battle["round_number"] = safe_int(battle.get("round_number"), 1) + 1
+        battle["last_turn_log"] = log[:]
+        battle.setdefault("battle_log", []).extend(log)
+        sync_player_from_battle(player, battle)
+        return False
     for enemy in alive_enemies(battle):
         hit_chance = calculate_hit_chance(safe_int(enemy.get("accuracy"), 1), safe_int(player_state.get("dodge"), 1))
         if rng.random() > hit_chance:
@@ -1522,7 +1531,49 @@ def apply_enemy_phase(player: dict[str, Any], battle: dict[str, Any], rng: rando
     return safe_int(player_state.get("current_hp"), 0) <= 0
 
 
+LAST_CHANCE_ARTIFACT_ID = "one_time_artifact_last_chance"
+
+
+def _try_last_chance_resurrection(player: dict[str, Any], battle: dict[str, Any], log: list[str]) -> bool:
+    """Revive the player once if the Last Chance artifact is equipped.
+
+    Restores HP/mana/spirit to full, grants 1 turn of invulnerability and
+    destroys the artifact. Returns True if the resurrection happened.
+    """
+    equipment = player.get("equipment")
+    if not isinstance(equipment, dict):
+        return False
+    slot_key = None
+    for key, equipped in equipment.items():
+        if isinstance(equipped, dict) and str(equipped.get("item_id") or equipped.get("id") or "") == LAST_CHANCE_ARTIFACT_ID:
+            slot_key = key
+            break
+    if slot_key is None:
+        return False
+
+    player_state = battle.setdefault("player_state", {})
+    max_hp = max(1, safe_int(player_state.get("max_hp"), safe_int(player.get("max_hp"), 100)))
+    max_mana = max(0, safe_int(player_state.get("max_mana"), safe_int(player.get("max_mana"), 0)))
+    max_spirit = max(0, safe_int(player_state.get("max_spirit"), safe_int(player.get("max_spirit"), 0)))
+    player_state["current_hp"] = max_hp
+    player_state["current_mana"] = max_mana
+    player_state["current_spirit"] = max_spirit
+    player_state["invulnerable_turns"] = 1
+    player["hp"] = max_hp
+    player["mana"] = max_mana
+    player["spirit"] = max_spirit
+    equipment.pop(slot_key, None)  # artifact is destroyed
+    sync_player_from_battle(player, battle)
+    log.append(
+        "🔮 Одноразовый Артефакт Последнего Шанса срабатывает: воскрешение со 100% HP, маны и духа "
+        "и неуязвимость на 1 ход. Артефакт рассыпается в прах."
+    )
+    return True
+
+
 def finish_player_defeat(player: dict[str, Any], battle: dict[str, Any], log: list[str]) -> tuple[str, list[list[str]]]:
+    if _try_last_chance_resurrection(player, battle, log):
+        return "\n".join(log), battle_buttons(player)
     player["in_battle"] = False
     player["active_battle"] = None
     player["active_event"] = None
