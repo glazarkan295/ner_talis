@@ -1749,5 +1749,141 @@
     ],
     "description": "Сшить отличный карман для инвентаря.",
     "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_simple_iron_belt",
+    "workshop": "forge",
+    "section": "Броня",
+    "output": {
+      "item_id": "simple_iron_belt",
+      "name": "Простой железный пояс",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "iron_plate",
+        "name": "Железная пластина",
+        "amount": 3,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "leather_strip",
+        "name": "Полоски кожи",
+        "amount": 3,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Выковать простой железный пояс.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_simple_iron_chestpiece",
+    "workshop": "forge",
+    "section": "Броня",
+    "output": {
+      "item_id": "simple_iron_chestpiece",
+      "name": "Простой железный нагрудник",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "tanned_leather",
+        "name": "Выделанная кожа",
+        "amount": 2,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "iron_plate",
+        "name": "Железная пластина",
+        "amount": 7,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Выковать простой железный нагрудник.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_simple_iron_boots",
+    "workshop": "forge",
+    "section": "Броня",
+    "output": {
+      "item_id": "simple_iron_boots",
+      "name": "Простые железные ботинки",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "iron_plate",
+        "name": "Железная пластина",
+        "amount": 4,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "leather_strip",
+        "name": "Полоски кожи",
+        "amount": 4,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Выковать простые железные ботинки.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_simple_iron_pants",
+    "workshop": "forge",
+    "section": "Броня",
+    "output": {
+      "item_id": "simple_iron_pants",
+      "name": "Простые железные штаны",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "tanned_leather",
+        "name": "Выделанная кожа",
+        "amount": 1,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "iron_plate",
+        "name": "Железная пластина",
+        "amount": 6,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "leather_strip",
+        "name": "Полоски кожи",
+        "amount": 2,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Выковать простые железные штаны.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "forge_simple_iron_gloves",
+    "workshop": "forge",
+    "section": "Броня",
+    "output": {
+      "item_id": "simple_iron_gloves",
+      "name": "Простые железные перчатки",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "iron_plate",
+        "name": "Железная пластина",
+        "amount": 4,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "leather_strip",
+        "name": "Полоски кожи",
+        "amount": 4,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Выковать простые железные перчатки.",
+    "craft_time_seconds": 60
   }
 ]

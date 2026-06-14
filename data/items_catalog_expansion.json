@@ -1567,5 +1567,75 @@
     "icon": "/assets/items/special/inventory_pockets/advanced_inventory_pocket.png",
     "asset_icon": "/assets/items/special/inventory_pockets/advanced_inventory_pocket.png",
     "source": "Каталог / просто ресурсы"
+  },
+  {
+    "id": "professional_arrow_quiver",
+    "item_id": "professional_arrow_quiver",
+    "name": "Колчан профессионала для стрел",
+    "name_ru": "Колчан профессионала для стрел",
+    "category": "equipment",
+    "type": "quiver",
+    "subtype": "arrow_quiver",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "slot": "weapon2",
+    "targetSlotKey": "weapon2",
+    "quiver_type": "arrow_quiver",
+    "ammo_item_id": "arrow_for_bow",
+    "ammo_count": 0,
+    "capacity": 60,
+    "stat_modifiers": {
+      "bonus_accuracy": 1
+    },
+    "stats": [
+      "Вместимость стрел: 60",
+      "Точность: +1"
+    ],
+    "description": "Колчан профессионала. Вместимость стрел: 60. Экипируется во второй оружейный слот при подходящем оружии в первом. Точность +1.",
+    "can_sell": true,
+    "sell_price_copper": 150,
+    "buy_price_copper": 300,
+    "integration_tags": [
+      "port_market"
+    ],
+    "icon": "/assets/items/ammo/professional_arrow_quiver.png",
+    "asset_icon": "/assets/items/ammo/professional_arrow_quiver.png",
+    "source": "Каталог / прочее"
+  },
+  {
+    "id": "professional_bolt_quiver",
+    "item_id": "professional_bolt_quiver",
+    "name": "Колчан профессионала для болтов",
+    "name_ru": "Колчан профессионала для болтов",
+    "category": "equipment",
+    "type": "quiver",
+    "subtype": "bolt_quiver",
+    "quality": "common",
+    "stackable": false,
+    "max_stack": 1,
+    "slot": "weapon2",
+    "targetSlotKey": "weapon2",
+    "quiver_type": "bolt_quiver",
+    "ammo_item_id": "bolt_for_crossbow",
+    "ammo_count": 0,
+    "capacity": 60,
+    "stat_modifiers": {
+      "bonus_accuracy": 1
+    },
+    "stats": [
+      "Вместимость болтов: 60",
+      "Точность: +1"
+    ],
+    "description": "Колчан профессионала. Вместимость болтов: 60. Экипируется во второй оружейный слот при подходящем оружии в первом. Точность +1.",
+    "can_sell": true,
+    "sell_price_copper": 150,
+    "buy_price_copper": 300,
+    "integration_tags": [
+      "port_market"
+    ],
+    "icon": "/assets/items/ammo/professional_bolt_quiver.png",
+    "asset_icon": "/assets/items/ammo/professional_bolt_quiver.png",
+    "source": "Каталог / прочее"
   }
 ]

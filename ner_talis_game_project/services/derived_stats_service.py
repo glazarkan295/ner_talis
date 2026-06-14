@@ -121,6 +121,11 @@ KNOWN_MODIFIER_KEYS = {
     "bonus_damage",
     "bonus_physical_damage",
     "bonus_magic_damage",
+    "bonus_inventory_slots",
+    "bonus_stun_resist_chance",
+    "bonus_blind_resist_chance",
+    "bonus_bleed_resist_chance",
+    "bonus_poison_resist_chance",
 }
 
 EXTERNAL_EFFECT_FIELDS = (

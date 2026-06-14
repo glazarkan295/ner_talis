@@ -994,6 +994,11 @@ EFFECT_MODIFIER_LABELS = {
     "bonus_damage": "Урон",
     "bonus_physical_damage": "Физический урон",
     "bonus_magic_damage": "Магический урон",
+    "bonus_inventory_slots": "Слоты инвентаря",
+    "bonus_stun_resist_chance": "Сопротивление оглушению",
+    "bonus_blind_resist_chance": "Сопротивление ослеплению",
+    "bonus_bleed_resist_chance": "Сопротивление кровотечению",
+    "bonus_poison_resist_chance": "Сопротивление отравлению",
 }
 
 
