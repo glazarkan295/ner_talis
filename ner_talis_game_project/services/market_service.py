@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from project_paths import project_path
+from services.currency import format_price
 from services.derived_stats_service import safe_int
 from services.inventory_service import (
     add_inventory_item,
@@ -412,13 +413,13 @@ def open_buy_list(player: dict[str, Any], page: int | None = None) -> MarketResu
     lines = [
         f"{config['emoji']} Покупка у NPC: {config['title']}",
         "",
-        "Все цены указаны в медных монетах за 1 единицу товара.",
+        "Цены указаны за 1 единицу товара.",
         f"Страница {page_value + 1} из {max(1, (len(items) - 1) // MARKET_LIST_PAGE_SIZE + 1)}.",
         "Выберите товар: нажмите короткую кнопку с номером товара:",
         "",
     ]
     for offset, item in enumerate(page_items, start=start + 1):
-        lines.append(f"{offset}. {item.display_name} — {item.buy_price_copper} медных")
+        lines.append(f"{offset}. {item.display_name} — {format_price(item.buy_price_copper)}")
     return MarketResult("\n".join(lines), market_buy_buttons(kind, page_value), _market_zone(kind, "buy"))
 
 
@@ -461,7 +462,7 @@ def open_sell_list(player: dict[str, Any], page: int | None = None) -> MarketRes
         "",
     ]
     for offset, entry in enumerate(page_entries, start=start + 1):
-        lines.append(f"{offset}. {entry['name']} ×{entry['quantity']} — {entry['price']} медных/ед.")
+        lines.append(f"{offset}. {entry['name']} ×{entry['quantity']} — {format_price(entry['price'])}/ед.")
     return MarketResult(
         "\n".join(lines),
         market_sell_buttons(player, page_value),
@@ -478,7 +479,7 @@ def show_buy_card(player: dict[str, Any], item: MarketItem) -> MarketResult:
         f"{item.display_name}\n"
         f"Описание: {item.description}\n"
         f"Категория: {item.category}\n"
-        f"Цена покупки за 1 единицу: {item.buy_price_copper} медных"
+        f"Цена покупки за 1 единицу: {format_price(item.buy_price_copper)}"
     )
     return MarketResult(text, market_card_buttons(MARKET_BUY), _market_zone(kind, "buy"))
 
@@ -489,7 +490,7 @@ def ask_buy_quantity(player: dict[str, Any], item: MarketItem) -> MarketResult:
     context = player.get("market_context") if isinstance(player.get("market_context"), dict) else {}
     _set_context(player, mode="buy_quantity", item_id=item.item_id, page=safe_int(context.get("page"), 0), market_kind=kind)
     return MarketResult(
-        f"Введите количество товара, которое хотите купить.\n\nТовар: {item.display_name}\nЦена за 1 единицу: {item.buy_price_copper} медных",
+        f"Введите количество товара, которое хотите купить.\n\nТовар: {item.display_name}\nЦена за 1 единицу: {format_price(item.buy_price_copper)}",
         [[MARKET_BACK]],
         _market_zone(kind, "buy"),
     )
@@ -539,11 +540,11 @@ def handle_buy_quantity(storage: Any, player: dict[str, Any], item: MarketItem, 
     _set_money(player, balance - total_price + refund)
 
     notice = inventory_add_result_notice(result, item.display_name)
-    refund_text = f" Возврат золота: +{refund} медных." if refund else ""
+    refund_text = f" Возврат золота: +{format_price(refund)}." if refund else ""
     list_result = open_buy_list(player)
     storage.update_player(player)
     return MarketResult(
-        f"Куплено: {item.display_name} ×{quantity}. Потрачено: {total_price} медных.{refund_text}{notice}\n\nВыберите следующий товар:",
+        f"Куплено: {item.display_name} ×{quantity}. Потрачено: {format_price(total_price)}.{refund_text}{notice}\n\nВыберите следующий товар:",
         list_result.buttons,
         list_result.zone_id,
     )
@@ -675,7 +676,7 @@ def show_sell_card(player: dict[str, Any], entry: dict[str, Any]) -> MarketResul
         f"{entry['name']}\n"
         f"Описание: {entry['description']}\n"
         f"Количество в инвентаре: {entry['quantity']}\n"
-        f"Цена продажи за 1 единицу: {entry['price']} медных"
+        f"Цена продажи за 1 единицу: {format_price(entry['price'])}"
     )
     return MarketResult(text, market_card_buttons(MARKET_SELL), sell_zone)
 
@@ -687,7 +688,7 @@ def ask_sell_quantity(player: dict[str, Any], entry: dict[str, Any]) -> MarketRe
     context = player.get("market_context") if isinstance(player.get("market_context"), dict) else {}
     _set_context(player, mode="sell_quantity", item_id=entry["item_id"], page=safe_int(context.get("page"), 0), market_kind=kind)
     return MarketResult(
-        f"Введите количество предметов, которое хотите продать.\n\nПредмет: {entry['name']}\nДоступно: {entry['quantity']}\nЦена за 1 единицу: {entry['price']} медных",
+        f"Введите количество предметов, которое хотите продать.\n\nПредмет: {entry['name']}\nДоступно: {entry['quantity']}\nЦена за 1 единицу: {format_price(entry['price'])}",
         [[MARKET_BACK]],
         sell_zone,
     )
@@ -738,9 +739,9 @@ def handle_sell_quantity(storage: Any, player: dict[str, Any], entry: dict[str, 
     _set_money(player, _money(player) + total + bonus)
     list_result = open_sell_list(player)
     storage.update_player(player)
-    bonus_text = f" Возврат золота: +{bonus} медных." if bonus else ""
+    bonus_text = f" Возврат золота: +{format_price(bonus)}." if bonus else ""
     return MarketResult(
-        f"Продано: {entry['name']} ×{quantity}. Получено: {total} медных.{bonus_text}\n\n{list_result.text}",
+        f"Продано: {entry['name']} ×{quantity}. Получено: {format_price(total)}.{bonus_text}\n\n{list_result.text}",
         list_result.buttons,
         list_result.zone_id,
     )

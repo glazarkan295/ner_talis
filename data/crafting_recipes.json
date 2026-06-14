@@ -1647,5 +1647,107 @@
     ],
     "description": "Создать серебряное кольцо с аметистом.",
     "craft_time_seconds": 60
+  },
+  {
+    "id": "leatherwork_simple_inventory_pocket",
+    "workshop": "leatherwork",
+    "section": "default",
+    "output": {
+      "item_id": "simple_inventory_pocket",
+      "name": "Простой карман для инвентаря",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "leather_strip",
+        "name": "Полоски кожи",
+        "amount": 4,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "rope",
+        "name": "Верёвка",
+        "amount": 4,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "fabric_cloth",
+        "name": "Тканевое полотно",
+        "amount": 3,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Сшить простой карман для инвентаря.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "leatherwork_ordinary_inventory_pocket",
+    "workshop": "leatherwork",
+    "section": "default",
+    "output": {
+      "item_id": "ordinary_inventory_pocket",
+      "name": "Обычный карман для инвентаря",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "leather_strip",
+        "name": "Полоски кожи",
+        "amount": 8,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "rope",
+        "name": "Верёвка",
+        "amount": 6,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "tanned_leather",
+        "name": "Выделанная кожа",
+        "amount": 2,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Сшить обычный карман для инвентаря.",
+    "craft_time_seconds": 60
+  },
+  {
+    "id": "leatherwork_excellent_inventory_pocket",
+    "workshop": "leatherwork",
+    "section": "default",
+    "output": {
+      "item_id": "excellent_inventory_pocket",
+      "name": "Отличный карман для инвентаря",
+      "amount": 1
+    },
+    "ingredients": [
+      {
+        "item_id": "leather_strip",
+        "name": "Полоски кожи",
+        "amount": 8,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "rope",
+        "name": "Верёвка",
+        "amount": 6,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "obsidian_crumble_pouch",
+        "name": "Мешочек обсидиановой крошки",
+        "amount": 6,
+        "role": "Ингредиент"
+      },
+      {
+        "item_id": "mana_crystal",
+        "name": "Кристалл маны",
+        "amount": 1,
+        "role": "Ингредиент"
+      }
+    ],
+    "description": "Сшить отличный карман для инвентаря.",
+    "craft_time_seconds": 60
   }
 ]

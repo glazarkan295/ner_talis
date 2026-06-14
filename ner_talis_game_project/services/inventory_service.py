@@ -232,6 +232,11 @@ def equipment_inventory_slot_bonus(player: dict[str, Any]) -> int:
     return max(0, total)
 
 
+def inventory_pocket_bonus(player: dict[str, Any]) -> int:
+    """Permanent inventory slots gained from used inventory pockets."""
+    return max(0, safe_int(player.get("inventory_pocket_bonus"), 0))
+
+
 def max_regular_slots(player: dict[str, Any]) -> int:
     base_slots = safe_int(
         player.get("inventory_capacity")
@@ -239,7 +244,7 @@ def max_regular_slots(player: dict[str, Any]) -> int:
         or player.get("inventory_slots"),
         20,
     )
-    return max(0, base_slots + equipment_inventory_slot_bonus(player))
+    return max(0, base_slots + inventory_pocket_bonus(player) + equipment_inventory_slot_bonus(player))
 
 
 def max_overflow_slots(player: dict[str, Any]) -> int:
