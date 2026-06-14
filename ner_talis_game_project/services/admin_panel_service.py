@@ -127,8 +127,9 @@ SYNTHETIC_REWARD_IDS = {
 }
 
 # Catalog items that должны быть скрыты из админ-каталога (валюта вынесена в
-# Админ-ресурсы, у событий нет моделек, простые рецепты/чертежи и грубая медная
-# бижутерия выведены из контента).
+# Админ-ресурсы, у событий нет моделек, простые рецепты/чертежи выведены из
+# контента). Грубая медная бижутерия и простой ювелирный рецепт удалены из
+# данных полностью, поэтому здесь их перечислять не нужно.
 HIDDEN_CATALOG_ITEM_IDS = {
     "silver_coin",
     "copper_coin",
@@ -137,9 +138,6 @@ HIDDEN_CATALOG_ITEM_IDS = {
     "mire_trap",
     "simple_leather_recipe",
     "basic_weapon_blueprint",
-    "simple_jewelry_recipe",
-    "rough_copper_ring",
-    "rough_copper_necklace",
 }
 
 CATEGORY_RU_LABELS = {

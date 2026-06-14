@@ -311,8 +311,15 @@ class CraftingNavigationFixesTest(unittest.TestCase):
         flat = sum(result.buttons, [])
         self.assertIn("Кольца", flat)
         self.assertIn("Ожерелья", flat)
+        # "Кольца" opens a metal sub-menu (iron / silver), not a recipe list.
         result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Кольца", "telegram")
+        flat = sum(result.buttons, [])
+        self.assertIn("Железные кольца", flat)
+        self.assertIn("Серебряные кольца", flat)
+        # Each metal sub-section lists its rings.
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Железные кольца", "telegram")
         self.assertIn("Что можно создать", result.text)
+        self.assertIn("Железное кольцо", result.text)
         self.assertIn("Крафт №1", sum(result.buttons, []))
 
         result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Мастерская чародея", "telegram")

@@ -9,7 +9,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from services.admin_command_service import execute_admin_command
-from services.promo_service import load_promo_data, redeem_promo_code
+from services.promo_service import delete_promo_code, load_promo_data, redeem_promo_code, save_promo_data
 from services.registration_service import create_player, load_races
 from storage.json_storage import JsonStorage
 from storage.sqlite_storage import SQLiteStorage
@@ -219,6 +219,34 @@ class PromoCodeCreationTest(unittest.TestCase):
             self.assertNotEqual(stack.get("max_stack"), 20)
             self.assertNotIn("energy_restore", stack)
             self.assertNotIn("sell_price_copper", stack)
+
+    def test_delete_promo_removes_legacy_slash_prefixed_code_json_storage(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.environ["PROMO_CODES_PATH"] = str(Path(tmp_dir) / "promo_codes.json")
+            os.environ["ADMIN_AUDIT_LOG_PATH"] = str(Path(tmp_dir) / "admin_audit.log")
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            # Legacy promo saved with a leading slash by old normalization.
+            save_promo_data(
+                {"codes": {"/PROMO_CODE 111": {"code": "/PROMO_CODE 111", "active": True, "uses_left": 1, "reward": {}}}},
+                storage,
+            )
+
+            # Admin panel passes the displayed code verbatim, slash and all.
+            self.assertTrue(delete_promo_code("/PROMO_CODE 111", storage=storage))
+            self.assertEqual(load_promo_data(storage).get("codes", {}), {})
+
+    def test_delete_promo_removes_legacy_slash_prefixed_code_sqlite_storage(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.environ["ADMIN_AUDIT_LOG_PATH"] = str(Path(tmp_dir) / "admin_audit.log")
+            storage = SQLiteStorage(str(Path(tmp_dir) / "players.sqlite3"))
+            storage.save_promo_code(
+                "/PROMO_CODE 111",
+                {"code": "/PROMO_CODE 111", "active": True, "uses_left": 1, "reward": {}},
+            )
+
+            # Even when the panel sends the normalized form, the legacy row is removed.
+            self.assertTrue(delete_promo_code("PROMO_CODE 111", storage=storage))
+            self.assertEqual(load_promo_data(storage).get("codes", {}), {})
 
 
 if __name__ == "__main__":

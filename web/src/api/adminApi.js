@@ -116,7 +116,9 @@ export function createPromo(token, code, usesLeft, duration, rewards) {
   return requestAdminJson("/api/admin/promos", { method: "POST", body: JSON.stringify({ code, uses_left: usesLeft, duration, rewards }) });
 }
 export function deletePromo(token, code) {
-  return requestAdminJson(`/api/admin/promos/${encodeURIComponent(code)}`, { method: "DELETE" });
+  // Code goes in the query string (not the path) so slashes/spaces in legacy
+  // codes like "/PROMO_CODE 111" don't break routing or get rejected as %2F.
+  return requestAdminJson(`/api/admin/promos?code=${encodeURIComponent(code)}`, { method: "DELETE" });
 }
 export function loadAdminPlayerView(token) {
   return requestAdminJson(`/api/admin/player-view?_=${Date.now()}`, { authToken: token });

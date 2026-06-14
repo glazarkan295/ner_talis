@@ -235,8 +235,15 @@ def create_admin_panel_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"ok": True, "promo": promo}
 
-    @router.delete("/promos/{code:path}")
-    def delete_promo(code: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+    @router.delete("/promos")
+    def delete_promo(
+        request: Request,
+        code: str = Query(..., min_length=1),
+        token: str | None = Query(default=None, min_length=16),
+    ) -> dict[str, Any]:
+        # Code travels as a query parameter, not a path segment: promo codes may
+        # contain slashes/spaces (e.g. "/PROMO_CODE 111"), which break or get
+        # rejected (%2F) when placed in the URL path by proxies/routers.
         storage = get_storage()
         session = _session_or_403(storage, request, token)
         ok = delete_admin_promo(storage, code=code, admin_session=session)

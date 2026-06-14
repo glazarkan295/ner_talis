@@ -139,6 +139,7 @@ button { cursor: pointer; }
 .nt-equipment-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
 .nt-equip-slot {
   min-width: 0;
+  min-height: 0;
   aspect-ratio: 1 / 1;
   padding: 5px;
   border: 1px solid rgba(174, 140, 83, .23);
@@ -155,8 +156,8 @@ button { cursor: pointer; }
   box-shadow: inset 0 1px rgba(255,255,255,.035), 0 8px 18px rgba(0,0,0,.18);
 }
 .nt-equip-slot:hover { border-color: rgba(220, 177, 97, .60); transform: translateY(-1px); }
-.nt-equip-art { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; display: grid; place-items: center; color: #caa967; font-size: 18px; }
-.nt-equip-art img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.nt-equip-art { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; display: grid; place-items: center; color: #caa967; font-size: 18px; }
+.nt-equip-art img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
 .nt-equip-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8.5px; color: #938873; text-align: center; }
 .nt-equip-slot.empty { opacity: .74; }
 
@@ -202,10 +203,10 @@ button { cursor: pointer; }
 .nt-item-icon-card {
   position: relative; min-width: 0; aspect-ratio: 1 / 1.12; border: 1px solid rgba(165, 132, 77, .18); border-radius: 12px;
   padding: 5px; text-align: center; color: #d8c7a3; background: linear-gradient(180deg, rgba(24,24,22,.48), rgba(0,0,0,.18));
-  display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 4px; overflow: hidden;
+  display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 4px; overflow: hidden; min-height: 0;
 }
-.nt-item-art { min-width: 0; min-height: 0; overflow: hidden; display: grid; place-items: center; font-size: 18px; color: #caa967; }
-.nt-item-art img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.nt-item-art { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: grid; place-items: center; font-size: 18px; color: #caa967; }
+.nt-item-art img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
 .nt-item-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8.5px; }
 .nt-item-amount { position: absolute; top: 4px; right: 5px; padding: 1px 5px; border-radius: 999px; background: rgba(0,0,0,.62); color: #d9bd81; font-size: 9px; }
 .nt-item-icon-card.overflow-slot {

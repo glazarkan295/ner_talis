@@ -45,21 +45,6 @@
     "icon": "/assets/items/crafting/simple_leather_recipe.png"
   },
   {
-    "id": "simple_jewelry_recipe",
-    "name": "Простой ювелирный рецепт",
-    "name_ru": "Простой ювелирный рецепт",
-    "category": "resources",
-    "type": "recipe",
-    "subtype": "recipe",
-    "quality": "common",
-    "stackable": true,
-    "max_stack": 20,
-    "description": "Запись простого ювелирного рецепта.",
-    "can_sell": true,
-    "sell_price_copper": 16,
-    "icon": "/assets/items/crafting/simple_jewelry_recipe.png"
-  },
-  {
     "id": "simple_iron_sword",
     "name": "Простой железный меч",
     "name_ru": "Простой железный меч",
@@ -142,56 +127,6 @@
       "Броня: +1"
     ],
     "icon": "/assets/items/crafting/simple_leather_belt.png"
-  },
-  {
-    "id": "rough_copper_ring",
-    "name": "Грубое медное кольцо",
-    "name_ru": "Грубое медное кольцо",
-    "category": "equipment",
-    "type": "equipment",
-    "subtype": "ring",
-    "quality": "common",
-    "stackable": false,
-    "max_stack": 1,
-    "description": "Простое медное кольцо без камня.",
-    "can_sell": true,
-    "sell_price_copper": 70,
-    "slot": "ring1",
-    "targetSlotKey": "ring1",
-    "slotKey": "ring1",
-    "item_class": "jewelry",
-    "stat_modifiers": {
-      "bonus_perception": 1
-    },
-    "stats": [
-      "Восприятие: +1"
-    ],
-    "icon": "/assets/items/crafting/rough_copper_ring.png"
-  },
-  {
-    "id": "rough_copper_necklace",
-    "name": "Грубое медное ожерелье",
-    "name_ru": "Грубое медное ожерелье",
-    "category": "equipment",
-    "type": "equipment",
-    "subtype": "necklace",
-    "quality": "common",
-    "stackable": false,
-    "max_stack": 1,
-    "description": "Простое медное ожерелье без вставок.",
-    "can_sell": true,
-    "sell_price_copper": 90,
-    "slot": "necklace",
-    "targetSlotKey": "necklace",
-    "slotKey": "necklace",
-    "item_class": "jewelry",
-    "stat_modifiers": {
-      "bonus_wisdom": 1
-    },
-    "stats": [
-      "Мудрость: +1"
-    ],
-    "icon": "/assets/items/crafting/rough_copper_necklace.png"
   },
   {
     "id": "alchemy_sludge",

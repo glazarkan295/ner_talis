@@ -329,75 +329,6 @@
     "craft_time_seconds": 60
   },
   {
-    "id": "jewelry_copper_ring",
-    "workshop": "jewelry",
-    "section": "Кольца",
-    "output": {
-      "item_id": "rough_copper_ring",
-      "amount": 1
-    },
-    "ingredients": [
-      {
-        "item_id": "copper_ingot",
-        "amount": 1,
-        "role": "Ингредиент"
-      },
-      {
-        "item_id": "glass_topaz",
-        "amount": 1,
-        "role": "Ингредиент"
-      }
-    ],
-    "description": "Сделать грубое медное кольцо со стекляшкой.",
-    "craft_time_seconds": 60
-  },
-  {
-    "id": "jewelry_copper_necklace",
-    "workshop": "jewelry",
-    "section": "Ожерелья",
-    "output": {
-      "item_id": "rough_copper_necklace",
-      "amount": 1
-    },
-    "ingredients": [
-      {
-        "item_id": "copper_ingot",
-        "amount": 2,
-        "role": "Ингредиент"
-      },
-      {
-        "item_id": "glass_amethyst",
-        "amount": 1,
-        "role": "Ингредиент"
-      }
-    ],
-    "description": "Сделать грубое медное ожерелье со стекляшкой.",
-    "craft_time_seconds": 60
-  },
-  {
-    "id": "jewelry_simple_recipe",
-    "workshop": "jewelry",
-    "section": "Рецепты",
-    "output": {
-      "item_id": "simple_jewelry_recipe",
-      "amount": 1
-    },
-    "ingredients": [
-      {
-        "item_id": "paper_sheet",
-        "amount": 1,
-        "role": "Ингредиент"
-      },
-      {
-        "item_id": "glass_aquamarine",
-        "amount": 1,
-        "role": "Ингредиент"
-      }
-    ],
-    "description": "Записать простой ювелирный рецепт.",
-    "craft_time_seconds": 60
-  },
-  {
     "id": "leatherwork_tanned_leather_from_simple_hide",
     "workshop": "leatherwork",
     "section": "Заготовки",
@@ -1245,7 +1176,7 @@
   {
     "id": "jewelry_iron_ring_with_diamond",
     "workshop": "jewelry",
-    "section": "Кольца",
+    "section": "Железные кольца",
     "output": {
       "item_id": "iron_ring_with_diamond",
       "name": "Железное кольцо с алмазом",
@@ -1271,7 +1202,7 @@
   {
     "id": "jewelry_iron_ring_with_ruby",
     "workshop": "jewelry",
-    "section": "Кольца",
+    "section": "Железные кольца",
     "output": {
       "item_id": "iron_ring_with_ruby",
       "name": "Железное кольцо с рубином",
@@ -1297,7 +1228,7 @@
   {
     "id": "jewelry_iron_ring_with_sapphire",
     "workshop": "jewelry",
-    "section": "Кольца",
+    "section": "Железные кольца",
     "output": {
       "item_id": "iron_ring_with_sapphire",
       "name": "Железное кольцо с сапфиром",
@@ -1323,7 +1254,7 @@
   {
     "id": "jewelry_iron_ring_with_emerald",
     "workshop": "jewelry",
-    "section": "Кольца",
+    "section": "Железные кольца",
     "output": {
       "item_id": "iron_ring_with_emerald",
       "name": "Железное кольцо с изумрудом",
@@ -1349,7 +1280,7 @@
   {
     "id": "jewelry_iron_ring_with_aquamarine",
     "workshop": "jewelry",
-    "section": "Кольца",
+    "section": "Железные кольца",
     "output": {
       "item_id": "iron_ring_with_aquamarine",
       "name": "Железное кольцо с аквамарином",
@@ -1375,7 +1306,7 @@
   {
     "id": "jewelry_iron_ring_with_topaz",
     "workshop": "jewelry",
-    "section": "Кольца",
+    "section": "Железные кольца",
     "output": {
       "item_id": "iron_ring_with_topaz",
       "name": "Железное кольцо с топазом",
@@ -1401,7 +1332,7 @@
   {
     "id": "jewelry_iron_ring_with_amethyst",
     "workshop": "jewelry",
-    "section": "Кольца",
+    "section": "Железные кольца",
     "output": {
       "item_id": "iron_ring_with_amethyst",
       "name": "Железное кольцо с аметистом",
@@ -1427,7 +1358,7 @@
   {
     "id": "jewelry_silver_ring_with_diamond",
     "workshop": "jewelry",
-    "section": "Кольца",
+    "section": "Серебряные кольца",
     "output": {
       "item_id": "silver_ring_with_diamond",
       "name": "Серебряное кольцо с алмазом",
@@ -1459,7 +1390,7 @@
   {
     "id": "jewelry_silver_ring_with_ruby",
     "workshop": "jewelry",
-    "section": "Кольца",
+    "section": "Серебряные кольца",
     "output": {
       "item_id": "silver_ring_with_ruby",
       "name": "Серебряное кольцо с рубином",
@@ -1491,7 +1422,7 @@
   {
     "id": "jewelry_silver_ring_with_sapphire",
     "workshop": "jewelry",
-    "section": "Кольца",
+    "section": "Серебряные кольца",
     "output": {
       "item_id": "silver_ring_with_sapphire",
       "name": "Серебряное кольцо с сапфиром",
@@ -1523,7 +1454,7 @@
   {
     "id": "jewelry_silver_ring_with_emerald",
     "workshop": "jewelry",
-    "section": "Кольца",
+    "section": "Серебряные кольца",
     "output": {
       "item_id": "silver_ring_with_emerald",
       "name": "Серебряное кольцо с изумрудом",
@@ -1555,7 +1486,7 @@
   {
     "id": "jewelry_silver_ring_with_aquamarine",
     "workshop": "jewelry",
-    "section": "Кольца",
+    "section": "Серебряные кольца",
     "output": {
       "item_id": "silver_ring_with_aquamarine",
       "name": "Серебряное кольцо с аквамарином",
@@ -1587,7 +1518,7 @@
   {
     "id": "jewelry_silver_ring_with_topaz",
     "workshop": "jewelry",
-    "section": "Кольца",
+    "section": "Серебряные кольца",
     "output": {
       "item_id": "silver_ring_with_topaz",
       "name": "Серебряное кольцо с топазом",
@@ -1619,7 +1550,7 @@
   {
     "id": "jewelry_silver_ring_with_amethyst",
     "workshop": "jewelry",
-    "section": "Кольца",
+    "section": "Серебряные кольца",
     "output": {
       "item_id": "silver_ring_with_amethyst",
       "name": "Серебряное кольцо с аметистом",

@@ -36,6 +36,10 @@ LEATHERWORK = "Кожевенная мастерская"
 JEWELRY = "Ювелирная мастерская"
 BIJOUTERIE = "Бижутерия"
 GEM_INSERT = "вставка камней"
+RINGS_SECTION = "Кольца"
+IRON_RINGS = "Железные кольца"
+SILVER_RINGS = "Серебряные кольца"
+RING_SUBSECTIONS = (IRON_RINGS, SILVER_RINGS)
 ALCHEMY = "Алхимическая мастерская"
 ENCHANTER = "Мастерская чародея"
 BACK_TO_CENTRAL = "⬅️ Центральная площадь"
@@ -109,6 +113,9 @@ WORKSHOPS: dict[str, dict[str, Any]] = {
 WORKSHOP_BY_ID = {data["id"]: data for data in WORKSHOPS.values()}
 WORKSHOP_ACTION_BY_ID = {data["id"]: action for action, data in WORKSHOPS.items()}
 SECTION_LABELS = {section for data in WORKSHOPS.values() for section in (data.get("sections") or [])}
+# «Кольца» в ювелирной мастерской — не раздел рецептов, а под-меню с кнопками
+# «Железные кольца» / «Серебряные кольца»; эти под-разделы маркируют рецепты колец.
+SECTION_LABELS |= set(RING_SUBSECTIONS)
 
 CRAFT_ACTIONS = frozenset(
     set(WORKSHOPS.keys())
@@ -514,7 +521,10 @@ def _workshop_home_button(workshop_id: str) -> str:
     return WORKSHOP_ACTION_BY_ID.get(workshop_id, CRAFT_DISTRICT)
 
 
-def _recipe_navigation_buttons(workshop_id: str, *, source: str = "list") -> list[list[str]]:
+def _recipe_navigation_buttons(workshop_id: str, *, source: str = "list", section: str | None = None) -> list[list[str]]:
+    if workshop_id == "jewelry" and section in RING_SUBSECTIONS:
+        # Back from a metal-specific ring list returns to the «Кольца» sub-menu.
+        return [[RINGS_SECTION], [JEWELRY]]
     if workshop_id == "alchemy":
         if source == "preview":
             return [[ALCHEMY_BY_RECIPE], [ALCHEMY]]
@@ -528,14 +538,14 @@ def _recipe_navigation_buttons(workshop_id: str, *, source: str = "list") -> lis
     return [[_workshop_home_button(workshop_id)], [CRAFT_DISTRICT]]
 
 
-def _recipe_buttons(recipes: list[dict[str, Any]], workshop_id: str) -> list[list[str]]:
+def _recipe_buttons(recipes: list[dict[str, Any]], workshop_id: str, section: str | None = None) -> list[list[str]]:
     rows: list[list[str]] = []
     for index in range(0, len(recipes), 2):
         row = [f"{CRAFT_PREFIX}{index + 1}"]
         if index + 2 <= len(recipes):
             row.append(f"{CRAFT_PREFIX}{index + 2}")
         rows.append(row)
-    rows.extend(_recipe_navigation_buttons(workshop_id, source="list"))
+    rows.extend(_recipe_navigation_buttons(workshop_id, source="list", section=section))
     return rows
 
 
@@ -594,6 +604,21 @@ def _jewelry_bijouterie_response(storage: Any, player: dict[str, Any]) -> CraftR
     return CraftResponse(text, _jewelry_section_buttons(), data["zone"])
 
 
+def _jewelry_rings_menu_buttons() -> list[list[str]]:
+    return [[IRON_RINGS, SILVER_RINGS], [BIJOUTERIE]]
+
+
+def _jewelry_rings_menu_response(storage: Any, player: dict[str, Any]) -> CraftResponse:
+    data = WORKSHOP_BY_ID["jewelry"]
+    _set_city_zone(player, data["zone"])
+    context = _active_context(player)
+    context.clear()
+    context.update({"workshop": "jewelry", "step": "ring_sections"})
+    storage.update_player(player)
+    text = "💍 Кольца\n\nВыберите тип колец:"
+    return CraftResponse(text, _jewelry_rings_menu_buttons(), data["zone"])
+
+
 def _jewelry_gem_insert_response(storage: Any, player: dict[str, Any]) -> CraftResponse:
     data = WORKSHOP_BY_ID["jewelry"]
     _set_city_zone(player, data["zone"])
@@ -650,14 +675,14 @@ def _show_recipe_list(storage: Any, player: dict[str, Any], workshop_id: str, se
             lines.append("Открытых алхимических рецептов пока нет. Рецепты можно купить, найти или открыть удачным экспериментом.")
         else:
             lines.append("В этом разделе пока нет доступных рецептов.")
-        return CraftResponse("\n".join(lines), _recipe_navigation_buttons(workshop_id, source="list"), data["zone"])
+        return CraftResponse("\n".join(lines), _recipe_navigation_buttons(workshop_id, source="list", section=section), data["zone"])
     for index, recipe in enumerate(recipes, 1):
         mark = "✅" if _has_ingredients(player, recipe) else "❌"
         out_amount_label = _recipe_output_amount_label(recipe)
         out_suffix = f" ×{out_amount_label}" if out_amount_label != "1" else ""
         lines.append(f"{index}. {mark} {_recipe_output_name(recipe)}{out_suffix}")
     lines.append("\nНажмите короткую кнопку вида «Крафт №1», чтобы посмотреть рецепт и ингредиенты.")
-    return CraftResponse("\n".join(lines), _recipe_buttons(recipes, workshop_id), data["zone"])
+    return CraftResponse("\n".join(lines), _recipe_buttons(recipes, workshop_id, section), data["zone"])
 
 
 def _selected_recipe_from_context(player: dict[str, Any], action: str) -> dict[str, Any] | None:
@@ -1582,6 +1607,9 @@ def handle_crafting_action(storage: Any, player: dict[str, Any], action: str) ->
         return _return_to_choice(storage, player)
     if action == RETURN_TO_CHOICE:
         return _return_to_choice(storage, player)
+    if workshop_id == "jewelry" and action == RINGS_SECTION:
+        # «Кольца» открывает под-меню выбора металла, а не список рецептов.
+        return _jewelry_rings_menu_response(storage, player)
     if workshop_id in WORKSHOP_BY_ID and action in SECTION_LABELS:
         return _show_recipe_list(storage, player, workshop_id, action)
     if action.startswith(CRAFT_PREFIX):
