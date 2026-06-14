@@ -26,7 +26,12 @@ def _promo_path() -> Path:
 
 
 def _normalize_code(code: str) -> str:
-    return str(code).strip().upper()
+    """Canonical promo key: no leading slash(es), trimmed, upper-cased.
+
+    Admins may enter "/START100" while a player redeems "/promo start100";
+    both must resolve to the same code. The canonical form has no slash.
+    """
+    return str(code or "").strip().lstrip("/").strip().upper()
 
 
 def _parse_promo_datetime(value: Any) -> datetime | None:
@@ -295,7 +300,9 @@ def _redeem_with_atomic_claim(storage: Any, game_id: str, code: str) -> tuple[bo
     if player is None:
         return False, "Игрок не найден."
 
-    ok, reason, reward = storage.claim_promo_use(code, str(game_id))
+    # Pass the canonical code so the storage claim matches the stored key
+    # regardless of case or a leading slash the player/admin may have typed.
+    ok, reason, reward = storage.claim_promo_use(_normalize_code(code), str(game_id))
     if not ok:
         return False, _CLAIM_FAILURE_MESSAGES.get(reason, "Промокод не найден или отключён.")
 
@@ -304,7 +311,7 @@ def _redeem_with_atomic_claim(storage: Any, game_id: str, code: str) -> tuple[bo
         storage.update_player(player)
     except Exception:
         try:
-            storage.refund_promo_use(code, str(game_id))
+            storage.refund_promo_use(_normalize_code(code), str(game_id))
         except Exception:
             pass
         raise
