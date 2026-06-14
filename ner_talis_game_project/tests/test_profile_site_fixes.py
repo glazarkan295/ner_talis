@@ -442,6 +442,7 @@ class ProfileSiteFixesTest(unittest.TestCase):
             player = self._new_player()
             player["money"] = 100
             player["money_copper"] = 100
+            player["race_id"] = "elf"
             player["current_zone"] = "seldar_npc_market_sell"
             player["location_id"] = "seldar_npc_market_sell"
             player["market_context"] = {"mode": "sell_list"}
