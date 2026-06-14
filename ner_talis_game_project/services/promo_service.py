@@ -171,15 +171,31 @@ def deactivate_promo_code(code: str, storage: Any | None = None) -> bool:
         return True
 
 
+def _matching_stored_keys(data: dict[str, Any], normalized_code: str) -> list[str]:
+    """Stored keys whose canonical form equals ``normalized_code``.
+
+    Legacy promos created before slash-stripping were saved with a leading
+    slash (e.g. ``/PROMO_CODE 111``). Matching on the canonical form lets the
+    admin panel delete them regardless of how they were originally stored.
+    """
+    codes = data.get("codes") or {}
+    return [key for key in codes if _normalize_code(key) == normalized_code]
+
+
 def delete_promo_code(code: str, storage: Any | None = None) -> bool:
     normalized_code = _normalize_code(code)
     if storage is not None and callable(getattr(storage, "delete_promo_code", None)):
-        return bool(storage.delete_promo_code(normalized_code))
+        targets = _matching_stored_keys(load_promo_data(storage), normalized_code)
+        if normalized_code not in targets:
+            targets.append(normalized_code)
+        return any(bool(storage.delete_promo_code(key)) for key in targets)
     with _file_locked() if storage is None else _null_context():
         data = load_promo_data(storage)
-        if normalized_code not in data.get("codes", {}):
+        targets = _matching_stored_keys(data, normalized_code)
+        if not targets:
             return False
-        data["codes"].pop(normalized_code, None)
+        for key in targets:
+            data["codes"].pop(key, None)
         save_promo_data(data, storage)
         return True
 
