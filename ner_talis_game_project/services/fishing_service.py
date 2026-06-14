@@ -9,7 +9,10 @@ inside the city router.
 from __future__ import annotations
 
 import json
+import math
 import random
+import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Iterable
 
@@ -19,10 +22,15 @@ from services.item_registry import build_inventory_item, get_item_definition_by_
 
 PIER_FISHING_ACTION = "Рыбалка на пристани"
 START_PIER_FISHING = "Забросить удочку"
+CHECK_FISHING_TIMER = "Проверить таймер"
 BACK_TO_PIER = "Пристань"
-FISHING_ACTIONS = frozenset({PIER_FISHING_ACTION, START_PIER_FISHING})
+FISHING_ACTIONS = frozenset({PIER_FISHING_ACTION, START_PIER_FISHING, CHECK_FISHING_TIMER})
 FISHING_ZONE = "seldar_pier_fishing"
 FISHING_SOURCE_TEXT = "Рыбалка на пристани"
+FISHING_TIMER_TYPE = "fishing"
+FISHING_TIMER_SECONDS = 60
+FISHING_ENERGY_COST = 1
+FISHING_COMPLETION_OWNER = "fishing_completion"
 
 
 @dataclass(frozen=True)
@@ -30,10 +38,39 @@ class FishingResponse:
     text: str
     buttons: list[list[str]]
     zone_id: str = FISHING_ZONE
+    scheduled_timer: dict[str, Any] | None = None
+
+
+def _now_ts() -> float:
+    return time.time()
+
+
+def _fishing_timer_remaining(timer: dict[str, Any] | None) -> int:
+    if not isinstance(timer, dict):
+        return 0
+    return max(0, math.ceil(float(timer.get("ends_at") or 0) - _now_ts()))
+
+
+def _format_duration(seconds: int) -> str:
+    seconds = max(0, int(seconds or 0))
+    minutes, sec = divmod(seconds, 60)
+    if minutes and sec:
+        return f"{minutes} мин {sec} сек"
+    if minutes:
+        return f"{minutes} мин"
+    return f"{sec} сек"
 
 
 def fishing_buttons() -> list[list[str]]:
     return [[START_PIER_FISHING], [BACK_TO_PIER, "Портовый квартал"], ["⬅️ Центральная площадь"]]
+
+
+def fishing_timer_buttons() -> list[list[str]]:
+    return [[CHECK_FISHING_TIMER], [BACK_TO_PIER, "Портовый квартал"], ["⬅️ Центральная площадь"]]
+
+
+def _is_fishing_timer(timer: Any) -> bool:
+    return isinstance(timer, dict) and timer.get("type") == FISHING_TIMER_TYPE
 
 
 def load_fishing_sources() -> dict[str, Any]:
@@ -136,7 +173,8 @@ def choose_pier_fishing_reward(rng: random.Random | None = None) -> tuple[str, d
 def fishing_intro_text() -> str:
     return (
         "🎣 Рыбалка на пристани\n\n"
-        "Для действия нужна удочка рыбака. Один заброс тратит 2 энергии.\n\n"
+        "Для действия нужна удочка рыбака. Один заброс тратит 1 энергию, "
+        "после заброса поклёвки нужно ждать 60 секунд.\n\n"
         "Шансы:\n"
         "• обычный улов — 50%\n"
         "• необычный улов — 19%\n"
@@ -150,8 +188,77 @@ def fishing_intro_text() -> str:
     )
 
 
+def _fishing_timer_schedule(player: dict[str, Any], timer: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "timer_id": timer.get("id"),
+        "game_id": player.get("game_id") or player.get("id"),
+        "seconds": int(timer.get("seconds") or FISHING_TIMER_SECONDS),
+        "type": FISHING_TIMER_TYPE,
+    }
+
+
+def _grant_fishing_catch(player: dict[str, Any], rng: random.Random) -> str:
+    rarity, entry = choose_pier_fishing_reward(rng)
+    item_id = str(entry.get("item_id") or "old_torn_boot")
+    amount = _amount_from_entry(entry, rng)
+    add_result = grant_item_to_player(player, item_id, amount, source=FISHING_SOURCE_TEXT, rng=rng)
+    name = item_display_name(item_id)
+    rarity_name = {"common": "обычный улов", "uncommon": "необычный улов", "rare": "редкий улов", "trash": "мусор"}.get(rarity, rarity)
+    notice = inventory_add_result_notice(add_result, name)
+    return (
+        "🎣 Поклёвка! Вы вытягиваете снасть.\n\n"
+        f"Категория: {rarity_name}.\n"
+        f"Получено: {name} ×{add_result.added}.{notice}"
+    )
+
+
+def complete_fishing_timer(storage: Any, player: dict[str, Any], timer_id: str | None = None, rng: random.Random | None = None) -> FishingResponse:
+    """Resolve a finished fishing cast: grant the catch and clear the timer."""
+    rng = rng or random.Random()
+    timer = player.get("active_timer")
+    if not _is_fishing_timer(timer):
+        return FishingResponse("⏳ Активной рыбалки нет.", fishing_buttons())
+    if timer_id and str(timer.get("id") or "") != str(timer_id):
+        return FishingResponse("⏳ Этот заброс уже неактуален.", fishing_buttons())
+    remaining = _fishing_timer_remaining(timer)
+    if remaining > 0:
+        return FishingResponse(
+            f"⏳ Удочка ещё в воде. Поклёвка через {_format_duration(remaining)}.",
+            fishing_timer_buttons(),
+        )
+    player["active_timer"] = None
+    player["current_city"] = "seldar"
+    player["current_zone"] = FISHING_ZONE
+    player["location_id"] = FISHING_ZONE
+    text = _grant_fishing_catch(player, rng)
+    storage.update_player(player)
+    return FishingResponse(text, fishing_buttons())
+
+
+def _complete_fishing_once(storage: Any, player: dict[str, Any], rng: random.Random) -> FishingResponse:
+    """Complete an expired fishing timer exactly once across platforms."""
+    timer = player.get("active_timer")
+    if not _is_fishing_timer(timer):
+        return FishingResponse("⏳ Активной рыбалки нет.", fishing_buttons())
+    if _fishing_timer_remaining(timer) > 0:
+        return complete_fishing_timer(storage, player, timer.get("id"), rng)
+    game_id = str(player.get("game_id") or player.get("id") or "")
+    timer_id = str(timer.get("id") or "")
+    claim = getattr(storage, "claim_active_timer_for_delivery", None)
+    if game_id and timer_id and callable(claim):
+        claimed = claim(game_id, timer_id, FISHING_COMPLETION_OWNER, claim_ttl_seconds=120, platform_filter=None)
+        if not isinstance(claimed, dict):
+            return FishingResponse("⏳ Этот заброс уже обработан (награда не выдаётся повторно).", fishing_buttons())
+        return complete_fishing_timer(storage, claimed, timer_id, rng)
+    return complete_fishing_timer(storage, player, timer_id, rng)
+
+
 def handle_fishing_action(storage: Any, player: dict[str, Any], action: str, rng: random.Random | None = None) -> FishingResponse | None:
     rng = rng or random.Random()
+    timer = player.get("active_timer")
+    fishing_active = _is_fishing_timer(timer)
+    in_fishing_zone = str(player.get("current_zone") or player.get("location_id") or "") == FISHING_ZONE
+
     if action == PIER_FISHING_ACTION:
         player["current_city"] = "seldar"
         player["current_zone"] = FISHING_ZONE
@@ -159,11 +266,23 @@ def handle_fishing_action(storage: Any, player: dict[str, Any], action: str, rng
         player.pop("market_context", None)
         player.pop("crafting_context", None)
         storage.update_player(player)
+        if fishing_active and _fishing_timer_remaining(timer) > 0:
+            return FishingResponse(
+                f"🎣 Удочка уже заброшена. Поклёвка через {_format_duration(_fishing_timer_remaining(timer))}.",
+                fishing_timer_buttons(),
+            )
         return FishingResponse(fishing_intro_text(), fishing_buttons())
+
+    if action == CHECK_FISHING_TIMER:
+        # Only handle the timer check when a fishing cast is actually running;
+        # otherwise let other workshop timers handle their own check button.
+        if not fishing_active:
+            return None
+        return _complete_fishing_once(storage, player, rng)
 
     if action != START_PIER_FISHING:
         return None
-    if str(player.get("current_zone") or player.get("location_id") or "") != FISHING_ZONE:
+    if not in_fishing_zone:
         return None
 
     player["current_city"] = "seldar"
@@ -172,34 +291,47 @@ def handle_fishing_action(storage: Any, player: dict[str, Any], action: str, rng
     player.pop("market_context", None)
     player.pop("crafting_context", None)
 
+    if fishing_active:
+        if _fishing_timer_remaining(timer) > 0:
+            return FishingResponse(
+                f"🎣 Удочка уже заброшена. Поклёвка через {_format_duration(_fishing_timer_remaining(timer))}.",
+                fishing_timer_buttons(),
+            )
+        return _complete_fishing_once(storage, player, rng)
+
+    # Another (non-fishing) timed action is running.
+    if isinstance(timer, dict) and _fishing_timer_remaining(timer) > 0:
+        storage.update_player(player)
+        return FishingResponse("🎣 Сначала завершите текущее действие с таймером.", fishing_buttons())
+
     if not player_has_fishing_rod(player):
         storage.update_player(player)
         return FishingResponse("🎣 Для рыбалки нужна удочка рыбака. Без неё забросить снасть не получится.", fishing_buttons())
 
     energy = max(0, int(player.get("energy", player.get("current_energy", 0)) or 0))
-    energy_cost = int((load_fishing_sources().get("pier_fishing") or {}).get("energy_cost", 2) or 2)
-    if energy < energy_cost:
+    if energy < FISHING_ENERGY_COST:
         storage.update_player(player)
-        return FishingResponse(f"🎣 Для заброса нужно {energy_cost} энергии. Сейчас энергии недостаточно.", fishing_buttons())
+        return FishingResponse(f"🎣 Для заброса нужно {FISHING_ENERGY_COST} энергии. Сейчас энергии недостаточно.", fishing_buttons())
 
-    player["energy"] = energy - energy_cost
+    player["energy"] = energy - FISHING_ENERGY_COST
     player["current_energy"] = player["energy"]
-    rarity, entry = choose_pier_fishing_reward(rng)
-    item_id = str(entry.get("item_id") or "old_torn_boot")
-    amount = _amount_from_entry(entry, rng)
-    add_result = grant_item_to_player(player, item_id, amount, source=FISHING_SOURCE_TEXT, rng=rng)
-    name = item_display_name(item_id)
-    rarity_name = {"common": "обычный улов", "uncommon": "необычный улов", "rare": "редкий улов", "trash": "мусор"}.get(rarity, rarity)
-    notice = inventory_add_result_notice(add_result, name)
+    new_timer = {
+        "id": f"fishing_{uuid.uuid4().hex[:12]}",
+        "type": FISHING_TIMER_TYPE,
+        "seconds": FISHING_TIMER_SECONDS,
+        "ends_at": _now_ts() + FISHING_TIMER_SECONDS,
+        "energy_spent": FISHING_ENERGY_COST,
+        "location_id": FISHING_ZONE,
+    }
+    player["active_timer"] = new_timer
     storage.update_player(player)
     text = (
         "🎣 Вы забрасываете удочку с пристани и ждёте поклёвку.\n\n"
-        f"Категория: {rarity_name}.\n"
-        f"Получено: {name} ×{add_result.added}."
-        f"{notice}\n\n"
-        f"⚡ Потрачено энергии: {energy_cost}. Осталось: {player['energy']}."
+        f"⏳ Поклёвка через {_format_duration(FISHING_TIMER_SECONDS)}.\n"
+        f"⚡ Потрачено энергии: {FISHING_ENERGY_COST}. Осталось: {player['energy']}.\n\n"
+        "Когда таймер закончится, придёт сообщение с уловом."
     )
-    return FishingResponse(text, fishing_buttons())
+    return FishingResponse(text, fishing_timer_buttons(), scheduled_timer=_fishing_timer_schedule(player, new_timer))
 
 
 def choose_location_waterside_reward(location_id: str, rng: random.Random | None = None) -> dict[str, Any]:

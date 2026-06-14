@@ -296,9 +296,24 @@ class CraftingNavigationFixesTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
 
         process_world_action(storage, player, "Ремесленный квартал", "telegram")
+        # Jewelry workshop is now open: shows the department menu.
         result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Ювелирная мастерская", "telegram")
+        flat = sum(result.buttons, [])
+        self.assertIn("Выберите отдел", result.text)
+        self.assertIn("Бижутерия", flat)
+        self.assertIn("вставка камней", flat)
+        self.assertEqual(storage.get_player_by_game_id("NT-CRAFT-NAV").get("current_zone"), "seldar_jewelry_workshop")
+        # "вставка камней" is a maintenance stub.
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "вставка камней", "telegram")
         self.assertIn("технические работы", result.text)
-        self.assertEqual(storage.get_player_by_game_id("NT-CRAFT-NAV").get("current_zone"), "seldar_craft_district")
+        # "Бижутерия" opens the craft sections (Кольца/Ожерелья/Рецепты).
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Бижутерия", "telegram")
+        flat = sum(result.buttons, [])
+        self.assertIn("Кольца", flat)
+        self.assertIn("Ожерелья", flat)
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Кольца", "telegram")
+        self.assertIn("Что можно создать", result.text)
+        self.assertIn("Крафт №1", sum(result.buttons, []))
 
         result = process_world_action(storage, storage.get_player_by_game_id("NT-CRAFT-NAV"), "Мастерская чародея", "telegram")
         self.assertIn("техническое обслуживание", result.text)

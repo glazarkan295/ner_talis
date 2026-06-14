@@ -1378,6 +1378,12 @@ def complete_active_timer(storage: Any, player: dict[str, Any], timer_id: str | 
         craft_response = complete_craft_timer(storage, player, timer.get("id"))
         return LocationResponse(craft_response.text, craft_response.buttons, craft_response.zone_id, craft_response.scheduled_timer)
 
+    if timer.get("type") == "fishing":
+        from services.fishing_service import complete_fishing_timer
+
+        fishing_response = complete_fishing_timer(storage, player, timer.get("id"), rng)
+        return LocationResponse(fishing_response.text, fishing_response.buttons, fishing_response.zone_id)
+
     raw_location_id = str(timer.get("location_id") or current_location_id(player))
     location_id = raw_location_id.removesuffix("_camp").removesuffix("_search").removesuffix("_battle")
     if location_id not in EXPLORATION_LOCATION_IDS:

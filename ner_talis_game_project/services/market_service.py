@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import random
+import time
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import lru_cache
@@ -111,6 +113,88 @@ MARKET_ACTIONS = frozenset({
 MARKET_DATA_PATH = project_path("data", "seldar_market.json")
 SELL_PRICES_PATH = project_path("data", "item_sell_prices.json")
 
+# --- Port market rotation -------------------------------------------------
+# The port market sells only a rotating subset of this fixed pool. Each
+# rotation shows 4-7 items, each with a random in-stock quantity in its range,
+# and refreshes every 5-10 days. Prices are in copper.
+PORT_MARKET_POOL = [
+    {"item_id": "common_cleansing_potion", "name": "Обычное зелье очищения", "min": 50, "max": 100, "price": 1000},
+    {"item_id": "minor_regeneration_potion", "name": "Малое зелье регенерации", "min": 30, "max": 70, "price": 4000},
+    {"item_id": "artifact_free_space", "name": "Артефакт Свободного Пространства", "min": 1, "max": 10, "price": 1_000_000},
+    {"item_id": "one_time_artifact_last_chance", "name": "Одноразовый Артефакт Последнего Шанса", "min": 1, "max": 3, "price": 10_000_000},
+    {"item_id": "artifact_lucky_buyer", "name": "Артефакт Счастливого покупателя", "min": 1, "max": 10, "price": 20_000_000},
+    {"item_id": "arrow_for_bow", "name": "Стрела для лука", "min": 400, "max": 1000, "price": 4},
+    {"item_id": "bolt_for_crossbow", "name": "Болт для арбалета", "min": 400, "max": 1000, "price": 4},
+    {"item_id": "professional_bolt_quiver", "name": "Колчан профессионала для болтов", "min": 20, "max": 60, "price": 300},
+    {"item_id": "professional_arrow_quiver", "name": "Колчан профессионала для стрел", "min": 20, "max": 60, "price": 300},
+    {"item_id": "mana_crystal", "name": "Кристалл маны", "min": 10, "max": 30, "price": 7000},
+    {"item_id": "spirit_crystal", "name": "Кристалл духа", "min": 10, "max": 30, "price": 7000},
+    {"item_id": "life_crystal", "name": "Кристалл жизни", "min": 10, "max": 30, "price": 7000},
+]
+PORT_MARKET_POOL_BY_ID = {entry["item_id"]: entry for entry in PORT_MARKET_POOL}
+PORT_ROTATION_MIN_ITEMS = 4
+PORT_ROTATION_MAX_ITEMS = 7
+PORT_ROTATION_MIN_DAYS = 5
+PORT_ROTATION_MAX_DAYS = 10
+DAY_SECONDS = 86400
+
+
+def _port_state_path():
+    return project_path(*os.getenv("PORT_MARKET_STATE_PATH", "data/port_market_state.json").split("/"))
+
+
+def _load_port_state() -> dict[str, Any]:
+    path = _port_state_path()
+    try:
+        with path.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_port_state(state: dict[str, Any]) -> None:
+    path = _port_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as file:
+        json.dump(state, file, ensure_ascii=False, indent=2)
+
+
+def _generate_port_rotation(now: float, rng: random.Random) -> dict[str, Any]:
+    count = rng.randint(PORT_ROTATION_MIN_ITEMS, PORT_ROTATION_MAX_ITEMS)
+    chosen = rng.sample(PORT_MARKET_POOL, min(count, len(PORT_MARKET_POOL)))
+    items = [{"item_id": entry["item_id"], "stock": rng.randint(entry["min"], entry["max"])} for entry in chosen]
+    days = rng.randint(PORT_ROTATION_MIN_DAYS, PORT_ROTATION_MAX_DAYS)
+    return {"generated_at": now, "expires_at": now + days * DAY_SECONDS, "items": items}
+
+
+def port_market_rotation(now: float | None = None, rng: random.Random | None = None) -> dict[str, Any]:
+    """Return the current port rotation, regenerating it when it has expired."""
+    now = time.time() if now is None else now
+    rng = rng or random.Random()
+    state = _load_port_state()
+    items = state.get("items")
+    if not isinstance(items, list) or not items or float(state.get("expires_at") or 0) <= now:
+        state = _generate_port_rotation(now, rng)
+        _save_port_state(state)
+    return state
+
+
+def deplete_port_stock(item_id: str, amount: int) -> None:
+    """Reduce the rotation stock of a port item after a purchase."""
+    state = _load_port_state()
+    items = state.get("items")
+    if not isinstance(items, list):
+        return
+    changed = False
+    for entry in items:
+        if isinstance(entry, dict) and str(entry.get("item_id")) == str(item_id):
+            entry["stock"] = max(0, safe_int(entry.get("stock"), 0) - max(0, int(amount)))
+            changed = True
+            break
+    if changed:
+        _save_port_state(state)
+
 
 @dataclass(frozen=True)
 class MarketResult:
@@ -126,6 +210,7 @@ class MarketItem:
     category: str
     description: str
     buy_price_copper: int
+    stock: int = -1  # -1 = unlimited; >=0 = limited rotation stock (port market)
 
 
 def _chunk_buttons(labels: list[str], row_size: int = 2) -> list[list[str]]:
@@ -237,8 +322,39 @@ def leave_market(player: dict[str, Any]) -> MarketResult:
     return MarketResult(str(config["exit_text"]), buttons, zone)
 
 
-@lru_cache(maxsize=4)
+def _port_market_items() -> list[MarketItem]:
+    """Build the port market list from the current (live) rotation + stock."""
+    rotation = port_market_rotation()
+    result: list[MarketItem] = []
+    for entry in rotation.get("items") or []:
+        if not isinstance(entry, dict):
+            continue
+        item_id = str(entry.get("item_id") or "").strip()
+        pool = PORT_MARKET_POOL_BY_ID.get(item_id)
+        if not pool:
+            continue
+        definition = get_item_definition_by_id(item_id) or {}
+        result.append(
+            MarketItem(
+                item_id=item_id,
+                display_name=str(pool["name"]),
+                category=str(definition.get("category_ru") or definition.get("category") or "Портовый товар"),
+                description=str(definition.get("description") or "Товар портового рынка."),
+                buy_price_copper=max(0, int(pool["price"])),
+                stock=max(0, safe_int(entry.get("stock"), 0)),
+            )
+        )
+    return result
+
+
 def load_market_items(kind: str = MARKET_KIND_NPC) -> list[MarketItem]:
+    if kind == MARKET_KIND_PORT:
+        return _port_market_items()
+    return _load_static_market_items(kind)
+
+
+@lru_cache(maxsize=4)
+def _load_static_market_items(kind: str = MARKET_KIND_NPC) -> list[MarketItem]:
     config = _market_config(kind)
     source_tag = config.get("source_tag")
     raw_items: list[dict[str, Any]] = []
@@ -437,7 +553,8 @@ def open_buy_list(player: dict[str, Any], page: int | None = None) -> MarketResu
         "",
     ]
     for offset, item in enumerate(page_items, start=start + 1):
-        lines.append(f"{offset}. {item.display_name} — {format_price(item.buy_price_copper)}")
+        stock_suffix = f" (в наличии: {item.stock})" if item.stock >= 0 else ""
+        lines.append(f"{offset}. {item.display_name} — {format_price(item.buy_price_copper)}{stock_suffix}")
     return MarketResult("\n".join(lines), market_buy_buttons(kind, page_value), _market_zone(kind, "buy"))
 
 
@@ -493,11 +610,13 @@ def show_buy_card(player: dict[str, Any], item: MarketItem) -> MarketResult:
     _set_zone(player, _market_zone(kind, "buy"))
     context = player.get("market_context") if isinstance(player.get("market_context"), dict) else {}
     _set_context(player, mode="buy_card", item_id=item.item_id, page=safe_int(context.get("page"), 0), market_kind=kind)
+    stock_line = f"\nВ наличии: {item.stock} шт" if item.stock >= 0 else ""
     text = (
         f"{item.display_name}\n"
         f"Описание: {item.description}\n"
         f"Категория: {item.category}\n"
         f"Цена покупки за 1 единицу: {format_price(item.buy_price_copper)}"
+        f"{stock_line}"
     )
     return MarketResult(text, market_card_buttons(MARKET_BUY), _market_zone(kind, "buy"))
 
@@ -524,6 +643,15 @@ def handle_buy_quantity(storage: Any, player: dict[str, Any], item: MarketItem, 
             [[MARKET_BACK]],
             buy_zone,
         )
+
+    # Port market sells from a limited rotation stock.
+    if kind == MARKET_KIND_PORT:
+        current = next((m for m in load_market_items(kind) if m.item_id == item.item_id), None)
+        available = current.stock if current is not None else 0
+        if available <= 0:
+            return MarketResult("Этот товар закончился до следующего обновления ассортимента.", [[MARKET_BACK]], buy_zone)
+        if quantity > available:
+            return MarketResult(f"В наличии только {available} шт. Введите число не больше {available}.", [[MARKET_BACK]], buy_zone)
 
     unit_price = _discounted_buy_price(player, item.buy_price_copper)
     total_price = unit_price * quantity
@@ -557,6 +685,9 @@ def handle_buy_quantity(storage: Any, player: dict[str, Any], item: MarketItem, 
             player[key] = simulated[key]
     refund = npc_purchase_refund_amount(player, total_price)
     _set_money(player, balance - total_price + refund)
+
+    if kind == MARKET_KIND_PORT:
+        deplete_port_stock(item.item_id, quantity)
 
     notice = inventory_add_result_notice(result, item.display_name)
     refund_text = f" Возврат золота: +{format_price(refund)}." if refund else ""

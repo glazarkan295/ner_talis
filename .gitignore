@@ -30,3 +30,6 @@ _catalog_work/
 
 # Local art archives / work dirs
 *.zip
+
+# Port market rotation runtime state
+data/port_market_state.json

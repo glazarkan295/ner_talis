@@ -36,7 +36,7 @@ class Block7LocationsFishingTest(unittest.TestCase):
     def test_city_buttons_include_fishing_cast(self):
         self.assertIn(START_PIER_FISHING, CITY_BUTTONS)
 
-    def test_pier_fishing_grants_loot_and_spends_energy(self):
+    def test_pier_fishing_cast_starts_timer_and_spends_one_energy(self):
         tmp, storage, player = self.make_storage_player()
         self.addCleanup(tmp.cleanup)
 
@@ -45,9 +45,35 @@ class Block7LocationsFishingTest(unittest.TestCase):
         player = storage.get_player_by_game_id("NT-FISH")
         result = process_world_action(storage, player, START_PIER_FISHING, "telegram")
 
+        # Cast starts a 60s timer, spends exactly 1 energy, no instant loot yet.
+        self.assertIn("Поклёвка через", result.text)
+        self.assertIsNotNone(result.scheduled_timer)
+        self.assertEqual(result.scheduled_timer["seconds"], 60)
+        updated = storage.get_player_by_game_id("NT-FISH")
+        self.assertEqual(updated["energy"], 9)
+        timer = updated.get("active_timer")
+        self.assertIsInstance(timer, dict)
+        self.assertEqual(timer.get("type"), "fishing")
+        # Only the fishing rod is in the inventory; the catch comes later.
+        self.assertEqual(len(updated.get("inventory", [])), 1)
+
+    def test_pier_fishing_timer_completion_grants_loot(self):
+        tmp, storage, player = self.make_storage_player()
+        self.addCleanup(tmp.cleanup)
+
+        process_world_action(storage, player, "Рыбалка на пристани", "telegram")
+        player = storage.get_player_by_game_id("NT-FISH")
+        process_world_action(storage, player, START_PIER_FISHING, "telegram")
+
+        # Force the timer to be finished, then check it.
+        player = storage.get_player_by_game_id("NT-FISH")
+        player["active_timer"]["ends_at"] = 0
+        storage.update_player(player)
+        result = process_world_action(storage, storage.get_player_by_game_id("NT-FISH"), "Проверить таймер", "telegram")
+
         self.assertIn("Получено:", result.text)
         updated = storage.get_player_by_game_id("NT-FISH")
-        self.assertEqual(updated["energy"], 8)
+        self.assertIsNone(updated.get("active_timer"))
         self.assertGreaterEqual(len(updated.get("inventory", [])), 2)
 
     def test_pier_fishing_requires_rod(self):
