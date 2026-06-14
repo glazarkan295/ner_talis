@@ -26,10 +26,9 @@ function rewardKey(item) { return item.item_id || item.id; }
 function selectedToRewards(selected, quantities) {
   return selected.map((item) => ({ item_id: rewardKey(item), amount: Number(quantities[rewardKey(item)] || 1) })).filter((x) => x.amount > 0);
 }
-function formatRewardCode(value) {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  return text.startsWith("/") ? text : `/${text}`;
+function normalizePromoCode(value) {
+  // Canonical promo code: trimmed, no leading slash (backend upper-cases).
+  return String(value || "").trim().replace(/^\/+/, "").trim();
 }
 function secondsLeftText(seconds) {
   if (seconds === null || seconds === undefined) return "бессрочный";
@@ -76,7 +75,7 @@ export function AdminPanel() {
   const [targetGameId, setTargetGameId] = useState("");
   const [playerModal, setPlayerModal] = useState(null);
   const [promos, setPromos] = useState([]);
-  const [promoCode, setPromoCode] = useState("/promo_code");
+  const [promoCode, setPromoCode] = useState("");
   const [promoUses, setPromoUses] = useState(1);
   const [promoDuration, setPromoDuration] = useState("never");
 
@@ -126,7 +125,7 @@ export function AdminPanel() {
 
     {tab === "delivery" && <section><div className="nt-admin-row"><input placeholder="Поиск игрока" value={playerQ} onChange={(e)=>setPlayerQ(e.target.value)} /><select value={targetGameId} onChange={(e)=>setTargetGameId(e.target.value)}><option value="">Выбрать игрока</option>{playerOptions}</select></div><RewardList selected={selectedDelivery} quantities={deliveryQuantities} setQuantities={setDeliveryQuantities} onRemove={(key)=>removeSelected(setSelectedDelivery, key)}/><button onClick={()=>guarded(async()=>{ await sendDelivery(token, targetGameId, selectedToRewards(selectedDelivery, deliveryQuantities)); }, "Дар от высших сил отправлен игроку и поставлен в очередь сообщения бота.")}>Отправить игроку</button></section>}
 
-    {tab === "promos" && <section><h2>Создать</h2><div className="nt-admin-row"><input placeholder="Команда промокода" value={promoCode} onChange={(e)=>setPromoCode(e.target.value)} /><input type="number" min="1" value={promoUses} onChange={(e)=>setPromoUses(e.target.value)} /><select value={promoDuration} onChange={(e)=>setPromoDuration(e.target.value)}>{durations.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div><p className="nt-admin-hint">Игрок вводит команду: <b>{formatRewardCode(promoCode) || "—"}</b></p><RewardList selected={selectedPromo} quantities={promoQuantities} setQuantities={setPromoQuantities} onRemove={(key)=>removeSelected(setSelectedPromo, key)}/><button onClick={()=>guarded(async()=>{ await createPromo(token, formatRewardCode(promoCode), Number(promoUses), promoDuration, selectedToRewards(selectedPromo, promoQuantities)); await refreshPromos(); }, "Промокод создан.")}>Создать промокод</button><h2>Существующие</h2><div className="nt-admin-list">{promos.map((p)=><details className="nt-admin-card" key={p.code}><summary><span>{p.code} — {p.created_at || "без даты"}</span><button className="nt-admin-icon-button nt-danger" type="button" title="Удалить промокод" onClick={(event)=>{ event.preventDefault(); event.stopPropagation(); if(window.confirm(`Удалить промокод ${p.code}?`)) guarded(async()=>{ await deletePromo(token, p.code); await refreshPromos(); }, "Промокод удалён."); }}>×</button></summary><div className="nt-admin-promo-info"><p>Срок жизни: {p.expires_at || "бессрочный"}</p><p>Осталось жить: {secondsLeftText(p.seconds_left)}</p><p>Использований: {p.used_count || 0}</p><p>Осталось использований: {p.uses_left ?? 0}</p><pre className="nt-admin-pre">{JSON.stringify(p.reward || {}, null, 2)}</pre></div></details>)}</div></section>}
+    {tab === "promos" && <section><h2>Создать</h2><div className="nt-admin-row"><input placeholder="Код промокода (например START100)" value={promoCode} onChange={(e)=>setPromoCode(e.target.value)} /><input type="number" min="1" value={promoUses} onChange={(e)=>setPromoUses(e.target.value)} /><select value={promoDuration} onChange={(e)=>setPromoDuration(e.target.value)}>{durations.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div><p className="nt-admin-hint">Игрок вводит в боте: <b>{normalizePromoCode(promoCode) ? `/promo ${normalizePromoCode(promoCode)}` : "—"}</b></p><RewardList selected={selectedPromo} quantities={promoQuantities} setQuantities={setPromoQuantities} onRemove={(key)=>removeSelected(setSelectedPromo, key)}/><button onClick={()=>guarded(async()=>{ await createPromo(token, normalizePromoCode(promoCode), Number(promoUses), promoDuration, selectedToRewards(selectedPromo, promoQuantities)); await refreshPromos(); }, "Промокод создан.")}>Создать промокод</button><h2>Существующие</h2><div className="nt-admin-list">{promos.map((p)=><details className="nt-admin-card" key={p.code}><summary><span>{p.code} — {p.created_at || "без даты"}</span><button className="nt-admin-icon-button nt-danger" type="button" title="Удалить промокод" onClick={(event)=>{ event.preventDefault(); event.stopPropagation(); if(window.confirm(`Удалить промокод ${p.code}?`)) guarded(async()=>{ await deletePromo(token, p.code); await refreshPromos(); }, "Промокод удалён."); }}>×</button></summary><div className="nt-admin-promo-info"><p>Срок жизни: {p.expires_at || "бессрочный"}</p><p>Осталось жить: {secondsLeftText(p.seconds_left)}</p><p>Использований: {p.used_count || 0}</p><p>Осталось использований: {p.uses_left ?? 0}</p><pre className="nt-admin-pre">{JSON.stringify(p.reward || {}, null, 2)}</pre></div></details>)}</div></section>}
 
     {tab === "players" && <section><div className="nt-admin-row"><input placeholder="Поиск по нику или ID" value={playerQ} onChange={(e)=>setPlayerQ(e.target.value)} /></div><div className="nt-admin-list">{players.map((p)=><button key={p.game_id} onClick={async()=>setPlayerModal((await guarded(()=>loadPlayer(token, p.game_id))).player)}>{p.name} — {p.game_id} — уровень {p.level}</button>)}</div></section>}
 

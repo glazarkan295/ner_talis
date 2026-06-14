@@ -150,12 +150,22 @@ def pier_buttons() -> list[list[str]]:
     ]
 
 
+TAVERN_WORK = "Работа в Таверне"
+
+
 def tavern_buttons() -> list[list[str]]:
     return [
         ["Поесть в таверне", "Отдохнуть в таверне"],
+        [TAVERN_WORK],
+        ["Портовый квартал", BACK_TO_CENTRAL],
+    ]
+
+
+def tavern_work_buttons() -> list[list[str]]:
+    return [
         ["Работа официантом", "Работа на кухне"],
         ["Работа на складе"],
-        ["Портовый квартал", BACK_TO_CENTRAL],
+        ["Таверна", BACK_TO_CENTRAL],
     ]
 
 
@@ -366,6 +376,10 @@ TAVERN_REST_TEXT = """🛏 Отдых в таверне
 Можно снять комнату, восстановиться и подготовиться к дальнейшим поискам.
 
 Полная механика отдыха будет подключена позже: время отдыха, цена комнаты, восстановление HP/духа/маны/энергии и возможные бонусы от качества комнаты."""
+
+TAVERN_WORK_TEXT = """💼 Работа в Таверне
+
+Выберите подработку. Каждая работа даёт монеты и небольшие награды, имеет своё время выполнения и откат."""
 
 TAVERN_WORK_WAITER_TEXT = """🍻 Работа официантом
 
@@ -587,9 +601,10 @@ CITY_ACTIONS: dict[str, CityResponse] = {
     "Таверна": CityResponse(TAVERN_TEXT, tavern_buttons(), "seldar_tavern"),
     "Поесть в таверне": CityResponse(TAVERN_FOOD_TEXT, tavern_buttons(), "seldar_tavern_food"),
     "Отдохнуть в таверне": CityResponse(TAVERN_REST_TEXT, tavern_buttons(), "seldar_tavern_rest"),
-    "Работа официантом": CityResponse(TAVERN_WORK_WAITER_TEXT, tavern_buttons(), "seldar_tavern_waiter_work"),
-    "Работа на кухне": CityResponse(TAVERN_WORK_KITCHEN_TEXT, tavern_buttons(), "seldar_tavern_kitchen_work"),
-    "Работа на складе": CityResponse(TAVERN_WORK_STORAGE_TEXT, tavern_buttons(), "seldar_tavern_storage_work"),
+    TAVERN_WORK: CityResponse(TAVERN_WORK_TEXT, tavern_work_buttons(), "seldar_tavern_work"),
+    "Работа официантом": CityResponse(TAVERN_WORK_WAITER_TEXT, tavern_work_buttons(), "seldar_tavern_waiter_work"),
+    "Работа на кухне": CityResponse(TAVERN_WORK_KITCHEN_TEXT, tavern_work_buttons(), "seldar_tavern_kitchen_work"),
+    "Работа на складе": CityResponse(TAVERN_WORK_STORAGE_TEXT, tavern_work_buttons(), "seldar_tavern_storage_work"),
     "Торговый квартал": CityResponse(TRADE_TEXT, trade_buttons(), "seldar_trade_district"),
     "Торговая гильдия": CityResponse(TRADE_GUILD_TEXT, trade_buttons(), "seldar_trade_guild"),
     MARKET_ENTRY: CityResponse(NPC_MARKET_TEXT, market_main_buttons(), "seldar_npc_market"),
@@ -601,7 +616,8 @@ CITY_ACTIONS: dict[str, CityResponse] = {
     "Плавильня": CityResponse(SMELTERY_TEXT, craft_buttons(), "seldar_smeltery"),
     "Кузница": CityResponse(FORGE_TEXT, craft_buttons(), "seldar_forge"),
     "Кожевенная мастерская": CityResponse(LEATHERWORK_TEXT, craft_buttons(), "seldar_leatherwork"),
-    "Ювелирная мастерская": CityResponse("💎 Ювелирная мастерская\n\nМастерская временно закрыта на технические работы.", craft_buttons(), "seldar_craft_district"),
+    # «Ювелирная мастерская» обрабатывается крафт-сервисом (should_handle_crafting_action)
+    # раньше CITY_ACTIONS — отдельная запись-заглушка здесь была бы недостижимой.
     "Алхимическая мастерская": CityResponse(ALCHEMY_WORKSHOP_TEXT, craft_buttons(), "seldar_alchemy_workshop"),
     "Мастерская чародея": CityResponse("🔮 Мастерская чародея\n\nМастерская временно закрыта на техническое обслуживание.", craft_buttons(), "seldar_craft_district"),
     "Верхний квартал": CityResponse(UPPER_TEXT, upper_buttons(), "seldar_upper_district"),
@@ -1067,7 +1083,11 @@ def process_world_action(
 
     fishing_response = handle_fishing_action(storage, player, action)
     if fishing_response is not None:
-        return WorldActionResult(text=fishing_response.text, buttons=fishing_response.buttons)
+        return WorldActionResult(
+            text=fishing_response.text,
+            buttons=fishing_response.buttons,
+            scheduled_timer=getattr(fishing_response, "scheduled_timer", None),
+        )
 
     # While outside the city, every non-profile input belongs to the external
     # location router. This prevents old/random city buttons from teleporting

@@ -34,6 +34,8 @@ SMELTERY = "Плавильня"
 FORGE = "Кузница"
 LEATHERWORK = "Кожевенная мастерская"
 JEWELRY = "Ювелирная мастерская"
+BIJOUTERIE = "Бижутерия"
+GEM_INSERT = "вставка камней"
 ALCHEMY = "Алхимическая мастерская"
 ENCHANTER = "Мастерская чародея"
 BACK_TO_CENTRAL = "⬅️ Центральная площадь"
@@ -110,7 +112,7 @@ SECTION_LABELS = {section for data in WORKSHOPS.values() for section in (data.ge
 
 CRAFT_ACTIONS = frozenset(
     set(WORKSHOPS.keys())
-    | {ENCHANTER, BACK_TO_CENTRAL, CENTRAL_SQUARE}
+    | {ENCHANTER, BACK_TO_CENTRAL, CENTRAL_SQUARE, BIJOUTERIE, GEM_INSERT}
     | SECTION_LABELS
     | {
         BACK,
@@ -466,8 +468,7 @@ def _ingredient_line(player: dict[str, Any], ingredient: dict[str, Any], quantit
     amount = max(1, safe_int(ingredient.get("amount"), 1)) * max(1, quantity)
     role = str(ingredient.get("role") or "Ингредиент")
     available = _ingredient_available_count(player, ingredient)
-    mark = "✅" if available >= amount else "❌"
-    return f"{mark} {role}: {name} ×{amount} (есть: {available})"
+    return f"{role}: {name} ×{amount} (есть: {available})"
 
 
 def _craft_skill_level(player: dict[str, Any], workshop_id: str) -> int:
@@ -558,9 +559,55 @@ def _maintenance_response(storage: Any, player: dict[str, Any], title: str, text
     return CraftResponse(message, _craft_district_buttons(), "seldar_craft_district")
 
 
+def _jewelry_home_buttons() -> list[list[str]]:
+    return [[BIJOUTERIE, GEM_INSERT], [CRAFT_DISTRICT]]
+
+
+def _jewelry_section_buttons() -> list[list[str]]:
+    sections = list(WORKSHOP_BY_ID["jewelry"].get("sections") or [])
+    rows = [[sections[index], sections[index + 1]] for index in range(0, len(sections) - 1, 2)]
+    if len(sections) % 2:
+        rows.append([sections[-1]])
+    rows.append([JEWELRY])
+    return rows
+
+
+def _jewelry_home_response(storage: Any, player: dict[str, Any]) -> CraftResponse:
+    data = WORKSHOP_BY_ID["jewelry"]
+    _set_city_zone(player, data["zone"])
+    context = _active_context(player)
+    context.clear()
+    context.update({"workshop": "jewelry", "step": "jewelry_home"})
+    storage.update_player(player)
+    text = f"{data['title']}\n\n{data['intro']}\n\nВыберите отдел:"
+    return CraftResponse(text, _jewelry_home_buttons(), data["zone"])
+
+
+def _jewelry_bijouterie_response(storage: Any, player: dict[str, Any]) -> CraftResponse:
+    data = WORKSHOP_BY_ID["jewelry"]
+    _set_city_zone(player, data["zone"])
+    context = _active_context(player)
+    context.clear()
+    context.update({"workshop": "jewelry", "step": "sections"})
+    storage.update_player(player)
+    text = "💍 Бижутерия\n\nВыберите раздел создания:"
+    return CraftResponse(text, _jewelry_section_buttons(), data["zone"])
+
+
+def _jewelry_gem_insert_response(storage: Any, player: dict[str, Any]) -> CraftResponse:
+    data = WORKSHOP_BY_ID["jewelry"]
+    _set_city_zone(player, data["zone"])
+    context = _active_context(player)
+    context.clear()
+    context.update({"workshop": "jewelry", "step": "jewelry_home"})
+    storage.update_player(player)
+    text = "💎 Вставка камней\n\nДанный отдел временно закрыт на технические работы."
+    return CraftResponse(text, _jewelry_home_buttons(), data["zone"])
+
+
 def _show_workshop_menu(storage: Any, player: dict[str, Any], workshop_id: str) -> CraftResponse:
     if workshop_id == "jewelry":
-        return _maintenance_response(storage, player, "💎 Ювелирная мастерская", "Мастерская временно закрыта на технические работы.")
+        return _jewelry_home_response(storage, player)
     data = WORKSHOP_BY_ID[workshop_id]
     _set_city_zone(player, data["zone"])
     if workshop_id == "alchemy":
@@ -609,9 +656,7 @@ def _show_recipe_list(storage: Any, player: dict[str, Any], workshop_id: str, se
         out_amount_label = _recipe_output_amount_label(recipe)
         out_suffix = f" ×{out_amount_label}" if out_amount_label != "1" else ""
         lines.append(f"{index}. {mark} {_recipe_output_name(recipe)}{out_suffix}")
-        for ingredient in recipe.get("ingredients") or []:
-            lines.append(f"   {_ingredient_line(player, ingredient)}")
-    lines.append("\nНажмите короткую кнопку вида «Крафт №1», чтобы посмотреть рецепт.")
+    lines.append("\nНажмите короткую кнопку вида «Крафт №1», чтобы посмотреть рецепт и ингредиенты.")
     return CraftResponse("\n".join(lines), _recipe_buttons(recipes, workshop_id), data["zone"])
 
 
@@ -1509,12 +1554,14 @@ def handle_crafting_action(storage: Any, player: dict[str, Any], action: str) ->
     if action == ENCHANTER:
         return _maintenance_response(storage, player, "🔮 Мастерская чародея", "Мастерская временно закрыта на техническое обслуживание.")
 
-    if action == JEWELRY:
-        return _maintenance_response(storage, player, "💎 Ювелирная мастерская", "Мастерская временно закрыта на технические работы.")
-
     if action in WORKSHOPS:
         workshop_id = WORKSHOPS[action]["id"]
         return _show_workshop_menu(storage, player, workshop_id)
+
+    if action == BIJOUTERIE:
+        return _jewelry_bijouterie_response(storage, player)
+    if action == GEM_INSERT:
+        return _jewelry_gem_insert_response(storage, player)
 
     context = _active_context(player)
     workshop_id = str(context.get("workshop") or "")

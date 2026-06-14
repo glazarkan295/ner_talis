@@ -112,9 +112,11 @@ class CollectedItemsIntegrationTest(unittest.TestCase):
         process_world_action(storage, player, "Кожевенная мастерская", "telegram")
         result = process_world_action(storage, storage.get_player_by_game_id("NT-COLLECTED"), "Заготовки", "telegram")
         self.assertIn("✅ Верёвка", result.text)
-        self.assertIn("Сухожилия ×3", result.text)
         self.assertIn("✅ Выделанная кожа", result.text)
-        self.assertIn("Простая шкура ×1", result.text)
+        # Список раздела показывает только сами изделия; ингредиенты раскрываются
+        # лишь по нажатию «Крафт №N», а не в общем списке.
+        self.assertNotIn("Сухожилия ×3", result.text)
+        self.assertIn("Крафт №1", result.text)
 
     def test_legacy_hide_and_tendon_ids_are_canonicalized_for_old_inventories(self):
         tmp, storage, player = self.make_storage_player()

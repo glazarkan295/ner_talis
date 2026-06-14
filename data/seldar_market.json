@@ -9,6 +9,7 @@
     {"item_id": "coarse_flour", "display_name": "Грубая мука", "category": "Ингредиент для еды", "description": "Используется в простых блюдах.", "buy_price_copper": 17},
     {"item_id": "mining_pickaxe", "display_name": "Шахтёрская кирка", "category": "Расходник-инструмент", "description": "Нужна для добычи руд. Имеет 10 использований.", "buy_price_copper": 70},
     {"item_id": "woodcutters_axe", "display_name": "Топор дровосека", "category": "Расходник-инструмент", "description": "Нужен для добычи брёвен. Имеет 10 использований.", "buy_price_copper": 60},
+    {"item_id": "fishing_rod", "display_name": "Удочка рыбака", "category": "Расходник-инструмент", "description": "Нужна для рыбалки. Имеет 10 использований.", "buy_price_copper": 30},
     {"item_id": "bolt_quiver_empty", "display_name": "Пустой колчан для болтов арбалета", "category": "Снаряжение / контейнер для боеприпасов", "description": "Пустой колчан для хранения болтов арбалета.", "buy_price_copper": 30},
     {"item_id": "arrow_quiver_empty", "display_name": "Пустой колчан для стрел лука", "category": "Снаряжение / контейнер для боеприпасов", "description": "Пустой колчан для хранения стрел лука.", "buy_price_copper": 30},
     {"item_id": "ordinary_leather_helmet", "display_name": "Обычный кожаный шлем", "category": "Обычная кожаная экипировка", "description": "Базовый кожаный шлем для ранней защиты.", "buy_price_copper": 200},

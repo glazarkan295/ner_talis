@@ -51,10 +51,51 @@ SYNTHETIC_REWARD_IDS = {
         "id": "money_copper",
         "item_id": "money_copper",
         "kind": "money",
+        "copper_per_unit": 1,
         "name": "Медные монеты",
         "category": "Админ-ресурсы",
-        "description": "Валюта. При доставке или промокоде зачисляется на баланс игрока, а не в инвентарь.",
-        "icon": "/assets/admin_rewards/money_copper.png",
+        "description": "Валюта (медь). При доставке или промокоде зачисляется на баланс игрока, а не в инвентарь.",
+        "icon": "/assets/items/hilly_meadows/currency/copper_coin.png",
+    },
+    "money_silver": {
+        "id": "money_silver",
+        "item_id": "money_silver",
+        "kind": "money",
+        "copper_per_unit": 1_000,
+        "name": "Серебряные монеты",
+        "category": "Админ-ресурсы",
+        "description": "Валюта (серебро). 1 серебряная = 1 000 медных. Зачисляется на баланс игрока.",
+        "icon": "/assets/items/hilly_meadows/currency/silver_coin.png",
+    },
+    "money_gold": {
+        "id": "money_gold",
+        "item_id": "money_gold",
+        "kind": "money",
+        "copper_per_unit": 1_000_000,
+        "name": "Золотые монеты",
+        "category": "Админ-ресурсы",
+        "description": "Валюта (золото). 1 золотая = 1 000 000 медных. Зачисляется на баланс игрока.",
+        "icon": "/assets/items/currency/gold_coin.png",
+    },
+    "money_magic_gold": {
+        "id": "money_magic_gold",
+        "item_id": "money_magic_gold",
+        "kind": "money",
+        "copper_per_unit": 1_000_000_000,
+        "name": "Магическое золото",
+        "category": "Админ-ресурсы",
+        "description": "Валюта (магическое золото). 1 = 1 000 000 000 медных. Зачисляется на баланс игрока.",
+        "icon": "/assets/items/currency/magic_gold_coin.png",
+    },
+    "money_ancient": {
+        "id": "money_ancient",
+        "item_id": "money_ancient",
+        "kind": "money",
+        "copper_per_unit": 500_000_000_000,
+        "name": "Древние монеты",
+        "category": "Админ-ресурсы",
+        "description": "Валюта (древние). 1 древняя = 500 000 000 000 медных. Зачисляется на баланс игрока.",
+        "icon": "/assets/items/currency/ancient_coin.png",
     },
     "free_skill_points": {
         "id": "free_skill_points",
@@ -85,6 +126,22 @@ SYNTHETIC_REWARD_IDS = {
     },
 }
 
+# Catalog items that должны быть скрыты из админ-каталога (валюта вынесена в
+# Админ-ресурсы, у событий нет моделек, простые рецепты/чертежи и грубая медная
+# бижутерия выведены из контента).
+HIDDEN_CATALOG_ITEM_IDS = {
+    "silver_coin",
+    "copper_coin",
+    "forest_tick",
+    "old_bear_trap",
+    "mire_trap",
+    "simple_leather_recipe",
+    "basic_weapon_blueprint",
+    "simple_jewelry_recipe",
+    "rough_copper_ring",
+    "rough_copper_necklace",
+}
+
 CATEGORY_RU_LABELS = {
     "admin-resources": "Админ-ресурсы",
     "admin_resources": "Админ-ресурсы",
@@ -92,24 +149,55 @@ CATEGORY_RU_LABELS = {
     "weapons": "Оружие",
     "armor": "Снаряжение",
     "equipment": "Снаряжение",
+    "перчатки": "Снаряжение",
+    "пояс": "Снаряжение",
     "jewelry": "Бижутерия",
     "accessory": "Бижутерия",
+    "ring": "Бижутерия",
+    "necklace": "Бижутерия",
     "consumable": "Расходники",
     "consumables": "Расходники",
     "potion": "Расходники",
+    "camp_food": "Расходники",
     "resource": "Ресурсы",
     "resources": "Ресурсы",
     "material": "Материалы",
     "materials": "Материалы",
     "crafting_material": "Материалы",
+    "ingredient": "Ингредиенты",
+    "ingredients": "Ингредиенты",
+    "fat": "Ингредиенты",
     "loot": "Добыча",
     "mob_loot": "Добыча",
     "drop": "Добыча",
+    "trophy": "Добыча",
+    "trophies": "Добыча",
+    "meat": "Добыча",
+    "мясо": "Добыча",
+    "hide": "Добыча",
+    "шкура": "Добыча",
+    "fang": "Добыча",
+    "fangs": "Добыча",
+    "клыки": "Добыча",
+    "claw": "Добыча",
+    "claws": "Добыча",
+    "когти": "Добыча",
+    "horn": "Добыча",
+    "horns": "Добыча",
+    "рога": "Добыча",
+    "tendon": "Добыча",
+    "tendons": "Добыча",
+    "сухожилия": "Добыча",
     "junk": "Хлам",
     "trash": "Хлам",
     "misc": "Прочее",
     "other": "Прочее",
+    "evidence": "Особое",
     "special": "Особое",
+    "tool": "Инструменты",
+    "tools": "Инструменты",
+    "currency": "Валюта",
+    "events": "События",
     "artifact": "Артефакты",
     "ammunition": "Боеприпасы",
     "quiver": "Колчаны",
@@ -120,10 +208,14 @@ def _category_ru(value: Any, fallback: str = "Прочее") -> str:
     raw = str(value or "").strip()
     if not raw:
         return fallback
-    if any("А" <= ch <= "я" or ch == "ё" or ch == "Ё" for ch in raw):
-        return raw[:1].upper() + raw[1:]
+    # Consult the label map first so fine-grained inventory tags (клыки, перчатки,
+    # fangs, …) collapse into their real category instead of fragmenting the list.
     normalized = raw.casefold().replace(" ", "_")
-    return CATEGORY_RU_LABELS.get(normalized, fallback if raw in {"", "None"} else raw)
+    if normalized in CATEGORY_RU_LABELS:
+        return CATEGORY_RU_LABELS[normalized]
+    if any("а" <= ch <= "я" or ch in "ёЁ" for ch in raw.casefold()):
+        return raw[:1].upper() + raw[1:]
+    return fallback if raw in {"", "None"} else raw
 
 
 def _now() -> datetime:
@@ -356,7 +448,10 @@ def _item_name(item: dict[str, Any]) -> str:
 
 
 def _item_category(item: dict[str, Any]) -> str:
-    return _category_ru(item.get("category_ru") or item.get("inventory_section_ru") or item.get("category") or item.get("type"), "Прочее")
+    # Prefer the canonical category/type over the inventory-placement labels
+    # (category_ru/inventory_section_ru mirror the player's inventory sections —
+    # «Клыки», «Рога», «Пояс» — which is "место в инвентаре", not a real category).
+    return _category_ru(item.get("category") or item.get("type") or item.get("category_ru") or item.get("inventory_section_ru"), "Прочее")
 
 
 def _public_icon(item: dict[str, Any]) -> str | None:
@@ -395,7 +490,11 @@ def _catalog_cards_cache() -> tuple[tuple[dict[str, Any], ...], tuple[dict[str, 
     so an admin icon change is still reflected immediately.
     """
     synthetic = tuple(dict(value) for value in SYNTHETIC_REWARD_IDS.values())
-    definitions = tuple(_catalog_card(item) for item in load_all_item_definitions() if _item_id(item))
+    definitions = tuple(
+        _catalog_card(item)
+        for item in load_all_item_definitions()
+        if _item_id(item) and _item_id(item) not in HIDDEN_CATALOG_ITEM_IDS
+    )
     return synthetic, definitions
 
 
@@ -425,6 +524,8 @@ def admin_catalog_item(item_id: str) -> dict[str, Any] | None:
         item = dict(SYNTHETIC_REWARD_IDS[cleaned])
         item["full_description"] = item["description"]
         return item
+    if cleaned in HIDDEN_CATALOG_ITEM_IDS:
+        return None
     definition = get_item_definition_by_id(cleaned)
     if not definition:
         return None
@@ -546,11 +647,14 @@ def _apply_rewards_to_player(player: dict[str, Any], rewards: list[dict[str, Any
         amount = reward["amount"]
         kind = reward["kind"]
         if kind == "money":
+            per_unit = _safe_int(SYNTHETIC_REWARD_IDS.get(item_id, {}).get("copper_per_unit"), 1) or 1
+            delta = amount * per_unit
             old_money = _safe_int(player.get("money_copper", player.get("money", 0)), 0)
-            new_money = max(0, old_money + amount)
+            new_money = max(0, old_money + delta)
             player["money_copper"] = new_money
             player["money"] = new_money
-            lines.append(f"Медные монеты ×{amount}")
+            coin_name = SYNTHETIC_REWARD_IDS.get(item_id, {}).get("name", "Медные монеты")
+            lines.append(f"{coin_name} ×{amount}")
         elif kind == "skill_points":
             player["free_skill_points"] = _safe_int(player.get("free_skill_points"), 0) + amount
             lines.append(f"Очки навыков ×{amount}")
@@ -607,7 +711,8 @@ def rewards_to_promo_payload(rewards: list[dict[str, Any]]) -> dict[str, Any]:
         amount = reward["amount"]
         kind = reward["kind"]
         if kind == "money":
-            payload["money"] = _safe_int(payload.get("money"), 0) + amount
+            per_unit = _safe_int(SYNTHETIC_REWARD_IDS.get(item_id, {}).get("copper_per_unit"), 1) or 1
+            payload["money"] = _safe_int(payload.get("money"), 0) + amount * per_unit
         elif kind == "skill_points":
             payload["free_skill_points"] = _safe_int(payload.get("free_skill_points"), 0) + amount
         elif kind == "stat_points":
