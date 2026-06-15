@@ -41,7 +41,7 @@ from services.inventory_service import (
     regular_slot_count,
 )
 from services.promo_service import redeem_promo_code
-from services.fine_service import fine_summary_for_profile
+from services.fine_service import fine_entries_for_profile, fine_summary_for_profile
 from services.market_service import (
     is_profile_market_sell_enabled,
     sell_item_from_profile,
@@ -1239,7 +1239,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         "information": {
             "achievements": player.get("achievements", []),
             "rating": player.get("rating", {"globalPlace": "—", "pvePlace": "—", "pvpPlace": "—", "craftPlace": "—"}),
-            "activity": {"pveKills": safe_int(player.get("pve_kills"), 0), "pvpKills": safe_int(player.get("pvp_kills"), 0), "soulParticlesAbsorbed": safe_int(player.get("soul_particles_absorbed"), 0), "fines": fine_summary_for_profile(player), "craftingLevels": crafting_levels},
+            "activity": {"pveKills": safe_int(player.get("pve_kills"), 0), "pvpKills": safe_int(player.get("pvp_kills"), 0), "soulParticlesAbsorbed": safe_int(player.get("soul_particles_absorbed"), 0), "fines": fine_summary_for_profile(player), "fineList": fine_entries_for_profile(player), "craftingLevels": crafting_levels},
         },
     }
 

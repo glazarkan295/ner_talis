@@ -913,13 +913,37 @@ function SkillsTab({ profile, readOnly = false, onSpendSkillPoints, onEquipSkill
   );
 }
 
+function FinesModal({ fines, position, onClose }) {
+  return (
+    <div className="nt-modal-layer" onMouseDown={onClose}>
+      <article className="nt-modal nt-small-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
+        <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
+        <div className="nt-modal-kicker">Городские штрафы</div>
+        <h3>Активные штрафы</h3>
+        {fines.length ? fines.map((fine) => (
+          <div className="nt-modal-block" key={fine.number}>
+            <h4>Штраф №{fine.number}{fine.source ? ` · ${fine.source}` : ""}</h4>
+            <div className="nt-modal-grid">
+              <span>Сумма</span><strong>{fine.amount}</strong>
+              <span>Срок</span><strong>{fine.term}</strong>
+            </div>
+          </div>
+        )) : <p>Активных штрафов нет.</p>}
+      </article>
+    </div>
+  );
+}
+
 function InfoTab({ profile }) {
   const info = profile.information || {};
   const activity = info.activity || {};
   const crafts = activity.craftingLevels || [];
+  const fineList = activity.fineList || [];
+  const [finesModal, setFinesModal] = useState(null);
   return (
     <div className="nt-stack">
-      <Panel title="Активность"><div className="nt-lines"><Row label="Дата регистрации" value={profile.player?.registrationDate || "—"} /><Row label="PVE убийства" value={activity.pveKills || 0} /><Row label="PVP убийства" value={activity.pvpKills || 0} /><Row label="Частицы душ" value={activity.soulParticlesAbsorbed || 0} /><Row label="Штрафы" value={activity.fines || "нет активных штрафов"} /></div></Panel>
+      <Panel title="Активность"><div className="nt-lines"><Row label="Дата регистрации" value={profile.player?.registrationDate || "—"} /><Row label="PVE убийства" value={activity.pveKills || 0} /><Row label="PVP убийства" value={activity.pvpKills || 0} /><Row label="Частицы душ" value={activity.soulParticlesAbsorbed || 0} /><div className="nt-row"><span>Штрафы</span>{fineList.length ? <button type="button" className="nt-fines-button" onClick={(event) => setFinesModal({ position: getFloatingPosition(event, 390, 360) })}>{`${fineList.length} активн. — подробнее`}</button> : <strong>нет активных штрафов</strong>}</div></div></Panel>
+      {finesModal ? <FinesModal fines={fineList} position={finesModal.position} onClose={() => setFinesModal(null)} /> : null}
       <Panel title="Ремёсла"><div className="nt-card-list nt-column-list">{crafts.length ? crafts.map((craft) => <div key={craft.name} className="nt-mini-card"><CardRow label={craft.name} value={`ур. ${craft.level}`} /><p>{craft.exp}</p></div>) : <p className="nt-empty-text">Ремёсла пока не развиты.</p>}</div></Panel>
       <Panel title="Достижения"><div className="nt-card-list nt-column-list">{(info.achievements || []).length ? info.achievements.map((achievement) => <div key={achievement.name || achievement} className="nt-mini-card"><CardRow label={achievement.name || achievement} value="Получено" /><p>{achievement.description || "—"}</p></div>) : <p className="nt-empty-text">Достижений пока нет.</p>}</div></Panel>
     </div>

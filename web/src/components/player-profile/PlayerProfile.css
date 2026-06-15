@@ -175,6 +175,8 @@ button { cursor: pointer; }
   background: rgba(0,0,0,.12);
 }
 .nt-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; text-align: left; }
+.nt-fines-button { justify-self: end; border: 1px solid rgba(177,143,83,.38); background: rgba(0,0,0,.24); color: #d9bd81; border-radius: 9px; padding: 3px 10px; font-size: 10px; cursor: pointer; white-space: nowrap; }
+.nt-fines-button:hover { border-color: rgba(220,177,97,.62); }
 .nt-row strong { color: #d9bd81; font-size: 11px; white-space: nowrap; text-align: right; }
 .nt-race-value { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; color: #d9bd81 !important; }
 .nt-race-info-button {
