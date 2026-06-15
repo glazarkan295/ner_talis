@@ -76,6 +76,15 @@ FORTRESS_GUILD_AGENT = "Агент Гильдии"
 FORTRESS_HIRE = "Найм"
 FORTRESS_ROAD_TO_CITY = "Вернуться на дорогу в город"
 FORTRESS_EXIT_GATE = "Выйти за ворота"
+
+# Переходы между зонами крепости — «хождение по крепости», на котором Древнее
+# Проклятье с шансом 20% уводит игрока на скрытое место Малого плато.
+FORTRESS_QUARTER_WALK_ACTIONS = frozenset({
+    FORTRESS_COURTYARD,
+    FORTRESS_HALL,
+    FORTRESS_ALLEYS,
+    FORTRESS_SEEKER_OUTPOST,
+})
 SMALL_PLATEAU = "Малое плато"
 COMMON_FOREST = "Обыкновенный лес"
 START_SEARCH = "Начать поиск"
@@ -2087,6 +2096,17 @@ def handle_fortress_action(storage: Any, player: dict[str, Any], action: str) ->
     player["active_event"] = None
     player["active_timer"] = None
     player["in_battle"] = False
+
+    # Древнее Проклятье: 20% «заблудиться» при хождении по крепости.
+    if action in FORTRESS_QUARTER_WALK_ACTIONS:
+        curse_result = roll_ancient_curse_trigger(player, "fortress_quarter_walk")
+        if curse_result.get("triggered"):
+            storage.update_player(player)
+            return LocationResponse(
+                str(curse_result.get("text") or "Древнее Проклятье переносит вас на Малое плато."),
+                small_plateau_hidden_coin_buttons(),
+                "small_plateau_hidden_coin_place",
+            )
 
     if action in {FORTRESS_COURTYARD, FORTRESS_BACK, STAY_IN_FORTRESS}:
         player["current_zone"] = "fortress_in_gorge_courtyard"

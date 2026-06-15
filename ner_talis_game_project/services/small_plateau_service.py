@@ -395,7 +395,10 @@ def roll_ancient_curse_trigger(player_state: dict[str, Any], action_type: str, r
         return {"triggered": False}
     if action_type not in {"city_quarter_walk", "fortress_quarter_walk", "location_search", "camp_rest"}:
         return {"triggered": False}
-    if rng.random() >= 0.20:
+    # Достижение «Проклятье? Какое проклятье?» ослабляет негативные эффекты
+    # проклятий вдвое — шанс «заблудиться» падает с 20% до 10%.
+    trigger_chance = 0.10 if has_achievement(player_state, CURSE_ACHIEVEMENT_ID) else 0.20
+    if rng.random() >= trigger_chance:
         return {"triggered": False}
     player_state["current_city"] = "outside_seldar"
     player_state["current_location"] = LOCATION_ID
@@ -414,7 +417,9 @@ def cleanse_ancient_curse_at_hidden_place(player_state: dict[str, Any]) -> dict[
         return {"success": False, "text": str(texts.get("not_enough_silver") or "Вам нужно 100 серебряных монет, чтобы снять проклятье.")}
     remove_effect(player_state, ANCIENT_CURSE_ID)
     max_hp = int(player_state.get("max_hp", player_state.get("hp", 1)) or 1)
-    damage = max(1, int(max_hp * 0.40))
+    # «Проклятье? Какое проклятье?» вдвое смягчает негативный эффект — штраф −40% → −20%.
+    penalty_percent = 0.20 if has_achievement(player_state, CURSE_ACHIEVEMENT_ID) else 0.40
+    damage = max(1, int(max_hp * penalty_percent))
     player_state["hp"] = max(1, int(player_state.get("hp", max_hp) or max_hp) - damage)
     _small_plateau_state(player_state)["hidden_coin_place_active"] = False
     player_state["current_zone"] = LOCATION_ID
@@ -459,7 +464,7 @@ def register_ancient_curse_active_day(player_state: dict[str, Any], activity_min
     effect["active_days_with_30m_activity"] = int(effect.get("active_days_with_30m_activity", 0) or 0) + 1
     # Keep list representation in sync.
     add_effect(player_state, ANCIENT_CURSE_ID, effect)
-    if effect["active_days_with_30m_activity"] >= 60 and not has_achievement(player_state, CURSE_ACHIEVEMENT_ID):
+    if effect["active_days_with_30m_activity"] > 60 and not has_achievement(player_state, CURSE_ACHIEVEMENT_ID):
         add_achievement(player_state, CURSE_ACHIEVEMENT_ID)
         return {
             "achievement_id": CURSE_ACHIEVEMENT_ID,

@@ -31,6 +31,7 @@ from services.small_plateau_service import (
     register_ancient_curse_active_day,
     resolve_small_plateau_search,
 )
+from services.player_time_service import advance_player_time, HOUR_SECONDS
 from services.item_registry import get_item_definition_by_id
 from services.registration_service import create_player, load_races
 from storage.json_storage import JsonStorage
@@ -113,11 +114,27 @@ class SmallPlateauIntegrationTest(unittest.TestCase):
     def test_curse_achievement_after_60_active_days(self):
         player = {}
         add_effect(player, ANCIENT_CURSE_ID, {"id": ANCIENT_CURSE_ID, "effect_id": ANCIENT_CURSE_ID, "active": True})
+        # Спека: «больше 60 дней» — достижение выдаётся строго после 60-го дня.
         result = None
         for _ in range(60):
             result = register_ancient_curse_active_day(player, 30)
+        self.assertIsNone(result)
+        result = register_ancient_curse_active_day(player, 30)  # 61-й день
         self.assertIsNotNone(result)
         self.assertTrue(any(value == "curse_what_curse" or (isinstance(value, dict) and value.get("achievement_id") == "curse_what_curse") for value in player.get("achievements", [])))
+
+    def test_amulet_burn_ticks_hourly_via_player_time(self):
+        player = {"hp": 100, "max_hp": 100}
+        add_effect(player, AMULET_BURN_ID, {"id": AMULET_BURN_ID, "effect_id": AMULET_BURN_ID, "active": True})
+        now = 1_000_000
+        # Первый вызов лишь ставит метку времени, без урона.
+        self.assertEqual([], advance_player_time(player, now))
+        self.assertEqual(100, player["hp"])
+        # Через 3 часа — 3 тика по 5 HP и 3 сообщения.
+        messages = advance_player_time(player, now + 3 * HOUR_SECONDS)
+        self.assertEqual(3, len(messages))
+        self.assertEqual(85, player["hp"])
+        self.assertTrue(all("5 HP" in m for m in messages))
 
     def test_small_plateau_items_are_in_registry(self):
         self.assertIsNotNone(get_item_definition_by_id("old_brooch"))
