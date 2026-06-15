@@ -75,6 +75,20 @@ class FineAdvanceResult:
     changed: bool = False
 
 
+def _central_square_buttons() -> list[list[str]]:
+    """Full Central Square keypad after a raid relocation.
+
+    Lazy import avoids the circular dependency (city_service imports this module),
+    so a raid drop-off shows every quarter/gate button, not just three quarters.
+    """
+    try:
+        from services.city_service import central_square_buttons
+
+        return central_square_buttons()
+    except Exception:
+        return [["Портовый квартал", "Торговый квартал"], ["Ремесленный квартал", "Верхний квартал"], ["Городские ворота", "Объявления"]]
+
+
 def _now_ts(now: float | int | None = None) -> int:
     return int(time.time() if now is None else now)
 
@@ -237,7 +251,7 @@ def maybe_trigger_raid(
                 f"У вас уже есть активный городской штраф: {amount} медных монет. "
                 "Оплатите его у Управляющего."
             ),
-            buttons=[["Верхний квартал"], ["Портовый квартал"], ["Торговый квартал"]],
+            buttons=_central_square_buttons(),
             zone_id="seldar_central_square",
         )
 
@@ -246,7 +260,7 @@ def maybe_trigger_raid(
     amount = safe_int(fine.get("current_amount"), BASE_FINE_COPPER)
     return FineActionResult(
         text=_format_raid_text(amount),
-        buttons=[["Верхний квартал"], ["Портовый квартал"], ["Торговый квартал"]],
+        buttons=_central_square_buttons(),
         zone_id="seldar_central_square",
     )
 
@@ -614,7 +628,7 @@ def maybe_trigger_raid(  # type: ignore[override]
         text += f"\n\nТеперь у вас активных штрафов: {count}. Общая сумма: {total} медных монет."
     return FineActionResult(
         text=text,
-        buttons=[["Верхний квартал"], ["Портовый квартал"], ["Торговый квартал"]],
+        buttons=_central_square_buttons(),
         zone_id="seldar_central_square",
     )
 
