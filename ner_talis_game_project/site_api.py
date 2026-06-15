@@ -242,6 +242,11 @@ class PromoRedeemRequest(BaseModel):
     code: str
 
 
+class EditProfileFieldRequest(BaseModel):
+    field: str
+    value: str
+
+
 def parse_datetime(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
@@ -344,6 +349,71 @@ def resource_crystal_effect_from_item(item: dict[str, Any]) -> dict[str, Any] | 
         "stack_rule": "refresh",
         "description": item.get("effect_description") or payload.get("description") or item.get("description") or "Временное изменение максимума ресурсов.",
     }
+
+
+GENDER_OPTIONS = {"male": "Муж.", "female": "Жен."}
+PROFILE_EDITABLE_FIELDS = ("name", "race", "gender")
+
+
+def gender_label_ru(gender_id: Any, fallback: Any = None) -> str:
+    gid = str(gender_id or "").strip().casefold()
+    if gid in GENDER_OPTIONS:
+        return GENDER_OPTIONS[gid]
+    text = str(fallback or "").strip()
+    return text or "Не выбран"
+
+
+def profile_field_edit_availability(player: dict[str, Any]) -> dict[str, bool]:
+    """True для поля = осталась 1 бесплатная попытка изменить его в сводке."""
+    used = player.get("profile_field_edits")
+    used = used if isinstance(used, dict) else {}
+    return {field: safe_int(used.get(field), 0) < 1 for field in PROFILE_EDITABLE_FIELDS}
+
+
+def apply_profile_field_edit(player: dict[str, Any], field: str, value: str) -> str:
+    """Тратит единственную бесплатную попытку и меняет имя/расу/пол в сводке.
+
+    Возвращает новое отображаемое значение. Бросает HTTPException, если поле
+    неизвестно, попытки исчерпаны или значение некорректно.
+    """
+    field = str(field or "").strip().casefold()
+    if field not in PROFILE_EDITABLE_FIELDS:
+        raise HTTPException(status_code=400, detail="Это поле нельзя изменить.")
+    edits = player.get("profile_field_edits")
+    if not isinstance(edits, dict):
+        player["profile_field_edits"] = edits = {}
+    if safe_int(edits.get(field), 0) >= 1:
+        raise HTTPException(status_code=409, detail="У вас закончились попытки изменить это поле.")
+
+    raw = str(value or "").strip()
+    if field == "name":
+        if not (1 <= len(raw) <= 24):
+            raise HTTPException(status_code=400, detail="Имя должно быть от 1 до 24 символов.")
+        player["name"] = raw
+        label = raw
+    elif field == "gender":
+        folded = raw.casefold()
+        chosen = folded if folded in GENDER_OPTIONS else {"муж.": "male", "муж": "male", "жен.": "female", "жен": "female"}.get(folded)
+        if chosen not in GENDER_OPTIONS:
+            raise HTTPException(status_code=400, detail="Выберите пол: Муж. или Жен.")
+        player["gender"] = chosen
+        player["gender_label"] = GENDER_OPTIONS[chosen]
+        label = GENDER_OPTIONS[chosen]
+    else:  # race
+        from services.registration_service import load_races
+        races = load_races("data/races.json")
+        race_id = raw if raw in races else next((key for key, data in races.items() if str(data.get("name", "")).casefold() == raw.casefold()), None)
+        if not race_id or race_id not in races:
+            raise HTTPException(status_code=400, detail="Неизвестная раса.")
+        race = races[race_id]
+        player["race_id"] = race_id
+        player["race_name"] = race.get("name", race_id)
+        # Базовые статы расы статичны (вложенные/бонусные очки отдельно) — безопасно заменить.
+        player["stats"] = dict(race.get("stats") or {})
+        label = race.get("name", race_id)
+
+    edits[field] = safe_int(edits.get(field), 0) + 1
+    return label
 
 
 SUSPICIOUS_POTION_ATTRS = {
@@ -1239,6 +1309,9 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "nickname": player.get("name", "Безымянный"),
             "raceKey": race_key,
             "raceName": player.get("race_name", "Человек"),
+            "gender": player.get("gender", "not_selected"),
+            "genderLabel": gender_label_ru(player.get("gender"), player.get("gender_label")),
+            "profileFieldEdits": profile_field_edit_availability(player),
             "branch": player_branch(player) or "Без ветви",
             "skillBranch": player_branch(player) or "Без ветви",
             "mainSkillPath": selected_main_path(player),
@@ -2201,6 +2274,15 @@ def create_profile_api_router(get_storage) -> APIRouter:
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "restoredEnergy": restored_energy, "profile": frontend_profile_payload(player, session)}
+
+    @router.post("/{identifier}/profile/edit-field")
+    def edit_profile_field(identifier: str, payload: EditProfileFieldRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        player, session = resolve_profile_write(storage, identifier, request)
+        label = apply_profile_field_edit(player, payload.field, payload.value)
+        sync_player_parameters_for_bots(player)
+        save_player(storage, player)
+        return {"ok": True, "field": str(payload.field), "value": label, "profile": frontend_profile_payload(player, session)}
 
     @router.post("/{identifier}/inventory/sell")
     def sell_inventory_item(identifier: str, payload: SellItemRequest, request: Request) -> dict[str, Any]:

@@ -164,6 +164,13 @@ export function useItem(identifier, itemId, inventoryIndex = null) {
   });
 }
 
+export function editProfileField(identifier, field, value) {
+  return requestJson(profileEndpoint("/profile/edit-field"), {
+    method: "POST",
+    body: JSON.stringify({ field, value: String(value) }),
+  });
+}
+
 export function spendSkillPoints(identifier, skillId, modifierId, amount) {
   return requestJson(profileEndpoint("/skills/spend"), {
     method: "POST",

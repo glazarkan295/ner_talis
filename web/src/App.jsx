@@ -5,6 +5,7 @@ import "./components/player-profile/PlayerProfile.css";
 import {
   dropItem,
   sellItem,
+  editProfileField,
   equipItem,
   equipSkill,
   getProfileIdentifierFromUrl,
@@ -146,6 +147,9 @@ function ProfileApp() {
         }}
         onUnequipSkill={(skill) => {
           return runProfileAction(() => unequipSkill(profileIdentifier, skill.id || skill.name));
+        }}
+        onEditProfileField={(field, value) => {
+          return runProfileAction(() => editProfileField(profileIdentifier, field, value));
         }}
       />
     </>
