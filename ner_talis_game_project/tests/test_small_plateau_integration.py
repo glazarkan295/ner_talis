@@ -25,9 +25,13 @@ from services.external_location_service import (
 from services.small_plateau_service import (
     ANCIENT_CURSE_ID,
     AMULET_BURN_ID,
+    SEEKER_ACHIEVEMENT_ID,
+    add_achievement,
     add_effect,
     cleanse_ancient_curse_at_hidden_place,
+    filter_seeker_only,
     handle_cursed_coin_choice,
+    player_has_seeker,
     register_ancient_curse_active_day,
     resolve_small_plateau_search,
 )
@@ -135,6 +139,21 @@ class SmallPlateauIntegrationTest(unittest.TestCase):
         self.assertEqual(3, len(messages))
         self.assertEqual(85, player["hp"])
         self.assertTrue(all("5 HP" in m for m in messages))
+
+    def test_seeker_only_events_hidden_until_achievement(self):
+        events = [
+            {"id": "common", "weight": 5},
+            {"id": "secret", "weight": 5, "seeker_only": True},
+        ]
+        player = {}
+        self.assertFalse(player_has_seeker(player))
+        visible = filter_seeker_only(player, events)
+        self.assertEqual([e["id"] for e in visible], ["common"])  # обычный игрок не видит секрет
+
+        add_achievement(player, SEEKER_ACHIEVEMENT_ID)
+        self.assertTrue(player_has_seeker(player))
+        visible_seeker = filter_seeker_only(player, events)
+        self.assertEqual({e["id"] for e in visible_seeker}, {"common", "secret"})
 
     def test_small_plateau_items_are_in_registry(self):
         self.assertIsNotNone(get_item_definition_by_id("old_brooch"))

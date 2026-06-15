@@ -150,6 +150,23 @@ def has_achievement(player_state: dict[str, Any], achievement_id: str) -> bool:
     return False
 
 
+def player_has_seeker(player_state: dict[str, Any]) -> bool:
+    """Есть ли у игрока легендарное достижение «Ищущий»."""
+    return has_achievement(player_state, SEEKER_ACHIEVEMENT_ID)
+
+
+def filter_seeker_only(player_state: dict[str, Any], items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Скрывает записи с флагом ``seeker_only`` от игроков без «Ищущего».
+
+    Инфраструктура гейтинга скрытого контента: будущие события на локации и
+    особые варианты ответов помечаются ``"seeker_only": true`` и становятся
+    доступны только обладателям достижения «Ищущий».
+    """
+    if player_has_seeker(player_state):
+        return list(items)
+    return [item for item in items if not (isinstance(item, dict) and item.get("seeker_only"))]
+
+
 def add_achievement(player_state: dict[str, Any], achievement_id: str) -> None:
     if has_achievement(player_state, achievement_id):
         return
@@ -327,7 +344,9 @@ def _choose_probability_outcome(outcomes: list[dict[str, Any]], rng: random.Rand
 
 def resolve_small_plateau_search(player_state: dict[str, Any], rng: random.Random | None = None) -> dict[str, Any]:
     rng = rng or random.Random()
-    table = get_search_events_data().get("events", [])
+    # Обычные игроки не видят события с флагом seeker_only — их находят только
+    # обладатели достижения «Ищущий».
+    table = filter_seeker_only(player_state, get_search_events_data().get("events", []))
     event = weighted_choice(table, rng)
     count = increment_small_plateau_search_count(player_state)
     milestone = apply_search_milestone(player_state, count)
