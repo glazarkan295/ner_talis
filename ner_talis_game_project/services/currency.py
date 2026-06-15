@@ -35,5 +35,9 @@ def format_money(copper: int) -> str:
 
 
 def format_price(copper: int) -> str:
-    """Полный вид по словам: «10 серебряных 500 медных» — для рынка и карточек."""
-    return " ".join(f"{amount} {full}" for amount, _short, full in _split(copper))
+    """Краткий вид по номиналам с подписью: «13 маг. зол. 6 зол. 400 мед. монет».
+
+    Используется в торговле и карточках. Сокращения номиналов: древн., маг. зол.,
+    зол., сер., мед.
+    """
+    return " ".join(f"{amount} {short}" for amount, short, _full in _split(copper)) + " монет"
