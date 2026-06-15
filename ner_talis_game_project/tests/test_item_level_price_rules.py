@@ -30,7 +30,7 @@ class ItemLevelPriceRulesTest(unittest.TestCase):
         player = self._player(25)
         weapon = build_inventory_item("Простой меч", 1, item_id="simple_sword")
         resource = build_inventory_item("Медный слиток", 1, item_id="copper_ingot")
-        ring = build_inventory_item("Грубое медное кольцо", 1, item_id="rough_copper_ring")
+        ring = build_inventory_item("Железное кольцо с алмазом", 1, item_id="iron_ring_with_diamond")
 
         self.assertTrue(is_levelled_equipment_item(weapon))
         self.assertTrue(is_levelled_equipment_item(ring))
