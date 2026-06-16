@@ -11,6 +11,8 @@ import {
   getProfileIdentifierFromUrl,
   loadPlayerProfile,
   confirmAttributePoints,
+  searchCourierRecipients,
+  sendCourierTransfer,
   spendAttributePoints,
   spendSkillPoints,
   unequipItem,
@@ -150,6 +152,10 @@ function ProfileApp() {
         }}
         onEditProfileField={(field, value) => {
           return runProfileAction(() => editProfileField(profileIdentifier, field, value));
+        }}
+        onSearchCourierRecipients={(query) => searchCourierRecipients(query)}
+        onSendCourierTransfer={(receiver, items, coins, letter) => {
+          return runProfileAction(() => sendCourierTransfer(receiver, items, coins, letter));
         }}
       />
     </>

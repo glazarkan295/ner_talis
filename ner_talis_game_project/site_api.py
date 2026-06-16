@@ -2361,7 +2361,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
         return {"ok": True, "profile": frontend_profile_payload(player, session)}
 
     @router.get("/{identifier}/courier/search")
-    def courier_search(identifier: str, q: str = "", request: Request = None) -> dict[str, Any]:
+    def courier_search(identifier: str, request: Request, q: str = "") -> dict[str, Any]:
         storage = get_storage()
         player, _session = resolve_profile_read(storage, identifier, request)
         own_id = str(player.get("game_id") or player.get("id") or "")

@@ -42,6 +42,7 @@
 - `admin_player_service.py` — поиск/сводка/удаление игроков, бэкап.
 - `web_profile.py` — генерация ссылок на сайт-профиль (create_profile_site_link), base URL.
 - `chat_log_service.py` — лог чата игрока + pending_bot_messages (pop_pending_bot_messages — доставка фоновых сообщений ботом).
+- `courier_service.py` — передача предметов между игроками («Передача»): стоимость 10·(уровень·1,3), очередь посылок в data/courier_transfers.json (лок-файл, как портовый рынок), доставка через 10–15 мин фоновым воркером (start_persistent_courier_worker), исходы 0,01% кража / 0,1% не тому / успех, тексты-шаблоны + pending_bot_messages.
 - `runtime_timer_scheduler.py` — доставка таймеров (поиск/отдых/крафт) после рестарта; start_persistent_timer_worker, claim.
 
 ## storage/
@@ -61,7 +62,7 @@
 - `App.jsx` — роутинг: профиль игрока / админ-просмотр профиля / админ-панель; прокидывает onEditProfileField и др.
 - `api/profileApi.js` — вызовы API профиля (useItem/sellItem/editProfileField/...).
 - `api/adminApi.js` — вызовы API админки (loadCatalog/deletePromo/...).
-- `components/player-profile/PlayerProfile.jsx` — профиль: вкладки Персонаж/Инвентарь/Навыки/Информация; модалки (ItemModal, FinesModal, ProfileEditModal, nt-center-modal); CollapsiblePanel; сводка (Имя/Раса/Пол + карандаши).
+- `components/player-profile/PlayerProfile.jsx` — профиль: вкладки Персонаж/Инвентарь/Навыки/Информация/Передача (CourierTab — только для своего профиля); модалки (ItemModal, FinesModal, ProfileEditModal, nt-center-modal); CollapsiblePanel; сводка (Имя/Раса/Пол + карандаши).
 - `components/player-profile/PlayerProfile.css` — стили профиля (модалки, попапы, мобильное центрирование ≤560px).
 - `components/admin-panel/AdminPanel.jsx` — каталог/доставка/промокоды/игроки.
 - Сборка: `cd web && npm run build` → `web/dist/` (gitignored).
@@ -95,6 +96,7 @@
 - Промокоды → `promo_service.py` + admin_panel_service (создание из админки).
 - Админ-панель (каталог/доставка/монеты/сессии) → `admin_panel_service.py` + admin_panel_api.py + web AdminPanel.jsx.
 - Профиль-сайт (данные/эндпоинты/редактирование сводки) → `site_api.py` + web PlayerProfile.jsx.
+- Передача предметов гонцом → `courier_service.py` + site_api (/courier/search, /courier/send) + web PlayerProfile CourierTab + воркер в main._start_player_effect_scheduler_once.
 - Регистрация/гендер/раса/валидация имени → `registration_service.py` + handlers/registration.py + vk_registration.py.
 - Хранилище/claim'ы/атомарность → `storage/` (event_claims, timer_claims, *_storage.py).
 - Доставка фоновых сообщений игроку → pending_bot_messages (chat_log_service.pop_pending_bot_messages, flush в handlers/city.py + vk).

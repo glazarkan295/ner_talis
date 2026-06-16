@@ -8,6 +8,8 @@ const TABS = [
   { id: "info", label: "Информация", icon: "scroll" },
 ];
 
+const COURIER_TAB = { id: "courier", label: "Передача", icon: "courier" };
+
 const INVENTORY_CATEGORIES = ["Всё", "Снаряжение", "Оружие", "Бижутерия", "Расходники", "Ресурсы", "Материалы", "Добыча", "Прочее", "Особое"];
 
 const DEFAULT_SLOTS = [
@@ -98,6 +100,15 @@ function TabIcon({ type }) {
         <path d="M7.8 4.4a2.4 2.4 0 0 0-2.4 2.4v11a1.8 1.8 0 0 0 1.8 1.8h8.3" />
         <path d="M8.4 9.2h6.2M8.4 12.3h5.4M8.4 15.4h4.2" />
         <path d="M15.5 19.6a2.1 2.1 0 0 0 2.1-2.1h-4.2a2.1 2.1 0 0 0 2.1 2.1Z" />
+      </svg>
+    );
+  }
+  if (type === "courier") {
+    return (
+      <svg {...common}>
+        <path d="M4.5 8.2 12 4.4l7.5 3.8-7.5 3.8-7.5-3.8Z" />
+        <path d="M4.5 8.2v7.6l7.5 3.8 7.5-3.8V8.2" />
+        <path d="M12 12v7.6" />
       </svg>
     );
   }
@@ -1049,7 +1060,244 @@ function InfoTab({ profile }) {
   );
 }
 
-export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField }) {
+function CourierTab({ profile, onSearchRecipients, onSendTransfer }) {
+  const courier = profile.courier || {};
+  const inventory = profile.inventory || [];
+  const balanceCopper = Math.max(0, Number(courier.balanceCopper || 0));
+  const letterMax = Math.max(1, Number(courier.letterMaxLength || 30));
+
+  const [receiverQuery, setReceiverQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [receiver, setReceiver] = useState(null);
+  const [itemQuery, setItemQuery] = useState("");
+  const [selected, setSelected] = useState([]);
+  const [letter, setLetter] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const filteredInventory = useMemo(() => inventory.filter((item) => {
+    if (!itemQuery) return true;
+    return String(item.name || "").toLowerCase().includes(itemQuery.toLowerCase());
+  }), [inventory, itemQuery]);
+
+  async function runSearch() {
+    const query = receiverQuery.trim();
+    if (!query) return;
+    setSearching(true);
+    setError("");
+    try {
+      const payload = await onSearchRecipients?.(query);
+      setResults(payload?.players || []);
+    } catch (requestError) {
+      setError(requestError.message || "Поиск не выполнен.");
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function chooseReceiver(entry) {
+    setReceiver(entry);
+    setReceiverQuery(entry.name || entry.gameId || "");
+    setResults([]);
+  }
+
+  function addItem(item) {
+    const key = `item-${item.inventoryIndex}`;
+    if (selected.some((row) => row.key === key)) return;
+    setSelected((rows) => [...rows, {
+      key,
+      isCoins: false,
+      itemId: item.id,
+      inventoryIndex: item.inventoryIndex,
+      name: item.name,
+      amount: 1,
+      max: Math.max(1, Number(item.amount) || 1),
+    }]);
+  }
+
+  function addCoins() {
+    if (selected.some((row) => row.isCoins)) return;
+    if (balanceCopper <= 0) {
+      setError("У вас нет монет для отправки.");
+      return;
+    }
+    setSelected((rows) => [...rows, {
+      key: "coins",
+      isCoins: true,
+      name: "Монеты (медные)",
+      amount: 1,
+      max: balanceCopper,
+    }]);
+  }
+
+  function setAmount(key, value) {
+    setSelected((rows) => rows.map((row) => (
+      row.key === key ? { ...row, amount: clamp(Math.floor(Number(value) || 1), 1, row.max) } : row
+    )));
+  }
+
+  function removeRow(key) {
+    setSelected((rows) => rows.filter((row) => row.key !== key));
+  }
+
+  function resetForm() {
+    setReceiver(null);
+    setReceiverQuery("");
+    setResults([]);
+    setSelected([]);
+    setLetter("");
+    setItemQuery("");
+    setConfirming(false);
+  }
+
+  const canSend = Boolean((receiver || receiverQuery.trim()) && selected.length && !busy);
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    const items = selected
+      .filter((row) => !row.isCoins)
+      .map((row) => ({ item_id: row.itemId, inventory_index: row.inventoryIndex, amount: row.amount }));
+    const coinsRow = selected.find((row) => row.isCoins);
+    const coins = coinsRow ? coinsRow.amount : 0;
+    const target = receiver?.gameId || receiverQuery.trim();
+    try {
+      const payload = await onSendTransfer?.(target, items, coins, letter.trim());
+      setMessage(payload?.message || "Посылка передана гонцу.");
+      resetForm();
+    } catch (requestError) {
+      setError(requestError.message || "Не удалось отправить посылку.");
+    } finally {
+      setBusy(false);
+      setConfirming(false);
+    }
+  }
+
+  return (
+    <div className="nt-stack">
+      <Panel title="Передача предметов">
+        <p className="nt-courier-warning">{courier.warningText || "Передача предметов через городского гонца."}</p>
+
+        <div className="nt-courier-section">
+          <h4>Получатель</h4>
+          <div className="nt-toolbar">
+            <input
+              value={receiverQuery}
+              onChange={(event) => { setReceiverQuery(event.target.value); setReceiver(null); }}
+              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); runSearch(); } }}
+              placeholder="Ник или игровой ID"
+            />
+            <button type="button" className="nt-courier-btn" onClick={runSearch} disabled={searching}>
+              {searching ? "Поиск…" : "Найти"}
+            </button>
+          </div>
+          {receiver ? (
+            <p className="nt-courier-chosen">Выбран получатель: <strong>{receiver.name}</strong> · {receiver.gameId}</p>
+          ) : null}
+          {results.length ? (
+            <div className="nt-courier-results">
+              {results.map((entry) => (
+                <button type="button" className="nt-courier-result" key={entry.gameId} onClick={() => chooseReceiver(entry)}>
+                  <span>{entry.name}</span>
+                  <span className="nt-courier-result-meta">ур. {entry.level} · {entry.gameId}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="nt-courier-section">
+          <h4>Что отправить</h4>
+          <div className="nt-toolbar">
+            <input
+              value={itemQuery}
+              onChange={(event) => setItemQuery(event.target.value)}
+              placeholder="Поиск предмета в инвентаре"
+            />
+            <button type="button" className="nt-courier-btn" onClick={addCoins}>+ Монеты</button>
+          </div>
+          <p className="nt-courier-hint">Баланс: {courier.balanceText || "0 мед."}</p>
+          <div className="nt-courier-pick-grid">
+            {filteredInventory.map((item, index) => (
+              <button
+                type="button"
+                key={itemKey(item, index)}
+                className="nt-courier-pick"
+                onClick={() => addItem(item)}
+                disabled={selected.some((row) => row.key === `item-${item.inventoryIndex}`)}
+              >
+                <ItemArt item={item} className="nt-courier-pick-art" />
+                <span className="nt-courier-pick-name">{item.name}</span>
+                <span className="nt-courier-pick-amount">×{item.amount || 1}</span>
+              </button>
+            ))}
+          </div>
+          {!filteredInventory.length ? <p className="nt-empty-text">Предметов не найдено.</p> : null}
+        </div>
+
+        {selected.length ? (
+          <div className="nt-courier-section">
+            <h4>В посылке</h4>
+            <div className="nt-courier-selected">
+              {selected.map((row) => (
+                <div className="nt-courier-selected-row" key={row.key}>
+                  <span className="nt-courier-selected-name">{row.name}</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={row.max}
+                    value={row.amount}
+                    onChange={(event) => setAmount(row.key, event.target.value)}
+                  />
+                  <button type="button" className="nt-courier-remove" onClick={() => removeRow(row.key)} aria-label="Удалить из списка">×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="nt-courier-section">
+          <h4>Письмо</h4>
+          <input
+            value={letter}
+            maxLength={letterMax}
+            onChange={(event) => setLetter(event.target.value)}
+            placeholder={`Короткое сообщение до ${letterMax} символов`}
+          />
+          <p className="nt-courier-hint">{letter.length} / {letterMax}</p>
+        </div>
+
+        <div className="nt-courier-footer">
+          <span className="nt-courier-cost">Стоимость доставки: <strong>{courier.deliveryCostText || "—"}</strong></span>
+          {confirming ? (
+            <div className="nt-courier-confirm">
+              <p>Списать {courier.deliveryCostText} и выбранные вложения сразу. Отправить посылку?</p>
+              <div className="nt-courier-confirm-actions">
+                <button type="button" className="nt-courier-btn primary" onClick={submit} disabled={busy}>
+                  {busy ? "Отправка…" : "Отправить гонцу"}
+                </button>
+                <button type="button" className="nt-courier-btn" onClick={() => setConfirming(false)} disabled={busy}>Отмена</button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="nt-courier-btn primary" onClick={() => { setMessage(""); setError(""); setConfirming(true); }} disabled={!canSend}>
+              Отправить игроку
+            </button>
+          )}
+        </div>
+
+        {message ? <p className="nt-courier-feedback success">{message}</p> : null}
+        {error ? <p className="nt-courier-feedback error">{error}</p> : null}
+      </Panel>
+    </div>
+  );
+}
+
+export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField, onSearchCourierRecipients, onSendCourierTransfer }) {
   const data = profileOrMock(profile);
   const [tab, setTab] = useState("character");
   const [modal, setModal] = useState(null);
@@ -1057,6 +1305,7 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
   const [dropModal, setDropModal] = useState(null);
   const [sellModal, setSellModal] = useState(null);
   const effectiveReadOnly = Boolean(readOnly || data.readOnly || data.adminView);
+  const visibleTabs = effectiveReadOnly ? TABS : [...TABS, COURIER_TAB];
   const background = data.assets?.background || "/assets/profile/backgrounds/1.png";
 
   const equipmentBySlot = data.equipment || {};
@@ -1133,13 +1382,14 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
           <div className="nt-id">{data.player?.userGlobalId || data.player?.publicId || "NT-UNKNOWN"}</div>
         </header>
         <nav className="nt-tabs" aria-label="Разделы профиля">
-          {TABS.map(({ id, label, icon }) => <button key={id} className={tab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon"><TabIcon type={icon} /></span><span className="nt-tab-text">{label}</span></button>)}
+          {visibleTabs.map(({ id, label, icon }) => <button key={id} className={tab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon"><TabIcon type={icon} /></span><span className="nt-tab-text">{label}</span></button>)}
         </nav>
         <section className="nt-content">
           {tab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} readOnly={effectiveReadOnly} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} onEditProfileField={onEditProfileField} /> : null}
           {tab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
           {tab === "skills" ? <SkillsTab profile={data} readOnly={effectiveReadOnly} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
           {tab === "info" ? <InfoTab profile={data} /> : null}
+          {tab === "courier" ? <CourierTab profile={data} onSearchRecipients={onSearchCourierRecipients} onSendTransfer={onSendCourierTransfer} /> : null}
         </section>
       </div>
       <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} readOnly={effectiveReadOnly} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRequestDrop={requestDrop} onRequestSell={requestSell} />
