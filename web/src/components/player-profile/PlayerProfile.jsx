@@ -651,28 +651,42 @@ function EditPencil({ onClick }) {
 const RACE_EDIT_CHOICES = [["human", "Человек"], ["elf", "Эльф"], ["dwarf", "Дворф"], ["undead", "Нежить"], ["lizardfolk", "Ящеролюд"]];
 const GENDER_EDIT_CHOICES = [["male", "Муж."], ["female", "Жен."]];
 
-function ProfileEditModal({ field, player, position, onClose, onSubmit }) {
+function ProfileEditModal({ field, player, onClose, onSubmit }) {
   const [name, setName] = useState(field === "name" ? (player?.nickname || "") : "");
+  // Подтверждение: единственная бесплатная попытка тратится только после «Да».
+  const [pending, setPending] = useState(null); // { value, label }
   const titles = { name: "Изменить имя", race: "Изменить расу", gender: "Изменить пол" };
   return (
     <div className="nt-modal-layer" onMouseDown={onClose}>
-      <article className="nt-modal nt-small-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
+      <article className="nt-modal nt-small-modal nt-center-modal" onMouseDown={(event) => event.stopPropagation()}>
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
         <div className="nt-modal-kicker">Сводка</div>
         <h3>{titles[field] || "Изменить"}</h3>
-        <p className="nt-edit-hint">Доступна 1 бесплатная попытка.</p>
-        {field === "name" ? (
-          <div className="nt-edit-form">
-            <input className="nt-edit-input" value={name} maxLength={24} onChange={(event) => setName(event.target.value)} placeholder="Новое имя" />
-            <button className="nt-edit-save" type="button" disabled={!name.trim()} onClick={() => onSubmit("name", name.trim())}>Сохранить</button>
+        {pending ? (
+          <div className="nt-edit-confirm">
+            <p>Использовать единственную бесплатную попытку и изменить на «{pending.label}»? Отменить будет нельзя.</p>
+            <div className="nt-edit-choices">
+              <button className="nt-edit-choice" type="button" onClick={() => onSubmit(field, pending.value)}>Да, изменить</button>
+              <button className="nt-edit-choice" type="button" onClick={() => setPending(null)}>Отмена</button>
+            </div>
           </div>
-        ) : null}
-        {field === "gender" ? (
-          <div className="nt-edit-choices">{GENDER_EDIT_CHOICES.map(([id, label]) => <button key={id} className="nt-edit-choice" type="button" onClick={() => onSubmit("gender", id)}>{label}</button>)}</div>
-        ) : null}
-        {field === "race" ? (
-          <div className="nt-edit-choices">{RACE_EDIT_CHOICES.map(([id, label]) => <button key={id} className="nt-edit-choice" type="button" onClick={() => onSubmit("race", id)}>{label}</button>)}</div>
-        ) : null}
+        ) : (
+          <>
+            <p className="nt-edit-hint">Доступна 1 бесплатная попытка.</p>
+            {field === "name" ? (
+              <div className="nt-edit-form">
+                <input className="nt-edit-input" value={name} maxLength={24} onChange={(event) => setName(event.target.value)} placeholder="Новое имя" />
+                <button className="nt-edit-save" type="button" disabled={!name.trim()} onClick={() => setPending({ value: name.trim(), label: name.trim() })}>Сохранить</button>
+              </div>
+            ) : null}
+            {field === "gender" ? (
+              <div className="nt-edit-choices">{GENDER_EDIT_CHOICES.map(([id, label]) => <button key={id} className="nt-edit-choice" type="button" onClick={() => setPending({ value: id, label })}>{label}</button>)}</div>
+            ) : null}
+            {field === "race" ? (
+              <div className="nt-edit-choices">{RACE_EDIT_CHOICES.map(([id, label]) => <button key={id} className="nt-edit-choice" type="button" onClick={() => setPending({ value: id, label })}>{label}</button>)}</div>
+            ) : null}
+          </>
+        )}
       </article>
     </div>
   );

@@ -1037,6 +1037,12 @@ def process_world_action(
     buttons must be able to break stale market context, while item names,
     quantities and the market-local ``Назад`` stay inside the market.
     """
+    # Догоняем фоновые время-зависимые эффекты ДО любых ранних возвратов (бой,
+    # таймер крафта), иначе бой и «Проверить таймер» не засчитывались бы как
+    # активность для суточного счётчика проклятья.
+    if advance_player_time(player):
+        storage.update_player(player)
+
     if player.get("in_battle"):
         response = handle_external_location_action(storage, player, action)
         return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
@@ -1059,11 +1065,6 @@ def process_world_action(
 
     fine_advance = advance_fine_state(player)
     if fine_advance.changed:
-        storage.update_player(player)
-
-    # Догоняем фоновые время-зависимые эффекты (почасовой ожог амулета, суточный
-    # счётчик дней с Древним Проклятьем). Сообщения уйдут через pending_bot_messages.
-    if advance_player_time(player):
         storage.update_player(player)
 
     if action in {CITY_HALL_BACK}:

@@ -370,7 +370,7 @@ def profile_field_edit_availability(player: dict[str, Any]) -> dict[str, bool]:
     return {field: safe_int(used.get(field), 0) < 1 for field in PROFILE_EDITABLE_FIELDS}
 
 
-def apply_profile_field_edit(player: dict[str, Any], field: str, value: str) -> str:
+def apply_profile_field_edit(player: dict[str, Any], field: str, value: str, storage: Any = None) -> str:
     """Тратит единственную бесплатную попытку и меняет имя/расу/пол в сводке.
 
     Возвращает новое отображаемое значение. Бросает HTTPException, если поле
@@ -387,10 +387,21 @@ def apply_profile_field_edit(player: dict[str, Any], field: str, value: str) -> 
 
     raw = str(value or "").strip()
     if field == "name":
-        if not (1 <= len(raw) <= 24):
-            raise HTTPException(status_code=400, detail="Имя должно быть от 1 до 24 символов.")
-        player["name"] = raw
-        label = raw
+        # Те же правила, что и при регистрации: длина, допустимые символы,
+        # запрещённые имена, нормализация — плюс проверка занятости.
+        from services.registration_service import validate_name
+
+        ok, result = validate_name(raw)
+        if not ok:
+            raise HTTPException(status_code=400, detail=result)
+        name = result
+        current = str(player.get("name") or "")
+        if name.casefold() != current.casefold():
+            is_taken = getattr(storage, "is_name_taken", None)
+            if callable(is_taken) and is_taken(name):
+                raise HTTPException(status_code=409, detail="Это имя уже занято.")
+        player["name"] = name
+        label = name
     elif field == "gender":
         folded = raw.casefold()
         chosen = folded if folded in GENDER_OPTIONS else {"муж.": "male", "муж": "male", "жен.": "female", "жен": "female"}.get(folded)
@@ -2279,7 +2290,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
     def edit_profile_field(identifier: str, payload: EditProfileFieldRequest, request: Request) -> dict[str, Any]:
         storage = get_storage()
         player, session = resolve_profile_write(storage, identifier, request)
-        label = apply_profile_field_edit(player, payload.field, payload.value)
+        label = apply_profile_field_edit(player, payload.field, payload.value, storage=storage)
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "field": str(payload.field), "value": label, "profile": frontend_profile_payload(player, session)}

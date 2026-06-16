@@ -176,16 +176,26 @@ def battle_stimulant_status_effect(player: dict[str, Any], now: datetime | None 
     phase = battle_stimulant_phase(player, now)
     level = addiction_level(player)
     if phase == "withdrawal":
+        description = (
+            "Откат после боевого стимулятора: точность, уклонение и максимум "
+            "духа, маны и энергии снижены на 10% на 2 часа."
+        )
+        # Во время отката (фаза не «активна») «Зависимость» тоже действует и
+        # меняет статы — показываем её здесь, иначе изменения были бы скрытыми.
+        if level >= ADDICTION_THRESHOLD:
+            magnitude = _addiction_magnitude_percent(level)
+            description += (
+                f"\nЗависимость ({level}): уклонение, точность, шанс крита и HP "
+                f"снижены на {magnitude:.2f}%, базовый урон и урон крита изменены "
+                f"на {magnitude:.2f}%."
+            )
         return {
             "id": "effect_battle_stimulant_withdrawal",
             "name": "Откат боевого стимулятора",
             "source": "battle_stimulant_withdrawal",
             "kind": "negative",
             "expires_at": player.get("battle_stimulant_withdrawal_until"),
-            "description": (
-                "Откат после боевого стимулятора: точность, уклонение и максимум "
-                "духа, маны и энергии снижены на 10% на 2 часа."
-            ),
+            "description": description,
         }
     if phase != "active" and level >= ADDICTION_THRESHOLD:
         magnitude = _addiction_magnitude_percent(level)

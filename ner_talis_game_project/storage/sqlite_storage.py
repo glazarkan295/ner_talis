@@ -634,9 +634,11 @@ class SQLiteStorage:
                 (str(token), self._serialize(session), str(expires_at)),
             )
 
-    def delete_admin_panel_session(self, token: str) -> None:
+    def delete_admin_panel_session(self, token: str) -> bool:
         with self._lock, self._connect() as connection:
-            connection.execute("DELETE FROM admin_panel_sessions WHERE token = ?", (str(token),))
+            cursor = connection.execute("DELETE FROM admin_panel_sessions WHERE token = ?", (str(token),))
+            # rowcount > 0 служит атомарным «claim» одноразового токена активации.
+            return bool((cursor.rowcount or 0) > 0)
 
     def delete_admin_panel_sessions_for_admin(self, admin_key: str, scope: str) -> int:
         with self._lock, self._connect() as connection:

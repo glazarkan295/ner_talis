@@ -249,7 +249,13 @@ def _complete_fishing_once(storage: Any, player: dict[str, Any], rng: random.Ran
         claimed = claim(game_id, timer_id, FISHING_COMPLETION_OWNER, claim_ttl_seconds=120, platform_filter=None)
         if not isinstance(claimed, dict):
             return FishingResponse("⏳ Этот заброс уже обработан (награда не выдаётся повторно).", fishing_buttons())
-        return complete_fishing_timer(storage, claimed, timer_id, rng)
+        # Переносим заклеймленную перезагрузку В исходный объект игрока: боты
+        # после действия пересохраняют именно его. Иначе устаревший оригинал
+        # (с истёкшим таймером и без улова) затёр бы выдачу награды.
+        if claimed is not player:
+            player.clear()
+            player.update(claimed)
+        return complete_fishing_timer(storage, player, timer_id, rng)
     return complete_fishing_timer(storage, player, timer_id, rng)
 
 

@@ -1150,6 +1150,7 @@ def passive_stat_modifiers(player: dict[str, Any]) -> dict[str, int]:
         "bonus_physical_defense": 0,
         "bonus_magic_defense": 0,
         "bonus_crit_chance": 0,
+        "bonus_crit_damage": 0,
         "bonus_damage": 0,
         "bonus_spirit": 0,
         "bonus_mana": 0,
@@ -1172,6 +1173,8 @@ def passive_stat_modifiers(player: dict[str, Any]) -> dict[str, int]:
             totals["bonus_magic_defense"] += bonus // 2
         if "крит" in text:
             totals["bonus_crit_chance"] += max(1, bonus // 2)
+            if "урон" in text:
+                totals["bonus_crit_damage"] += bonus
         if "урон" in text or "эффектив" in text or "сила" in text:
             totals["bonus_damage"] += bonus
         if "дух" in text or "ресурс" in text:

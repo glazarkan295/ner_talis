@@ -718,12 +718,14 @@ class PostgresStorage:
                 ON CONFLICT (token) DO UPDATE SET data = EXCLUDED.data, expires_at = EXCLUDED.expires_at
             """), {"token": str(token), "data": self._dumps(session), "expires_at": str(expires_at)})
 
-    def delete_admin_panel_session(self, token: str) -> None:
+    def delete_admin_panel_session(self, token: str) -> bool:
         with self.engine.begin() as connection:
-            connection.execute(
+            result = connection.execute(
                 text("DELETE FROM admin_panel_sessions WHERE token = :token"),
                 {"token": str(token)},
             )
+            # rowcount > 0 служит атомарным «claim» одноразового токена активации.
+            return bool((result.rowcount or 0) > 0)
 
     def delete_admin_panel_sessions_for_admin(self, admin_key: str, scope: str) -> int:
         with self.engine.begin() as connection:

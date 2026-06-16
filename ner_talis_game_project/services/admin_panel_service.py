@@ -45,6 +45,10 @@ ADMIN_PANEL_SCOPE = "admin_panel"
 ADMIN_PLAYER_VIEW_SCOPE = "admin_player_view"
 DEFAULT_ADMIN_PANEL_TTL_MINUTES = 60
 MAX_REWARD_AMOUNT = 1_000_000_000
+# Денежные награды задаются в монетах разного номинала, но зачисляются в медь.
+# Ограничиваем итоговую медь, иначе высокий номинал (×500 млрд за древнюю) даёт
+# переполнение 64-битных денежных колонок SQLite/Postgres при доставке/промо.
+MAX_REWARD_MONEY_COPPER = 1_000_000_000_000_000  # 1e15 меди — с большим запасом до 2^63-1
 PUBLIC_UPLOADS_ASSETS_DIR = os.getenv("PUBLIC_UPLOADS_ASSETS_DIR", "data/public_uploads/assets")
 SYNTHETIC_REWARD_IDS = {
     "money_copper": {
@@ -381,8 +385,13 @@ def consume_or_read_admin_session(storage: Any, token: str) -> dict[str, Any] | 
         if not bool(session.get("used")):
             active_session = _activated_admin_session(session, raw_token)
             active_token = _new_storage_session_token(storage)
+            # Атомарный claim одноразовой ссылки: активную сессию создаёт только
+            # запрос, который РЕАЛЬНО удалил токен активации (delete вернул True).
+            # Иначе два параллельных запроса по одной ссылке активировали бы её
+            # дважды (две активные сессии).
+            if not storage.delete_admin_panel_session(raw_token):
+                return None
             storage.put_admin_panel_session(active_token, active_session)
-            storage.delete_admin_panel_session(raw_token)
             result = dict(active_session)
             result["token"] = active_token
             return result
@@ -628,6 +637,10 @@ def _normalize_rewards(rewards: list[dict[str, Any]]) -> list[dict[str, Any]]:
             raise ValueError("Слишком большое количество в одной позиции награды.")
         if item_id in SYNTHETIC_REWARD_IDS:
             kind = SYNTHETIC_REWARD_IDS[item_id]["kind"]
+            if kind == "money":
+                per_unit = _safe_int(SYNTHETIC_REWARD_IDS[item_id].get("copper_per_unit"), 1) or 1
+                if amount * per_unit > MAX_REWARD_MONEY_COPPER:
+                    raise ValueError("Слишком большая сумма награды (превышает лимит в медном эквиваленте).")
         else:
             kind = "item"
             if get_item_definition_by_id(item_id) is None:

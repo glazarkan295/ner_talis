@@ -311,6 +311,11 @@ button { cursor: pointer; }
   text-align: left;
 }
 .nt-small-modal { width: var(--nt-modal-width, min(390px, calc(100vw - 26px))); max-width: var(--nt-modal-width, min(390px, calc(100vw - 26px))); }
+/* Диалоги, не привязанные к клику по предмету (редактирование сводки), —
+   по центру экрана, а не сбоку. На телефоне центрирование делает media-query. */
+.nt-center-modal { top: 50%; left: 50%; right: auto; transform: translate(-50%, -50%); width: min(360px, calc(100vw - 26px)); max-width: min(360px, calc(100vw - 26px)); }
+.nt-edit-confirm { margin-top: 6px; }
+.nt-edit-confirm p { color: #e0c9a0; font-size: 11px; margin: 0 0 10px; }
 .nt-race-modal, .nt-slot-modal { background: linear-gradient(145deg, rgba(31,29,25,.96), rgba(8,9,9,.98)); }
 .nt-modal-close { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(177,143,83,.35); background: rgba(0,0,0,.28); color: #d7b46f; }
 .nt-modal-title-row { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 10px; }
@@ -524,13 +529,13 @@ button { cursor: pointer; }
   text-transform: uppercase;
 }
 
-@media (max-width: 430px) {
+@media (max-width: 560px) {
   .nt-modal-layer {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
     background: rgba(0, 0, 0, .42);
-    padding: 8px;
+    padding: 12px;
   }
   .nt-modal,
   .nt-small-modal,
@@ -540,10 +545,11 @@ button { cursor: pointer; }
     left: auto;
     right: auto;
     bottom: auto;
+    transform: none;
     width: 100%;
-    max-width: 100%;
-    max-height: min(88vh, calc(100vh - 16px));
-    border-radius: 18px 18px 14px 14px;
+    max-width: 420px;
+    max-height: min(85vh, calc(100vh - 24px));
+    border-radius: 16px;
     padding: 18px 14px 14px;
   }
   .nt-modal-close {

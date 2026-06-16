@@ -328,21 +328,6 @@ def recover_runtime_timers(telegram_application: Any) -> None:
     if storage is None:
         return
 
-    # Постоянный планировщик время-зависимых эффектов (почасовой ожог амулета,
-    # суточный счётчик дней с проклятьем) — запускаем один раз, платформо-
-    # независимо. Метка хранится в bot_data, чтобы не плодить потоки при
-    # повторном восстановлении.
-    if not bot_data.get("player_effect_worker_started"):
-        try:
-            from services.player_time_service import start_persistent_player_effect_worker
-
-            interval = int(os.getenv("PLAYER_EFFECT_TICK_INTERVAL_SECONDS", "60") or 60)
-            start_persistent_player_effect_worker(storage, interval_seconds=interval)
-            bot_data["player_effect_worker_started"] = True
-            logger.info("Started persistent player-effect scheduler (interval=%ss)", interval)
-        except Exception:
-            logger.error("Failed to start player-effect scheduler:\n%s", redact_sensitive_text(traceback.format_exc()))
-
     telegram_count = 0
     vk_count = 0
     if telegram_enabled():
@@ -364,6 +349,33 @@ def recover_runtime_timers(telegram_application: Any) -> None:
             vk_count,
         )
 
+_player_effect_scheduler_started = False
+
+
+def _start_player_effect_scheduler_once() -> None:
+    """Запускает постоянный планировщик время-зависимых эффектов один раз.
+
+    Платформо-независим: почасовой «Ожог от амулета» и суточный счётчик дней с
+    проклятьем догоняются для всех игроков, в т.ч. офлайн, на любом деплое
+    (Telegram, VK или оба). Хранилище создаётся фабрикой по ENV — тот же бэкенд,
+    что и у ботов.
+    """
+    global _player_effect_scheduler_started
+    if _player_effect_scheduler_started:
+        return
+    try:
+        from storage.storage_factory import create_storage
+        from services.player_time_service import start_persistent_player_effect_worker
+
+        storage = create_storage()
+        interval = int(os.getenv("PLAYER_EFFECT_TICK_INTERVAL_SECONDS", "60") or 60)
+        start_persistent_player_effect_worker(storage, interval_seconds=interval)
+        _player_effect_scheduler_started = True
+        logger.info("Started persistent player-effect scheduler (interval=%ss)", interval)
+    except Exception:
+        logger.error("Failed to start player-effect scheduler:\n%s", redact_sensitive_text(traceback.format_exc()))
+
+
 def run_bots() -> None:
     """Запускает включённые части Telegram/VK из единой точки входа.
 
@@ -376,6 +388,11 @@ def run_bots() -> None:
     if not use_telegram and not use_vk:
         logger.warning("Telegram и VK отключены переменными ENABLE_TELEGRAM=false и ENABLE_VK=false")
         return
+
+    # Постоянный планировщик время-зависимых эффектов запускается до выбора
+    # платформы, поэтому работает и для VK-only деплоя (раньше стартовал только
+    # в Telegram-пути восстановления таймеров и в VK-only не запускался).
+    _start_player_effect_scheduler_once()
 
     if not use_telegram:
         logger.info("Telegram bot is disabled by ENABLE_TELEGRAM=false; starting VK only")

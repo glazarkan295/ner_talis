@@ -511,11 +511,13 @@ class JsonStorage:
             self._admin_sessions_bucket(data)[str(token)] = dict(session)
             self.save(data)
 
-    def delete_admin_panel_session(self, token: str) -> None:
+    def delete_admin_panel_session(self, token: str) -> bool:
         with self._lock:
             data = self.load()
             if self._admin_sessions_bucket(data).pop(str(token), None) is not None:
                 self.save(data)
+                return True
+            return False
 
     def delete_admin_panel_sessions_for_admin(self, admin_key: str, scope: str) -> int:
         with self._lock:

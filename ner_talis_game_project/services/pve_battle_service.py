@@ -410,6 +410,8 @@ def make_player_battle_state(player: dict[str, Any]) -> PlayerBattleState:
         magic_defense=stats["magic_defense"],
         accuracy=stats["accuracy"],
         dodge=stats["dodge"],
+        crit_chance=safe_int(stats.get("crit_chance_percent"), 0),
+        crit_damage=max(100, safe_int(stats.get("crit_damage_percent"), 100)),
     )
 
 
@@ -587,7 +589,9 @@ def build_enemy(mob_key: str, rank: EnemyRank, level: int, index: int, location_
     armor_factor = float(template.get("armor_factor", 1.0 if mob_key != "hill_bull" else 2.2))
     armor = math.ceil(level * armor_factor * mult["defense"])
     physical_defense = math.ceil(armor * 1.5 + level * 1.4 * mult["defense"])
-    magic_defense = math.ceil(level * 0.8 * mult["defense"])
+    # Магическая защита раньше была почти нулевой (level*0.8) — магия игнорировала
+    # мобов. Приводим к сопоставимой с физической базе (чуть ниже по коэффициенту).
+    magic_defense = math.ceil(armor * 1.5 + level * 0.8 * mult["defense"])
     accuracy = math.ceil((18 + level * 2.1) * mult["accuracy"])
     dodge_per_level = float(template.get("dodge_per_level", 1.7 if mob_key != "hill_bull" else 0.8))
     dodge_base = 14 + level * dodge_per_level
@@ -1814,8 +1818,16 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
                 target_magic_defense=safe_int(target.get("magic_defense"), 0),
                 target_soft_level=soft_level(safe_int(target.get("level"), 1)),
             )
+            # Критический удар: шанс и множитель берутся из боевых статов игрока
+            # (производные crit_chance_percent / crit_damage_percent).
+            crit_chance = safe_int(player_state.get("crit_chance"), 0)
+            crit_damage = max(100, safe_int(player_state.get("crit_damage"), 100))
+            is_crit = crit_chance > 0 and rng.random() * 100 < crit_chance
+            if is_crit:
+                final_damage = max(1, math.ceil(final_damage * crit_damage / 100))
             target["current_hp"] = max(0, safe_int(target.get("current_hp"), 0) - final_damage)
-            log.append(f"{player_name} бьёт {action_text}: {target.get('name')} получает {final_damage} урона.")
+            crit_suffix = " 💥 Критический удар!" if is_crit else ""
+            log.append(f"{player_name} бьёт {action_text}: {target.get('name')} получает {final_damage} урона.{crit_suffix}")
             if damage_type in {DamageType.PHYSICAL, DamageType.MIXED}:
                 maybe_apply_old_sword_on_hit(player, battle, target, rng, log)
         else:
