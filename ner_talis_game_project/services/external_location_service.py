@@ -1739,8 +1739,15 @@ def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng:
         claimed_player, claimed_event = claim_active_event(storage, player)
         if claimed_player is None or claimed_event is None:
             return event_already_resolving_response(player)
-        player = claimed_player
-        event = claimed_event
+        # Sync the atomically-claimed reload INTO the original player object the
+        # caller holds. The bot handlers re-save that same object after the action
+        # (handlers/city.py); reassigning a local would let the stale original
+        # overwrite the cleared event and granted loot — leaving the player stuck
+        # on the event with no reward.
+        if claimed_player is not player:
+            player.clear()
+            player.update(claimed_player)
+        event = player.get("active_event") if isinstance(player.get("active_event"), dict) else claimed_event
         event_type = event.get("type")
 
     location_id = str(event.get("location_id") or current_location_id(player))
