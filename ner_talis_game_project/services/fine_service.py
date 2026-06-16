@@ -75,6 +75,20 @@ class FineAdvanceResult:
     changed: bool = False
 
 
+def _central_square_buttons() -> list[list[str]]:
+    """Full Central Square keypad after a raid relocation.
+
+    Lazy import avoids the circular dependency (city_service imports this module),
+    so a raid drop-off shows every quarter/gate button, not just three quarters.
+    """
+    try:
+        from services.city_service import central_square_buttons
+
+        return central_square_buttons()
+    except Exception:
+        return [["Портовый квартал", "Торговый квартал"], ["Ремесленный квартал", "Верхний квартал"], ["Городские ворота", "Объявления"]]
+
+
 def _now_ts(now: float | int | None = None) -> int:
     return int(time.time() if now is None else now)
 
@@ -237,7 +251,7 @@ def maybe_trigger_raid(
                 f"У вас уже есть активный городской штраф: {amount} медных монет. "
                 "Оплатите его у Управляющего."
             ),
-            buttons=[["Верхний квартал"], ["Портовый квартал"], ["Торговый квартал"]],
+            buttons=_central_square_buttons(),
             zone_id="seldar_central_square",
         )
 
@@ -246,7 +260,7 @@ def maybe_trigger_raid(
     amount = safe_int(fine.get("current_amount"), BASE_FINE_COPPER)
     return FineActionResult(
         text=_format_raid_text(amount),
-        buttons=[["Верхний квартал"], ["Портовый квартал"], ["Торговый квартал"]],
+        buttons=_central_square_buttons(),
         zone_id="seldar_central_square",
     )
 
@@ -614,7 +628,7 @@ def maybe_trigger_raid(  # type: ignore[override]
         text += f"\n\nТеперь у вас активных штрафов: {count}. Общая сумма: {total} медных монет."
     return FineActionResult(
         text=text,
-        buttons=[["Верхний квартал"], ["Портовый квартал"], ["Торговый квартал"]],
+        buttons=_central_square_buttons(),
         zone_id="seldar_central_square",
     )
 
@@ -777,6 +791,41 @@ def pay_fine(player: dict[str, Any], *, place: str, now: float | int | None = No
         f"{suffix}"
     )
     return FineActionResult(text, [[back]], zone_id)
+
+
+def fine_entries_for_profile(player: dict[str, Any], now: float | int | None = None) -> list[dict[str, Any]]:
+    """Structured active fines for the profile popup: number, amount, term.
+
+    ``amount`` is denomination-formatted (e.g. «1 серебряная 200 медных»);
+    ``term`` describes the remaining срок of the fine before the next stage.
+    """
+    from services.currency import format_price
+
+    advance_fine_state(player, now=now)
+    fines = active_fines(player)
+    entries: list[dict[str, Any]] = []
+    for index, fine in enumerate(fines, 1):
+        day = current_fine_day(fine, now=now)
+        status = str(fine.get("status") or FINE_STATUS_VOLUNTARY)
+        amount = max(0, safe_int(fine.get("current_amount"), 0))
+        if status == FINE_STATUS_VOLUNTARY:
+            days_left = max(0, 8 - day)
+            term = f"осталось {days_left} дн. до просрочки"
+        elif status == FINE_STATUS_OVERDUE:
+            days_left = max(0, 24 - day)
+            term = f"осталось {days_left} дн. до взыскания"
+        else:
+            term = "бессрочно до оплаты"
+        entries.append({
+            "number": index,
+            "source": fine.get("source_name") or fine_source_label(fine.get("source")),
+            "amountCopper": amount,
+            "amount": format_price(amount),
+            "term": term,
+            "status": fine_status_label(status),
+            "day": day,
+        })
+    return entries
 
 
 def fine_summary_for_profile(player: dict[str, Any], now: float | int | None = None) -> str:

@@ -32,7 +32,10 @@ from services.external_location_service import (
     current_external_buttons,
     handle_external_location_action,
     outside_city_buttons,
+    small_plateau_hidden_coin_buttons,
 )
+from services.small_plateau_service import roll_ancient_curse_trigger
+from services.player_time_service import advance_player_time
 from services.web_profile import create_profile_site_link
 from services.market_service import (
     MARKET_ACTIONS,
@@ -124,6 +127,16 @@ def central_square_buttons() -> list[list[str]]:
         ["Городские ворота", "Объявления"],
         [PROFILE_BUTTON],
     ]
+
+
+# Переходы между кварталами Селдара — «хождение по кварталам города», на котором
+# Древнее Проклятье с шансом 20% уводит игрока на скрытое место Малого плато.
+CITY_QUARTER_WALK_ACTIONS = frozenset({
+    "Портовый квартал",
+    "Торговый квартал",
+    "Ремесленный квартал",
+    "Верхний квартал",
+})
 
 
 def port_buttons() -> list[list[str]]:
@@ -1048,6 +1061,11 @@ def process_world_action(
     if fine_advance.changed:
         storage.update_player(player)
 
+    # Догоняем фоновые время-зависимые эффекты (почасовой ожог амулета, суточный
+    # счётчик дней с Древним Проклятьем). Сообщения уйдут через pending_bot_messages.
+    if advance_player_time(player):
+        storage.update_player(player)
+
     if action in {CITY_HALL_BACK}:
         response = get_city_response("Ратуша")
         updated_player = apply_city_transition(storage, player, response)
@@ -1115,6 +1133,19 @@ def process_world_action(
             WorldActionResult(text=raid_result.text, buttons=raid_result.buttons),
             fine_advance.messages,
         )
+
+    # Древнее Проклятье: 20% «заблудиться» при хождении по кварталам города.
+    if action in CITY_QUARTER_WALK_ACTIONS:
+        curse_result = roll_ancient_curse_trigger(player, "city_quarter_walk")
+        if curse_result.get("triggered"):
+            storage.update_player(player)
+            return _with_extra_messages(
+                WorldActionResult(
+                    text=str(curse_result.get("text") or "Древнее Проклятье переносит вас на Малое плато."),
+                    buttons=small_plateau_hidden_coin_buttons(),
+                ),
+                fine_advance.messages,
+            )
 
     if action in {CENTRAL_SQUARE, BACK_TO_CENTRAL, "В город"}:
         player.pop("crafting_context", None)

@@ -25,12 +25,17 @@ from services.external_location_service import (
 from services.small_plateau_service import (
     ANCIENT_CURSE_ID,
     AMULET_BURN_ID,
+    SEEKER_ACHIEVEMENT_ID,
+    add_achievement,
     add_effect,
     cleanse_ancient_curse_at_hidden_place,
+    filter_seeker_only,
     handle_cursed_coin_choice,
+    player_has_seeker,
     register_ancient_curse_active_day,
     resolve_small_plateau_search,
 )
+from services.player_time_service import advance_all_players_time, advance_player_time, HOUR_SECONDS
 from services.item_registry import get_item_definition_by_id
 from services.registration_service import create_player, load_races
 from storage.json_storage import JsonStorage
@@ -113,11 +118,66 @@ class SmallPlateauIntegrationTest(unittest.TestCase):
     def test_curse_achievement_after_60_active_days(self):
         player = {}
         add_effect(player, ANCIENT_CURSE_ID, {"id": ANCIENT_CURSE_ID, "effect_id": ANCIENT_CURSE_ID, "active": True})
+        # Спека: «больше 60 дней» — достижение выдаётся строго после 60-го дня.
         result = None
         for _ in range(60):
             result = register_ancient_curse_active_day(player, 30)
+        self.assertIsNone(result)
+        result = register_ancient_curse_active_day(player, 30)  # 61-й день
         self.assertIsNotNone(result)
         self.assertTrue(any(value == "curse_what_curse" or (isinstance(value, dict) and value.get("achievement_id") == "curse_what_curse") for value in player.get("achievements", [])))
+
+    def test_amulet_burn_ticks_hourly_via_player_time(self):
+        player = {"hp": 100, "max_hp": 100}
+        add_effect(player, AMULET_BURN_ID, {"id": AMULET_BURN_ID, "effect_id": AMULET_BURN_ID, "active": True})
+        now = 1_000_000
+        # Первый вызов лишь ставит метку времени, без урона.
+        self.assertEqual([], advance_player_time(player, now))
+        self.assertEqual(100, player["hp"])
+        # Через 3 часа — 3 тика по 5 HP и 3 сообщения.
+        messages = advance_player_time(player, now + 3 * HOUR_SECONDS)
+        self.assertEqual(3, len(messages))
+        self.assertEqual(85, player["hp"])
+        self.assertTrue(all("5 HP" in m for m in messages))
+
+    def test_seeker_only_events_hidden_until_achievement(self):
+        events = [
+            {"id": "common", "weight": 5},
+            {"id": "secret", "weight": 5, "seeker_only": True},
+        ]
+        player = {}
+        self.assertFalse(player_has_seeker(player))
+        visible = filter_seeker_only(player, events)
+        self.assertEqual([e["id"] for e in visible], ["common"])  # обычный игрок не видит секрет
+
+        add_achievement(player, SEEKER_ACHIEVEMENT_ID)
+        self.assertTrue(player_has_seeker(player))
+        visible_seeker = filter_seeker_only(player, events)
+        self.assertEqual({e["id"] for e in visible_seeker}, {"common", "secret"})
+
+    def test_scheduler_ticks_amulet_burn_for_all_players(self):
+        storage, player = self.make_player_and_storage()
+        player["hp"] = 100
+        player["max_hp"] = 100
+        add_effect(player, AMULET_BURN_ID, {"id": AMULET_BURN_ID, "effect_id": AMULET_BURN_ID, "active": True})
+        player["amulet_burn_last_tick_ts"] = 1_000_000
+        game_id = str(player.get("game_id"))
+        storage.update_player(player)
+
+        updated = advance_all_players_time(storage, now_ts=1_000_000 + 3 * HOUR_SECONDS)
+        self.assertGreaterEqual(updated, 1)
+        after = storage.get_player_by_game_id(game_id)
+        self.assertEqual(after["hp"], 85)  # 3 часа × 5 HP
+        self.assertEqual(len(after.get("pending_bot_messages", [])), 3)
+
+    def test_background_tick_does_not_inflate_curse_activity(self):
+        # count_activity=False: фоновый тик не должен копить «активные секунды».
+        from services.player_time_service import _advance
+        player = {"curse_day_tracker": {"date": "2999-01-01", "active_seconds": 0, "last_action_ts": 0}}
+        import datetime as _dt
+        now = int(_dt.datetime(2999, 1, 1, 12, tzinfo=_dt.timezone.utc).timestamp())
+        _advance(player, now, count_activity=False)
+        self.assertEqual(player["curse_day_tracker"]["active_seconds"], 0)
 
     def test_small_plateau_items_are_in_registry(self):
         self.assertIsNotNone(get_item_definition_by_id("old_brooch"))

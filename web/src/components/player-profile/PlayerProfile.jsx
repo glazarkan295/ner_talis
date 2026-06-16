@@ -642,7 +642,43 @@ function EquipmentPanel({ profile, readOnly = false, onOpenItem, onOpenSlot }) {
   );
 }
 
-function RaceRow({ profile }) {
+function EditPencil({ onClick }) {
+  return (
+    <button className="nt-edit-pencil" type="button" onClick={onClick} aria-label="Изменить" title="Изменить">✎</button>
+  );
+}
+
+const RACE_EDIT_CHOICES = [["human", "Человек"], ["elf", "Эльф"], ["dwarf", "Дворф"], ["undead", "Нежить"], ["lizardfolk", "Ящеролюд"]];
+const GENDER_EDIT_CHOICES = [["male", "Муж."], ["female", "Жен."]];
+
+function ProfileEditModal({ field, player, position, onClose, onSubmit }) {
+  const [name, setName] = useState(field === "name" ? (player?.nickname || "") : "");
+  const titles = { name: "Изменить имя", race: "Изменить расу", gender: "Изменить пол" };
+  return (
+    <div className="nt-modal-layer" onMouseDown={onClose}>
+      <article className="nt-modal nt-small-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
+        <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
+        <div className="nt-modal-kicker">Сводка</div>
+        <h3>{titles[field] || "Изменить"}</h3>
+        <p className="nt-edit-hint">Доступна 1 бесплатная попытка.</p>
+        {field === "name" ? (
+          <div className="nt-edit-form">
+            <input className="nt-edit-input" value={name} maxLength={24} onChange={(event) => setName(event.target.value)} placeholder="Новое имя" />
+            <button className="nt-edit-save" type="button" disabled={!name.trim()} onClick={() => onSubmit("name", name.trim())}>Сохранить</button>
+          </div>
+        ) : null}
+        {field === "gender" ? (
+          <div className="nt-edit-choices">{GENDER_EDIT_CHOICES.map(([id, label]) => <button key={id} className="nt-edit-choice" type="button" onClick={() => onSubmit("gender", id)}>{label}</button>)}</div>
+        ) : null}
+        {field === "race" ? (
+          <div className="nt-edit-choices">{RACE_EDIT_CHOICES.map(([id, label]) => <button key={id} className="nt-edit-choice" type="button" onClick={() => onSubmit("race", id)}>{label}</button>)}</div>
+        ) : null}
+      </article>
+    </div>
+  );
+}
+
+function RaceRow({ profile, readOnly = false, canEdit = false, onEdit }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="nt-row nt-race-row">
@@ -650,6 +686,7 @@ function RaceRow({ profile }) {
       <strong className="nt-race-cell">
         <span className="nt-race-value">{profile.player?.raceName || "—"}</span>
         <button className="nt-race-info-button" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label="Показать бонусы расы">!</button>
+        {!readOnly ? <EditPencil onClick={(event) => onEdit?.("race", event, canEdit)} /> : null}
       </strong>
       {open ? <RaceInfoPopover profile={profile} onClose={() => setOpen(false)} /> : null}
     </div>
@@ -672,9 +709,32 @@ function EffectsRow({ profile }) {
   );
 }
 
-function CharacterTab({ profile, readOnly = false, onOpenItem, onOpenSlot, onConfirmAttributePoints }) {
+function CharacterTab({ profile, readOnly = false, onOpenItem, onOpenSlot, onConfirmAttributePoints, onEditProfileField }) {
   const [attributeAmounts, setAttributeAmounts] = useState({});
   const [pendingAttributes, setPendingAttributes] = useState({});
+  const [editField, setEditField] = useState(null);
+  const [editNotice, setEditNotice] = useState("");
+  const fieldEdits = profile.player?.profileFieldEdits || {};
+
+  function openFieldEditor(field, event) {
+    if (!fieldEdits[field]) {
+      setEditNotice("У вас закончились попытки изменить это поле.");
+      setEditField(null);
+      return;
+    }
+    setEditNotice("");
+    setEditField({ field, position: getFloatingPosition(event, 320, 300) });
+  }
+
+  async function submitFieldEdit(field, value) {
+    try {
+      await onEditProfileField?.(field, value);
+      setEditField(null);
+    } catch (error) {
+      setEditField(null);
+      setEditNotice(error?.message || "Не удалось изменить поле.");
+    }
+  }
   const xpCurrent = Number(profile.player?.experienceCurrent || 0);
   const xpNext = Math.max(1, Number(profile.player?.experienceToNext || 1));
   const xpPercent = Math.min(100, Math.max(0, Math.round((xpCurrent / xpNext) * 100)));
@@ -712,15 +772,24 @@ function CharacterTab({ profile, readOnly = false, onOpenItem, onOpenSlot, onCon
     <div className="nt-stack">
       <Panel title="Сводка">
         <div className="nt-lines">
-          <Row label="Имя" value={profile.player?.nickname || "—"} />
-          <RaceRow profile={profile} />
+          <div className="nt-row">
+            <span>Имя</span>
+            <strong className="nt-summary-value"><span className="nt-summary-text">{profile.player?.nickname || "—"}</span>{!readOnly ? <EditPencil onClick={(event) => openFieldEditor("name", event)} /> : null}</strong>
+          </div>
+          <RaceRow profile={profile} readOnly={readOnly} canEdit={Boolean(fieldEdits.race)} onEdit={(field, event) => openFieldEditor("race", event)} />
+          <div className="nt-row">
+            <span>Пол</span>
+            <strong className="nt-summary-value"><span className="nt-summary-text">{profile.player?.genderLabel || "—"}</span>{!readOnly ? <EditPencil onClick={(event) => openFieldEditor("gender", event)} /> : null}</strong>
+          </div>
           <Row label="Уровень" value={profile.player?.level || 1} />
           <Row label="Баланс" value={profile.player?.balanceText || "0 мед."} />
           <EffectsRow profile={profile} />
         </div>
+        {editNotice ? <div className="nt-edit-notice">{editNotice}</div> : null}
         <div className="nt-progress-label">Опыт: {xpCurrent} / {xpNext}</div>
         <div className="nt-progress"><i style={{ width: `${xpPercent}%` }} /></div>
       </Panel>
+      {editField ? <ProfileEditModal field={editField.field} player={profile.player} position={editField.position} onClose={() => setEditField(null)} onSubmit={submitFieldEdit} /> : null}
       <EquipmentPanel profile={profile} readOnly={readOnly} onOpenItem={onOpenItem} onOpenSlot={onOpenSlot} />
       <Panel title="Характеристики" right={<span className="nt-badge">Свободно: {remainingFreeStats}</span>}>
         <div className="nt-lines">
@@ -913,20 +982,44 @@ function SkillsTab({ profile, readOnly = false, onSpendSkillPoints, onEquipSkill
   );
 }
 
+function FinesModal({ fines, position, onClose }) {
+  return (
+    <div className="nt-modal-layer" onMouseDown={onClose}>
+      <article className="nt-modal nt-small-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
+        <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
+        <div className="nt-modal-kicker">Городские штрафы</div>
+        <h3>Активные штрафы</h3>
+        {fines.length ? fines.map((fine) => (
+          <div className="nt-modal-block" key={fine.number}>
+            <h4>Штраф №{fine.number}{fine.source ? ` · ${fine.source}` : ""}</h4>
+            <div className="nt-modal-grid">
+              <span>Сумма</span><strong>{fine.amount}</strong>
+              <span>Срок</span><strong>{fine.term}</strong>
+            </div>
+          </div>
+        )) : <p>Активных штрафов нет.</p>}
+      </article>
+    </div>
+  );
+}
+
 function InfoTab({ profile }) {
   const info = profile.information || {};
   const activity = info.activity || {};
   const crafts = activity.craftingLevels || [];
+  const fineList = activity.fineList || [];
+  const [finesModal, setFinesModal] = useState(null);
   return (
     <div className="nt-stack">
-      <Panel title="Активность"><div className="nt-lines"><Row label="Дата регистрации" value={profile.player?.registrationDate || "—"} /><Row label="PVE убийства" value={activity.pveKills || 0} /><Row label="PVP убийства" value={activity.pvpKills || 0} /><Row label="Частицы душ" value={activity.soulParticlesAbsorbed || 0} /><Row label="Штрафы" value={activity.fines || "нет активных штрафов"} /></div></Panel>
+      <Panel title="Активность"><div className="nt-lines"><Row label="Дата регистрации" value={profile.player?.registrationDate || "—"} /><Row label="PVE убийства" value={activity.pveKills || 0} /><Row label="PVP убийства" value={activity.pvpKills || 0} /><Row label="Частицы душ" value={activity.soulParticlesAbsorbed || 0} /><div className="nt-row"><span>Штрафы</span>{fineList.length ? <button type="button" className="nt-fines-button" onClick={(event) => setFinesModal({ position: getFloatingPosition(event, 390, 360) })}>{`${fineList.length} активн. — подробнее`}</button> : <strong>нет активных штрафов</strong>}</div></div></Panel>
+      {finesModal ? <FinesModal fines={fineList} position={finesModal.position} onClose={() => setFinesModal(null)} /> : null}
       <Panel title="Ремёсла"><div className="nt-card-list nt-column-list">{crafts.length ? crafts.map((craft) => <div key={craft.name} className="nt-mini-card"><CardRow label={craft.name} value={`ур. ${craft.level}`} /><p>{craft.exp}</p></div>) : <p className="nt-empty-text">Ремёсла пока не развиты.</p>}</div></Panel>
       <Panel title="Достижения"><div className="nt-card-list nt-column-list">{(info.achievements || []).length ? info.achievements.map((achievement) => <div key={achievement.name || achievement} className="nt-mini-card"><CardRow label={achievement.name || achievement} value="Получено" /><p>{achievement.description || "—"}</p></div>) : <p className="nt-empty-text">Достижений пока нет.</p>}</div></Panel>
     </div>
   );
 }
 
-export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill }) {
+export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField }) {
   const data = profileOrMock(profile);
   const [tab, setTab] = useState("character");
   const [modal, setModal] = useState(null);
@@ -1013,7 +1106,7 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
           {TABS.map(({ id, label, icon }) => <button key={id} className={tab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon"><TabIcon type={icon} /></span><span className="nt-tab-text">{label}</span></button>)}
         </nav>
         <section className="nt-content">
-          {tab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} readOnly={effectiveReadOnly} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} /> : null}
+          {tab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} readOnly={effectiveReadOnly} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} onEditProfileField={onEditProfileField} /> : null}
           {tab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
           {tab === "skills" ? <SkillsTab profile={data} readOnly={effectiveReadOnly} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
           {tab === "info" ? <InfoTab profile={data} /> : null}

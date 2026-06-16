@@ -1333,5 +1333,21 @@
       "uncommon": "/assets/items/crafting/simple_magic_book_uncommon.png",
       "rare": "/assets/items/crafting/simple_magic_book_rare.png"
     }
+  },
+  {
+    "id": "suspicious_potion",
+    "item_id": "suspicious_potion",
+    "name": "Подозрительное зелье",
+    "name_ru": "Подозрительное зелье",
+    "category": "consumable",
+    "type": "potion",
+    "subtype": "suspicious",
+    "quality": "обычный",
+    "stackable": true,
+    "max_stack": 10,
+    "description": "Мутное зелье, оставшееся после неудачного алхимического опыта. При употреблении на 30 минут случайно усиливает или ослабляет 1–3 характеристики.",
+    "can_sell": true,
+    "sell_price_copper": 50,
+    "random_attribute_potion": true
   }
 ]

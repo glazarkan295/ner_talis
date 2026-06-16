@@ -771,9 +771,9 @@ def _start_craft(storage: Any, player: dict[str, Any], quantity_text: str) -> Cr
         components = _recipe_components(recipe, quantity)
         metrics = _alchemy_metrics(player, components, [str(action) for action in (recipe.get("actions") or [])])
         if _alchemy_level(player) < STAGE_SUCCESS_LEVELS.get(str(metrics.get("stage")), 1):
-            craft_payload.update({"alchemy_failure": True, "failure_item_id": "alchemy_sludge"})
+            craft_payload.update({"alchemy_failure": True, "failure_item_id": "suspicious_potion"})
         elif random.randint(1, 100) > int(metrics.get("success_chance", 95)):
-            craft_payload.update({"alchemy_failure": True, "failure_item_id": "alchemy_sludge"})
+            craft_payload.update({"alchemy_failure": True, "failure_item_id": "suspicious_potion"})
         craft_payload["alchemy_metrics"] = metrics
     timer = {
         "id": new_timer_id("craft"),
@@ -988,7 +988,7 @@ def complete_craft_timer(storage: Any, player: dict[str, Any], timer_id: str | N
         storage.update_player(player)
         return CraftResponse("⏳ Ремесленный таймер завершён, но рецепт не найден. Таймер очищен.", _craft_district_buttons(), zone)
     if craft.get("alchemy_failure"):
-        item_id = craft.get("failure_item_id") or "alchemy_sludge"
+        item_id = craft.get("failure_item_id") or "suspicious_potion"
         item_name = _item_name(str(item_id))
         amount = 1
         result = add_inventory_item(player, build_inventory_item(str(item_name), amount, item_id=str(item_id) if item_id else None), amount, item_id=str(item_id) if item_id else None, default_source="Ремесло")
@@ -1405,12 +1405,12 @@ def _start_alchemy_experiment(storage: Any, player: dict[str, Any]) -> CraftResp
         "seconds": seconds,
         "ends_at": now_ts() + seconds,
         "location_id": WORKSHOP_BY_ID["alchemy"]["zone"],
-        "craft": {"recipe_id": recipe_id, "quantity": 1, "workshop_id": "alchemy", "alchemy_failure": failure, "failure_item_id": "alchemy_sludge", "alchemy_metrics": metrics},
+        "craft": {"recipe_id": recipe_id, "quantity": 1, "workshop_id": "alchemy", "alchemy_failure": failure, "failure_item_id": "suspicious_potion", "alchemy_metrics": metrics},
     }
     if failure:
+        # При неудачном опыте алхимия выдаёт «Подозрительное зелье».
         # Store enough data for completion even though there is no public recipe.
-        # Also write a small temporary recipe in the player's timer payload.
-        timer["craft"]["fallback_output"] = {"item_id": "alchemy_sludge", "amount": 1}
+        timer["craft"]["fallback_output"] = {"item_id": "suspicious_potion", "amount": 1}
     player["active_timer"] = timer
     context.clear()
     context.update({"workshop": "alchemy", "step": "crafting"})

@@ -76,6 +76,15 @@ FORTRESS_GUILD_AGENT = "Агент Гильдии"
 FORTRESS_HIRE = "Найм"
 FORTRESS_ROAD_TO_CITY = "Вернуться на дорогу в город"
 FORTRESS_EXIT_GATE = "Выйти за ворота"
+
+# Переходы между зонами крепости — «хождение по крепости», на котором Древнее
+# Проклятье с шансом 20% уводит игрока на скрытое место Малого плато.
+FORTRESS_QUARTER_WALK_ACTIONS = frozenset({
+    FORTRESS_COURTYARD,
+    FORTRESS_HALL,
+    FORTRESS_ALLEYS,
+    FORTRESS_SEEKER_OUTPOST,
+})
 SMALL_PLATEAU = "Малое плато"
 COMMON_FOREST = "Обыкновенный лес"
 START_SEARCH = "Начать поиск"
@@ -1730,8 +1739,15 @@ def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng:
         claimed_player, claimed_event = claim_active_event(storage, player)
         if claimed_player is None or claimed_event is None:
             return event_already_resolving_response(player)
-        player = claimed_player
-        event = claimed_event
+        # Sync the atomically-claimed reload INTO the original player object the
+        # caller holds. The bot handlers re-save that same object after the action
+        # (handlers/city.py); reassigning a local would let the stale original
+        # overwrite the cleared event and granted loot — leaving the player stuck
+        # on the event with no reward.
+        if claimed_player is not player:
+            player.clear()
+            player.update(claimed_player)
+        event = player.get("active_event") if isinstance(player.get("active_event"), dict) else claimed_event
         event_type = event.get("type")
 
     location_id = str(event.get("location_id") or current_location_id(player))
@@ -2087,6 +2103,17 @@ def handle_fortress_action(storage: Any, player: dict[str, Any], action: str) ->
     player["active_event"] = None
     player["active_timer"] = None
     player["in_battle"] = False
+
+    # Древнее Проклятье: 20% «заблудиться» при хождении по крепости.
+    if action in FORTRESS_QUARTER_WALK_ACTIONS:
+        curse_result = roll_ancient_curse_trigger(player, "fortress_quarter_walk")
+        if curse_result.get("triggered"):
+            storage.update_player(player)
+            return LocationResponse(
+                str(curse_result.get("text") or "Древнее Проклятье переносит вас на Малое плато."),
+                small_plateau_hidden_coin_buttons(),
+                "small_plateau_hidden_coin_place",
+            )
 
     if action in {FORTRESS_COURTYARD, FORTRESS_BACK, STAY_IN_FORTRESS}:
         player["current_zone"] = "fortress_in_gorge_courtyard"
