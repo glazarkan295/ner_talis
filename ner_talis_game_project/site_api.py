@@ -247,6 +247,19 @@ class EditProfileFieldRequest(BaseModel):
     value: str
 
 
+class CourierTransferItem(BaseModel):
+    item_id: str
+    inventory_index: int | None = Field(default=None, ge=0)
+    amount: int = Field(gt=0)
+
+
+class CourierSendRequest(BaseModel):
+    receiver: str
+    items: list[CourierTransferItem] = Field(default_factory=list)
+    coins: int = Field(default=0, ge=0)
+    letter: str = ""
+
+
 def parse_datetime(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
@@ -645,6 +658,14 @@ def apply_energy_restore(player: dict[str, Any], item: dict[str, Any]) -> int:
 
 
 from services.currency import format_money, format_price  # noqa: E402  (shared denomination formatter)
+from services.courier_service import (  # noqa: E402
+    LETTER_MAX_LENGTH as COURIER_LETTER_MAX_LENGTH,
+    CourierError,
+    create_courier_transfer,
+    delivery_cost_copper as courier_delivery_cost_copper,
+    courier_warning_text,
+    search_players as courier_search_players,
+)
 
 
 def format_date(raw_value: str | None) -> str:
@@ -1372,6 +1393,14 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "sellButtonLabel": "Продать",
         },
         "skills": {"active": active_skills, "equipped": equipped_skills, "passive": passive_skills},
+        "courier": {
+            "deliveryCostCopper": courier_delivery_cost_copper(level),
+            "deliveryCostText": format_price(courier_delivery_cost_copper(level)),
+            "warningText": courier_warning_text(level),
+            "letterMaxLength": COURIER_LETTER_MAX_LENGTH,
+            "balanceCopper": safe_int(player.get("money"), 0),
+            "balanceText": format_money(safe_int(player.get("money"), 0)),
+        },
         "information": {
             "achievements": player.get("achievements", []),
             "rating": player.get("rating", {"globalPlace": "—", "pvePlace": "—", "pvpPlace": "—", "craftPlace": "—"}),
@@ -2330,5 +2359,48 @@ def create_profile_api_router(get_storage) -> APIRouter:
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile_payload(player, session)}
+
+    @router.get("/{identifier}/courier/search")
+    def courier_search(identifier: str, q: str = "", request: Request = None) -> dict[str, Any]:
+        storage = get_storage()
+        player, _session = resolve_profile_read(storage, identifier, request)
+        own_id = str(player.get("game_id") or player.get("id") or "")
+        results = [
+            entry
+            for entry in courier_search_players(storage, q)
+            if str(entry.get("gameId")) != own_id
+        ]
+        return {"ok": True, "players": results}
+
+    @router.post("/{identifier}/courier/send")
+    def courier_send(identifier: str, payload: CourierSendRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        player, session = resolve_profile_write(storage, identifier, request)
+        item_requests = [
+            {
+                "item_id": item.item_id,
+                "inventory_index": item.inventory_index,
+                "amount": item.amount,
+            }
+            for item in payload.items
+        ]
+        try:
+            result = create_courier_transfer(
+                storage,
+                player,
+                payload.receiver,
+                item_requests,
+                payload.coins,
+                payload.letter,
+            )
+        except CourierError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        sync_player_parameters_for_bots(player)
+        save_player(storage, player)
+        return {
+            "ok": True,
+            "message": result["message"],
+            "profile": frontend_profile_payload(player, session),
+        }
 
     return router

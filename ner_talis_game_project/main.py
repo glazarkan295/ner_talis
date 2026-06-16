@@ -366,12 +366,19 @@ def _start_player_effect_scheduler_once() -> None:
     try:
         from storage.storage_factory import create_storage
         from services.player_time_service import start_persistent_player_effect_worker
+        from services.courier_service import start_persistent_courier_worker
 
         storage = create_storage()
         interval = int(os.getenv("PLAYER_EFFECT_TICK_INTERVAL_SECONDS", "60") or 60)
         start_persistent_player_effect_worker(storage, interval_seconds=interval)
+        courier_interval = int(os.getenv("COURIER_TICK_INTERVAL_SECONDS", "60") or 60)
+        start_persistent_courier_worker(storage, interval_seconds=courier_interval)
         _player_effect_scheduler_started = True
-        logger.info("Started persistent player-effect scheduler (interval=%ss)", interval)
+        logger.info(
+            "Started persistent player-effect (%ss) and courier (%ss) schedulers",
+            interval,
+            courier_interval,
+        )
     except Exception:
         logger.error("Failed to start player-effect scheduler:\n%s", redact_sensitive_text(traceback.format_exc()))
 
