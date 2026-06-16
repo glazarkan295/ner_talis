@@ -134,6 +134,9 @@ button { cursor: pointer; }
 }
 .nt-panel h2 { margin: 0; color: #d7b46f; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-align: left; }
 .nt-panel-head { min-height: 21px; margin-bottom: 7px; }
+.nt-panel-collapsible { cursor: pointer; user-select: none; }
+.nt-collapse-arrow { display: inline-block; margin-left: 6px; color: #d7b46f; font-size: 12px; transition: transform .15s ease; transform: rotate(-90deg); }
+.nt-collapse-arrow.open { transform: rotate(0deg); }
 .nt-badge { border: 1px solid rgba(173, 139, 80, .25); border-radius: 999px; padding: 3px 8px; background: rgba(0,0,0,.16); font-size: 10px; color: #b9a278; }
 
 .nt-equipment-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
