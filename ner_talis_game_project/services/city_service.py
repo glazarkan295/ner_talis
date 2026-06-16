@@ -124,9 +124,18 @@ def central_square_buttons() -> list[list[str]]:
     return [
         ["Портовый квартал", "Торговый квартал"],
         ["Ремесленный квартал", "Верхний квартал"],
-        ["Городские ворота", "Объявления"],
+        ["Городские ворота", "Информационный стенд"],
         [PROFILE_BUTTON],
     ]
+
+
+def info_stand_buttons() -> list[list[str]]:
+    return [["Рейтинги", "Объявления"], ["Полезная информация"], [BACK_TO_CENTRAL]]
+
+
+def _info_link(env_name: str) -> str:
+    value = str(os.getenv(env_name, "") or "").strip()
+    return value or "ссылка будет добавлена позже"
 
 
 # Переходы между кварталами Селдара — «хождение по кварталам города», на котором
@@ -582,16 +591,58 @@ LEAVE_CITY_TEXT = """🗺 Выход к локациям
 
 Покинув безопасные стены Селдара, вы оказываетесь на развилке. Дороги ведут к ближайшим землям, где можно искать травы, руду, дичь и случайные находки."""
 
-ANNOUNCEMENTS_TEXT = """📢 Объявления Селдара
+INFO_STAND_TEXT = """🪧 Информационный стенд
 
-На доске объявлений будут появляться:
-• игровые ивенты;
-• городские новости;
-• конкурсы;
-• мировые события;
-• общие задания для игроков.
+Здесь собрана полезная информация о мире Нер-Талис:
+• Рейтинги — таблицы лидеров игроков;
+• Объявления — новости, конкурсы, обновления;
+• Полезная информация — ссылки на сообщества, гайды и документы.
 
-Пока активных объявлений нет."""
+Выберите раздел."""
+
+RATINGS_TEXT_TEMPLATE = """🏆 Рейтинги
+
+Здесь будут таблицы лидеров игроков (PVE, PVP, ремёсла и другое).
+
+Ссылка на сайт с рейтингами: {link}"""
+
+ANNOUNCEMENTS_TEXT_TEMPLATE = """📢 Объявления
+
+Новости, конкурсы, обновления и мировые события Нер-Талиса.
+
+Ссылка на сайт с объявлениями: {link}"""
+
+USEFUL_INFO_TEXT_TEMPLATE = """ℹ️ Полезная информация
+
+• Группа ВКонтакте: {vk_group}
+• Чат для общения (ВК): {vk_chat}
+• Чат для общения (Telegram): {tg_chat}
+• Гайды для новичков: {guides}
+• Пользовательское соглашение: {tos}
+• Политика конфиденциальности: {privacy}"""
+
+
+def info_stand_response_text() -> str:
+    return INFO_STAND_TEXT
+
+
+def ratings_text() -> str:
+    return RATINGS_TEXT_TEMPLATE.format(link=_info_link("SITE_RATINGS_URL"))
+
+
+def announcements_text() -> str:
+    return ANNOUNCEMENTS_TEXT_TEMPLATE.format(link=_info_link("SITE_ANNOUNCEMENTS_URL"))
+
+
+def useful_info_text() -> str:
+    return USEFUL_INFO_TEXT_TEMPLATE.format(
+        vk_group=_info_link("LINK_VK_GROUP"),
+        vk_chat=_info_link("LINK_VK_CHAT"),
+        tg_chat=_info_link("LINK_TG_CHAT"),
+        guides=_info_link("LINK_GUIDES"),
+        tos=_info_link("LINK_TERMS_OF_SERVICE"),
+        privacy=_info_link("LINK_PRIVACY_POLICY"),
+    )
 
 UNKNOWN_CITY_ACTION_TEXT = """Неизвестное городское действие.
 
@@ -641,7 +692,10 @@ CITY_ACTIONS: dict[str, CityResponse] = {
     "Городские ворота": CityResponse(GATES_TEXT, gates_buttons(), "seldar_city_gates"),
     LEGACY_OUTSIDE_CITY: CityResponse(LEAVE_CITY_TEXT, outside_city_buttons(), "outside_city_crossroads"),
     OUTSIDE_CITY: CityResponse(LEAVE_CITY_TEXT, outside_city_buttons(), "outside_city_crossroads"),
-    "Объявления": CityResponse(ANNOUNCEMENTS_TEXT, central_square_buttons(), "seldar_announcements"),
+    "Информационный стенд": CityResponse(info_stand_response_text(), info_stand_buttons(), "seldar_info_stand"),
+    "Рейтинги": CityResponse(ratings_text(), info_stand_buttons(), "seldar_info_ratings"),
+    "Объявления": CityResponse(announcements_text(), info_stand_buttons(), "seldar_info_announcements"),
+    "Полезная информация": CityResponse(useful_info_text(), info_stand_buttons(), "seldar_info_useful"),
 }
 
 BRANCH_CHOICE_ACTIONS = frozenset({ORDER_STONE, APPLY_ID_AMULET, CHOOSE_SPIRIT_BRANCH, CHOOSE_MANA_BRANCH, PREVIEW_SPIRIT_BRANCH, PREVIEW_MANA_BRANCH, CONFIRM_BRANCH, BACK_TO_BRANCH_CHOICE, CONFIRM_PATH, BACK_TO_PATHS, CONFIRM_SKILL, BACK_TO_SKILL_CHOICE, SECONDARY_PATH_ACTION})
