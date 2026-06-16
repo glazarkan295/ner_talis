@@ -35,7 +35,7 @@
 - `currency.py` — медь как база; format_money (краткий баланс) / format_price (торговля: «13 маг. зол. 6 зол. 400 мед. монет»). Курс: сер.=1e3, зол.=1e6, маг.зол.=1e9, древн.=5e11.
 - `progression_service.py` — опыт/уровни (grant_exact_experience).
 - `race_bonus_service.py` — расовые бонусы (hp_multiplier, сопротивления, регенерация).
-- `registration_service.py` — создание игрока (create_player), validate_name/normalize_name, load_races, гендеры.
+- `registration_service.py` — создание игрока (create_player), validate_name/normalize_name, load_races, гендеры; согласие перед регистрацией (consent_message, CONSENT_BUTTON, _doc_link → env LINK_PRIVACY_POLICY / LINK_TERMS_OF_SERVICE).
 - `promo_service.py` — промокоды: _normalize_code (срез слэша+upper), add/delete (удаляет ВСЕ совпавшие ключи), redeem (атомарный claim_promo_use).
 - `admin_panel_service.py` — логика админ-панели: каталог (HIDDEN_CATALOG_ITEM_IDS, SYNTHETIC_REWARD_IDS — монеты/очки), доставка наград (cap по меди), промо, сессии (consume_or_read_admin_session — атомарный claim токена), просмотр игроков.
 - `admin_command_service.py` / `admin_access.py` / `admin_audit.py` — админ-команды в боте, доступ, аудит.
@@ -53,7 +53,7 @@
 
 ## handlers/ (боты)
 - `city.py` — Telegram-обработчик мира (send_city_response → process_world_action; flush pending_bot_messages; **сохраняет игрока после действия** — учитывать при claim-копиях!).
-- `registration.py` / `vk_registration.py` — регистрация (Telegram/VK); _gender_choice_from_text (Муж./Жен.).
+- `registration.py` / `vk_registration.py` — регистрация (Telegram/VK); _gender_choice_from_text (Муж./Жен.); согласие первым шагом (TG: CONSENT_GATE → accept_consent; VK: STATE_CONSENT, первый контакт/кнопка «Начать» → согласие, фикс VK first-launch).
 - `telegram_admin.py` / `vk_admin.py` / `vk_admin_runtime.py` — админ-команды в чатах.
 - `site_profile.py` — выдача ссылок профиля.
 

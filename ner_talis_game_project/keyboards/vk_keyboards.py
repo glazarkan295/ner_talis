@@ -84,6 +84,12 @@ def make_keyboard(buttons: ButtonRows) -> str:
     return keyboard.get_keyboard()
 
 
+def consent_keyboard() -> str:
+    return make_keyboard([
+        ["Я прочитал и согласен"],
+    ])
+
+
 def start_keyboard() -> str:
     return make_keyboard([
         ["Кратко о мире"],

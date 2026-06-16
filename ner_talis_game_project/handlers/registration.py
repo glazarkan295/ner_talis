@@ -3,6 +3,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 
 from keyboards.reply_keyboards import (
     after_registration_keyboard,
+    consent_keyboard,
     gender_confirm_keyboard,
     gender_keyboard,
     name_confirm_keyboard,
@@ -13,6 +14,8 @@ from keyboards.reply_keyboards import (
 )
 from services.promo_service import redeem_promo_code
 from services.registration_service import (
+    CONSENT_BUTTON,
+    consent_message,
     create_player,
     format_race_card,
     get_race_id_by_name,
@@ -33,6 +36,7 @@ from texts.registration_texts import (
 )
 
 (
+    CONSENT_GATE,
     START_MENU,
     AWAITING_NAME,
     NAME_CONFIRM,
@@ -41,7 +45,7 @@ from texts.registration_texts import (
     AWAITING_RACE,
     RACE_CARD,
     RACE_CONFIRM,
-) = range(8)
+) = range(9)
 TELEGRAM_PLATFORM = "telegram"
 
 
@@ -65,8 +69,27 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         )
         return ConversationHandler.END
 
+    # Сначала — согласие с документами, и только после него — меню начала игры.
     await update.message.reply_text(
-        "Выберите действие:",
+        consent_message(),
+        reply_markup=consent_keyboard(),
+        disable_web_page_preview=True,
+    )
+    return CONSENT_GATE
+
+
+async def accept_consent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    storage = get_storage(context)
+    external_user_id = get_external_user_id(update)
+    player = storage.get_player_by_platform(TELEGRAM_PLATFORM, external_user_id)
+    if player is not None:
+        await update.message.reply_text(
+            "Ты уже зарегистрирован.",
+            reply_markup=after_registration_keyboard(),
+        )
+        return ConversationHandler.END
+    await update.message.reply_text(
+        "Спасибо! Выберите действие:",
         reply_markup=start_keyboard(),
     )
     return START_MENU

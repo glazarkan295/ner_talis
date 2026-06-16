@@ -7,6 +7,7 @@ from vk_api.utils import get_random_id
 
 from keyboards.vk_keyboards import (
     after_registration_keyboard,
+    consent_keyboard,
     gender_confirm_keyboard,
     gender_keyboard,
     make_keyboard,
@@ -22,6 +23,8 @@ from services.promo_service import redeem_promo_code
 from services.external_location_service import complete_active_timer
 from services.runtime_timer_scheduler import attach_timer_notification, schedule_timer_delivery
 from services.registration_service import (
+    CONSENT_BUTTON,
+    consent_message,
     create_player,
     format_race_card,
     get_race_id_by_name,
@@ -43,6 +46,7 @@ from texts.registration_texts import (
     WORLD_SHORT_TEXT,
 )
 
+STATE_CONSENT = "consent"
 STATE_START_MENU = "start_menu"
 STATE_AWAITING_NAME = "awaiting_name"
 STATE_NAME_CONFIRM = "name_confirm"
@@ -57,7 +61,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class VkRegistrationSession:
-    state: str = STATE_START_MENU
+    state: str = STATE_CONSENT
     name: str | None = None
     pending_name: str | None = None
     gender_id: str | None = None
@@ -129,9 +133,9 @@ class VkRegistrationBot:
                 return
 
             self.sessions[session_key] = VkRegistrationSession(
-                state=STATE_START_MENU,
+                state=STATE_CONSENT,
             )
-            self.send(peer_id, "Выберите действие:", start_keyboard())
+            self.send(peer_id, consent_message(), consent_keyboard())
             return
 
         if lowered == "/profile" or text == "Профиль":
@@ -164,8 +168,22 @@ class VkRegistrationBot:
         if existing_player is None:
             session = self.sessions.setdefault(
                 session_key,
-                VkRegistrationSession(state=STATE_START_MENU),
+                VkRegistrationSession(state=STATE_CONSENT),
             )
+
+            # Согласие — обязательный первый шаг (в т.ч. при первом запуске VK,
+            # когда приложение сразу присылает кнопку «Начать»).
+            if session.state == STATE_CONSENT:
+                if text == CONSENT_BUTTON:
+                    session.state = STATE_START_MENU
+                    self.send(
+                        peer_id,
+                        "Спасибо! Выберите действие:",
+                        start_keyboard(),
+                    )
+                else:
+                    self.send(peer_id, consent_message(), consent_keyboard())
+                return
 
             if text == "Кратко о мире":
                 self.send(peer_id, WORLD_SHORT_TEXT, start_keyboard())

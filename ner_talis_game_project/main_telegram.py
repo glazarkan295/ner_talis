@@ -96,11 +96,13 @@ def _import_telegram_runtime():
         AWAITING_GENDER,
         AWAITING_NAME,
         AWAITING_RACE,
+        CONSENT_GATE,
         GENDER_CONFIRM,
         NAME_CONFIRM,
         RACE_CARD,
         RACE_CONFIRM,
         START_MENU,
+        accept_consent,
         begin_registration,
         cancel,
         connect_command,
@@ -138,6 +140,8 @@ def _import_telegram_runtime():
         "RACE_CARD": RACE_CARD,
         "RACE_CONFIRM": RACE_CONFIRM,
         "START_MENU": START_MENU,
+        "CONSENT_GATE": CONSENT_GATE,
+        "accept_consent": accept_consent,
         "begin_registration": begin_registration,
         "cancel": cancel,
         "connect_command": connect_command,
@@ -197,10 +201,14 @@ def build_application():
     registration_conversation = ConversationHandler(
         entry_points=[
             CommandHandler("start", runtime["start_command"]),
+            MessageHandler(filters.Regex("^Я прочитал и согласен$"), runtime["accept_consent"]),
             MessageHandler(filters.Regex("^Кратко о мире$"), runtime["show_world_short"]),
             MessageHandler(filters.Regex("^Начать$"), runtime["begin_registration"]),
         ],
         states={
+            runtime["CONSENT_GATE"]: [
+                MessageHandler(filters.Regex("^Я прочитал и согласен$"), runtime["accept_consent"]),
+            ],
             runtime["START_MENU"]: [
                 MessageHandler(filters.Regex("^Кратко о мире$"), runtime["show_world_short"]),
                 MessageHandler(filters.Regex("^Начать$"), runtime["begin_registration"]),
