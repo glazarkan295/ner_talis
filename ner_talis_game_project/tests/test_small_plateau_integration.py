@@ -35,7 +35,7 @@ from services.small_plateau_service import (
     register_ancient_curse_active_day,
     resolve_small_plateau_search,
 )
-from services.player_time_service import advance_player_time, HOUR_SECONDS
+from services.player_time_service import advance_all_players_time, advance_player_time, HOUR_SECONDS
 from services.item_registry import get_item_definition_by_id
 from services.registration_service import create_player, load_races
 from storage.json_storage import JsonStorage
@@ -154,6 +154,30 @@ class SmallPlateauIntegrationTest(unittest.TestCase):
         self.assertTrue(player_has_seeker(player))
         visible_seeker = filter_seeker_only(player, events)
         self.assertEqual({e["id"] for e in visible_seeker}, {"common", "secret"})
+
+    def test_scheduler_ticks_amulet_burn_for_all_players(self):
+        storage, player = self.make_player_and_storage()
+        player["hp"] = 100
+        player["max_hp"] = 100
+        add_effect(player, AMULET_BURN_ID, {"id": AMULET_BURN_ID, "effect_id": AMULET_BURN_ID, "active": True})
+        player["amulet_burn_last_tick_ts"] = 1_000_000
+        game_id = str(player.get("game_id"))
+        storage.update_player(player)
+
+        updated = advance_all_players_time(storage, now_ts=1_000_000 + 3 * HOUR_SECONDS)
+        self.assertGreaterEqual(updated, 1)
+        after = storage.get_player_by_game_id(game_id)
+        self.assertEqual(after["hp"], 85)  # 3 часа × 5 HP
+        self.assertEqual(len(after.get("pending_bot_messages", [])), 3)
+
+    def test_background_tick_does_not_inflate_curse_activity(self):
+        # count_activity=False: фоновый тик не должен копить «активные секунды».
+        from services.player_time_service import _advance
+        player = {"curse_day_tracker": {"date": "2999-01-01", "active_seconds": 0, "last_action_ts": 0}}
+        import datetime as _dt
+        now = int(_dt.datetime(2999, 1, 1, 12, tzinfo=_dt.timezone.utc).timestamp())
+        _advance(player, now, count_activity=False)
+        self.assertEqual(player["curse_day_tracker"]["active_seconds"], 0)
 
     def test_small_plateau_items_are_in_registry(self):
         self.assertIsNotNone(get_item_definition_by_id("old_brooch"))
