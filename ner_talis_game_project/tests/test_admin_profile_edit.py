@@ -97,6 +97,31 @@ class AdminProfileEditTest(unittest.TestCase):
             self.assertEqual(edited.status_code, 200, edited.text)
             self.assertEqual(storage.get_player_by_game_id(game_id)["name"], "НовоеИмя")
 
+    def test_edit_token_uses_distinct_scope_and_keeps_player_session(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            game_id = self._make_player(storage, external_user_id="555")
+            # Simulate the player's own live profile session.
+            player_token = storage.create_web_session(
+                game_id=game_id, scope="profile", platform=TELEGRAM, lifetime_minutes=60,
+            )
+            token = create_admin_panel_activation_token(storage, platform=TELEGRAM, admin_user_id="999")
+            client = self._client(storage)
+            session_token = client.get(f"/api/admin/session/{token}").json()["sessionToken"]
+            view = client.post(f"/api/admin/players/{game_id}/view-token", json={"token": session_token})
+            edit_token = client.get(f"/api/admin/player-view/{view.json()['token']}").json()["editToken"]
+            self.assertTrue(edit_token)
+            self.assertNotEqual(edit_token, player_token)
+
+            # Minting the admin edit token must NOT evict the player's own
+            # PROFILE-scope session (distinct scope, no purge collision).
+            player, p_session = storage.get_player_by_web_token(player_token, scope="profile")
+            self.assertIsNotNone(player)
+            self.assertEqual(p_session.get("scope"), "profile")
+            # The edit token carries the dedicated admin-edit scope.
+            _ep, e_session = storage.get_player_by_web_token(edit_token, scope="admin_profile_edit")
+            self.assertEqual(e_session.get("scope"), "admin_profile_edit")
+
     def test_player_detail_includes_last_activity(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             storage = JsonStorage(str(Path(tmp_dir) / "players.json"))

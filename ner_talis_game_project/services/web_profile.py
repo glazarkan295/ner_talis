@@ -8,6 +8,10 @@ from typing import Any
 
 PROFILE_SCOPE = "profile"
 PAVILION_SCOPE = "pavilion"
+# Отдельный scope для админского редактирования чужого профиля: не пересекается
+# с обычными PROFILE-сессиями игрока (минт админ-токена не разлогинивает игрока,
+# и наоборот). Принимается профильными write-эндпоинтами наравне с PROFILE.
+ADMIN_PROFILE_EDIT_SCOPE = "admin_profile_edit"
 DEFAULT_SESSION_TTL_MINUTES = 1440
 
 

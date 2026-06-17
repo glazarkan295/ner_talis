@@ -44,6 +44,7 @@ BASE_COST_COPPER = 10
 COST_LEVEL_FACTOR = 1.3  # стоимость = 10 * (уровень * 1,3)
 STOLEN_CHANCE_PERCENT = 0.01
 MISDELIVERY_CHANCE_PERCENT = 0.1
+MAX_DELIVERY_ATTEMPTS = 5
 
 # --- Тексты (предоставлены дизайном дословно) -------------------------------
 WARNING_TEXT = (
@@ -290,7 +291,10 @@ def _receiver_messages(transfer: dict[str, Any], *, random_recipient: bool) -> l
 
 # --- Создание посылки -------------------------------------------------------
 def _item_key(item: dict[str, Any]) -> str:
-    return str(item.get("id") or item.get("item_id") or "").strip()
+    # Имя — запасной ключ: фронтенд (normalize_item) подставляет name в id, когда
+    # у предмета нет id/item_id, поэтому без этого fallback'а легаси-стопки без id
+    # было бы невозможно отправить (item_id с фронта != ключ на бэкенде).
+    return str(item.get("id") or item.get("item_id") or item.get("name") or "").strip()
 
 
 def _match_inventory_index(
@@ -427,16 +431,49 @@ def create_courier_transfer(
         "deliver_at": deliver_at.isoformat().replace("+00:00", "Z"),
     }
 
-    with _TRANSFERS_LOCK, _transfers_file_lock():
-        queue = _load_transfers()
-        queue.append(transfer)
-        _save_transfers(queue)
+    # Сначала делаем списание у отправителя ДУРАБЛЬНЫМ, и только потом ставим
+    # посылку в очередь. Иначе при сбое сохранения отправителя посылка всё равно
+    # доставилась бы получателю → дублирование предметов/монет. При сбое самой
+    # постановки в очередь откатываем списание, чтобы вложения не пропали.
+    update_player = getattr(storage, "update_player", None)
+    if callable(update_player):
+        try:
+            update_player(sender)
+        except Exception as exc:  # списание не зафиксировано — ничего не теряем
+            raise CourierError("Не удалось оформить посылку. Попробуйте позже.") from exc
+
+    try:
+        with _TRANSFERS_LOCK, _transfers_file_lock():
+            queue = _load_transfers()
+            queue.append(transfer)
+            _save_transfers(queue)
+    except Exception as exc:
+        _refund_sender(sender, items_snapshot, cost, coins)
+        if callable(update_player):
+            try:
+                update_player(sender)
+            except Exception:
+                pass
+        raise CourierError("Не удалось оформить посылку. Попробуйте позже.") from exc
 
     message = SENDER_CONFIRM_TEXT.format(
         receiver_name=transfer["receiver_name"],
         delivery_cost=format_price(cost),
     )
     return {"message": message, "transfer": transfer}
+
+
+def _refund_sender(
+    sender: dict[str, Any], items_snapshot: list[dict[str, Any]], cost: int, coins: int
+) -> None:
+    """Возврат вложений и стоимости отправителю при сбое постановки в очередь."""
+    for entry in items_snapshot:
+        snapshot = entry.get("item")
+        amount = max(1, safe_int(entry.get("amount"), 1))
+        if isinstance(snapshot, dict):
+            add_inventory_item(sender, deepcopy(snapshot), amount)
+    sender["money"] = safe_int(sender.get("money"), 0) + safe_int(cost, 0) + safe_int(coins, 0)
+    recalculate_inventory_overflow(sender)
 
 
 # --- Доставка ---------------------------------------------------------------
@@ -511,6 +548,7 @@ def process_due_transfers(
         return None
 
     processed = 0
+    requeue: list[dict[str, Any]] = []
     for transfer in due:
         roll = rng.random() * 100.0
         sender_id = str(transfer.get("sender_game_id") or "")
@@ -547,7 +585,20 @@ def process_due_transfers(
                     update_player(receiver)
             processed += 1
         except Exception:
+            # Доставка не должна терять посылку: возвращаем её в очередь на
+            # повтор (до MAX_DELIVERY_ATTEMPTS), иначе предметы/монеты отправителя
+            # пропали бы навсегда при разовом сбое (например, ошибке БД).
+            attempts = safe_int(transfer.get("delivery_attempts"), 0) + 1
+            if attempts < MAX_DELIVERY_ATTEMPTS:
+                transfer["delivery_attempts"] = attempts
+                requeue.append(transfer)
             continue
+
+    if requeue:
+        with _TRANSFERS_LOCK, _transfers_file_lock():
+            queue = _load_transfers()
+            queue.extend(requeue)
+            _save_transfers(queue)
     return processed
 
 

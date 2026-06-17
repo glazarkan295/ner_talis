@@ -67,6 +67,7 @@ from handlers.registration import (
     START_MENU,
     TELEGRAM_PLATFORM,
     accept_consent,
+    begin_registration,
     connect_command,
     handle_gender_confirmation,
     handle_name_confirmation,
@@ -76,6 +77,7 @@ from handlers.registration import (
     promo_command,
     receive_gender,
     receive_name,
+    show_world_short,
     start_command,
 )
 from handlers.vk_registration import (
@@ -167,11 +169,44 @@ class StartRegistrationGuardTest(unittest.TestCase):
         result = asyncio.run(accept_consent(update, context))
 
         self.assertEqual(result, START_MENU)
+        self.assertTrue(context.user_data.get("consent_given"))
         self.assertEqual(update.message.replies[-1][0], "Спасибо! Выберите действие:")
         self.assertEqual(
             update.message.replies[-1][1].keyboard,
             [["Кратко о мире"], ["Начать"]],
         )
+
+    def test_telegram_begin_registration_requires_consent_first(self):
+        # Новый игрок, нажавший «Начать» как точку входа без согласия, должен
+        # сперва получить экран согласия, а не сразу регистрацию.
+        storage = FakeStorage(None)
+        update = FakeUpdate()
+        context = FakeContext(storage)
+
+        result = asyncio.run(begin_registration(update, context))
+
+        self.assertEqual(result, CONSENT_GATE)
+        self.assertIn("ознакомьтесь", update.message.replies[-1][0].casefold())
+
+    def test_telegram_begin_registration_proceeds_after_consent(self):
+        storage = FakeStorage(None)
+        update = FakeUpdate()
+        context = FakeContext(storage)
+        context.user_data["consent_given"] = True
+
+        result = asyncio.run(begin_registration(update, context))
+
+        self.assertEqual(result, AWAITING_NAME)
+
+    def test_telegram_world_short_requires_consent_first(self):
+        storage = FakeStorage(None)
+        update = FakeUpdate()
+        context = FakeContext(storage)
+
+        result = asyncio.run(show_world_short(update, context))
+
+        self.assertEqual(result, CONSENT_GATE)
+        self.assertIn("ознакомьтесь", update.message.replies[-1][0].casefold())
 
     def test_vk_start_does_not_reset_session_for_registered_player(self):
         player = {"game_id": "NT-REGISTERED", "name": "Готовый"}

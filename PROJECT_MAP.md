@@ -97,7 +97,7 @@
 - Промокоды → `promo_service.py` + admin_panel_service (создание из админки).
 - Админ-панель (каталог/доставка/монеты/сессии) → `admin_panel_service.py` + admin_panel_api.py + web AdminPanel.jsx.
 - Рассылка «Общее сообщение» → `broadcast_service.py` + admin_panel_api (/broadcast, /broadcast/preview) + web AdminPanel BroadcastSection.
-- Админ-редактирование чужого профиля → get_admin_player_view_profile (editToken) + web App.AdminProfileView (adminEdit) + PlayerProfile ItemModal «Удалить из профиля игрока»; время активности — last_activity_at (player_time_service) → admin_player_detail дд.мм.гг.
+- Админ-редактирование чужого профиля → get_admin_player_view_profile (editToken под отдельным scope ADMIN_PROFILE_EDIT_SCOPE из web_profile, короткий TTL, не разлогинивает игрока; site_api.get_session_and_player_by_token принимает оба scope) + web App.AdminProfileView (adminEdit) + PlayerProfile ItemModal «Удалить из профиля игрока»; время активности — last_activity_at (player_time_service) → admin_player_detail дд.мм.гг.
 - Профиль-сайт (данные/эндпоинты/редактирование сводки) → `site_api.py` + web PlayerProfile.jsx.
 - Передача предметов гонцом → `courier_service.py` + site_api (/courier/search, /courier/send) + web PlayerProfile CourierTab + воркер в main._start_player_effect_scheduler_once.
 - Регистрация/гендер/раса/валидация имени → `registration_service.py` + handlers/registration.py + vk_registration.py.

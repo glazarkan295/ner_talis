@@ -47,7 +47,7 @@ from services.market_service import (
     sell_item_from_profile,
     sellable_inventory_stack_indexes,
 )
-from services.web_profile import PROFILE_SCOPE
+from services.web_profile import ADMIN_PROFILE_EDIT_SCOPE, PROFILE_SCOPE
 from services.active_skill_service import refresh_unlocked_active_skills, resource_cost_with_modifiers, skill_level, is_skill_weapon_compatible, skill_weapon_requirement_text, can_spend_skill_points_on, player_branch, selected_main_path, selected_secondary_path, path_level, secondary_path_limit
 
 FRONT_TO_BACK_STAT = {
@@ -1439,13 +1439,25 @@ def profile_identifier_from_request(identifier: str, request: Request | None = N
     return str(identifier or "").strip()
 
 
+# Профильные write/read-эндпоинты принимают и обычный профиль-токен игрока, и
+# админский edit-токен (отдельный scope, чтобы не разлогинивать игрока).
+PROFILE_WRITE_SCOPES = (PROFILE_SCOPE, ADMIN_PROFILE_EDIT_SCOPE)
+
+
 def get_session_and_player_by_token(storage: Any, token: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     if hasattr(storage, "get_player_by_web_token"):
-        return storage.get_player_by_web_token(token, scope=PROFILE_SCOPE)
+        # Перебираем разрешённые scope'ы по очереди (а не scope=None), чтобы
+        # одноразовый токен ЧУЖОГО scope (например, павильона) не активировался
+        # как побочный эффект при обращении к профильному эндпоинту.
+        for allowed_scope in PROFILE_WRITE_SCOPES:
+            player, session = storage.get_player_by_web_token(token, scope=allowed_scope)
+            if player is not None and session is not None:
+                return player, session
+        return None, None
     data = storage.load()
     sessions = data.get("web_sessions") or data.get("site_sessions") or {}
     session = sessions.get(token)
-    if not session or session.get("scope") != PROFILE_SCOPE:
+    if not session or session.get("scope") not in PROFILE_WRITE_SCOPES:
         return None, None
     expires_at = parse_datetime(session.get("expires_at"))
     if expires_at and expires_at <= datetime.now(timezone.utc):

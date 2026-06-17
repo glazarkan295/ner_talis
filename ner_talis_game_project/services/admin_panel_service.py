@@ -43,6 +43,7 @@ from services.promo_service import add_promo_code, delete_promo_code, list_promo
 
 ADMIN_PANEL_SCOPE = "admin_panel"
 ADMIN_PLAYER_VIEW_SCOPE = "admin_player_view"
+ADMIN_PLAYER_VIEW_TTL_MINUTES = 30
 DEFAULT_ADMIN_PANEL_TTL_MINUTES = 60
 MAX_REWARD_AMOUNT = 1_000_000_000
 # Денежные награды задаются в монетах разного номинала, но зачисляются в медь.
@@ -844,7 +845,7 @@ def create_admin_player_view_token(storage: Any, *, target_game_id: str, admin_s
         "admin_key": str(admin_session.get("admin_key") or ""),
         "target_game_id": game_id,
         "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(minutes=30)).isoformat(),
+        "expires_at": (now + timedelta(minutes=ADMIN_PLAYER_VIEW_TTL_MINUTES)).isoformat(),
     }
     if _storage_supports_admin_sessions(storage):
         storage.cleanup_expired_admin_panel_sessions()
@@ -902,15 +903,31 @@ def get_admin_player_view_profile(storage: Any, token: str) -> dict[str, Any] | 
     profile["adminEdit"] = True
     edit_token = ""
     try:
-        from services.web_profile import PROFILE_SCOPE, create_web_session_token
-        edit_token = create_web_session_token(
-            storage,
-            target_game_id,
-            PROFILE_SCOPE,
-            str(session.get("platform") or "admin_panel"),
-        )
+        from services.web_profile import ADMIN_PROFILE_EDIT_SCOPE
+        # Отдельный scope + короткий TTL (как окно просмотра): не разлогинивает
+        # игрока (его PROFILE-сессия не трогается) и не оставляет долгоживущего
+        # доступа после закрытия окна просмотра.
+        platform = str(session.get("platform") or "admin_panel")
+        if hasattr(storage, "create_web_session"):
+            edit_token = storage.create_web_session(
+                game_id=target_game_id,
+                scope=ADMIN_PROFILE_EDIT_SCOPE,
+                platform=platform,
+                lifetime_minutes=ADMIN_PLAYER_VIEW_TTL_MINUTES,
+            )
     except Exception:
         edit_token = ""
+    if edit_token:
+        try:
+            write_admin_audit(
+                platform=str(session.get("platform") or "admin_panel"),
+                admin_user_id=str(session.get("admin_user_id") or "unknown"),
+                command="admin_panel_edit_profile_session",
+                action="admin_panel_edit_profile_session",
+                details={"target_game_id": target_game_id},
+            )
+        except Exception:
+            pass
     return {
         "profile": profile,
         "editToken": edit_token,

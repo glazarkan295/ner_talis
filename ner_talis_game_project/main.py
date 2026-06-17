@@ -392,14 +392,14 @@ def run_bots() -> None:
     use_telegram = telegram_enabled()
     use_vk = vk_enabled()
 
+    # Планировщик эффектов и воркер доставки курьера запускаются ДО проверки
+    # платформ: даже если оба бота отключены, фоновые задачи (догон эффектов,
+    # доставка уже оплаченных посылок из очереди) должны продолжать работать.
+    _start_player_effect_scheduler_once()
+
     if not use_telegram and not use_vk:
         logger.warning("Telegram и VK отключены переменными ENABLE_TELEGRAM=false и ENABLE_VK=false")
         return
-
-    # Постоянный планировщик время-зависимых эффектов запускается до выбора
-    # платформы, поэтому работает и для VK-only деплоя (раньше стартовал только
-    # в Telegram-пути восстановления таймеров и в VK-only не запускался).
-    _start_player_effect_scheduler_once()
 
     if not use_telegram:
         logger.info("Telegram bot is disabled by ENABLE_TELEGRAM=false; starting VK only")

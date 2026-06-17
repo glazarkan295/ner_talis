@@ -88,6 +88,10 @@ async def accept_consent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             reply_markup=after_registration_keyboard(),
         )
         return ConversationHandler.END
+    # Запоминаем согласие на уровне пользователя, чтобы кнопки «Начать»/«Кратко
+    # о мире» (которые являются точками входа диалога) не могли провести нового
+    # игрока в регистрацию в обход экрана согласия.
+    context.user_data["consent_given"] = True
     await update.message.reply_text(
         "Спасибо! Выберите действие:",
         reply_markup=start_keyboard(),
@@ -95,7 +99,21 @@ async def accept_consent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     return START_MENU
 
 
+async def _require_consent_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Показывает экран согласия, если игрок ещё его не подтверждал."""
+    if context.user_data.get("consent_given"):
+        return False
+    await update.message.reply_text(
+        consent_message(),
+        reply_markup=consent_keyboard(),
+        disable_web_page_preview=True,
+    )
+    return True
+
+
 async def show_world_short(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if await _require_consent_gate(update, context):
+        return CONSENT_GATE
     await update.message.reply_text(
         WORLD_SHORT_TEXT,
         reply_markup=start_keyboard(),
@@ -114,6 +132,11 @@ async def begin_registration(update: Update, context: ContextTypes.DEFAULT_TYPE)
             reply_markup=after_registration_keyboard(),
         )
         return ConversationHandler.END
+
+    # Регистрация недоступна без подтверждённого согласия (закрывает обход через
+    # точку входа «Начать» для игрока, который не проходил экран согласия).
+    if await _require_consent_gate(update, context):
+        return CONSENT_GATE
 
     await update.message.reply_text(ASK_NAME_TEXT)
     return AWAITING_NAME

@@ -34,6 +34,17 @@ class FakeRng:
         return seq[self._choice_index]
 
 
+class ToggleJsonStorage(JsonStorage):
+    """JsonStorage that can simulate a transient update_player failure."""
+
+    fail_updates = False
+
+    def update_player(self, player):
+        if self.fail_updates:
+            raise RuntimeError("simulated storage failure")
+        return super().update_player(player)
+
+
 def _make_item(item_id="test_potion", name="Зелье", amount=5):
     return {
         "id": item_id,
@@ -51,7 +62,7 @@ class CourierServiceTest(unittest.TestCase):
         self._temp = tempfile.TemporaryDirectory()
         self.addCleanup(self._temp.cleanup)
         base = Path(self._temp.name)
-        self.storage = JsonStorage(str(base / "players.json"))
+        self.storage = ToggleJsonStorage(str(base / "players.json"))
         self._prev_env = os.environ.get("COURIER_TRANSFERS_PATH")
         os.environ["COURIER_TRANSFERS_PATH"] = str(base / "courier_transfers.json")
         self.addCleanup(self._restore_env)
@@ -248,6 +259,32 @@ class CourierServiceTest(unittest.TestCase):
         self._make_player("s11", "ИскомыйНик")
         results = courier_service.search_players(self.storage, "Искомый")
         self.assertTrue(any(r["name"] == "ИскомыйНик" for r in results))
+
+    def test_failed_delivery_is_requeued_not_lost(self):
+        sender = self._make_player("s12", "Стойкий", money=1000, inventory=[_make_item(amount=5)])
+        receiver = self._make_player("r12", "Получит", )
+        self._enqueue(sender, "Получит")
+        self.storage.update_player(sender)
+
+        # Delivery raises (simulated DB error on save) → transfer must survive.
+        self.storage.fail_updates = True
+        processed = courier_service.process_due_transfers(
+            self.storage, now=self.now + timedelta(minutes=20), rng=FakeRng(random_value=0.5),
+        )
+        self.storage.fail_updates = False
+        self.assertEqual(processed, 0)
+        queue = courier_service._load_transfers()
+        self.assertEqual(len(queue), 1)
+        self.assertEqual(queue[0].get("delivery_attempts"), 1)
+
+        # Retry succeeds and delivers the items.
+        processed = courier_service.process_due_transfers(
+            self.storage, now=self.now + timedelta(minutes=20), rng=FakeRng(random_value=0.5),
+        )
+        self.assertEqual(processed, 1)
+        fresh = self.storage.get_player_by_game_id(receiver["game_id"])
+        self.assertTrue(any(it.get("item_id") == "test_potion" for it in fresh["inventory"]))
+        self.assertEqual(courier_service._load_transfers(), [])
 
 
 if __name__ == "__main__":

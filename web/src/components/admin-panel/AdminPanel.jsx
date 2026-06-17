@@ -77,6 +77,7 @@ function BroadcastSection({ token, guarded }) {
   const [message, setMessage] = useState("");
   const [count, setCount] = useState(null);
   const [confirming, setConfirming] = useState(false);
+  const [sending, setSending] = useState(false);
   const msgRef = React.useRef(null);
 
   const specificClean = useMemo(() => specific.map((value) => value.trim()).filter(Boolean), [specific]);
@@ -105,12 +106,18 @@ function BroadcastSection({ token, guarded }) {
   }
 
   async function confirmSend() {
-    await guarded(async () => {
-      const payload = await sendBroadcast(token, audience, message.trim(), specificClean);
-      setConfirming(false);
-      setMessage("");
-      setCount(payload.delivered);
-    }, "Сообщение отправлено игрокам.");
+    if (sending) return;
+    setSending(true);
+    try {
+      await guarded(async () => {
+        const payload = await sendBroadcast(token, audience, message.trim(), specificClean);
+        setConfirming(false);
+        setMessage("");
+        setCount(payload.delivered);
+      }, "Сообщение отправлено игрокам.");
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -123,11 +130,11 @@ function BroadcastSection({ token, guarded }) {
         <div className="nt-admin-specific">
           {specific.map((value, index) => (
             <div className="nt-admin-row" key={index}>
-              <input placeholder="Ник или игровой ID" value={value} onChange={(e) => setSpecific((old) => old.map((v, i) => i === index ? e.target.value : v))} />
-              {specific.length > 1 ? <button type="button" className="nt-admin-icon-button nt-danger" title="Убрать строку" onClick={() => setSpecific((old) => old.filter((_, i) => i !== index))}>×</button> : null}
+              <input placeholder="Ник или игровой ID" value={value} onChange={(e) => { setConfirming(false); setSpecific((old) => old.map((v, i) => i === index ? e.target.value : v)); }} />
+              {specific.length > 1 ? <button type="button" className="nt-admin-icon-button nt-danger" title="Убрать строку" onClick={() => { setConfirming(false); setSpecific((old) => old.filter((_, i) => i !== index)); }}>×</button> : null}
             </div>
           ))}
-          <button type="button" className="nt-admin-add-row" onClick={() => setSpecific((old) => [...old, ""])}>＋ Добавить игрока</button>
+          <button type="button" className="nt-admin-add-row" onClick={() => { setConfirming(false); setSpecific((old) => [...old, ""]); }}>＋ Добавить игрока</button>
         </div>
       ) : null}
 
@@ -147,8 +154,8 @@ function BroadcastSection({ token, guarded }) {
         <div className="nt-admin-confirm">
           <p>Отправить сообщение получателям: <b>{count}</b>?</p>
           <div className="nt-admin-row">
-            <button type="button" onClick={confirmSend}>Отправить всем</button>
-            <button type="button" onClick={() => setConfirming(false)}>Отмена</button>
+            <button type="button" onClick={confirmSend} disabled={sending}>{sending ? "Отправка…" : "Отправить всем"}</button>
+            <button type="button" onClick={() => setConfirming(false)} disabled={sending}>Отмена</button>
           </div>
         </div>
       ) : (
