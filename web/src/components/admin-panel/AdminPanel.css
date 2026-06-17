@@ -52,6 +52,19 @@
 .nt-admin-promo-info { margin-top: 10px; }
 .nt-admin-card summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; }
 
+.nt-admin-broadcast { display: grid; gap: 10px; }
+.nt-admin-broadcast h2 { margin: 8px 0 0; }
+.nt-admin-broadcast select,
+.nt-admin-broadcast textarea { width: 100%; box-sizing: border-box; }
+.nt-admin-broadcast textarea { min-height: 120px; resize: vertical; font: inherit; }
+.nt-admin-specific { display: grid; gap: 8px; }
+.nt-admin-add-row { justify-self: start; }
+.nt-admin-emoji-panel { display: flex; flex-wrap: wrap; gap: 6px; }
+.nt-admin-emoji-panel button { padding: 4px 8px; font-size: 18px; line-height: 1; }
+.nt-admin-attach-panel { display: flex; flex-wrap: wrap; gap: 8px; }
+.nt-admin-confirm { display: grid; gap: 8px; padding: 12px; border: 1px solid rgba(214,172,91,.4); border-radius: 14px; background: rgba(0,0,0,.2); }
+.nt-admin-confirm p { margin: 0; }
+
 @media (max-width: 720px) {
   .nt-admin-reward-row { grid-template-columns: 1fr; }
   .nt-admin-icon-button { width: 100%; min-width: 0; }

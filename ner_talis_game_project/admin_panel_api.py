@@ -62,6 +62,19 @@ class AdminChangeImageRequest(BaseModel):
     content_type: str | None = None
 
 
+class AdminBroadcastPreviewRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    audience: str
+    specific_players: list[str] = Field(default_factory=list)
+
+
+class AdminBroadcastRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    audience: str
+    message: str = Field(min_length=1)
+    specific_players: list[str] = Field(default_factory=list)
+
+
 def _bearer_token(request: Request | None) -> str:
     if request is None:
         return ""
@@ -211,6 +224,54 @@ def create_admin_panel_router(get_storage) -> APIRouter:
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/broadcast/preview")
+    def broadcast_preview(payload: AdminBroadcastPreviewRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        _session_or_403(storage, request, payload.token)
+        from services.broadcast_service import (
+            AUDIENCE_LABELS,
+            BroadcastError,
+            select_recipient_ids,
+        )
+        try:
+            recipient_ids = select_recipient_ids(storage, payload.audience, payload.specific_players)
+        except BroadcastError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "ok": True,
+            "audience": payload.audience,
+            "audienceLabel": AUDIENCE_LABELS.get(payload.audience, payload.audience),
+            "recipients": len(recipient_ids),
+        }
+
+    @router.post("/broadcast")
+    def broadcast_send(payload: AdminBroadcastRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session_or_403(storage, request, payload.token)
+        from services.broadcast_service import BroadcastError, broadcast_message
+        try:
+            result = broadcast_message(
+                storage,
+                payload.audience,
+                payload.message,
+                payload.specific_players,
+            )
+        except BroadcastError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        write_admin_audit(
+            platform=str(session.get("platform") or "admin_panel"),
+            admin_user_id=str(session.get("admin_user_id") or "unknown"),
+            command="admin_panel_broadcast",
+            action="admin_panel_broadcast",
+            details={
+                "audience": result.get("audience"),
+                "recipients": result.get("recipients"),
+                "delivered": result.get("delivered"),
+                "message_preview": payload.message[:80],
+            },
+        )
+        return {"ok": True, **result}
 
     @router.get("/promos")
     def get_promos(request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:

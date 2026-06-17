@@ -123,3 +123,15 @@ export function deletePromo(token, code) {
 export function loadAdminPlayerView(token) {
   return requestAdminJson(`/api/admin/player-view?_=${Date.now()}`, { authToken: token });
 }
+export function previewBroadcast(token, audience, specificPlayers = []) {
+  return requestAdminJson("/api/admin/broadcast/preview", {
+    method: "POST",
+    body: JSON.stringify({ audience, specific_players: specificPlayers }),
+  });
+}
+export function sendBroadcast(token, audience, message, specificPlayers = []) {
+  return requestAdminJson("/api/admin/broadcast", {
+    method: "POST",
+    body: JSON.stringify({ audience, message, specific_players: specificPlayers }),
+  });
+}

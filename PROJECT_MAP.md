@@ -38,6 +38,7 @@
 - `registration_service.py` — создание игрока (create_player), validate_name/normalize_name, load_races, гендеры; согласие перед регистрацией (consent_message, CONSENT_BUTTON, _doc_link → env LINK_PRIVACY_POLICY / LINK_TERMS_OF_SERVICE).
 - `promo_service.py` — промокоды: _normalize_code (срез слэша+upper), add/delete (удаляет ВСЕ совпавшие ключи), redeem (атомарный claim_promo_use).
 - `admin_panel_service.py` — логика админ-панели: каталог (HIDDEN_CATALOG_ITEM_IDS, SYNTHETIC_REWARD_IDS — монеты/очки), доставка наград (cap по меди), промо, сессии (consume_or_read_admin_session — атомарный claim токена), просмотр игроков.
+- `broadcast_service.py` — админская рассылка «Общее сообщение»: выбор аудитории (пол / диапазоны уровней / все / конкретные игроки), AUDIENCE_LABELS, select_recipient_ids, broadcast_message → pending_bot_messages.
 - `admin_command_service.py` / `admin_access.py` / `admin_audit.py` — админ-команды в боте, доступ, аудит.
 - `admin_player_service.py` — поиск/сводка/удаление игроков, бэкап.
 - `web_profile.py` — генерация ссылок на сайт-профиль (create_profile_site_link), base URL.
@@ -95,6 +96,7 @@
 - Штрафы/облавы → `fine_service.py`.
 - Промокоды → `promo_service.py` + admin_panel_service (создание из админки).
 - Админ-панель (каталог/доставка/монеты/сессии) → `admin_panel_service.py` + admin_panel_api.py + web AdminPanel.jsx.
+- Рассылка «Общее сообщение» → `broadcast_service.py` + admin_panel_api (/broadcast, /broadcast/preview) + web AdminPanel BroadcastSection.
 - Профиль-сайт (данные/эндпоинты/редактирование сводки) → `site_api.py` + web PlayerProfile.jsx.
 - Передача предметов гонцом → `courier_service.py` + site_api (/courier/search, /courier/send) + web PlayerProfile CourierTab + воркер в main._start_player_effect_scheduler_once.
 - Регистрация/гендер/раса/валидация имени → `registration_service.py` + handlers/registration.py + vk_registration.py.

@@ -14,8 +14,25 @@ import {
   loadPlayerLogs,
   loadPlayers,
   loadPromos,
+  previewBroadcast,
+  sendBroadcast,
   sendDelivery,
 } from "../../api/adminApi.js";
+
+const BROADCAST_AUDIENCES = [
+  ["all", "Все игроки"],
+  ["male", "Игроки мужского пола"],
+  ["female", "Игроки женского пола"],
+  ["lvl_1_50", "Игроки 1–50 уровня"],
+  ["lvl_50_plus", "Игроки 50 уровня и выше"],
+  ["lvl_50_100", "Игроки 50–100 уровня"],
+  ["lvl_500_plus", "Игроки 500 уровня и выше"],
+  ["lvl_100_500", "Игроки 100–500 уровня"],
+  ["lvl_500_1000", "Игроки 500–1000 уровня"],
+  ["lvl_1000_plus", "Игроки 1000 уровня и выше"],
+  ["specific", "Определённые игроки"],
+];
+const BROADCAST_EMOJI = ["😀","😉","😎","🥳","😢","😡","👍","👎","🔥","⭐","🎉","⚔️","🛡️","💰","📦","✉️","⚠️","❤️"];
 
 const durations = [
   ["1h", "1 час"], ["12h", "12 часов"], ["1d", "1 день"], ["7d", "7 дней"],
@@ -52,6 +69,93 @@ function RewardList({ selected, quantities, setQuantities, onRemove }) {
       <button className="nt-admin-icon-button nt-danger" type="button" title="Убрать из списка" onClick={() => onRemove?.(key)}>×</button>
     </div>;
   })}</div>;
+}
+
+function BroadcastSection({ token, guarded }) {
+  const [audience, setAudience] = useState("all");
+  const [specific, setSpecific] = useState([""]);
+  const [message, setMessage] = useState("");
+  const [count, setCount] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const msgRef = React.useRef(null);
+
+  const specificClean = useMemo(() => specific.map((value) => value.trim()).filter(Boolean), [specific]);
+  const canSend = Boolean(message.trim() && (audience !== "specific" || specificClean.length));
+
+  function insertAtCursor(text) {
+    const el = msgRef.current;
+    if (!el) { setMessage((current) => current + text); return; }
+    const start = el.selectionStart ?? message.length;
+    const end = el.selectionEnd ?? message.length;
+    const next = message.slice(0, start) + text + message.slice(end);
+    setMessage(next);
+    requestAnimationFrame(() => { el.focus(); const pos = start + text.length; try { el.setSelectionRange(pos, pos); } catch {} });
+  }
+
+  function attachLink(kind) {
+    const url = window.prompt(`Вставьте ссылку (${kind}):`);
+    if (url && url.trim()) insertAtCursor(`\n${url.trim()}\n`);
+  }
+
+  async function requestSend() {
+    if (!canSend) return;
+    setConfirming(false);
+    const payload = await guarded(() => previewBroadcast(token, audience, specificClean));
+    if (payload) { setCount(payload.recipients); setConfirming(true); }
+  }
+
+  async function confirmSend() {
+    await guarded(async () => {
+      const payload = await sendBroadcast(token, audience, message.trim(), specificClean);
+      setConfirming(false);
+      setMessage("");
+      setCount(payload.delivered);
+    }, "Сообщение отправлено игрокам.");
+  }
+
+  return (
+    <section className="nt-admin-broadcast">
+      <h2>Получатели</h2>
+      <select value={audience} onChange={(e) => { setAudience(e.target.value); setConfirming(false); }}>
+        {BROADCAST_AUDIENCES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select>
+      {audience === "specific" ? (
+        <div className="nt-admin-specific">
+          {specific.map((value, index) => (
+            <div className="nt-admin-row" key={index}>
+              <input placeholder="Ник или игровой ID" value={value} onChange={(e) => setSpecific((old) => old.map((v, i) => i === index ? e.target.value : v))} />
+              {specific.length > 1 ? <button type="button" className="nt-admin-icon-button nt-danger" title="Убрать строку" onClick={() => setSpecific((old) => old.filter((_, i) => i !== index))}>×</button> : null}
+            </div>
+          ))}
+          <button type="button" className="nt-admin-add-row" onClick={() => setSpecific((old) => [...old, ""])}>＋ Добавить игрока</button>
+        </div>
+      ) : null}
+
+      <h2>Сообщение</h2>
+      <div className="nt-admin-emoji-panel">
+        {BROADCAST_EMOJI.map((emoji) => <button type="button" key={emoji} onClick={() => insertAtCursor(emoji)}>{emoji}</button>)}
+      </div>
+      <div className="nt-admin-attach-panel">
+        <button type="button" onClick={() => attachLink("изображение")}>🖼 Изображение</button>
+        <button type="button" onClick={() => attachLink("видео")}>🎬 Видео</button>
+        <button type="button" onClick={() => attachLink("файл")}>📎 Файл</button>
+      </div>
+      <textarea ref={msgRef} rows={5} placeholder="Текст сообщения" value={message} onChange={(e) => { setMessage(e.target.value); setConfirming(false); }} />
+      <p className="nt-admin-hint">Изображение/видео/файл добавляются ссылкой — игроки получат сообщение в чате бота в том же виде.</p>
+
+      {confirming ? (
+        <div className="nt-admin-confirm">
+          <p>Отправить сообщение получателям: <b>{count}</b>?</p>
+          <div className="nt-admin-row">
+            <button type="button" onClick={confirmSend}>Отправить всем</button>
+            <button type="button" onClick={() => setConfirming(false)}>Отмена</button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" disabled={!canSend} onClick={requestSend}>Отправить</button>
+      )}
+    </section>
+  );
 }
 
 export function AdminPanel() {
@@ -118,12 +222,14 @@ export function AdminPanel() {
 
   if (!token && !error) return <div className="nt-admin"><div className="nt-admin-shell">Загрузка админ-панели...</div></div>;
   return <div className="nt-admin"><main className="nt-admin-shell"><h1>Админ-панель Нер-Талис</h1>
-    <div className="nt-admin-tabs">{[["catalog","Каталог"],["delivery","Доставка"],["promos","Промокоды"],["players","Игроки"]].map(([id,label]) => <button key={id} className={tab===id?"active":""} onClick={() => setTab(id)}>{label}</button>)}</div>
+    <div className="nt-admin-tabs">{[["catalog","Каталог"],["delivery","Доставка"],["broadcast","Общее сообщение"],["promos","Промокоды"],["players","Игроки"]].map(([id,label]) => <button key={id} className={tab===id?"active":""} onClick={() => setTab(id)}>{label}</button>)}</div>
     {error ? <div className="nt-admin-error">{error}</div> : null}{ok ? <div className="nt-admin-ok">{ok}</div> : null}
 
     {tab === "catalog" && <section><div className="nt-admin-row"><input placeholder="Поиск предмета" value={catalogQ} onChange={(e)=>setCatalogQ(e.target.value)} /><select value={category} onChange={(e)=>setCategory(e.target.value)}><option value="">Все категории</option>{catalog.categories.map((c)=><option key={c} value={c}>{c}</option>)}</select></div><div className="nt-admin-grid">{catalog.items.map((item)=><article className="nt-admin-card" key={rewardKey(item)}>{item.icon ? <img src={item.icon} alt=""/> : null}<h3>{item.name}</h3><p>{item.category}</p><button onClick={()=>openCatalogItem(item)}>Открыть</button></article>)}</div></section>}
 
     {tab === "delivery" && <section><div className="nt-admin-row"><input placeholder="Поиск игрока" value={playerQ} onChange={(e)=>setPlayerQ(e.target.value)} /><select value={targetGameId} onChange={(e)=>setTargetGameId(e.target.value)}><option value="">Выбрать игрока</option>{playerOptions}</select></div><RewardList selected={selectedDelivery} quantities={deliveryQuantities} setQuantities={setDeliveryQuantities} onRemove={(key)=>removeSelected(setSelectedDelivery, key)}/><button onClick={()=>guarded(async()=>{ await sendDelivery(token, targetGameId, selectedToRewards(selectedDelivery, deliveryQuantities)); }, "Дар от высших сил отправлен игроку и поставлен в очередь сообщения бота.")}>Отправить игроку</button></section>}
+
+    {tab === "broadcast" && <BroadcastSection token={token} guarded={guarded} />}
 
     {tab === "promos" && <section><h2>Создать</h2><div className="nt-admin-row"><input placeholder="Код промокода (например START100)" value={promoCode} onChange={(e)=>setPromoCode(e.target.value)} /><input type="number" min="1" value={promoUses} onChange={(e)=>setPromoUses(e.target.value)} /><select value={promoDuration} onChange={(e)=>setPromoDuration(e.target.value)}>{durations.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div><p className="nt-admin-hint">Игрок вводит в боте: <b>{normalizePromoCode(promoCode) ? `/promo ${normalizePromoCode(promoCode)}` : "—"}</b></p><RewardList selected={selectedPromo} quantities={promoQuantities} setQuantities={setPromoQuantities} onRemove={(key)=>removeSelected(setSelectedPromo, key)}/><button onClick={()=>guarded(async()=>{ await createPromo(token, normalizePromoCode(promoCode), Number(promoUses), promoDuration, selectedToRewards(selectedPromo, promoQuantities)); await refreshPromos(); }, "Промокод создан.")}>Создать промокод</button><h2>Существующие</h2><div className="nt-admin-list">{promos.map((p)=><details className="nt-admin-card" key={p.code}><summary><span>{p.code} — {p.created_at || "без даты"}</span><button className="nt-admin-icon-button nt-danger" type="button" title="Удалить промокод" onClick={(event)=>{ event.preventDefault(); event.stopPropagation(); if(window.confirm(`Удалить промокод ${p.code}?`)) guarded(async()=>{ await deletePromo(token, p.code); await refreshPromos(); }, "Промокод удалён."); }}>×</button></summary><div className="nt-admin-promo-info"><p>Срок жизни: {p.expires_at || "бессрочный"}</p><p>Осталось жить: {secondsLeftText(p.seconds_left)}</p><p>Использований: {p.used_count || 0}</p><p>Осталось использований: {p.uses_left ?? 0}</p><pre className="nt-admin-pre">{JSON.stringify(p.reward || {}, null, 2)}</pre></div></details>)}</div></section>}
 
