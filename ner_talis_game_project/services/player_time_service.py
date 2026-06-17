@@ -125,7 +125,12 @@ def advance_player_time(player: dict[str, Any], now_ts: float | int | None = Non
 
     Возвращает сообщения и кладёт их в pending_bot_messages для доставки ботом.
     """
-    messages, _changed = _advance(player, _now_ts(now_ts), count_activity=True)
+    now = _now_ts(now_ts)
+    # Отметка последней активности игрока (для админ-панели). Ставится на пути
+    # действия (count_activity=True), а не в фоновом тике, поэтому отражает
+    # реальное взаимодействие игрока с ботом.
+    player["last_activity_at"] = datetime.fromtimestamp(now, tz=timezone.utc).isoformat()
+    messages, _changed = _advance(player, now, count_activity=True)
     _queue_messages(player, messages)
     return messages
 

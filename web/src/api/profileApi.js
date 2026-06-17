@@ -49,6 +49,10 @@ function removeSensitiveTokenFromAddressBar() {
   }
 }
 
+export function setActiveProfileSession(token) {
+  rememberActiveProfileSession(token);
+}
+
 export function getProfileIdentifierFromUrl() {
   clearLegacyPersistentToken();
   const params = new URLSearchParams(window.location.search);

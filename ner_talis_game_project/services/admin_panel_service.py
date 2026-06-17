@@ -245,6 +245,14 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _format_activity_date(value: Any) -> str:
+    """Дата последней активности игрока в формате дд.мм.гг (или «—»)."""
+    parsed = _parse_datetime(value)
+    if parsed is None:
+        return "—"
+    return parsed.strftime("%d.%m.%y")
+
+
 def _admin_panel_ttl_minutes() -> int:
     raw = os.getenv("ADMIN_PANEL_TTL_MINUTES", str(DEFAULT_ADMIN_PANEL_TTL_MINUTES)).strip()
     try:
@@ -602,6 +610,7 @@ def list_admin_players(storage: Any, *, query: str = "", limit: int = 200) -> li
             "name": player.get("name") or "без имени",
             "level": _safe_int(player.get("level"), 1),
             "public_id": player.get("public_id"),
+            "last_activity": _format_activity_date(player.get("last_activity_at")),
         })
     cards.sort(key=lambda item: (str(item.get("name") or "").casefold(), str(item.get("game_id") or "")))
     return cards[:max(1, min(int(limit), 1000))]
@@ -621,6 +630,7 @@ def admin_player_detail(storage: Any, game_id: str) -> dict[str, Any] | None:
         "free_stat_points": _safe_int(player.get("free_stat_points"), 0),
         "free_skill_points": _safe_int(player.get("free_skill_points"), 0),
         "location": player.get("location_id") or player.get("current_zone") or player.get("current_city"),
+        "last_activity": _format_activity_date(player.get("last_activity_at")),
     }
 
 
@@ -878,14 +888,34 @@ def get_admin_player_view_profile(storage: Any, token: str) -> dict[str, Any] | 
         if removed:
             _save_data(storage, data)
 
-    player = storage.get_player_by_game_id(str(session.get("target_game_id") or "")) if hasattr(storage, "get_player_by_game_id") else None
+    target_game_id = str(session.get("target_game_id") or "")
+    player = storage.get_player_by_game_id(target_game_id) if hasattr(storage, "get_player_by_game_id") else None
     if not player:
         return None
     from site_api import frontend_profile
     profile = frontend_profile(player)
-    profile["readOnly"] = True
+    # Админ заходит в чужой профиль с правом редактирования (как игрок) плюс
+    # отдельная кнопка «удалить из профиля игрока». Право даётся через обычный
+    # профильный веб-токен этого игрока — все существующие профильные эндпоинты
+    # работают без дублирования логики.
     profile["adminView"] = True
-    return {"profile": profile, "session": {"expires_at": session.get("expires_at"), "target_game_id": session.get("target_game_id")}}
+    profile["adminEdit"] = True
+    edit_token = ""
+    try:
+        from services.web_profile import PROFILE_SCOPE, create_web_session_token
+        edit_token = create_web_session_token(
+            storage,
+            target_game_id,
+            PROFILE_SCOPE,
+            str(session.get("platform") or "admin_panel"),
+        )
+    except Exception:
+        edit_token = ""
+    return {
+        "profile": profile,
+        "editToken": edit_token,
+        "session": {"expires_at": session.get("expires_at"), "target_game_id": session.get("target_game_id")},
+    }
 
 
 def _uploaded_image_format(blob: bytes) -> str | None:

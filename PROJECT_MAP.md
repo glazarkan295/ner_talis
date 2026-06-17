@@ -28,7 +28,7 @@
 - `gathering_tools.py` — прочность инструментов (удочка/топор/кирка): 10 использований/инструмент, стак 10, spend_tool_use/tool_uses_left.
 - `fine_service.py` — облавы/городские штрафы, перемещение в крепость, оплата; fine_entries_for_profile (попап штрафов).
 - `small_plateau_service.py` — Малое плато: поиск (resolve_small_plateau_search, data/small_plateau_*.json), Древнее Проклятье (roll_ancient_curse_trigger, cleanse), ожог амулета, достижения (Ищущий/«Какое проклятье?»), filter_seeker_only.
-- `player_time_service.py` — догон время-эффектов (часовой ожог амулета, суточные дни проклятья); advance_player_time (на действие), advance_all_players_time + start_persistent_player_effect_worker (фоновый планировщик).
+- `player_time_service.py` — догон время-эффектов (часовой ожог амулета, суточные дни проклятья); advance_player_time (на действие; ставит last_activity_at), advance_all_players_time + start_persistent_player_effect_worker (фоновый планировщик).
 - `battle_stimulant_service.py` — боевой стимулятор: фазы (активная/откат), зависимость, stat_percent_modifiers, статус-карточка.
 - `inventory_service.py` — инвентарь: add_inventory_item, переполнение/слоты, карманы, квалити/уровень/цена генерируемых предметов.
 - `item_registry.py` — реестр предметов: load_all_item_definitions, get_item_definition_by_id/by_name, build_inventory_item (агрегирует data/items_*.json).
@@ -37,7 +37,7 @@
 - `race_bonus_service.py` — расовые бонусы (hp_multiplier, сопротивления, регенерация).
 - `registration_service.py` — создание игрока (create_player), validate_name/normalize_name, load_races, гендеры; согласие перед регистрацией (consent_message, CONSENT_BUTTON, _doc_link → env LINK_PRIVACY_POLICY / LINK_TERMS_OF_SERVICE).
 - `promo_service.py` — промокоды: _normalize_code (срез слэша+upper), add/delete (удаляет ВСЕ совпавшие ключи), redeem (атомарный claim_promo_use).
-- `admin_panel_service.py` — логика админ-панели: каталог (HIDDEN_CATALOG_ITEM_IDS, SYNTHETIC_REWARD_IDS — монеты/очки), доставка наград (cap по меди), промо, сессии (consume_or_read_admin_session — атомарный claim токена), просмотр игроков.
+- `admin_panel_service.py` — логика админ-панели: каталог (HIDDEN_CATALOG_ITEM_IDS, SYNTHETIC_REWARD_IDS — монеты/очки), доставка наград (cap по меди), промо, сессии (consume_or_read_admin_session — атомарный claim токена), просмотр игроков (admin_player_detail — last_activity дд.мм.гг; get_admin_player_view_profile отдаёт editToken — профильный веб-токен для редактирования чужого профиля админом).
 - `broadcast_service.py` — админская рассылка «Общее сообщение»: выбор аудитории (пол / диапазоны уровней / все / конкретные игроки), AUDIENCE_LABELS, select_recipient_ids, broadcast_message → pending_bot_messages.
 - `admin_command_service.py` / `admin_access.py` / `admin_audit.py` — админ-команды в боте, доступ, аудит.
 - `admin_player_service.py` — поиск/сводка/удаление игроков, бэкап.
@@ -65,7 +65,7 @@
 - `api/adminApi.js` — вызовы API админки (loadCatalog/deletePromo/...).
 - `components/player-profile/PlayerProfile.jsx` — профиль: вкладки Персонаж/Инвентарь/Навыки/Информация/Передача (CourierTab — только для своего профиля); модалки (ItemModal, FinesModal, ProfileEditModal, nt-center-modal); CollapsiblePanel; сводка (Имя/Раса/Пол + карандаши).
 - `components/player-profile/PlayerProfile.css` — стили профиля (модалки, попапы, мобильное центрирование ≤560px).
-- `components/admin-panel/AdminPanel.jsx` — каталог/доставка/промокоды/игроки.
+- `components/admin-panel/AdminPanel.jsx` — каталог/доставка/Общее сообщение (BroadcastSection)/промокоды/игроки (карточка с last_activity); просмотр чужого профиля открывает редактируемый PlayerProfile (adminEdit, editToken).
 - Сборка: `cd web && npm run build` → `web/dist/` (gitignored).
 
 ## data/ (контент, JSON) — по доменам
@@ -97,6 +97,7 @@
 - Промокоды → `promo_service.py` + admin_panel_service (создание из админки).
 - Админ-панель (каталог/доставка/монеты/сессии) → `admin_panel_service.py` + admin_panel_api.py + web AdminPanel.jsx.
 - Рассылка «Общее сообщение» → `broadcast_service.py` + admin_panel_api (/broadcast, /broadcast/preview) + web AdminPanel BroadcastSection.
+- Админ-редактирование чужого профиля → get_admin_player_view_profile (editToken) + web App.AdminProfileView (adminEdit) + PlayerProfile ItemModal «Удалить из профиля игрока»; время активности — last_activity_at (player_time_service) → admin_player_detail дд.мм.гг.
 - Профиль-сайт (данные/эндпоинты/редактирование сводки) → `site_api.py` + web PlayerProfile.jsx.
 - Передача предметов гонцом → `courier_service.py` + site_api (/courier/search, /courier/send) + web PlayerProfile CourierTab + воркер в main._start_player_effect_scheduler_once.
 - Регистрация/гендер/раса/валидация имени → `registration_service.py` + handlers/registration.py + vk_registration.py.

@@ -492,7 +492,7 @@ function RaceInfoPopover({ profile, onClose }) {
   );
 }
 
-function ItemModal({ item, slotKey, position, readOnly = false, onClose, onEquipItem, onUnequipItem, onUseItem, onRequestDrop, onRequestSell }) {
+function ItemModal({ item, slotKey, position, readOnly = false, adminEdit = false, onClose, onEquipItem, onUnequipItem, onUseItem, onRequestDrop, onRequestSell, onAdminRemoveItem }) {
   if (!item) return null;
   const actions = item.actions || [];
   const itemStats = statLines(item);
@@ -526,6 +526,7 @@ function ItemModal({ item, slotKey, position, readOnly = false, onClose, onEquip
           {!readOnly && actions.includes("Использовать") ? <button type="button" onClick={() => onUseItem?.(item)}>Использовать</button> : null}
           {!readOnly && !slotKey && actions.includes("Продать") ? <button type="button" onClick={() => onRequestSell?.(item)}>Продать</button> : null}
           {!readOnly && !slotKey ? <button className="nt-danger" type="button" onClick={() => onRequestDrop?.(item)}>Выбросить</button> : null}
+          {adminEdit && !slotKey ? <button className="nt-danger" type="button" onClick={() => onAdminRemoveItem?.(item)}>Удалить из профиля игрока</button> : null}
           {readOnly ? <span className="nt-readonly-note">Только просмотр</span> : null}
           <button className="nt-secondary" type="button" onClick={onClose}>Закрыть</button>
         </footer>
@@ -1297,15 +1298,17 @@ function CourierTab({ profile, onSearchRecipients, onSendTransfer }) {
   );
 }
 
-export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField, onSearchCourierRecipients, onSendCourierTransfer }) {
+export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField, onSearchCourierRecipients, onSendCourierTransfer, onAdminRemoveItem }) {
   const data = profileOrMock(profile);
   const [tab, setTab] = useState("character");
   const [modal, setModal] = useState(null);
   const [slotModal, setSlotModal] = useState(null);
   const [dropModal, setDropModal] = useState(null);
   const [sellModal, setSellModal] = useState(null);
-  const effectiveReadOnly = Boolean(readOnly || data.readOnly || data.adminView);
-  const visibleTabs = effectiveReadOnly ? TABS : [...TABS, COURIER_TAB];
+  const adminEdit = Boolean(data.adminEdit);
+  const effectiveReadOnly = Boolean(readOnly || data.readOnly || (data.adminView && !adminEdit));
+  // Курьер недоступен в админ-просмотре/редактировании чужого профиля.
+  const visibleTabs = (effectiveReadOnly || adminEdit) ? TABS : [...TABS, COURIER_TAB];
   const background = data.assets?.background || "/assets/profile/backgrounds/1.png";
 
   const equipmentBySlot = data.equipment || {};
@@ -1364,6 +1367,12 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
     setModal(null);
   }
 
+  async function adminRemoveAndClose(item) {
+    if (!adminEdit) return;
+    await onAdminRemoveItem?.(item);
+    setModal(null);
+  }
+
   function requestDrop(item) {
     if (effectiveReadOnly) return;
     setDropModal({ item, position: modal?.position || null });
@@ -1392,7 +1401,7 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
           {tab === "courier" ? <CourierTab profile={data} onSearchRecipients={onSearchCourierRecipients} onSendTransfer={onSendCourierTransfer} /> : null}
         </section>
       </div>
-      <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} readOnly={effectiveReadOnly} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRequestDrop={requestDrop} onRequestSell={requestSell} />
+      <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} readOnly={effectiveReadOnly} adminEdit={adminEdit} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRequestDrop={requestDrop} onRequestSell={requestSell} onAdminRemoveItem={adminRemoveAndClose} />
       {!effectiveReadOnly ? <DropItemModal item={dropModal?.item} position={dropModal?.position} onClose={() => setDropModal(null)} onConfirm={dropAndClose} /> : null}
       {!effectiveReadOnly ? <SellItemModal item={sellModal?.item} position={sellModal?.position} onClose={() => setSellModal(null)} onConfirm={sellAndClose} /> : null}
       <SlotItemsModal slot={slotModal?.slot} items={slotModal?.items || []} selectedItem={slotModal?.selectedItem} position={slotModal?.position} onSelectItem={(item) => setSlotModal((current) => ({ ...current, selectedItem: item }))} onClose={() => setSlotModal(null)} readOnly={effectiveReadOnly} onEquipItem={equipFromSlot} />

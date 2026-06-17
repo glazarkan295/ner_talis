@@ -116,7 +116,9 @@ class AdminPanelSiteTest(unittest.TestCase):
             self.assertEqual(view.status_code, 200, view.text)
             profile = client.get(f"/api/admin/player-view/{view.json()['token']}")
             self.assertEqual(profile.status_code, 200, profile.text)
-            self.assertTrue(profile.json()["profile"]["readOnly"])
+            # Админ заходит в профиль с правом редактирования (как игрок).
+            self.assertTrue(profile.json()["profile"]["adminEdit"])
+            self.assertTrue(profile.json()["editToken"])
             self.assertEqual(profile.json()["session"]["target_game_id"], game_id)
 
     def test_sqlite_persists_admin_sessions(self):
