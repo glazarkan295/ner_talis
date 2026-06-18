@@ -91,7 +91,7 @@ def _import_telegram_runtime():
             "ner_talis_game_project/requirements.txt."
         ) from exc
 
-    from handlers.city import CITY_BUTTON_PATTERN, city_command, city_message
+    from handlers.city import CITY_BUTTON_PATTERN, city_command, city_message, unstuck_command
     from handlers.registration import (
         AWAITING_GENDER,
         AWAITING_NAME,
@@ -132,6 +132,7 @@ def _import_telegram_runtime():
         "CITY_BUTTON_PATTERN": CITY_BUTTON_PATTERN,
         "city_command": city_command,
         "city_message": city_message,
+        "unstuck_command": unstuck_command,
         "AWAITING_GENDER": AWAITING_GENDER,
         "AWAITING_NAME": AWAITING_NAME,
         "AWAITING_RACE": AWAITING_RACE,
@@ -242,6 +243,7 @@ def build_application():
             CommandHandler("site_profile", runtime["profile_site_command"]),
             CommandHandler("link", runtime["link_command"]),
             CommandHandler("connect", runtime["connect_command"]),
+            CommandHandler("unstuck", runtime["unstuck_command"]),
             CommandHandler("start", runtime["start_command"]),
         ],
         allow_reentry=True,
@@ -254,6 +256,7 @@ def build_application():
     application.add_handler(CommandHandler("link", runtime["link_command"]))
     application.add_handler(CommandHandler("connect", runtime["connect_command"]))
     application.add_handler(CommandHandler("city", runtime["city_command"]))
+    application.add_handler(CommandHandler("unstuck", runtime["unstuck_command"]))
     application.add_handler(MessageHandler(filters.Regex("^Профиль$"), runtime["profile_button"]))
     application.add_handler(MessageHandler(filters.Regex("^Профиль на сайте$"), runtime["profile_site_button"]))
     application.add_handler(MessageHandler(filters.Regex(runtime["CITY_BUTTON_PATTERN"]), runtime["city_message"]))

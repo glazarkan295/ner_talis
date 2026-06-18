@@ -17,7 +17,7 @@ from keyboards.vk_keyboards import (
     race_keyboard,
     start_keyboard,
 )
-from services.city_service import CITY_BUTTONS, process_world_action
+from services.city_service import CITY_BUTTONS, process_world_action, unstuck_player
 from services.chat_log_service import append_player_chat_log, pop_pending_bot_messages
 from services.promo_service import redeem_promo_code
 from services.external_location_service import complete_active_timer
@@ -156,6 +156,10 @@ class VkRegistrationBot:
             parts = text.split(maxsplit=1)
             code = parts[1].strip() if len(parts) > 1 else ""
             self.connect_by_code(external_user_id, peer_id, code)
+            return
+
+        if lowered == "/unstuck":
+            self.handle_unstuck(external_user_id, peer_id)
             return
 
         existing_player = self.storage.get_player_by_platform(VK_PLATFORM, external_user_id)
@@ -609,6 +613,20 @@ class VkRegistrationBot:
             f"Единый игровой ID: {player['game_id']}",
             after_registration_keyboard(),
         )
+
+    def handle_unstuck(self, external_user_id: str, peer_id: int) -> None:
+        player = self.storage.get_player_by_platform(VK_PLATFORM, external_user_id)
+        if player is None:
+            self.send(
+                peer_id,
+                "Сначала нужно создать персонажа. Нажми /start и выбери «Начать».",
+                start_keyboard(),
+            )
+            return
+        append_player_chat_log(player, direction="player", text="/unstuck", platform=VK_PLATFORM)
+        result = unstuck_player(self.storage, player)
+        append_player_chat_log(player, direction="bot", text=result.text, platform=VK_PLATFORM)
+        self.send(peer_id, result.text, make_keyboard(result.buttons))
 
     def handle_city_action(self, external_user_id: str, peer_id: int, action: str) -> None:
         player = self.storage.get_player_by_platform(VK_PLATFORM, external_user_id)

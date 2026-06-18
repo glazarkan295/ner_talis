@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -1317,6 +1318,71 @@ def ensure_city_fields(player: dict[str, Any]) -> bool:
             changed = True
 
     return changed
+
+
+UNSTUCK_COOLDOWN_SECONDS = 1800  # 30 минут — анти-чит
+
+
+def _format_cooldown(seconds: int) -> str:
+    seconds = max(0, int(seconds))
+    minutes, secs = divmod(seconds, 60)
+    if minutes and secs:
+        return f"{minutes} мин. {secs} сек."
+    if minutes:
+        return f"{minutes} мин."
+    return f"{secs} сек."
+
+
+def unstuck_player(storage: Any, player: dict[str, Any], now: float | None = None) -> CityResponse:
+    """Аварийный сброс текущего действия и возврат на Центральную площадь.
+
+    Снимает только ПЕРЕХОДНОЕ состояние (таймер/событие/бой/локация), не трогая
+    эффекты, проклятье, инвентарь и характеристики. Доступно раз в 30 минут,
+    чтобы команду нельзя было использовать как бесплатный быстрый выход.
+    """
+    ensure_city_fields(player)
+    now = time.time() if now is None else now
+    last = 0.0
+    try:
+        last = float(player.get("last_unstuck_at") or 0)
+    except (TypeError, ValueError):
+        last = 0.0
+
+    elapsed = now - last
+    if last and 0 <= elapsed < UNSTUCK_COOLDOWN_SECONDS:
+        remaining = int(UNSTUCK_COOLDOWN_SECONDS - elapsed)
+        return CityResponse(
+            "⏳ Команду /unstuck можно использовать раз в 30 минут.\n"
+            f"Осталось подождать: {_format_cooldown(remaining)}.",
+            central_square_buttons(),
+            player.get("current_zone", "seldar_central_square"),
+        )
+
+    # Сброс переходного состояния.
+    player["active_timer"] = None
+    player["active_event"] = None
+    player["in_battle"] = False
+    player["active_battle"] = None
+    player.pop("pending_timer_delivery", None)
+    sp_state = player.get("small_plateau")
+    if isinstance(sp_state, dict):
+        sp_state.pop("hidden_coin_place_active", None)
+
+    # Возврат на Центральную площадь Селдара.
+    player["current_city"] = "seldar"
+    player["current_zone"] = "seldar_central_square"
+    player["location_id"] = "seldar_central_square"
+    player["current_location"] = "seldar_central_square"
+    player["last_unstuck_at"] = now
+    storage.update_player(player)
+
+    return CityResponse(
+        "🌀 Текущее действие сброшено.\n\n"
+        "Вы пришли в себя на Центральной площади Селдара.\n"
+        "Команду /unstuck можно использовать снова через 30 минут.",
+        central_square_buttons(),
+        "seldar_central_square",
+    )
 
 
 def get_city_response(action: str) -> CityResponse:

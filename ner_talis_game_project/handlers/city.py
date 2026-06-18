@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from keyboards.reply_keyboards import make_keyboard, start_keyboard
-from services.city_service import CITY_BUTTONS, process_world_action
+from services.city_service import CITY_BUTTONS, process_world_action, unstuck_player
 from services.chat_log_service import append_player_chat_log, pop_pending_bot_messages
 from services.external_location_service import complete_active_timer
 from services.runtime_timer_scheduler import attach_timer_notification, schedule_timer_delivery
@@ -67,6 +67,26 @@ def get_external_user_id(update: Update) -> str:
 
 async def city_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await send_city_response(update, context, "В город")
+
+
+async def unstuck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    storage: PlayerStorage = context.bot_data["storage"]
+    external_user_id = get_external_user_id(update)
+    player = storage.get_player_by_platform(TELEGRAM_PLATFORM, external_user_id)
+    if player is None:
+        await update.message.reply_text(
+            "Сначала нужно создать персонажа. Нажми /start и выбери «Начать».",
+            reply_markup=start_keyboard(),
+        )
+        return
+    append_player_chat_log(player, direction="player", text="/unstuck", platform=TELEGRAM_PLATFORM)
+    result = unstuck_player(storage, player)
+    append_player_chat_log(player, direction="bot", text=result.text, platform=TELEGRAM_PLATFORM)
+    await update.message.reply_text(
+        result.text,
+        reply_markup=make_keyboard(result.buttons),
+        disable_web_page_preview=True,
+    )
 
 
 async def city_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
