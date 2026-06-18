@@ -1358,7 +1358,14 @@ def complete_active_timer_once(storage: Any, player: dict[str, Any], timer_id: s
                 location_buttons(location_id),
                 player.get("current_zone", location_id),
             )
-        return complete_active_timer(storage, claimed_player, current_timer_id, rng)
+        # Переносим атомарно перезагруженного игрока В исходный объект, который
+        # держит обработчик бота: после действия бот пересохраняет ИМЕННО его
+        # (handlers/city.py), и без синхронизации стейл-копия затёрла бы снятый
+        # таймер и выданные награды — игрок «застревал» бы в бесконечном поиске.
+        if claimed_player is not player:
+            player.clear()
+            player.update(claimed_player)
+        return complete_active_timer(storage, player, current_timer_id, rng)
 
     return complete_active_timer(storage, player, current_timer_id, rng)
 
