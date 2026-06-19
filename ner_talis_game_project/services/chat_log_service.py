@@ -27,17 +27,25 @@ def append_player_chat_log(player: dict[str, Any], *, direction: str, text: str,
         del log[:-MAX_CHAT_LOG]
 
 
-def pop_pending_bot_messages(player: dict[str, Any]) -> list[str]:
-    pending = player.get("pending_bot_messages")
-    if not isinstance(pending, list) or not pending:
+def normalize_bot_messages(items: Any) -> list[str]:
+    """Привести записи outbox (строки или {"text": ...}) к списку строк."""
+    if not isinstance(items, list):
         return []
     messages: list[str] = []
-    for entry in pending:
+    for entry in items:
         if isinstance(entry, dict):
             text = str(entry.get("text") or "").strip()
         else:
             text = str(entry or "").strip()
         if text:
             messages.append(text)
+    return messages
+
+
+def pop_pending_bot_messages(player: dict[str, Any]) -> list[str]:
+    pending = player.get("pending_bot_messages")
+    if not isinstance(pending, list) or not pending:
+        return []
+    messages = normalize_bot_messages(pending)
     player["pending_bot_messages"] = []
     return messages

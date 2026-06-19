@@ -243,14 +243,88 @@ class JsonStorage:
             if not game_id:
                 raise ValueError("Нельзя обновить игрока без game_id.")
 
-            if game_id not in data.get("players", {}):
+            existing = data.get("players", {}).get(game_id)
+            if not isinstance(existing, dict):
                 raise ValueError(f"Игрок с game_id {game_id} не найден.")
 
             player["game_id"] = game_id
             player["id"] = game_id
-            data["players"][game_id] = player
+            # pending_bot_messages — это атомарный outbox: им управляют только
+            # enqueue_bot_messages/dequeue_bot_messages. Полное сохранение игрока
+            # НЕ должно его перезаписывать, иначе фоново поставленное сообщение
+            # будет затёрто устаревшим снимком (lost update). Сохраняем копию с
+            # durable-значением, не мутируя объект вызывающей стороны.
+            to_store = dict(player)
+            to_store["pending_bot_messages"] = existing.get("pending_bot_messages", [])
+            data["players"][game_id] = to_store
             self.rebuild_indexes(data)
             self.save(data)
+
+    def enqueue_bot_messages(self, game_id: str, messages: list[Any]) -> bool:
+        items = [message for message in (messages or []) if message not in (None, "")]
+        if not items:
+            return False
+        with self._lock:
+            data = self.load()
+            player = data.get("players", {}).get(game_id)
+            if not isinstance(player, dict):
+                return False
+            pending = player.get("pending_bot_messages")
+            if not isinstance(pending, list):
+                pending = []
+            pending.extend(items)
+            player["pending_bot_messages"] = pending
+            self.save(data)
+            return True
+
+    def dequeue_bot_messages(self, game_id: str) -> list[Any]:
+        with self._lock:
+            data = self.load()
+            player = data.get("players", {}).get(game_id)
+            if not isinstance(player, dict):
+                return []
+            pending = player.get("pending_bot_messages")
+            if not isinstance(pending, list) or not pending:
+                return []
+            player["pending_bot_messages"] = []
+            self.save(data)
+            return list(pending)
+
+    def enqueue_bot_messages_bulk(self, game_ids: list[str], messages: list[Any]) -> int:
+        items = [message for message in (messages or []) if message not in (None, "")]
+        targets = [str(gid) for gid in (game_ids or []) if gid]
+        if not items or not targets:
+            return 0
+        with self._lock:
+            data = self.load()
+            players = data.get("players", {})
+            count = 0
+            for gid in targets:
+                player = players.get(gid)
+                if not isinstance(player, dict):
+                    continue
+                pending = player.get("pending_bot_messages")
+                if not isinstance(pending, list):
+                    pending = []
+                pending.extend(items)
+                player["pending_bot_messages"] = pending
+                count += 1
+            if count:
+                self.save(data)
+            return count
+
+    def list_player_audience_rows(self) -> list[dict[str, Any]]:
+        data = self.load()
+        players = data.get("players") if isinstance(data, dict) else {}
+        rows: list[dict[str, Any]] = []
+        for game_id, player in (players or {}).items():
+            if isinstance(player, dict):
+                rows.append({
+                    "game_id": str(game_id),
+                    "gender": player.get("gender"),
+                    "level": player.get("level", 1),
+                })
+        return rows
 
 
     def claim_active_timer_for_delivery(

@@ -390,7 +390,14 @@ class PostgresStorage:
                     inventory = EXCLUDED.inventory,
                     crafting_levels = EXCLUDED.crafting_levels,
                     housing = EXCLUDED.housing,
-                    extra = EXCLUDED.extra,
+                    -- pending_bot_messages — атомарный outbox (enqueue/dequeue):
+                    -- полное сохранение игрока НЕ должно его перезаписывать,
+                    -- иначе фоново поставленное сообщение будет потеряно.
+                    extra = jsonb_set(
+                        EXCLUDED.extra,
+                        '{pending_bot_messages}',
+                        COALESCE(players.extra -> 'pending_bot_messages', '[]'::jsonb)
+                    ),
                     updated_at = now()
             """), {
                 "game_id": player["game_id"],
@@ -448,6 +455,67 @@ class PostgresStorage:
             raise ValueError("Нельзя обновить игрока без game_id.")
         self._upsert_player(player)
 
+    def enqueue_bot_messages(self, game_id: str, messages: list[Any]) -> bool:
+        items = [message for message in (messages or []) if message not in (None, "")]
+        if not items:
+            return False
+        with self.engine.begin() as connection:
+            result = connection.execute(text("""
+                UPDATE players
+                SET extra = jsonb_set(
+                    COALESCE(extra, '{}'::jsonb),
+                    '{pending_bot_messages}',
+                    COALESCE(extra -> 'pending_bot_messages', '[]'::jsonb) || CAST(:items AS jsonb)
+                )
+                WHERE game_id = :game_id
+            """), {"items": self._dumps(items), "game_id": str(game_id)})
+            return (result.rowcount or 0) > 0
+
+    def dequeue_bot_messages(self, game_id: str) -> list[Any]:
+        with self.engine.begin() as connection:
+            row = connection.execute(text("""
+                WITH cur AS (
+                    SELECT game_id,
+                           COALESCE(extra -> 'pending_bot_messages', '[]'::jsonb) AS pending
+                    FROM players WHERE game_id = :game_id FOR UPDATE
+                )
+                UPDATE players p
+                SET extra = jsonb_set(COALESCE(p.extra, '{}'::jsonb), '{pending_bot_messages}', '[]'::jsonb)
+                FROM cur
+                WHERE p.game_id = cur.game_id
+                RETURNING cur.pending AS pending
+            """), {"game_id": str(game_id)}).mappings().first()
+            if not row:
+                return []
+            pending = self._loads(row["pending"], [])
+            return list(pending) if isinstance(pending, list) else []
+
+    def enqueue_bot_messages_bulk(self, game_ids: list[str], messages: list[Any]) -> int:
+        items = [message for message in (messages or []) if message not in (None, "")]
+        targets = [str(gid) for gid in (game_ids or []) if gid]
+        if not items or not targets:
+            return 0
+        with self.engine.begin() as connection:
+            result = connection.execute(text("""
+                UPDATE players
+                SET extra = jsonb_set(
+                    COALESCE(extra, '{}'::jsonb),
+                    '{pending_bot_messages}',
+                    COALESCE(extra -> 'pending_bot_messages', '[]'::jsonb) || CAST(:items AS jsonb)
+                )
+                WHERE game_id = ANY(:ids)
+            """), {"items": self._dumps(items), "ids": targets})
+            return result.rowcount or 0
+
+    def list_player_audience_rows(self) -> list[dict[str, Any]]:
+        with self.engine.begin() as connection:
+            result = connection.execute(text(
+                "SELECT game_id, level, extra->>'gender' AS gender FROM players"
+            )).mappings()
+            return [
+                {"game_id": row["game_id"], "gender": row["gender"], "level": row["level"]}
+                for row in result
+            ]
 
     def claim_active_timer_for_delivery(
         self,

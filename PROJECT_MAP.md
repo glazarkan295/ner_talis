@@ -102,7 +102,8 @@
 - Передача предметов гонцом → `courier_service.py` + site_api (/courier/search, /courier/send) + web PlayerProfile CourierTab + воркер в main._start_player_effect_scheduler_once.
 - Регистрация/гендер/раса/валидация имени → `registration_service.py` + handlers/registration.py + vk_registration.py.
 - Хранилище/claim'ы/атомарность → `storage/` (event_claims, timer_claims, *_storage.py).
-- Доставка фоновых сообщений игроку → pending_bot_messages (chat_log_service.pop_pending_bot_messages, flush в handlers/city.py + vk).
+- Доставка фоновых сообщений игроку → **атомарный outbox** pending_bot_messages: storage.enqueue_bot_messages / enqueue_bot_messages_bulk / dequeue_bot_messages; update_player НЕ перезаписывает pending (анти-lost-update). Источники (рассылка/курьер/дары/эффект-воркер) пишут через enqueue; боты вычитывают через dequeue (handlers/city.py + vk), действие-сообщения — in-memory pop_pending_bot_messages. Рассылка выбирает получателей через storage.list_player_audience_rows (без N+1) и шлёт bulk-запросом.
+- Фоновые воркеры (эффекты + доставка курьера) стартуют и в процессе бота (main), и в веб-процессе (web_app on_startup, env WEB_START_BACKGROUND_WORKERS) — посылки доставляются даже при сайт-only деплое.
 
 ## Важные инварианты (легко сломать)
 - Боты ПОСЛЕ действия пересохраняют ИСХОДНЫЙ объект игрока (handlers/city.py:~113, vk). Поэтому claim-перезагрузки (события/рыбалка) надо синхронизировать В исходный объект (`player.clear(); player.update(claimed)`), иначе изменения затрутся.

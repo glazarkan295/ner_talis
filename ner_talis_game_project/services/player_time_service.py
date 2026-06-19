@@ -179,6 +179,7 @@ def advance_all_players_time(storage: Any, now_ts: float | int | None = None) ->
 
     updated = 0
     get_player = getattr(storage, "get_player_by_game_id", None)
+    enqueue = getattr(storage, "enqueue_bot_messages", None)
     for game_id in candidate_ids:
         # Перезагрузка свежей копии тотчас перед применением и сохранением.
         player = get_player(game_id) if callable(get_player) else players.get(game_id)
@@ -190,9 +191,17 @@ def advance_all_players_time(storage: Any, now_ts: float | int | None = None) ->
             continue
         if not changed and not messages:
             continue
-        _queue_messages(player, messages)
         try:
-            storage.update_player(player)
+            if changed:
+                storage.update_player(player)
+            # Сообщения — через атомарный outbox, чтобы не потерять их при
+            # конкурентном пересохранении игрока ботом (lost update).
+            if messages:
+                if callable(enqueue):
+                    enqueue(game_id, messages)
+                else:  # запасной путь для старых хранилищ
+                    _queue_messages(player, messages)
+                    storage.update_player(player)
             updated += 1
         except Exception:
             continue

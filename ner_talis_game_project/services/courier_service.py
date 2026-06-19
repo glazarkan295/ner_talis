@@ -313,16 +313,6 @@ def _match_inventory_index(
     return None
 
 
-def _queue_player_message(player: dict[str, Any], *messages: str) -> None:
-    pending = player.setdefault("pending_bot_messages", [])
-    if not isinstance(pending, list):
-        pending = []
-        player["pending_bot_messages"] = pending
-    for message in messages:
-        if message:
-            pending.append(message)
-
-
 def create_courier_transfer(
     storage: Any,
     sender: dict[str, Any],
@@ -537,6 +527,7 @@ def process_due_transfers(
 
     get_player = getattr(storage, "get_player_by_game_id", None)
     update_player = getattr(storage, "update_player", None)
+    enqueue = getattr(storage, "enqueue_bot_messages", None)
     if not callable(update_player):
         return 0
 
@@ -547,6 +538,12 @@ def process_due_transfers(
                 return player
         return None
 
+    def _notify(game_id: str, messages: list[str]) -> None:
+        # Сообщения доставляем через атомарный outbox, чтобы пересохранение
+        # игрока ботом не затёрло их (lost update).
+        if game_id and callable(enqueue) and messages:
+            enqueue(game_id, messages)
+
     processed = 0
     requeue: list[dict[str, Any]] = []
     for transfer in due:
@@ -555,34 +552,29 @@ def process_due_transfers(
         receiver_id = str(transfer.get("receiver_game_id") or "")
         try:
             if roll < STOLEN_CHANCE_PERCENT:
-                sender = _reload(sender_id)
-                if sender is not None:
-                    _queue_player_message(
-                        sender,
-                        SENDER_STOLEN_TEXT.format(receiver_name=transfer.get("receiver_name", "игрок")),
-                    )
-                    update_player(sender)
+                _notify(sender_id, [
+                    SENDER_STOLEN_TEXT.format(receiver_name=transfer.get("receiver_name", "игрок")),
+                ])
             elif roll < STOLEN_CHANCE_PERCENT + MISDELIVERY_CHANCE_PERCENT:
                 wrong = _pick_random_recipient(
                     storage, {sender_id, receiver_id}, rng
                 )
                 if wrong is not None:
                     _deliver_items_to(wrong, transfer)
-                    _queue_player_message(wrong, *_receiver_messages(transfer, random_recipient=True))
                     update_player(wrong)
-                sender = _reload(sender_id)
-                if sender is not None:
-                    _queue_player_message(
-                        sender,
-                        SENDER_MISDELIVERED_TEXT.format(receiver_name=transfer.get("receiver_name", "игрок")),
+                    _notify(
+                        str(wrong.get("game_id") or wrong.get("id") or ""),
+                        _receiver_messages(transfer, random_recipient=True),
                     )
-                    update_player(sender)
+                _notify(sender_id, [
+                    SENDER_MISDELIVERED_TEXT.format(receiver_name=transfer.get("receiver_name", "игрок")),
+                ])
             else:
                 receiver = _reload(receiver_id)
                 if receiver is not None:
                     _deliver_items_to(receiver, transfer)
-                    _queue_player_message(receiver, *_receiver_messages(transfer, random_recipient=False))
                     update_player(receiver)
+                    _notify(receiver_id, _receiver_messages(transfer, random_recipient=False))
             processed += 1
         except Exception:
             # Доставка не должна терять посылку: возвращаем её в очередь на

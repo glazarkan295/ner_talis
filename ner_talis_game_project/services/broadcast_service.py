@@ -93,9 +93,27 @@ def select_recipient_ids(
         return ids
 
     return [
-        game_id
-        for game_id, player in _all_players(storage).items()
-        if _matches_audience(player, audience)
+        str(row.get("game_id"))
+        for row in _audience_rows(storage)
+        if row.get("game_id") and _matches_audience(row, audience)
+    ]
+
+
+def _audience_rows(storage: Any) -> list[dict[str, Any]]:
+    """Лёгкие строки (game_id/gender/level) для выбора получателей.
+
+    Использует точечный запрос хранилища, чтобы не реконструировать всех
+    игроков целиком (и не делать N+1 запросов привязок) ради фильтра.
+    """
+    method = getattr(storage, "list_player_audience_rows", None)
+    if callable(method):
+        try:
+            return method() or []
+        except Exception:
+            pass
+    return [
+        {"game_id": gid, "gender": pl.get("gender"), "level": pl.get("level", 1)}
+        for gid, pl in _all_players(storage).items()
     ]
 
 
@@ -117,26 +135,21 @@ def broadcast_message(
     if not recipient_ids:
         raise BroadcastError("Не найдено игроков-получателей для выбранной аудитории.")
 
-    get_player = getattr(storage, "get_player_by_game_id", None)
-    update_player = getattr(storage, "update_player", None)
-    if not callable(update_player):
+    enqueue_bulk = getattr(storage, "enqueue_bot_messages_bulk", None)
+    enqueue = getattr(storage, "enqueue_bot_messages", None)
+    if callable(enqueue_bulk):
+        # Один запрос на всю аудиторию (важно для «всех игроков» на больших базах).
+        delivered = enqueue_bulk(recipient_ids, [text])
+    elif callable(enqueue):
+        delivered = 0
+        for game_id in recipient_ids:
+            try:
+                if enqueue(game_id, [text]):
+                    delivered += 1
+            except Exception:
+                continue
+    else:
         raise BroadcastError("Хранилище не поддерживает доставку сообщений.")
-
-    delivered = 0
-    for game_id in recipient_ids:
-        player = get_player(game_id) if callable(get_player) else None
-        if not isinstance(player, dict):
-            continue
-        pending = player.setdefault("pending_bot_messages", [])
-        if not isinstance(pending, list):
-            pending = []
-            player["pending_bot_messages"] = pending
-        pending.append(text)
-        try:
-            update_player(player)
-            delivered += 1
-        except Exception:
-            continue
 
     return {
         "audience": audience,

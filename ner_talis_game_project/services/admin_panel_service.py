@@ -708,13 +708,21 @@ def deliver_rewards_to_player(storage: Any, *, target_game_id: str, rewards: lis
     backup_player(player, "before_admin_panel_delivery")
     lines = _apply_rewards_to_player(player, normalized, source="admin_panel_delivery")
     text = "Вы получили в дар от высших сил:\n" + "\n".join(f"• {line}" for line in lines)
-    player.setdefault("pending_bot_messages", []).append({
+    storage.update_player(player)
+    # Сообщение игроку — через атомарный outbox, чтобы пересохранение игрока
+    # ботом не затёрло его (lost update).
+    gift_message = {
         "type": "admin_gift",
         "text": text,
         "created_at": _now().isoformat(),
         "source": "admin_panel",
-    })
-    storage.update_player(player)
+    }
+    enqueue = getattr(storage, "enqueue_bot_messages", None)
+    if callable(enqueue):
+        enqueue(game_id, [gift_message])
+    else:  # запасной путь для хранилищ без атомарного outbox
+        player.setdefault("pending_bot_messages", []).append(gift_message)
+        storage.update_player(player)
     write_admin_audit(
         platform=str(admin_session.get("platform") or "admin_panel"),
         admin_user_id=str(admin_session.get("admin_user_id") or "unknown"),

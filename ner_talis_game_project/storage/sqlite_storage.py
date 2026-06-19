@@ -441,7 +441,7 @@ class SQLiteStorage:
                 raise ValueError("Нельзя обновить игрока без game_id.")
 
             existing = connection.execute(
-                "SELECT 1 FROM players WHERE game_id = ?",
+                "SELECT data FROM players WHERE game_id = ?",
                 (game_id,),
             ).fetchone()
             if not existing:
@@ -454,6 +454,17 @@ class SQLiteStorage:
             name = player.get("name", "").casefold()
             now = datetime.now(timezone.utc).isoformat()
 
+            # pending_bot_messages — атомарный outbox (enqueue/dequeue). Полное
+            # сохранение игрока не должно его перезаписывать: сохраняем копию с
+            # durable-значением, не мутируя объект вызывающей стороны.
+            durable_pending = []
+            try:
+                durable_pending = self._deserialize(existing["data"]).get("pending_bot_messages", [])
+            except Exception:
+                durable_pending = []
+            to_store = dict(player)
+            to_store["pending_bot_messages"] = durable_pending
+
             connection.execute("BEGIN IMMEDIATE")
             try:
                 connection.execute(
@@ -465,7 +476,7 @@ class SQLiteStorage:
                     (
                         player["public_id"],
                         name or None,
-                        self._serialize(player),
+                        self._serialize(to_store),
                         now,
                         game_id,
                     ),
@@ -490,6 +501,108 @@ class SQLiteStorage:
             except Exception:
                 connection.execute("ROLLBACK")
                 raise
+
+    def enqueue_bot_messages(self, game_id: str, messages: list[Any]) -> bool:
+        items = [message for message in (messages or []) if message not in (None, "")]
+        if not items:
+            return False
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT data FROM players WHERE game_id = ?", (game_id,)
+                ).fetchone()
+                if not row:
+                    connection.execute("ROLLBACK")
+                    return False
+                data = self._deserialize(row["data"])
+                pending = data.get("pending_bot_messages")
+                if not isinstance(pending, list):
+                    pending = []
+                pending.extend(items)
+                data["pending_bot_messages"] = pending
+                connection.execute(
+                    "UPDATE players SET data = ? WHERE game_id = ?",
+                    (self._serialize(data), game_id),
+                )
+                connection.execute("COMMIT")
+                return True
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+
+    def dequeue_bot_messages(self, game_id: str) -> list[Any]:
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT data FROM players WHERE game_id = ?", (game_id,)
+                ).fetchone()
+                if not row:
+                    connection.execute("ROLLBACK")
+                    return []
+                data = self._deserialize(row["data"])
+                pending = data.get("pending_bot_messages")
+                if not isinstance(pending, list) or not pending:
+                    connection.execute("ROLLBACK")
+                    return []
+                data["pending_bot_messages"] = []
+                connection.execute(
+                    "UPDATE players SET data = ? WHERE game_id = ?",
+                    (self._serialize(data), game_id),
+                )
+                connection.execute("COMMIT")
+                return list(pending)
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+
+    def enqueue_bot_messages_bulk(self, game_ids: list[str], messages: list[Any]) -> int:
+        items = [message for message in (messages or []) if message not in (None, "")]
+        targets = [str(gid) for gid in (game_ids or []) if gid]
+        if not items or not targets:
+            return 0
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                count = 0
+                for gid in targets:
+                    row = connection.execute(
+                        "SELECT data FROM players WHERE game_id = ?", (gid,)
+                    ).fetchone()
+                    if not row:
+                        continue
+                    data = self._deserialize(row["data"])
+                    pending = data.get("pending_bot_messages")
+                    if not isinstance(pending, list):
+                        pending = []
+                    pending.extend(items)
+                    data["pending_bot_messages"] = pending
+                    connection.execute(
+                        "UPDATE players SET data = ? WHERE game_id = ?",
+                        (self._serialize(data), gid),
+                    )
+                    count += 1
+                connection.execute("COMMIT")
+                return count
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+
+    def list_player_audience_rows(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        with self._lock, self._connect() as connection:
+            for row in connection.execute("SELECT game_id, data FROM players"):
+                try:
+                    data = self._deserialize(row["data"])
+                except Exception:
+                    data = {}
+                rows.append({
+                    "game_id": row["game_id"],
+                    "gender": data.get("gender"),
+                    "level": data.get("level", 1),
+                })
+        return rows
 
     def load_promo_data(self) -> dict[str, Any]:
         with self._lock, self._connect() as connection:

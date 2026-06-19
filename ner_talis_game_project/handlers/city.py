@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes
 
 from keyboards.reply_keyboards import make_keyboard, start_keyboard
 from services.city_service import CITY_BUTTONS, process_world_action, unstuck_player
-from services.chat_log_service import append_player_chat_log, pop_pending_bot_messages
+from services.chat_log_service import append_player_chat_log, normalize_bot_messages, pop_pending_bot_messages
 from services.external_location_service import complete_active_timer
 from services.runtime_timer_scheduler import attach_timer_notification, schedule_timer_delivery
 from storage.base import PlayerStorage
@@ -109,6 +109,13 @@ async def send_city_response(
         )
         return
 
+    # Атомарно забираем фоновый outbox (рассылка/курьер/дары/эффекты) до
+    # действия: его очистка не должна зависеть от полного сохранения игрока,
+    # иначе свежепоставленное сообщение терялось бы (lost update).
+    game_id = str(player.get("game_id") or player.get("id") or "")
+    durable_messages = normalize_bot_messages(storage.dequeue_bot_messages(game_id)) if game_id else []
+    player["pending_bot_messages"] = []
+
     append_player_chat_log(player, direction="player", text=action, platform=TELEGRAM_PLATFORM)
     result = process_world_action(
         storage=storage,
@@ -117,7 +124,7 @@ async def send_city_response(
         platform=TELEGRAM_PLATFORM,
     )
 
-    for message in [*pop_pending_bot_messages(player), *getattr(result, "extra_messages", ())]:
+    for message in [*durable_messages, *pop_pending_bot_messages(player), *getattr(result, "extra_messages", ())]:
         append_player_chat_log(player, direction="bot", text=message, platform=TELEGRAM_PLATFORM)
         await update.message.reply_text(
             message,
