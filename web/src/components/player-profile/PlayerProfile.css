@@ -14,7 +14,9 @@ button { cursor: pointer; }
 .nt-profile {
   width: 100%;
   min-height: 100vh;
-  overflow-x: hidden;
+  /* clip (не hidden): не создаёт прокручиваемый контейнер, поэтому работает
+     position: sticky у верхней панели разделов относительно окна. */
+  overflow-x: clip;
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -91,7 +93,15 @@ button { cursor: pointer; }
   justify-content: center;
   align-items: center;
   gap: 8px;
-  margin: 12px 0;
+  margin: 0 0 12px;
+  /* Верхняя панель разделов остаётся на месте при прокрутке вниз. */
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  padding: 10px 0;
+  background: linear-gradient(180deg, rgba(18, 17, 14, 0.97), rgba(11, 12, 11, 0.9));
+  backdrop-filter: blur(4px);
+  border-radius: 12px;
 }
 
 .nt-tabs button, .nt-modal-actions button, .nt-attribute-controls button, .nt-category-row button, .nt-race-info-button, .nt-modifiers button, .nt-skill-plus, .nt-slot-choice {
