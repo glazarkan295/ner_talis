@@ -328,6 +328,11 @@ def recover_runtime_timers(telegram_application: Any) -> None:
     if storage is None:
         return
 
+    # Планировщик время-зависимых эффектов И воркер доставки курьера стартуют
+    # в run_bots() через _start_player_effect_scheduler_once() (платформо-
+    # независимо, до выбора Telegram/VK). Отдельный запуск здесь не нужен —
+    # иначе воркер эффектов поднимался бы дважды.
+
     telegram_count = 0
     vk_count = 0
     if telegram_enabled():
