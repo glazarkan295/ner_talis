@@ -209,7 +209,9 @@ class SmallPlateauIntegrationTest(unittest.TestCase):
     def test_small_plateau_items_are_in_registry(self):
         self.assertIsNotNone(get_item_definition_by_id("old_brooch"))
         self.assertIsNotNone(get_item_definition_by_id("old_medallion"))
-        self.assertIn("2 энергии", location_text("small_plateau"))
+        # Описание локации стало атмосферным; стоимость поиска показывается
+        # игроку в момент начала поиска, а не в тексте локации.
+        self.assertIn("Малое плато", location_text("small_plateau"))
 
 
 if __name__ == "__main__":
