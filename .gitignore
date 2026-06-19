@@ -33,3 +33,8 @@ _catalog_work/
 
 # Port market rotation runtime state
 data/port_market_state.json
+
+# Courier transfers runtime queue
+data/courier_transfers.json
+data/courier_transfers.json.lock
+data/courier_transfers.json.tmp

@@ -17,8 +17,12 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 from project_paths import resolve_project_path
+from services.gathering_tools import player_has_tool, spend_tool_use, tool_uses_left
 from services.inventory_service import add_inventory_item, apply_generated_item_level_and_price, inventory_add_result_notice
 from services.item_registry import build_inventory_item, get_item_definition_by_id, slugify_fallback_item_id
+
+FISHING_ROD_ID = "fishing_rod"
+FISHING_ROD_NAMES = ("удочка рыбака",)
 
 PIER_FISHING_ACTION = "Рыбалка на пристани"
 START_PIER_FISHING = "Забросить удочку"
@@ -117,17 +121,7 @@ def item_display_name(item_id: str) -> str:
 
 
 def player_has_fishing_rod(player: dict[str, Any]) -> bool:
-    for item in player.get("inventory", []) if isinstance(player.get("inventory"), list) else []:
-        if not isinstance(item, dict):
-            continue
-        identity = str(item.get("id") or item.get("item_id") or "").strip()
-        name = str(item.get("name") or item.get("name_ru") or "").strip().casefold()
-        amount = int(item.get("amount", 1) or 1)
-        if amount <= 0:
-            continue
-        if identity == "fishing_rod" or name == "удочка рыбака":
-            return True
-    return False
+    return player_has_tool(player, FISHING_ROD_ID, FISHING_ROD_NAMES)
 
 
 def grant_item_to_player(player: dict[str, Any], item_id: str, amount: int, *, source: str, rng: random.Random | None = None):
@@ -249,7 +243,13 @@ def _complete_fishing_once(storage: Any, player: dict[str, Any], rng: random.Ran
         claimed = claim(game_id, timer_id, FISHING_COMPLETION_OWNER, claim_ttl_seconds=120, platform_filter=None)
         if not isinstance(claimed, dict):
             return FishingResponse("⏳ Этот заброс уже обработан (награда не выдаётся повторно).", fishing_buttons())
-        return complete_fishing_timer(storage, claimed, timer_id, rng)
+        # Переносим заклеймленную перезагрузку В исходный объект игрока: боты
+        # после действия пересохраняют именно его. Иначе устаревший оригинал
+        # (с истёкшим таймером и без улова) затёр бы выдачу награды.
+        if claimed is not player:
+            player.clear()
+            player.update(claimed)
+        return complete_fishing_timer(storage, player, timer_id, rng)
     return complete_fishing_timer(storage, player, timer_id, rng)
 
 
@@ -315,6 +315,8 @@ def handle_fishing_action(storage: Any, player: dict[str, Any], action: str, rng
 
     player["energy"] = energy - FISHING_ENERGY_COST
     player["current_energy"] = player["energy"]
+    # Заброс расходует одно использование удочки (10 использований = 1 удочка).
+    spend_tool_use(player, FISHING_ROD_ID, FISHING_ROD_NAMES)
     new_timer = {
         "id": f"fishing_{uuid.uuid4().hex[:12]}",
         "type": FISHING_TIMER_TYPE,

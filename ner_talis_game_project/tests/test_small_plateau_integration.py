@@ -95,6 +95,33 @@ class SmallPlateauIntegrationTest(unittest.TestCase):
         self.assertEqual("small_plateau", updated.get("current_location"))
         self.assertEqual(1, updated.get("small_plateau", {}).get("search_count"))
 
+    def test_search_completion_survives_bot_resave_of_original_player(self):
+        # Воспроизводит баг «застревания» на локации: бот после действия
+        # пересохраняет ИСХОДНЫЙ объект игрока (handlers/city.py). Если завершение
+        # таймера применилось к атомарно перезагруженной копии, стейл-оригинал
+        # затирал снятый таймер и награды → бесконечный повтор поиска.
+        storage, player = self.make_player_and_storage(energy=100)
+        handle_external_location_action(storage, player, SMALL_PLATEAU, rng=random.Random(1))
+        storage.update_player(player)
+
+        player = storage.get_player_by_platform("telegram", "sp1")
+        handle_external_location_action(storage, player, START_SEARCH, rng=random.Random(2))
+        storage.update_player(player)  # бот пересохраняет исходный объект
+
+        player = storage.get_player_by_platform("telegram", "sp1")
+        player["active_timer"]["ends_at"] = time.time() - 1
+        storage.update_player(player)
+
+        # Бот: загрузка → действие → пересохранение ТОГО ЖЕ объекта.
+        player = storage.get_player_by_platform("telegram", "sp1")
+        completed = handle_external_location_action(storage, player, CHECK_TIMER, rng=random.Random(3))
+        storage.update_player(player)
+
+        self.assertIn("Поиск завершён", completed.text)
+        updated = storage.get_player_by_game_id(player["game_id"])
+        self.assertIsNone(updated.get("active_timer"))  # таймер снят, не застрял
+        self.assertEqual(1, updated.get("small_plateau", {}).get("search_count"))
+
     def test_cursed_coins_first_take_never_curses_and_adds_silver_value(self):
         player = {"hp": 100, "max_hp": 100, "money_copper": 0, "money": 0}
         result = handle_cursed_coin_choice(player, take_coins=True, rng=random.Random(1))
@@ -182,7 +209,9 @@ class SmallPlateauIntegrationTest(unittest.TestCase):
     def test_small_plateau_items_are_in_registry(self):
         self.assertIsNotNone(get_item_definition_by_id("old_brooch"))
         self.assertIsNotNone(get_item_definition_by_id("old_medallion"))
-        self.assertIn("2 энергии", location_text("small_plateau"))
+        # Описание локации стало атмосферным; стоимость поиска показывается
+        # игроку в момент начала поиска, а не в тексте локации.
+        self.assertIn("Малое плато", location_text("small_plateau"))
 
 
 if __name__ == "__main__":

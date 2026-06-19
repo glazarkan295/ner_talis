@@ -49,6 +49,10 @@ function removeSensitiveTokenFromAddressBar() {
   }
 }
 
+export function setActiveProfileSession(token) {
+  rememberActiveProfileSession(token);
+}
+
 export function getProfileIdentifierFromUrl() {
   clearLegacyPersistentToken();
   const params = new URLSearchParams(window.location.search);
@@ -211,5 +215,22 @@ export function dropItem(identifier, itemId, amount, inventoryIndex = null) {
   return requestJson(profileEndpoint("/inventory/drop"), {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function searchCourierRecipients(query) {
+  const params = new URLSearchParams({ q: String(query || ""), _: Date.now() });
+  return requestJson(profileEndpoint(`/courier/search?${params.toString()}`));
+}
+
+export function sendCourierTransfer(receiver, items, coins, letter) {
+  return requestJson(profileEndpoint("/courier/send"), {
+    method: "POST",
+    body: JSON.stringify({
+      receiver: String(receiver || ""),
+      items: items || [],
+      coins: Math.max(0, Number(coins) || 0),
+      letter: String(letter || ""),
+    }),
   });
 }

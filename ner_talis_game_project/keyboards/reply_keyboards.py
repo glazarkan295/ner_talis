@@ -23,6 +23,12 @@ def make_keyboard(buttons: list[list[str]]) -> ReplyKeyboardMarkup:
     )
 
 
+def consent_keyboard() -> ReplyKeyboardMarkup:
+    return make_keyboard([
+        ["Я прочитал и согласен"],
+    ])
+
+
 def start_keyboard() -> ReplyKeyboardMarkup:
     return make_keyboard([
         ["Кратко о мире"],

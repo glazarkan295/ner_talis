@@ -11,6 +11,9 @@ import {
   getProfileIdentifierFromUrl,
   loadPlayerProfile,
   confirmAttributePoints,
+  searchCourierRecipients,
+  sendCourierTransfer,
+  setActiveProfileSession,
   spendAttributePoints,
   spendSkillPoints,
   unequipItem,
@@ -24,25 +27,60 @@ function AdminProfileView() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const token = getAdminViewTokenFromUrl();
-        if (!token) throw new Error("Нет token для админского просмотра профиля.");
-        const payload = await loadAdminPlayerView(token);
-        setProfile({ ...(payload.profile || {}), readOnly: true, adminView: true });
-      } catch (requestError) {
-        setError(requestError.message || "Не удалось открыть профиль игрока.");
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+  const reload = useCallback(async () => {
+    const token = getAdminViewTokenFromUrl();
+    if (!token) throw new Error("Нет token для админского просмотра профиля.");
+    const payload = await loadAdminPlayerView(token);
+    const canEdit = Boolean(payload.editToken);
+    if (canEdit) setActiveProfileSession(payload.editToken);
+    setProfile({ ...(payload.profile || {}), readOnly: !canEdit, adminView: true, adminEdit: canEdit });
   }, []);
+
+  useEffect(() => {
+    reload()
+      .catch((requestError) => setError(requestError.message || "Не удалось открыть профиль игрока."))
+      .finally(() => setLoading(false));
+  }, [reload]);
+
+  async function runAction(action) {
+    try {
+      setError("");
+      const payload = await action();
+      if (payload?.profile) {
+        setProfile({ ...payload.profile, adminView: true, adminEdit: true });
+      } else {
+        await reload();
+      }
+      return payload;
+    } catch (requestError) {
+      setError(requestError.message || "Действие не выполнено.");
+      throw requestError;
+    }
+  }
 
   if (loading) return <div className="nt-profile-loading">Загрузка профиля...</div>;
   if (error || !profile) return <div className="nt-profile-loading nt-profile-error">{error || "Профиль недоступен."}</div>;
-  return <PlayerProfile profile={profile} readOnly />;
+  return (
+    <>
+      {error ? <div className="nt-api-error">{error}</div> : null}
+      <PlayerProfile
+        profile={profile}
+        readOnly={!profile.adminEdit}
+        onSpendAttributePoints={(attributeKey, amount) => runAction(() => spendAttributePoints("me", attributeKey, amount))}
+        onConfirmAttributePoints={(allocations) => runAction(() => confirmAttributePoints("me", allocations))}
+        onSpendSkillPoints={(skill, modifierId, amount) => runAction(() => spendSkillPoints("me", skill.id || skill.name, modifierId, amount))}
+        onEquipItem={(item, slotKey = null) => runAction(() => equipItem("me", item.id, slotKey, item.inventoryIndex))}
+        onUnequipItem={(slotKey) => runAction(() => unequipItem("me", slotKey))}
+        onUseItem={(item) => runAction(() => useItem("me", item.id, item.inventoryIndex))}
+        onDropItem={(item, amount) => runAction(() => dropItem("me", item.id, amount, item.inventoryIndex))}
+        onSellItem={(item, amount) => runAction(() => sellItem("me", item.id, amount, item.inventoryIndex))}
+        onEquipSkill={(skill) => runAction(() => equipSkill("me", skill.id || skill.name))}
+        onUnequipSkill={(skill) => runAction(() => unequipSkill("me", skill.id || skill.name))}
+        onEditProfileField={(field, value) => runAction(() => editProfileField("me", field, value))}
+        onAdminRemoveItem={(item) => runAction(() => dropItem("me", item.id, Math.max(1, Number(item.amount) || 1), item.inventoryIndex))}
+      />
+    </>
+  );
 }
 
 function ProfileApp() {
@@ -150,6 +188,10 @@ function ProfileApp() {
         }}
         onEditProfileField={(field, value) => {
           return runProfileAction(() => editProfileField(profileIdentifier, field, value));
+        }}
+        onSearchCourierRecipients={(query) => searchCourierRecipients(query)}
+        onSendCourierTransfer={(receiver, items, coins, letter) => {
+          return runProfileAction(() => sendCourierTransfer(receiver, items, coins, letter));
         }}
       />
     </>

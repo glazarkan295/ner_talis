@@ -47,7 +47,7 @@ from services.market_service import (
     sell_item_from_profile,
     sellable_inventory_stack_indexes,
 )
-from services.web_profile import PROFILE_SCOPE
+from services.web_profile import ADMIN_PROFILE_EDIT_SCOPE, PROFILE_SCOPE
 from services.active_skill_service import refresh_unlocked_active_skills, resource_cost_with_modifiers, skill_level, is_skill_weapon_compatible, skill_weapon_requirement_text, can_spend_skill_points_on, player_branch, selected_main_path, selected_secondary_path, path_level, secondary_path_limit
 
 FRONT_TO_BACK_STAT = {
@@ -247,6 +247,19 @@ class EditProfileFieldRequest(BaseModel):
     value: str
 
 
+class CourierTransferItem(BaseModel):
+    item_id: str
+    inventory_index: int | None = Field(default=None, ge=0)
+    amount: int = Field(gt=0)
+
+
+class CourierSendRequest(BaseModel):
+    receiver: str
+    items: list[CourierTransferItem] = Field(default_factory=list)
+    coins: int = Field(default=0, ge=0)
+    letter: str = ""
+
+
 def parse_datetime(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
@@ -370,7 +383,7 @@ def profile_field_edit_availability(player: dict[str, Any]) -> dict[str, bool]:
     return {field: safe_int(used.get(field), 0) < 1 for field in PROFILE_EDITABLE_FIELDS}
 
 
-def apply_profile_field_edit(player: dict[str, Any], field: str, value: str) -> str:
+def apply_profile_field_edit(player: dict[str, Any], field: str, value: str, storage: Any = None) -> str:
     """Тратит единственную бесплатную попытку и меняет имя/расу/пол в сводке.
 
     Возвращает новое отображаемое значение. Бросает HTTPException, если поле
@@ -387,10 +400,21 @@ def apply_profile_field_edit(player: dict[str, Any], field: str, value: str) -> 
 
     raw = str(value or "").strip()
     if field == "name":
-        if not (1 <= len(raw) <= 24):
-            raise HTTPException(status_code=400, detail="Имя должно быть от 1 до 24 символов.")
-        player["name"] = raw
-        label = raw
+        # Те же правила, что и при регистрации: длина, допустимые символы,
+        # запрещённые имена, нормализация — плюс проверка занятости.
+        from services.registration_service import validate_name
+
+        ok, result = validate_name(raw)
+        if not ok:
+            raise HTTPException(status_code=400, detail=result)
+        name = result
+        current = str(player.get("name") or "")
+        if name.casefold() != current.casefold():
+            is_taken = getattr(storage, "is_name_taken", None)
+            if callable(is_taken) and is_taken(name):
+                raise HTTPException(status_code=409, detail="Это имя уже занято.")
+        player["name"] = name
+        label = name
     elif field == "gender":
         folded = raw.casefold()
         chosen = folded if folded in GENDER_OPTIONS else {"муж.": "male", "муж": "male", "жен.": "female", "жен": "female"}.get(folded)
@@ -634,6 +658,14 @@ def apply_energy_restore(player: dict[str, Any], item: dict[str, Any]) -> int:
 
 
 from services.currency import format_money, format_price  # noqa: E402  (shared denomination formatter)
+from services.courier_service import (  # noqa: E402
+    LETTER_MAX_LENGTH as COURIER_LETTER_MAX_LENGTH,
+    CourierError,
+    create_courier_transfer,
+    delivery_cost_copper as courier_delivery_cost_copper,
+    courier_warning_text,
+    search_players as courier_search_players,
+)
 
 
 def format_date(raw_value: str | None) -> str:
@@ -1361,6 +1393,14 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "sellButtonLabel": "Продать",
         },
         "skills": {"active": active_skills, "equipped": equipped_skills, "passive": passive_skills},
+        "courier": {
+            "deliveryCostCopper": courier_delivery_cost_copper(level),
+            "deliveryCostText": format_price(courier_delivery_cost_copper(level)),
+            "warningText": courier_warning_text(level),
+            "letterMaxLength": COURIER_LETTER_MAX_LENGTH,
+            "balanceCopper": safe_int(player.get("money"), 0),
+            "balanceText": format_money(safe_int(player.get("money"), 0)),
+        },
         "information": {
             "achievements": player.get("achievements", []),
             "rating": player.get("rating", {"globalPlace": "—", "pvePlace": "—", "pvpPlace": "—", "craftPlace": "—"}),
@@ -1399,13 +1439,25 @@ def profile_identifier_from_request(identifier: str, request: Request | None = N
     return str(identifier or "").strip()
 
 
+# Профильные write/read-эндпоинты принимают и обычный профиль-токен игрока, и
+# админский edit-токен (отдельный scope, чтобы не разлогинивать игрока).
+PROFILE_WRITE_SCOPES = (PROFILE_SCOPE, ADMIN_PROFILE_EDIT_SCOPE)
+
+
 def get_session_and_player_by_token(storage: Any, token: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     if hasattr(storage, "get_player_by_web_token"):
-        return storage.get_player_by_web_token(token, scope=PROFILE_SCOPE)
+        # Перебираем разрешённые scope'ы по очереди (а не scope=None), чтобы
+        # одноразовый токен ЧУЖОГО scope (например, павильона) не активировался
+        # как побочный эффект при обращении к профильному эндпоинту.
+        for allowed_scope in PROFILE_WRITE_SCOPES:
+            player, session = storage.get_player_by_web_token(token, scope=allowed_scope)
+            if player is not None and session is not None:
+                return player, session
+        return None, None
     data = storage.load()
     sessions = data.get("web_sessions") or data.get("site_sessions") or {}
     session = sessions.get(token)
-    if not session or session.get("scope") != PROFILE_SCOPE:
+    if not session or session.get("scope") not in PROFILE_WRITE_SCOPES:
         return None, None
     expires_at = parse_datetime(session.get("expires_at"))
     if expires_at and expires_at <= datetime.now(timezone.utc):
@@ -2279,7 +2331,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
     def edit_profile_field(identifier: str, payload: EditProfileFieldRequest, request: Request) -> dict[str, Any]:
         storage = get_storage()
         player, session = resolve_profile_write(storage, identifier, request)
-        label = apply_profile_field_edit(player, payload.field, payload.value)
+        label = apply_profile_field_edit(player, payload.field, payload.value, storage=storage)
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "field": str(payload.field), "value": label, "profile": frontend_profile_payload(player, session)}
@@ -2319,5 +2371,48 @@ def create_profile_api_router(get_storage) -> APIRouter:
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile_payload(player, session)}
+
+    @router.get("/{identifier}/courier/search")
+    def courier_search(identifier: str, request: Request, q: str = "") -> dict[str, Any]:
+        storage = get_storage()
+        player, _session = resolve_profile_read(storage, identifier, request)
+        own_id = str(player.get("game_id") or player.get("id") or "")
+        results = [
+            entry
+            for entry in courier_search_players(storage, q)
+            if str(entry.get("gameId")) != own_id
+        ]
+        return {"ok": True, "players": results}
+
+    @router.post("/{identifier}/courier/send")
+    def courier_send(identifier: str, payload: CourierSendRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        player, session = resolve_profile_write(storage, identifier, request)
+        item_requests = [
+            {
+                "item_id": item.item_id,
+                "inventory_index": item.inventory_index,
+                "amount": item.amount,
+            }
+            for item in payload.items
+        ]
+        try:
+            result = create_courier_transfer(
+                storage,
+                player,
+                payload.receiver,
+                item_requests,
+                payload.coins,
+                payload.letter,
+            )
+        except CourierError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        sync_player_parameters_for_bots(player)
+        save_player(storage, player)
+        return {
+            "ok": True,
+            "message": result["message"],
+            "profile": frontend_profile_payload(player, session),
+        }
 
     return router

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 from services.small_plateau_service import (
     AMULET_BURN_ID,
+    ANCIENT_CURSE_ID,
     SEVERE_AMULET_BURN_ID,
     has_effect,
     register_ancient_curse_active_day,
@@ -62,7 +63,19 @@ def _advance_amulet_burn(player: dict[str, Any], now: int, messages: list[str]) 
 
 
 def _advance_curse_days(player: dict[str, Any], now: int, messages: list[str], count_activity: bool = True) -> bool:
+    has_curse = has_effect(player, ANCIENT_CURSE_ID)
     tracker = player.get("curse_day_tracker")
+    if not has_curse:
+        # Без активного проклятья «активные дни» не считаем и не копим — иначе
+        # до-проклятийная активность того же дня финализировалась бы как
+        # «день с проклятьем» и преждевременно двигала достижение к 60 дням.
+        if not isinstance(tracker, dict):
+            return False
+        changed = int(tracker.get("active_seconds") or 0) != 0 or str(tracker.get("date")) != _utc_day(now)
+        tracker["date"] = _utc_day(now)
+        tracker["active_seconds"] = 0
+        tracker["last_action_ts"] = now
+        return changed
     if not isinstance(tracker, dict):
         player["curse_day_tracker"] = {"date": _utc_day(now), "active_seconds": 0, "last_action_ts": now}
         return True
@@ -112,19 +125,41 @@ def advance_player_time(player: dict[str, Any], now_ts: float | int | None = Non
 
     Возвращает сообщения и кладёт их в pending_bot_messages для доставки ботом.
     """
-    messages, _changed = _advance(player, _now_ts(now_ts), count_activity=True)
+    now = _now_ts(now_ts)
+    # Отметка последней активности игрока (для админ-панели). Ставится на пути
+    # действия (count_activity=True), а не в фоновом тике, поэтому отражает
+    # реальное взаимодействие игрока с ботом.
+    player["last_activity_at"] = datetime.fromtimestamp(now, tz=timezone.utc).isoformat()
+    messages, _changed = _advance(player, now, count_activity=True)
     _queue_messages(player, messages)
     return messages
+
+
+def _snapshot_may_need_tick(player: dict[str, Any]) -> bool:
+    """Дешёвый пред-фильтр по снимку: есть ли вообще что догонять у игрока."""
+    if not isinstance(player, dict):
+        return False
+    if has_effect(player, AMULET_BURN_ID) or has_effect(player, SEVERE_AMULET_BURN_ID):
+        return True
+    if has_effect(player, ANCIENT_CURSE_ID):
+        return True
+    # Остался трекер от снятого проклятья — его надо обнулить один раз.
+    tracker = player.get("curse_day_tracker")
+    return isinstance(tracker, dict) and int(tracker.get("active_seconds") or 0) != 0
 
 
 def advance_all_players_time(storage: Any, now_ts: float | int | None = None) -> int:
     """Тик планировщика: догоняет время-зависимые эффекты для ВСЕХ игроков.
 
     Вызывается фоновым воркером, поэтому активность игрока не накручивается
-    (count_activity=False) — фоновый тик не должен засчитываться как «игровая
+    (count_activity=False) — фоновый тик не засчитывается как «игровая
     активность» для суточного счётчика проклятья. Почасовой ожог амулета и
-    смена суток обрабатываются. Изменённые игроки сохраняются; сообщения
-    уходят через pending_bot_messages при следующем взаимодействии.
+    смена суток обрабатываются.
+
+    Чтобы НЕ затереть свежие изменения игрока (инвентарь/локация/таймер),
+    каждый кандидат перезагружается из хранилища непосредственно перед
+    применением тика и сохранением — тик ложится на самое актуальное
+    состояние, а не на устаревший снимок.
     """
     try:
         data = storage.load()
@@ -134,8 +169,20 @@ def advance_all_players_time(storage: Any, now_ts: float | int | None = None) ->
     if not isinstance(players, dict):
         return 0
     now = _now_ts(now_ts)
+    candidate_ids: list[str] = []
+    for snapshot in list(players.values()):
+        if not _snapshot_may_need_tick(snapshot):
+            continue
+        game_id = str(snapshot.get("game_id") or snapshot.get("id") or "")
+        if game_id:
+            candidate_ids.append(game_id)
+
     updated = 0
-    for player in list(players.values()):
+    get_player = getattr(storage, "get_player_by_game_id", None)
+    enqueue = getattr(storage, "enqueue_bot_messages", None)
+    for game_id in candidate_ids:
+        # Перезагрузка свежей копии тотчас перед применением и сохранением.
+        player = get_player(game_id) if callable(get_player) else players.get(game_id)
         if not isinstance(player, dict):
             continue
         try:
@@ -144,9 +191,17 @@ def advance_all_players_time(storage: Any, now_ts: float | int | None = None) ->
             continue
         if not changed and not messages:
             continue
-        _queue_messages(player, messages)
         try:
-            storage.update_player(player)
+            if changed:
+                storage.update_player(player)
+            # Сообщения — через атомарный outbox, чтобы не потерять их при
+            # конкурентном пересохранении игрока ботом (lost update).
+            if messages:
+                if callable(enqueue):
+                    enqueue(game_id, messages)
+                else:  # запасной путь для старых хранилищ
+                    _queue_messages(player, messages)
+                    storage.update_player(player)
             updated += 1
         except Exception:
             continue

@@ -8,6 +8,8 @@ const TABS = [
   { id: "info", label: "Информация", icon: "scroll" },
 ];
 
+const COURIER_TAB = { id: "courier", label: "Передача", icon: "courier" };
+
 const INVENTORY_CATEGORIES = ["Всё", "Снаряжение", "Оружие", "Бижутерия", "Расходники", "Ресурсы", "Материалы", "Добыча", "Прочее", "Особое"];
 
 const DEFAULT_SLOTS = [
@@ -31,27 +33,27 @@ const RACE_INFO = {
   human: {
     name: "Человек",
     stats: "Сила 3 · Ловкость 3 · Выносливость 4 · Интеллект 3 · Мудрость 3 · Восприятие 4",
-    bonuses: ["Возврат золота у NPC", "+2% получаемого опыта", "+1% к основным характеристикам"],
+    bonuses: ["Торговая жилка: 5% шанс +3% монет у NPC", "Обучаемость: +2% получаемого опыта", "Универсальность: +1% к основным характеристикам"],
   },
   elf: {
     name: "Эльф",
     stats: "Сила 2 · Ловкость 4 · Выносливость 2 · Интеллект 5 · Мудрость 4 · Восприятие 3",
-    bonuses: ["+3% наносимого магического урона", "+4% к алхимии", "+3% к сбору алхимических ингредиентов"],
+    bonuses: ["Чутьё зельевара: 10% шанс не потратить часть ингредиентов", "Врождённая магия: +3% магического урона", "Знание трав: +3% к сбору алхимических ингредиентов"],
   },
   dwarf: {
     name: "Дворф",
     stats: "Сила 5 · Ловкость 2 · Выносливость 5 · Интеллект 3 · Мудрость 3 · Восприятие 2",
-    bonuses: ["+4% к созданию оружия и брони", "-3% расхода руды и металла при создании снаряжения и оружия", "+3% к выносливости"],
+    bonuses: ["Каменное чутьё: 4% шанс камня при добыче руды", "Мастерская закалка: шанс +1 эффект на оружии/броне", "Каменная выносливость: +3% к выносливости"],
   },
   undead: {
     name: "Нежить",
     stats: "Сила 3 · Ловкость 2 · Выносливость 6 · Интеллект 3 · Мудрость 4 · Восприятие 2",
-    bonuses: ["+4% к здоровью", "-5% шанс получить негативный эффект", "-3% получаемого периодического урона"],
+    bonuses: ["Мёртвая плоть: +4% к здоровью", "Мёртвое сопротивление: -5% яд/кровотечение/оглушение/проклятие", "Холодная плоть: -3% периодического урона"],
   },
   lizardfolk: {
     name: "Ящеролюд",
     stats: "Сила 4 · Ловкость 4 · Выносливость 4 · Интеллект 1 · Мудрость 2 · Восприятие 5",
-    bonuses: ["0.5% регенерации HP в бою", "-2% получаемого физического урона", "+4% к поиску добычи и ресурсов"],
+    bonuses: ["Природная регенерация: 0.5% HP за ход в бою", "Плотная чешуя: -2% физического урона", "Охотничье чутьё: +4% к поиску добычи и ресурсов"],
   },
 };
 
@@ -98,6 +100,15 @@ function TabIcon({ type }) {
         <path d="M7.8 4.4a2.4 2.4 0 0 0-2.4 2.4v11a1.8 1.8 0 0 0 1.8 1.8h8.3" />
         <path d="M8.4 9.2h6.2M8.4 12.3h5.4M8.4 15.4h4.2" />
         <path d="M15.5 19.6a2.1 2.1 0 0 0 2.1-2.1h-4.2a2.1 2.1 0 0 0 2.1 2.1Z" />
+      </svg>
+    );
+  }
+  if (type === "courier") {
+    return (
+      <svg {...common}>
+        <path d="M4.5 8.2 12 4.4l7.5 3.8-7.5 3.8-7.5-3.8Z" />
+        <path d="M4.5 8.2v7.6l7.5 3.8 7.5-3.8V8.2" />
+        <path d="M12 12v7.6" />
       </svg>
     );
   }
@@ -404,6 +415,22 @@ function Panel({ title, right, children, className = "" }) {
   );
 }
 
+function CollapsiblePanel({ title, right, children, className = "", defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className={`nt-panel ${className}`.trim()}>
+      <header className="nt-panel-head nt-panel-collapsible" onClick={() => setOpen((value) => !value)} role="button" tabIndex={0} aria-expanded={open}>
+        <h2>{title}</h2>
+        <div className="nt-panel-right">
+          {right}
+          <span className={`nt-collapse-arrow ${open ? "open" : ""}`.trim()} aria-hidden="true">▾</span>
+        </div>
+      </header>
+      {open ? children : null}
+    </section>
+  );
+}
+
 function Row({ label, value, children }) {
   return (
     <div className="nt-row">
@@ -465,7 +492,7 @@ function RaceInfoPopover({ profile, onClose }) {
   );
 }
 
-function ItemModal({ item, slotKey, position, readOnly = false, onClose, onEquipItem, onUnequipItem, onUseItem, onRequestDrop, onRequestSell }) {
+function ItemModal({ item, slotKey, position, readOnly = false, adminEdit = false, onClose, onEquipItem, onUnequipItem, onUseItem, onRequestDrop, onRequestSell, onAdminRemoveItem }) {
   if (!item) return null;
   const actions = item.actions || [];
   const itemStats = statLines(item);
@@ -499,6 +526,7 @@ function ItemModal({ item, slotKey, position, readOnly = false, onClose, onEquip
           {!readOnly && actions.includes("Использовать") ? <button type="button" onClick={() => onUseItem?.(item)}>Использовать</button> : null}
           {!readOnly && !slotKey && actions.includes("Продать") ? <button type="button" onClick={() => onRequestSell?.(item)}>Продать</button> : null}
           {!readOnly && !slotKey ? <button className="nt-danger" type="button" onClick={() => onRequestDrop?.(item)}>Выбросить</button> : null}
+          {adminEdit && !slotKey ? <button className="nt-danger" type="button" onClick={() => onAdminRemoveItem?.(item)}>Удалить из профиля игрока</button> : null}
           {readOnly ? <span className="nt-readonly-note">Только просмотр</span> : null}
           <button className="nt-secondary" type="button" onClick={onClose}>Закрыть</button>
         </footer>
@@ -651,28 +679,42 @@ function EditPencil({ onClick }) {
 const RACE_EDIT_CHOICES = [["human", "Человек"], ["elf", "Эльф"], ["dwarf", "Дворф"], ["undead", "Нежить"], ["lizardfolk", "Ящеролюд"]];
 const GENDER_EDIT_CHOICES = [["male", "Муж."], ["female", "Жен."]];
 
-function ProfileEditModal({ field, player, position, onClose, onSubmit }) {
+function ProfileEditModal({ field, player, onClose, onSubmit }) {
   const [name, setName] = useState(field === "name" ? (player?.nickname || "") : "");
+  // Подтверждение: единственная бесплатная попытка тратится только после «Да».
+  const [pending, setPending] = useState(null); // { value, label }
   const titles = { name: "Изменить имя", race: "Изменить расу", gender: "Изменить пол" };
   return (
     <div className="nt-modal-layer" onMouseDown={onClose}>
-      <article className="nt-modal nt-small-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
+      <article className="nt-modal nt-small-modal nt-center-modal" onMouseDown={(event) => event.stopPropagation()}>
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
         <div className="nt-modal-kicker">Сводка</div>
         <h3>{titles[field] || "Изменить"}</h3>
-        <p className="nt-edit-hint">Доступна 1 бесплатная попытка.</p>
-        {field === "name" ? (
-          <div className="nt-edit-form">
-            <input className="nt-edit-input" value={name} maxLength={24} onChange={(event) => setName(event.target.value)} placeholder="Новое имя" />
-            <button className="nt-edit-save" type="button" disabled={!name.trim()} onClick={() => onSubmit("name", name.trim())}>Сохранить</button>
+        {pending ? (
+          <div className="nt-edit-confirm">
+            <p>Использовать единственную бесплатную попытку и изменить на «{pending.label}»? Отменить будет нельзя.</p>
+            <div className="nt-edit-choices">
+              <button className="nt-edit-choice" type="button" onClick={() => onSubmit(field, pending.value)}>Да, изменить</button>
+              <button className="nt-edit-choice" type="button" onClick={() => setPending(null)}>Отмена</button>
+            </div>
           </div>
-        ) : null}
-        {field === "gender" ? (
-          <div className="nt-edit-choices">{GENDER_EDIT_CHOICES.map(([id, label]) => <button key={id} className="nt-edit-choice" type="button" onClick={() => onSubmit("gender", id)}>{label}</button>)}</div>
-        ) : null}
-        {field === "race" ? (
-          <div className="nt-edit-choices">{RACE_EDIT_CHOICES.map(([id, label]) => <button key={id} className="nt-edit-choice" type="button" onClick={() => onSubmit("race", id)}>{label}</button>)}</div>
-        ) : null}
+        ) : (
+          <>
+            <p className="nt-edit-hint">Доступна 1 бесплатная попытка.</p>
+            {field === "name" ? (
+              <div className="nt-edit-form">
+                <input className="nt-edit-input" value={name} maxLength={24} onChange={(event) => setName(event.target.value)} placeholder="Новое имя" />
+                <button className="nt-edit-save" type="button" disabled={!name.trim()} onClick={() => setPending({ value: name.trim(), label: name.trim() })}>Сохранить</button>
+              </div>
+            ) : null}
+            {field === "gender" ? (
+              <div className="nt-edit-choices">{GENDER_EDIT_CHOICES.map(([id, label]) => <button key={id} className="nt-edit-choice" type="button" onClick={() => setPending({ value: id, label })}>{label}</button>)}</div>
+            ) : null}
+            {field === "race" ? (
+              <div className="nt-edit-choices">{RACE_EDIT_CHOICES.map(([id, label]) => <button key={id} className="nt-edit-choice" type="button" onClick={() => setPending({ value: id, label })}>{label}</button>)}</div>
+            ) : null}
+          </>
+        )}
       </article>
     </div>
   );
@@ -974,18 +1016,18 @@ function SkillsTab({ profile, readOnly = false, onSpendSkillPoints, onEquipSkill
           ))}
         </div>
       </Panel>
-      <Panel title="Активные навыки"><div className="nt-skills-list">{active.length ? active.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Активных навыков пока нет.</p>}</div></Panel>
-      <Panel title="Пассивные навыки"><div className="nt-skills-list">{passive.length ? passive.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Пассивных навыков пока нет.</p>}</div></Panel>
+      <CollapsiblePanel title="Активные навыки"><div className="nt-skills-list">{active.length ? active.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Активных навыков пока нет.</p>}</div></CollapsiblePanel>
+      <CollapsiblePanel title="Пассивные навыки"><div className="nt-skills-list">{passive.length ? passive.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Пассивных навыков пока нет.</p>}</div></CollapsiblePanel>
       <ModifierHelpModal modifier={modifierHelp?.modifier} position={modifierHelp?.position} onClose={() => setModifierHelp(null)} />
       {!readOnly ? <SkillUpgradeModal skill={upgradeSkill?.skill} freePoints={freePoints} position={upgradeSkill?.position} onClose={() => setUpgradeSkill(null)} onSpendSkillPoints={onSpendSkillPoints} /> : null}
     </div>
   );
 }
 
-function FinesModal({ fines, position, onClose }) {
+function FinesModal({ fines, onClose }) {
   return (
     <div className="nt-modal-layer" onMouseDown={onClose}>
-      <article className="nt-modal nt-small-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
+      <article className="nt-modal nt-small-modal nt-center-modal" onMouseDown={(event) => event.stopPropagation()}>
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
         <div className="nt-modal-kicker">Городские штрафы</div>
         <h3>Активные штрафы</h3>
@@ -1013,20 +1055,260 @@ function InfoTab({ profile }) {
     <div className="nt-stack">
       <Panel title="Активность"><div className="nt-lines"><Row label="Дата регистрации" value={profile.player?.registrationDate || "—"} /><Row label="PVE убийства" value={activity.pveKills || 0} /><Row label="PVP убийства" value={activity.pvpKills || 0} /><Row label="Частицы душ" value={activity.soulParticlesAbsorbed || 0} /><div className="nt-row"><span>Штрафы</span>{fineList.length ? <button type="button" className="nt-fines-button" onClick={(event) => setFinesModal({ position: getFloatingPosition(event, 390, 360) })}>{`${fineList.length} активн. — подробнее`}</button> : <strong>нет активных штрафов</strong>}</div></div></Panel>
       {finesModal ? <FinesModal fines={fineList} position={finesModal.position} onClose={() => setFinesModal(null)} /> : null}
-      <Panel title="Ремёсла"><div className="nt-card-list nt-column-list">{crafts.length ? crafts.map((craft) => <div key={craft.name} className="nt-mini-card"><CardRow label={craft.name} value={`ур. ${craft.level}`} /><p>{craft.exp}</p></div>) : <p className="nt-empty-text">Ремёсла пока не развиты.</p>}</div></Panel>
-      <Panel title="Достижения"><div className="nt-card-list nt-column-list">{(info.achievements || []).length ? info.achievements.map((achievement) => <div key={achievement.name || achievement} className="nt-mini-card"><CardRow label={achievement.name || achievement} value="Получено" /><p>{achievement.description || "—"}</p></div>) : <p className="nt-empty-text">Достижений пока нет.</p>}</div></Panel>
+      <CollapsiblePanel title="Ремёсла"><div className="nt-card-list nt-column-list">{crafts.length ? crafts.map((craft) => <div key={craft.name} className="nt-mini-card"><CardRow label={craft.name} value={`ур. ${craft.level}`} /><p>{craft.exp}</p></div>) : <p className="nt-empty-text">Ремёсла пока не развиты.</p>}</div></CollapsiblePanel>
+      <CollapsiblePanel title="Достижения"><div className="nt-card-list nt-column-list">{(info.achievements || []).length ? info.achievements.map((achievement) => <div key={achievement.name || achievement} className="nt-mini-card"><CardRow label={achievement.name || achievement} value="Получено" /><p>{achievement.description || "—"}</p></div>) : <p className="nt-empty-text">Достижений пока нет.</p>}</div></CollapsiblePanel>
     </div>
   );
 }
 
-export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField }) {
+function CourierTab({ profile, onSearchRecipients, onSendTransfer }) {
+  const courier = profile.courier || {};
+  const inventory = profile.inventory || [];
+  const balanceCopper = Math.max(0, Number(courier.balanceCopper || 0));
+  const letterMax = Math.max(1, Number(courier.letterMaxLength || 30));
+
+  const [receiverQuery, setReceiverQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [receiver, setReceiver] = useState(null);
+  const [itemQuery, setItemQuery] = useState("");
+  const [selected, setSelected] = useState([]);
+  const [letter, setLetter] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const filteredInventory = useMemo(() => inventory.filter((item) => {
+    if (!itemQuery) return true;
+    return String(item.name || "").toLowerCase().includes(itemQuery.toLowerCase());
+  }), [inventory, itemQuery]);
+
+  async function runSearch() {
+    const query = receiverQuery.trim();
+    if (!query) return;
+    setSearching(true);
+    setError("");
+    try {
+      const payload = await onSearchRecipients?.(query);
+      setResults(payload?.players || []);
+    } catch (requestError) {
+      setError(requestError.message || "Поиск не выполнен.");
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function chooseReceiver(entry) {
+    setReceiver(entry);
+    setReceiverQuery(entry.name || entry.gameId || "");
+    setResults([]);
+  }
+
+  function addItem(item) {
+    const key = `item-${item.inventoryIndex}`;
+    if (selected.some((row) => row.key === key)) return;
+    setSelected((rows) => [...rows, {
+      key,
+      isCoins: false,
+      itemId: item.id,
+      inventoryIndex: item.inventoryIndex,
+      name: item.name,
+      amount: 1,
+      max: Math.max(1, Number(item.amount) || 1),
+    }]);
+  }
+
+  function addCoins() {
+    if (selected.some((row) => row.isCoins)) return;
+    if (balanceCopper <= 0) {
+      setError("У вас нет монет для отправки.");
+      return;
+    }
+    setSelected((rows) => [...rows, {
+      key: "coins",
+      isCoins: true,
+      name: "Монеты (медные)",
+      amount: 1,
+      max: balanceCopper,
+    }]);
+  }
+
+  function setAmount(key, value) {
+    setSelected((rows) => rows.map((row) => (
+      row.key === key ? { ...row, amount: clamp(Math.floor(Number(value) || 1), 1, row.max) } : row
+    )));
+  }
+
+  function removeRow(key) {
+    setSelected((rows) => rows.filter((row) => row.key !== key));
+  }
+
+  function resetForm() {
+    setReceiver(null);
+    setReceiverQuery("");
+    setResults([]);
+    setSelected([]);
+    setLetter("");
+    setItemQuery("");
+    setConfirming(false);
+  }
+
+  const canSend = Boolean((receiver || receiverQuery.trim()) && selected.length && !busy);
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    const items = selected
+      .filter((row) => !row.isCoins)
+      .map((row) => ({ item_id: row.itemId, inventory_index: row.inventoryIndex, amount: row.amount }));
+    const coinsRow = selected.find((row) => row.isCoins);
+    const coins = coinsRow ? coinsRow.amount : 0;
+    const target = receiver?.gameId || receiverQuery.trim();
+    try {
+      const payload = await onSendTransfer?.(target, items, coins, letter.trim());
+      setMessage(payload?.message || "Посылка передана гонцу.");
+      resetForm();
+    } catch (requestError) {
+      setError(requestError.message || "Не удалось отправить посылку.");
+    } finally {
+      setBusy(false);
+      setConfirming(false);
+    }
+  }
+
+  return (
+    <div className="nt-stack">
+      <Panel title="Передача предметов">
+        <p className="nt-courier-warning">{courier.warningText || "Передача предметов через городского гонца."}</p>
+
+        <div className="nt-courier-section">
+          <h4>Получатель</h4>
+          <div className="nt-toolbar">
+            <input
+              value={receiverQuery}
+              onChange={(event) => { setReceiverQuery(event.target.value); setReceiver(null); }}
+              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); runSearch(); } }}
+              placeholder="Ник или игровой ID"
+            />
+            <button type="button" className="nt-courier-btn" onClick={runSearch} disabled={searching}>
+              {searching ? "Поиск…" : "Найти"}
+            </button>
+          </div>
+          {receiver ? (
+            <p className="nt-courier-chosen">Выбран получатель: <strong>{receiver.name}</strong> · {receiver.gameId}</p>
+          ) : null}
+          {results.length ? (
+            <div className="nt-courier-results">
+              {results.map((entry) => (
+                <button type="button" className="nt-courier-result" key={entry.gameId} onClick={() => chooseReceiver(entry)}>
+                  <span>{entry.name}</span>
+                  <span className="nt-courier-result-meta">ур. {entry.level} · {entry.gameId}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="nt-courier-section">
+          <h4>Что отправить</h4>
+          <div className="nt-toolbar">
+            <input
+              value={itemQuery}
+              onChange={(event) => setItemQuery(event.target.value)}
+              placeholder="Поиск предмета в инвентаре"
+            />
+            <button type="button" className="nt-courier-btn" onClick={addCoins}>+ Монеты</button>
+          </div>
+          <p className="nt-courier-hint">Баланс: {courier.balanceText || "0 мед."}</p>
+          <div className="nt-courier-pick-grid">
+            {filteredInventory.map((item, index) => (
+              <button
+                type="button"
+                key={itemKey(item, index)}
+                className="nt-courier-pick"
+                onClick={() => addItem(item)}
+                disabled={selected.some((row) => row.key === `item-${item.inventoryIndex}`)}
+              >
+                <ItemArt item={item} className="nt-courier-pick-art" />
+                <span className="nt-courier-pick-name">{item.name}</span>
+                <span className="nt-courier-pick-amount">×{item.amount || 1}</span>
+              </button>
+            ))}
+          </div>
+          {!filteredInventory.length ? <p className="nt-empty-text">Предметов не найдено.</p> : null}
+        </div>
+
+        {selected.length ? (
+          <div className="nt-courier-section">
+            <h4>В посылке</h4>
+            <div className="nt-courier-selected">
+              {selected.map((row) => (
+                <div className="nt-courier-selected-row" key={row.key}>
+                  <span className="nt-courier-selected-name">{row.name}</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={row.max}
+                    value={row.amount}
+                    onChange={(event) => setAmount(row.key, event.target.value)}
+                  />
+                  <button type="button" className="nt-courier-remove" onClick={() => removeRow(row.key)} aria-label="Удалить из списка">×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="nt-courier-section">
+          <h4>Письмо</h4>
+          <input
+            value={letter}
+            maxLength={letterMax}
+            onChange={(event) => setLetter(event.target.value)}
+            placeholder={`Короткое сообщение до ${letterMax} символов`}
+          />
+          <p className="nt-courier-hint">{letter.length} / {letterMax}</p>
+        </div>
+
+        <div className="nt-courier-footer">
+          <span className="nt-courier-cost">Стоимость доставки: <strong>{courier.deliveryCostText || "—"}</strong></span>
+          {confirming ? (
+            <div className="nt-courier-confirm">
+              <p>Списать {courier.deliveryCostText} и выбранные вложения сразу. Отправить посылку?</p>
+              <div className="nt-courier-confirm-actions">
+                <button type="button" className="nt-courier-btn primary" onClick={submit} disabled={busy}>
+                  {busy ? "Отправка…" : "Отправить гонцу"}
+                </button>
+                <button type="button" className="nt-courier-btn" onClick={() => setConfirming(false)} disabled={busy}>Отмена</button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="nt-courier-btn primary" onClick={() => { setMessage(""); setError(""); setConfirming(true); }} disabled={!canSend}>
+              Отправить игроку
+            </button>
+          )}
+        </div>
+
+        {message ? <p className="nt-courier-feedback success">{message}</p> : null}
+        {error ? <p className="nt-courier-feedback error">{error}</p> : null}
+      </Panel>
+    </div>
+  );
+}
+
+export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField, onSearchCourierRecipients, onSendCourierTransfer, onAdminRemoveItem }) {
   const data = profileOrMock(profile);
   const [tab, setTab] = useState("character");
   const [modal, setModal] = useState(null);
   const [slotModal, setSlotModal] = useState(null);
   const [dropModal, setDropModal] = useState(null);
   const [sellModal, setSellModal] = useState(null);
-  const effectiveReadOnly = Boolean(readOnly || data.readOnly || data.adminView);
+  const adminEdit = Boolean(data.adminEdit);
+  const effectiveReadOnly = Boolean(readOnly || data.readOnly || (data.adminView && !adminEdit));
+  // Курьер недоступен в админ-просмотре/редактировании чужого профиля.
+  const visibleTabs = (effectiveReadOnly || adminEdit) ? TABS : [...TABS, COURIER_TAB];
   const background = data.assets?.background || "/assets/profile/backgrounds/1.png";
 
   const equipmentBySlot = data.equipment || {};
@@ -1085,6 +1367,12 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
     setModal(null);
   }
 
+  async function adminRemoveAndClose(item) {
+    if (!adminEdit) return;
+    await onAdminRemoveItem?.(item);
+    setModal(null);
+  }
+
   function requestDrop(item) {
     if (effectiveReadOnly) return;
     setDropModal({ item, position: modal?.position || null });
@@ -1103,16 +1391,17 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
           <div className="nt-id">{data.player?.userGlobalId || data.player?.publicId || "NT-UNKNOWN"}</div>
         </header>
         <nav className="nt-tabs" aria-label="Разделы профиля">
-          {TABS.map(({ id, label, icon }) => <button key={id} className={tab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon"><TabIcon type={icon} /></span><span className="nt-tab-text">{label}</span></button>)}
+          {visibleTabs.map(({ id, label, icon }) => <button key={id} className={tab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon"><TabIcon type={icon} /></span><span className="nt-tab-text">{label}</span></button>)}
         </nav>
         <section className="nt-content">
           {tab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} readOnly={effectiveReadOnly} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} onEditProfileField={onEditProfileField} /> : null}
           {tab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
           {tab === "skills" ? <SkillsTab profile={data} readOnly={effectiveReadOnly} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
           {tab === "info" ? <InfoTab profile={data} /> : null}
+          {tab === "courier" ? <CourierTab profile={data} onSearchRecipients={onSearchCourierRecipients} onSendTransfer={onSendCourierTransfer} /> : null}
         </section>
       </div>
-      <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} readOnly={effectiveReadOnly} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRequestDrop={requestDrop} onRequestSell={requestSell} />
+      <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} readOnly={effectiveReadOnly} adminEdit={adminEdit} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRequestDrop={requestDrop} onRequestSell={requestSell} onAdminRemoveItem={adminRemoveAndClose} />
       {!effectiveReadOnly ? <DropItemModal item={dropModal?.item} position={dropModal?.position} onClose={() => setDropModal(null)} onConfirm={dropAndClose} /> : null}
       {!effectiveReadOnly ? <SellItemModal item={sellModal?.item} position={sellModal?.position} onClose={() => setSellModal(null)} onConfirm={sellAndClose} /> : null}
       <SlotItemsModal slot={slotModal?.slot} items={slotModal?.items || []} selectedItem={slotModal?.selectedItem} position={slotModal?.position} onSelectItem={(item) => setSlotModal((current) => ({ ...current, selectedItem: item }))} onClose={() => setSlotModal(null)} readOnly={effectiveReadOnly} onEquipItem={equipFromSlot} />

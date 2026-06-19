@@ -11,12 +11,19 @@ import json
 import math
 import os
 import random
+import threading
 import time
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
+
+try:
+    import fcntl  # POSIX file locking (отсутствует на Windows-разработке)
+except ImportError:  # pragma: no cover - Windows fallback
+    fcntl = None  # type: ignore[assignment]
 
 from project_paths import project_path
 from services.currency import format_price
@@ -194,6 +201,52 @@ def deplete_port_stock(item_id: str, amount: int) -> None:
             break
     if changed:
         _save_port_state(state)
+
+
+# Внутрипроцессная защита потоков бота + межпроцессный файловый лок POSIX.
+_PORT_STOCK_LOCK = threading.Lock()
+
+
+@contextmanager
+def _port_state_file_lock() -> Iterator[None]:
+    if fcntl is None:
+        yield
+        return
+    path = _port_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def claim_port_stock(item_id: str, amount: int) -> tuple[int, int]:
+    """Atomically reserve ``amount`` units of a port item (all-or-nothing).
+
+    Возвращает (claimed, available_before). Списание выполняется ТОЛЬКО если
+    доступного хватает на всё количество, под потоковым + файловым локом —
+    иначе двое покупателей могли бы оба «купить» последнюю единицу.
+    """
+    amount = max(0, int(amount))
+    if amount <= 0:
+        return 0, 0
+    with _PORT_STOCK_LOCK, _port_state_file_lock():
+        state = _load_port_state()
+        items = state.get("items")
+        if not isinstance(items, list):
+            return 0, 0
+        for entry in items:
+            if isinstance(entry, dict) and str(entry.get("item_id")) == str(item_id):
+                available = max(0, safe_int(entry.get("stock"), 0))
+                if available >= amount:
+                    entry["stock"] = available - amount
+                    _save_port_state(state)
+                    return amount, available
+                return 0, available
+        return 0, 0
 
 
 @dataclass(frozen=True)
@@ -644,15 +697,6 @@ def handle_buy_quantity(storage: Any, player: dict[str, Any], item: MarketItem, 
             buy_zone,
         )
 
-    # Port market sells from a limited rotation stock.
-    if kind == MARKET_KIND_PORT:
-        current = next((m for m in load_market_items(kind) if m.item_id == item.item_id), None)
-        available = current.stock if current is not None else 0
-        if available <= 0:
-            return MarketResult("Этот товар закончился до следующего обновления ассортимента.", [[MARKET_BACK]], buy_zone)
-        if quantity > available:
-            return MarketResult(f"В наличии только {available} шт. Введите число не больше {available}.", [[MARKET_BACK]], buy_zone)
-
     unit_price = _discounted_buy_price(player, item.buy_price_copper)
     total_price = unit_price * quantity
     balance = _money(player)
@@ -674,6 +718,16 @@ def handle_buy_quantity(storage: Any, player: dict[str, Any], item: MarketItem, 
             buy_zone,
         )
 
+    # Резервируем сток портового рынка атомарно — это последний шлюз перед
+    # списанием денег и выдачей, поэтому возврат не нужен: цена/место уже
+    # проверены, а при гонке за последней единицей claim просто не пройдёт.
+    if kind == MARKET_KIND_PORT:
+        claimed, available = claim_port_stock(item.item_id, quantity)
+        if available <= 0:
+            return MarketResult("Этот товар закончился до следующего обновления ассортимента.", [[MARKET_BACK]], buy_zone)
+        if claimed <= 0:
+            return MarketResult(f"В наличии только {available} шт. Введите число не больше {available}.", [[MARKET_BACK]], buy_zone)
+
     for key in (
         "inventory",
         "active_effects",
@@ -685,9 +739,6 @@ def handle_buy_quantity(storage: Any, player: dict[str, Any], item: MarketItem, 
             player[key] = simulated[key]
     refund = npc_purchase_refund_amount(player, total_price)
     _set_money(player, balance - total_price + refund)
-
-    if kind == MARKET_KIND_PORT:
-        deplete_port_stock(item.item_id, quantity)
 
     notice = inventory_add_result_notice(result, item.display_name)
     refund_text = f" Возврат золота: +{format_price(refund)}." if refund else ""

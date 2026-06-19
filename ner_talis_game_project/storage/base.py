@@ -32,6 +32,39 @@ class PlayerStorage(Protocol):
     def update_player(self, player: dict[str, Any]) -> None:
         ...
 
+    def enqueue_bot_messages(
+        self,
+        game_id: str,
+        messages: list[Any],
+    ) -> bool:
+        """Atomically append outbox messages to a player's pending_bot_messages.
+
+        Implementations MUST modify only the pending_bot_messages field at the
+        storage row level, never via a full-player read-modify-write, so a
+        concurrent player save cannot clobber freshly queued messages.
+        """
+        ...
+
+    def dequeue_bot_messages(self, game_id: str) -> list[Any]:
+        """Atomically read and clear a player's pending_bot_messages."""
+        ...
+
+    def enqueue_bot_messages_bulk(
+        self,
+        game_ids: list[str],
+        messages: list[Any],
+    ) -> int:
+        """Append the same outbox messages to many players in one operation."""
+        ...
+
+    def list_player_audience_rows(self) -> list[dict[str, Any]]:
+        """Lightweight rows (game_id/gender/level) for broadcast targeting.
+
+        Avoids reconstructing full player objects (and per-player link queries)
+        just to filter recipients by gender/level.
+        """
+        ...
+
     def hard_delete_player_by_game_id(self, game_id: str) -> bool:
         ...
 

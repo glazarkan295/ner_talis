@@ -7,6 +7,7 @@ from vk_api.utils import get_random_id
 
 from keyboards.vk_keyboards import (
     after_registration_keyboard,
+    consent_keyboard,
     gender_confirm_keyboard,
     gender_keyboard,
     make_keyboard,
@@ -16,12 +17,14 @@ from keyboards.vk_keyboards import (
     race_keyboard,
     start_keyboard,
 )
-from services.city_service import CITY_BUTTONS, process_world_action
-from services.chat_log_service import append_player_chat_log, pop_pending_bot_messages
+from services.city_service import CITY_BUTTONS, process_world_action, unstuck_player
+from services.chat_log_service import append_player_chat_log, normalize_bot_messages, pop_pending_bot_messages
 from services.promo_service import redeem_promo_code
 from services.external_location_service import complete_active_timer
 from services.runtime_timer_scheduler import attach_timer_notification, schedule_timer_delivery
 from services.registration_service import (
+    CONSENT_BUTTON,
+    consent_message,
     create_player,
     format_race_card,
     get_race_id_by_name,
@@ -43,6 +46,7 @@ from texts.registration_texts import (
     WORLD_SHORT_TEXT,
 )
 
+STATE_CONSENT = "consent"
 STATE_START_MENU = "start_menu"
 STATE_AWAITING_NAME = "awaiting_name"
 STATE_NAME_CONFIRM = "name_confirm"
@@ -57,7 +61,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class VkRegistrationSession:
-    state: str = STATE_START_MENU
+    state: str = STATE_CONSENT
     name: str | None = None
     pending_name: str | None = None
     gender_id: str | None = None
@@ -129,9 +133,9 @@ class VkRegistrationBot:
                 return
 
             self.sessions[session_key] = VkRegistrationSession(
-                state=STATE_START_MENU,
+                state=STATE_CONSENT,
             )
-            self.send(peer_id, "Выберите действие:", start_keyboard())
+            self.send(peer_id, consent_message(), consent_keyboard())
             return
 
         if lowered == "/profile" or text == "Профиль":
@@ -154,6 +158,10 @@ class VkRegistrationBot:
             self.connect_by_code(external_user_id, peer_id, code)
             return
 
+        if lowered == "/unstuck":
+            self.handle_unstuck(external_user_id, peer_id)
+            return
+
         existing_player = self.storage.get_player_by_platform(VK_PLATFORM, external_user_id)
         session = self.sessions.get(session_key)
 
@@ -164,8 +172,22 @@ class VkRegistrationBot:
         if existing_player is None:
             session = self.sessions.setdefault(
                 session_key,
-                VkRegistrationSession(state=STATE_START_MENU),
+                VkRegistrationSession(state=STATE_CONSENT),
             )
+
+            # Согласие — обязательный первый шаг (в т.ч. при первом запуске VK,
+            # когда приложение сразу присылает кнопку «Начать»).
+            if session.state == STATE_CONSENT:
+                if text == CONSENT_BUTTON:
+                    session.state = STATE_START_MENU
+                    self.send(
+                        peer_id,
+                        "Спасибо! Выберите действие:",
+                        start_keyboard(),
+                    )
+                else:
+                    self.send(peer_id, consent_message(), consent_keyboard())
+                return
 
             if text == "Кратко о мире":
                 self.send(peer_id, WORLD_SHORT_TEXT, start_keyboard())
@@ -592,6 +614,20 @@ class VkRegistrationBot:
             after_registration_keyboard(),
         )
 
+    def handle_unstuck(self, external_user_id: str, peer_id: int) -> None:
+        player = self.storage.get_player_by_platform(VK_PLATFORM, external_user_id)
+        if player is None:
+            self.send(
+                peer_id,
+                "Сначала нужно создать персонажа. Нажми /start и выбери «Начать».",
+                start_keyboard(),
+            )
+            return
+        append_player_chat_log(player, direction="player", text="/unstuck", platform=VK_PLATFORM)
+        result = unstuck_player(self.storage, player)
+        append_player_chat_log(player, direction="bot", text=result.text, platform=VK_PLATFORM)
+        self.send(peer_id, result.text, make_keyboard(result.buttons))
+
     def handle_city_action(self, external_user_id: str, peer_id: int, action: str) -> None:
         player = self.storage.get_player_by_platform(VK_PLATFORM, external_user_id)
 
@@ -603,6 +639,11 @@ class VkRegistrationBot:
             )
             return
 
+        # Атомарно забираем фоновый outbox до действия (см. handlers/city.py).
+        game_id = str(player.get("game_id") or player.get("id") or "")
+        durable_messages = normalize_bot_messages(self.storage.dequeue_bot_messages(game_id)) if game_id else []
+        player["pending_bot_messages"] = []
+
         append_player_chat_log(player, direction="player", text=action, platform=VK_PLATFORM)
         result = process_world_action(
             storage=self.storage,
@@ -610,7 +651,7 @@ class VkRegistrationBot:
             action=action,
             platform=VK_PLATFORM,
         )
-        for message in [*pop_pending_bot_messages(player), *getattr(result, "extra_messages", ())]:
+        for message in [*durable_messages, *pop_pending_bot_messages(player), *getattr(result, "extra_messages", ())]:
             append_player_chat_log(player, direction="bot", text=message, platform=VK_PLATFORM)
             self.send(peer_id, message)
         append_player_chat_log(player, direction="bot", text=result.text, platform=VK_PLATFORM)

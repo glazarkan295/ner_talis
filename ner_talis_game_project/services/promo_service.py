@@ -188,7 +188,14 @@ def delete_promo_code(code: str, storage: Any | None = None) -> bool:
         targets = _matching_stored_keys(load_promo_data(storage), normalized_code)
         if normalized_code not in targets:
             targets.append(normalized_code)
-        return any(bool(storage.delete_promo_code(key)) for key in targets)
+        # Удаляем ВСЕ совпавшие ключи (legacy «/PROMO» и нормализованный «PROMO»
+        # одновременно). any(...) останавливался после первого успешного удаления
+        # и оставлял дубликат активным/видимым.
+        deleted = False
+        for key in targets:
+            if storage.delete_promo_code(key):
+                deleted = True
+        return deleted
     with _file_locked() if storage is None else _null_context():
         data = load_promo_data(storage)
         targets = _matching_stored_keys(data, normalized_code)

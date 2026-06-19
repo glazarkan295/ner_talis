@@ -328,20 +328,10 @@ def recover_runtime_timers(telegram_application: Any) -> None:
     if storage is None:
         return
 
-    # Постоянный планировщик время-зависимых эффектов (почасовой ожог амулета,
-    # суточный счётчик дней с проклятьем) — запускаем один раз, платформо-
-    # независимо. Метка хранится в bot_data, чтобы не плодить потоки при
-    # повторном восстановлении.
-    if not bot_data.get("player_effect_worker_started"):
-        try:
-            from services.player_time_service import start_persistent_player_effect_worker
-
-            interval = int(os.getenv("PLAYER_EFFECT_TICK_INTERVAL_SECONDS", "60") or 60)
-            start_persistent_player_effect_worker(storage, interval_seconds=interval)
-            bot_data["player_effect_worker_started"] = True
-            logger.info("Started persistent player-effect scheduler (interval=%ss)", interval)
-        except Exception:
-            logger.error("Failed to start player-effect scheduler:\n%s", redact_sensitive_text(traceback.format_exc()))
+    # Планировщик время-зависимых эффектов И воркер доставки курьера стартуют
+    # в run_bots() через _start_player_effect_scheduler_once() (платформо-
+    # независимо, до выбора Telegram/VK). Отдельный запуск здесь не нужен —
+    # иначе воркер эффектов поднимался бы дважды.
 
     telegram_count = 0
     vk_count = 0
@@ -364,6 +354,40 @@ def recover_runtime_timers(telegram_application: Any) -> None:
             vk_count,
         )
 
+_player_effect_scheduler_started = False
+
+
+def _start_player_effect_scheduler_once() -> None:
+    """Запускает постоянный планировщик время-зависимых эффектов один раз.
+
+    Платформо-независим: почасовой «Ожог от амулета» и суточный счётчик дней с
+    проклятьем догоняются для всех игроков, в т.ч. офлайн, на любом деплое
+    (Telegram, VK или оба). Хранилище создаётся фабрикой по ENV — тот же бэкенд,
+    что и у ботов.
+    """
+    global _player_effect_scheduler_started
+    if _player_effect_scheduler_started:
+        return
+    try:
+        from storage.storage_factory import create_storage
+        from services.player_time_service import start_persistent_player_effect_worker
+        from services.courier_service import start_persistent_courier_worker
+
+        storage = create_storage()
+        interval = int(os.getenv("PLAYER_EFFECT_TICK_INTERVAL_SECONDS", "60") or 60)
+        start_persistent_player_effect_worker(storage, interval_seconds=interval)
+        courier_interval = int(os.getenv("COURIER_TICK_INTERVAL_SECONDS", "60") or 60)
+        start_persistent_courier_worker(storage, interval_seconds=courier_interval)
+        _player_effect_scheduler_started = True
+        logger.info(
+            "Started persistent player-effect (%ss) and courier (%ss) schedulers",
+            interval,
+            courier_interval,
+        )
+    except Exception:
+        logger.error("Failed to start player-effect scheduler:\n%s", redact_sensitive_text(traceback.format_exc()))
+
+
 def run_bots() -> None:
     """Запускает включённые части Telegram/VK из единой точки входа.
 
@@ -372,6 +396,11 @@ def run_bots() -> None:
     """
     use_telegram = telegram_enabled()
     use_vk = vk_enabled()
+
+    # Планировщик эффектов и воркер доставки курьера запускаются ДО проверки
+    # платформ: даже если оба бота отключены, фоновые задачи (догон эффектов,
+    # доставка уже оплаченных посылок из очереди) должны продолжать работать.
+    _start_player_effect_scheduler_once()
 
     if not use_telegram and not use_vk:
         logger.warning("Telegram и VK отключены переменными ENABLE_TELEGRAM=false и ENABLE_VK=false")

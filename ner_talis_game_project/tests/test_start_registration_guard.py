@@ -61,9 +61,13 @@ from handlers.registration import (
     AWAITING_GENDER,
     AWAITING_NAME,
     AWAITING_RACE,
+    CONSENT_GATE,
     GENDER_CONFIRM,
     NAME_CONFIRM,
+    START_MENU,
     TELEGRAM_PLATFORM,
+    accept_consent,
+    begin_registration,
     connect_command,
     handle_gender_confirmation,
     handle_name_confirmation,
@@ -73,9 +77,19 @@ from handlers.registration import (
     promo_command,
     receive_gender,
     receive_name,
+    show_world_short,
     start_command,
 )
-from handlers.vk_registration import VK_PLATFORM, STATE_AWAITING_RACE, STATE_AWAITING_NAME, VkRegistrationBot, VkRegistrationSession
+from handlers.vk_registration import (
+    CONSENT_BUTTON,
+    STATE_AWAITING_NAME,
+    STATE_AWAITING_RACE,
+    STATE_CONSENT,
+    STATE_START_MENU,
+    VK_PLATFORM,
+    VkRegistrationBot,
+    VkRegistrationSession,
+)
 from services.registration_service import create_player, load_races
 from storage.json_storage import JsonStorage
 
@@ -132,16 +146,67 @@ class StartRegistrationGuardTest(unittest.TestCase):
         self.assertNotIn("Выберите действие", update.message.replies[0][0])
         self.assertIsNone(update.message.replies[0][1])
 
-    def test_telegram_start_still_opens_registration_menu_for_new_player(self):
+    def test_telegram_start_shows_consent_before_menu_for_new_player(self):
         storage = FakeStorage(None)
         update = FakeUpdate()
         context = FakeContext(storage)
 
         result = asyncio.run(start_command(update, context))
 
-        self.assertNotEqual(result, -1)
+        self.assertEqual(result, CONSENT_GATE)
         self.assertEqual(context.user_data, {})
-        self.assertEqual(update.message.replies[0][0], "Выберите действие:")
+        self.assertIn("ознакомьтесь", update.message.replies[0][0].casefold())
+        self.assertEqual(
+            update.message.replies[0][1].keyboard,
+            [["Я прочитал и согласен"]],
+        )
+
+    def test_telegram_accept_consent_opens_registration_menu(self):
+        storage = FakeStorage(None)
+        update = FakeUpdate()
+        context = FakeContext(storage)
+
+        result = asyncio.run(accept_consent(update, context))
+
+        self.assertEqual(result, START_MENU)
+        self.assertTrue(context.user_data.get("consent_given"))
+        self.assertEqual(update.message.replies[-1][0], "Спасибо! Выберите действие:")
+        self.assertEqual(
+            update.message.replies[-1][1].keyboard,
+            [["Кратко о мире"], ["Начать"]],
+        )
+
+    def test_telegram_begin_registration_requires_consent_first(self):
+        # Новый игрок, нажавший «Начать» как точку входа без согласия, должен
+        # сперва получить экран согласия, а не сразу регистрацию.
+        storage = FakeStorage(None)
+        update = FakeUpdate()
+        context = FakeContext(storage)
+
+        result = asyncio.run(begin_registration(update, context))
+
+        self.assertEqual(result, CONSENT_GATE)
+        self.assertIn("ознакомьтесь", update.message.replies[-1][0].casefold())
+
+    def test_telegram_begin_registration_proceeds_after_consent(self):
+        storage = FakeStorage(None)
+        update = FakeUpdate()
+        context = FakeContext(storage)
+        context.user_data["consent_given"] = True
+
+        result = asyncio.run(begin_registration(update, context))
+
+        self.assertEqual(result, AWAITING_NAME)
+
+    def test_telegram_world_short_requires_consent_first(self):
+        storage = FakeStorage(None)
+        update = FakeUpdate()
+        context = FakeContext(storage)
+
+        result = asyncio.run(show_world_short(update, context))
+
+        self.assertEqual(result, CONSENT_GATE)
+        self.assertIn("ознакомьтесь", update.message.replies[-1][0].casefold())
 
     def test_vk_start_does_not_reset_session_for_registered_player(self):
         player = {"game_id": "NT-REGISTERED", "name": "Готовый"}
@@ -177,7 +242,7 @@ class VkRegistrationFullFlowTest(unittest.TestCase):
         temp_dir, storage, bot, sent = self._make_bot()
         self.addCleanup(temp_dir.cleanup)
 
-        for text in ["/start", "Начать", "Тестовый", "Подтвердить", "Муж.", "Да", "Человек", "Выбрать", "Да"]:
+        for text in ["/start", CONSENT_BUTTON, "Начать", "Тестовый", "Подтвердить", "Муж.", "Да", "Человек", "Выбрать", "Да"]:
             bot.handle_message("333", 1001, text)
 
         player = storage.get_player_by_platform(VK_PLATFORM, "333")
@@ -195,7 +260,7 @@ class VkRegistrationFullFlowTest(unittest.TestCase):
         temp_dir, _storage, bot, sent = self._make_bot()
         self.addCleanup(temp_dir.cleanup)
 
-        for text in ["/start", "Начать", "ИгрокНазад", "Подтвердить", "Жен.", "Да", "Эльф", "Назад"]:
+        for text in ["/start", CONSENT_BUTTON, "Начать", "ИгрокНазад", "Подтвердить", "Жен.", "Да", "Эльф", "Назад"]:
             bot.handle_message("444", 1002, text)
 
         session = bot.sessions.get(f"{VK_PLATFORM}:444")
@@ -208,7 +273,7 @@ class VkRegistrationFullFlowTest(unittest.TestCase):
         temp_dir, _storage, bot, sent = self._make_bot()
         self.addCleanup(temp_dir.cleanup)
 
-        for text in ["/start", "Начать", "ПервоеИмя", "Ввести заново"]:
+        for text in ["/start", CONSENT_BUTTON, "Начать", "ПервоеИмя", "Ввести заново"]:
             bot.handle_message("445", 1004, text)
 
         session = bot.sessions.get(f"{VK_PLATFORM}:445")
@@ -217,6 +282,32 @@ class VkRegistrationFullFlowTest(unittest.TestCase):
         self.assertIsNone(session.name)
         self.assertIsNone(session.pending_name)
         self.assertIn("Назовите своё имя", sent[-1][1])
+
+    def test_vk_first_contact_shows_consent_before_registration(self):
+        temp_dir, _storage, bot, sent = self._make_bot()
+        self.addCleanup(temp_dir.cleanup)
+
+        # Первый контакт через кнопку запуска VK «Начать» не должен сразу
+        # открывать регистрацию — сначала обязательно согласие.
+        bot.handle_message("446", 1005, "Начать")
+
+        session = bot.sessions.get(f"{VK_PLATFORM}:446")
+        self.assertIsNotNone(session)
+        self.assertEqual(session.state, STATE_CONSENT)
+        self.assertIn("ознакомьтесь", sent[-1][1].casefold())
+        self.assertNotIn("Назовите своё имя", sent[-1][1])
+
+    def test_vk_consent_button_opens_start_menu(self):
+        temp_dir, _storage, bot, sent = self._make_bot()
+        self.addCleanup(temp_dir.cleanup)
+
+        bot.handle_message("447", 1006, "Начать")
+        bot.handle_message("447", 1006, CONSENT_BUTTON)
+
+        session = bot.sessions.get(f"{VK_PLATFORM}:447")
+        self.assertIsNotNone(session)
+        self.assertEqual(session.state, STATE_START_MENU)
+        self.assertIn("Выберите действие", sent[-1][1])
 
 
 class FakeContextWithArgs(FakeContext):

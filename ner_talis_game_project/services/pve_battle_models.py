@@ -74,6 +74,8 @@ class PlayerBattleState:
     magic_defense: int
     accuracy: int
     dodge: int
+    crit_chance: int = 0
+    crit_damage: int = 100
     temporary_shields: list[Shield] = field(default_factory=list)
     active_effects: list[BattleEffect] = field(default_factory=list)
     cooldowns: dict[str, int] = field(default_factory=dict)
@@ -98,6 +100,8 @@ class EnemyBattleState:
     magic_defense: int
     accuracy: int
     dodge: int
+    crit_chance: int = 0
+    crit_damage: int = 100
     damage_split: DamageSplit = field(default_factory=DamageSplit)
     current_spirit: int = 0
     max_spirit: int = 0

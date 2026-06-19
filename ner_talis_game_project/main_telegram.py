@@ -91,16 +91,18 @@ def _import_telegram_runtime():
             "ner_talis_game_project/requirements.txt."
         ) from exc
 
-    from handlers.city import CITY_BUTTON_PATTERN, city_command, city_message
+    from handlers.city import CITY_BUTTON_PATTERN, city_command, city_message, unstuck_command
     from handlers.registration import (
         AWAITING_GENDER,
         AWAITING_NAME,
         AWAITING_RACE,
+        CONSENT_GATE,
         GENDER_CONFIRM,
         NAME_CONFIRM,
         RACE_CARD,
         RACE_CONFIRM,
         START_MENU,
+        accept_consent,
         begin_registration,
         cancel,
         connect_command,
@@ -130,6 +132,7 @@ def _import_telegram_runtime():
         "CITY_BUTTON_PATTERN": CITY_BUTTON_PATTERN,
         "city_command": city_command,
         "city_message": city_message,
+        "unstuck_command": unstuck_command,
         "AWAITING_GENDER": AWAITING_GENDER,
         "AWAITING_NAME": AWAITING_NAME,
         "AWAITING_RACE": AWAITING_RACE,
@@ -138,6 +141,8 @@ def _import_telegram_runtime():
         "RACE_CARD": RACE_CARD,
         "RACE_CONFIRM": RACE_CONFIRM,
         "START_MENU": START_MENU,
+        "CONSENT_GATE": CONSENT_GATE,
+        "accept_consent": accept_consent,
         "begin_registration": begin_registration,
         "cancel": cancel,
         "connect_command": connect_command,
@@ -197,10 +202,14 @@ def build_application():
     registration_conversation = ConversationHandler(
         entry_points=[
             CommandHandler("start", runtime["start_command"]),
+            MessageHandler(filters.Regex("^Я прочитал и согласен$"), runtime["accept_consent"]),
             MessageHandler(filters.Regex("^Кратко о мире$"), runtime["show_world_short"]),
             MessageHandler(filters.Regex("^Начать$"), runtime["begin_registration"]),
         ],
         states={
+            runtime["CONSENT_GATE"]: [
+                MessageHandler(filters.Regex("^Я прочитал и согласен$"), runtime["accept_consent"]),
+            ],
             runtime["START_MENU"]: [
                 MessageHandler(filters.Regex("^Кратко о мире$"), runtime["show_world_short"]),
                 MessageHandler(filters.Regex("^Начать$"), runtime["begin_registration"]),
@@ -234,6 +243,7 @@ def build_application():
             CommandHandler("site_profile", runtime["profile_site_command"]),
             CommandHandler("link", runtime["link_command"]),
             CommandHandler("connect", runtime["connect_command"]),
+            CommandHandler("unstuck", runtime["unstuck_command"]),
             CommandHandler("start", runtime["start_command"]),
         ],
         allow_reentry=True,
@@ -246,6 +256,7 @@ def build_application():
     application.add_handler(CommandHandler("link", runtime["link_command"]))
     application.add_handler(CommandHandler("connect", runtime["connect_command"]))
     application.add_handler(CommandHandler("city", runtime["city_command"]))
+    application.add_handler(CommandHandler("unstuck", runtime["unstuck_command"]))
     application.add_handler(MessageHandler(filters.Regex("^Профиль$"), runtime["profile_button"]))
     application.add_handler(MessageHandler(filters.Regex("^Профиль на сайте$"), runtime["profile_site_button"]))
     application.add_handler(MessageHandler(filters.Regex(runtime["CITY_BUTTON_PATTERN"]), runtime["city_message"]))

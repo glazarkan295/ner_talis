@@ -35,6 +35,26 @@ DEFAULT_CRAFTING_LEVELS = {
 }
 
 
+CONSENT_BUTTON = "Я прочитал и согласен"
+
+
+def _doc_link(env_name: str) -> str:
+    value = str(os.getenv(env_name, "") or "").strip()
+    return value or "ссылка будет добавлена позже"
+
+
+def consent_message() -> str:
+    """Сообщение-согласие перед регистрацией (со ссылками на документы)."""
+    return (
+        "Перед началом игры, пожалуйста, ознакомьтесь с:\n\n"
+        "📜 Политика конфиденциальности\n"
+        f"{_doc_link('LINK_PRIVACY_POLICY')}\n\n"
+        "🔒 Пользовательское соглашение\n"
+        f"{_doc_link('LINK_TERMS_OF_SERVICE')}\n\n"
+        "И подтвердите, если согласны с ними."
+    )
+
+
 def load_races(path: str | Path | None = None) -> dict[str, Any]:
     races_path = project_path("data", "races.json") if path is None else resolve_project_path(path)
     with races_path.open("r", encoding="utf-8") as file:

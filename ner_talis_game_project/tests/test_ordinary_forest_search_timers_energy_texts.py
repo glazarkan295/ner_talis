@@ -62,11 +62,10 @@ class OrdinaryForestSearchTimersEnergyTextsTest(unittest.TestCase):
         self.assertEqual(300, data.get("max_search_time_seconds"))
         self.assertEqual(600, data.get("zero_energy_search_time_seconds"))
         self.assertEqual("ordinary_forest_search_timing_v1", data.get("search_rules", {}).get("version"))
+        # Описание локации теперь атмосферное; правила поиска остаются в конфиге
+        # и показываются игроку при начале поиска.
         text = location_text("ordinary_forest")
-        self.assertIn("2 энергии", text)
-        self.assertIn("30 сек", text)
-        self.assertIn("5 минут", text)
-        self.assertIn("10 минут", text)
+        self.assertIn("Обыкновенный лес", text)
         self.assertNotIn("waterside", text.casefold())
 
     def test_full_energy_search_spends_two_energy_and_uses_thirty_second_timer(self):

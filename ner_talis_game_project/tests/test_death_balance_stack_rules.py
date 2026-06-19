@@ -46,7 +46,9 @@ class DeathBalanceStackRulesTest(unittest.TestCase):
         mult = 1.6
         expected_armor = math.ceil(5 * 2.6 * mult)
         expected_physical = math.ceil(expected_armor * 1.5 + 5 * 1.4 * mult)
-        expected_magic = math.ceil(5 * 0.8 * mult)
+        # Магзащита приведена к сопоставимой с физической базе (armor*1.5 + lvl*0.8);
+        # раньше была почти нулевой (lvl*0.8) и магия игнорировала мобов.
+        expected_magic = math.ceil(expected_armor * 1.5 + 5 * 0.8 * mult)
         self.assertEqual(enemy.armor, expected_armor)
         self.assertEqual(enemy.physical_defense, expected_physical)
         self.assertEqual(enemy.magic_defense, expected_magic)

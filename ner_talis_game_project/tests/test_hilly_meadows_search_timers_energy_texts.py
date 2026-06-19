@@ -60,10 +60,9 @@ class HillyMeadowsSearchTimersEnergyTextsTest(unittest.TestCase):
         self.assertEqual(30, data.get("base_search_time_seconds"))
         self.assertEqual(600, data.get("max_search_time_seconds"))
         self.assertEqual("hilly_meadows_search_timing_v1", data.get("search_rules", {}).get("version"))
-        self.assertIn("2 энергии", HILLY_MEADOWS_TEXT)
-        self.assertIn("30 сек", HILLY_MEADOWS_TEXT)
-        self.assertIn("5 минут", HILLY_MEADOWS_TEXT)
-        self.assertIn("10 минут", HILLY_MEADOWS_TEXT)
+        # Описание локации теперь атмосферное; правила поиска (стоимость/время)
+        # остаются в конфиге и показываются игроку в момент начала поиска.
+        self.assertIn("Холмистые луга", HILLY_MEADOWS_TEXT)
 
     def test_full_energy_search_spends_two_energy_and_uses_thirty_second_timer(self):
         storage, player = self.make_player_and_storage(energy=100)

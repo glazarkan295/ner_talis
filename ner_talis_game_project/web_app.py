@@ -179,8 +179,46 @@ def _security_headers_for(path: str) -> dict[str, str]:
     return headers
 
 
+_web_background_workers_started = False
+
+
+def _start_web_background_workers() -> None:
+    """Start the courier + player-effect workers inside the web process.
+
+    Courier parcels are CREATED by the website API and queued to a file, so the
+    delivery worker must run wherever that file is written — otherwise a
+    site-only deployment (or a site process separate from the bots) would charge
+    players for parcels that are never delivered. Both workers are safe to run in
+    several processes at once: the courier queue uses a lock-file claim and the
+    effect worker catches up by timestamps, so duplicate ticks do no harm.
+    """
+    global _web_background_workers_started
+    if _web_background_workers_started:
+        return
+    if not _truthy_env("WEB_START_BACKGROUND_WORKERS", "true"):
+        return
+    try:
+        from services.player_time_service import start_persistent_player_effect_worker
+        from services.courier_service import start_persistent_courier_worker
+
+        st = create_storage()
+        effect_interval = int(os.getenv("PLAYER_EFFECT_TICK_INTERVAL_SECONDS", "60") or 60)
+        courier_interval = int(os.getenv("COURIER_TICK_INTERVAL_SECONDS", "60") or 60)
+        start_persistent_player_effect_worker(st, interval_seconds=effect_interval)
+        start_persistent_courier_worker(st, interval_seconds=courier_interval)
+        _web_background_workers_started = True
+        logger.info("Started background workers in web process (effect=%ss, courier=%ss)", effect_interval, courier_interval)
+    except Exception:
+        logger.exception("Failed to start background workers in web process")
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Ner-Talis", version="0.4.2")
+
+    @app.on_event("startup")
+    def _on_startup() -> None:
+        _start_web_background_workers()
+
     app.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=_csv_env(

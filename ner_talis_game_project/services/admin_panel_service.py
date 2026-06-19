@@ -43,8 +43,13 @@ from services.promo_service import add_promo_code, delete_promo_code, list_promo
 
 ADMIN_PANEL_SCOPE = "admin_panel"
 ADMIN_PLAYER_VIEW_SCOPE = "admin_player_view"
+ADMIN_PLAYER_VIEW_TTL_MINUTES = 30
 DEFAULT_ADMIN_PANEL_TTL_MINUTES = 60
 MAX_REWARD_AMOUNT = 1_000_000_000
+# Денежные награды задаются в монетах разного номинала, но зачисляются в медь.
+# Ограничиваем итоговую медь, иначе высокий номинал (×500 млрд за древнюю) даёт
+# переполнение 64-битных денежных колонок SQLite/Postgres при доставке/промо.
+MAX_REWARD_MONEY_COPPER = 1_000_000_000_000_000  # 1e15 меди — с большим запасом до 2^63-1
 PUBLIC_UPLOADS_ASSETS_DIR = os.getenv("PUBLIC_UPLOADS_ASSETS_DIR", "data/public_uploads/assets")
 SYNTHETIC_REWARD_IDS = {
     "money_copper": {
@@ -241,6 +246,14 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _format_activity_date(value: Any) -> str:
+    """Дата последней активности игрока в формате дд.мм.гг (или «—»)."""
+    parsed = _parse_datetime(value)
+    if parsed is None:
+        return "—"
+    return parsed.strftime("%d.%m.%y")
+
+
 def _admin_panel_ttl_minutes() -> int:
     raw = os.getenv("ADMIN_PANEL_TTL_MINUTES", str(DEFAULT_ADMIN_PANEL_TTL_MINUTES)).strip()
     try:
@@ -381,8 +394,13 @@ def consume_or_read_admin_session(storage: Any, token: str) -> dict[str, Any] | 
         if not bool(session.get("used")):
             active_session = _activated_admin_session(session, raw_token)
             active_token = _new_storage_session_token(storage)
+            # Атомарный claim одноразовой ссылки: активную сессию создаёт только
+            # запрос, который РЕАЛЬНО удалил токен активации (delete вернул True).
+            # Иначе два параллельных запроса по одной ссылке активировали бы её
+            # дважды (две активные сессии).
+            if not storage.delete_admin_panel_session(raw_token):
+                return None
             storage.put_admin_panel_session(active_token, active_session)
-            storage.delete_admin_panel_session(raw_token)
             result = dict(active_session)
             result["token"] = active_token
             return result
@@ -593,6 +611,7 @@ def list_admin_players(storage: Any, *, query: str = "", limit: int = 200) -> li
             "name": player.get("name") or "без имени",
             "level": _safe_int(player.get("level"), 1),
             "public_id": player.get("public_id"),
+            "last_activity": _format_activity_date(player.get("last_activity_at")),
         })
     cards.sort(key=lambda item: (str(item.get("name") or "").casefold(), str(item.get("game_id") or "")))
     return cards[:max(1, min(int(limit), 1000))]
@@ -612,6 +631,7 @@ def admin_player_detail(storage: Any, game_id: str) -> dict[str, Any] | None:
         "free_stat_points": _safe_int(player.get("free_stat_points"), 0),
         "free_skill_points": _safe_int(player.get("free_skill_points"), 0),
         "location": player.get("location_id") or player.get("current_zone") or player.get("current_city"),
+        "last_activity": _format_activity_date(player.get("last_activity_at")),
     }
 
 
@@ -628,6 +648,10 @@ def _normalize_rewards(rewards: list[dict[str, Any]]) -> list[dict[str, Any]]:
             raise ValueError("Слишком большое количество в одной позиции награды.")
         if item_id in SYNTHETIC_REWARD_IDS:
             kind = SYNTHETIC_REWARD_IDS[item_id]["kind"]
+            if kind == "money":
+                per_unit = _safe_int(SYNTHETIC_REWARD_IDS[item_id].get("copper_per_unit"), 1) or 1
+                if amount * per_unit > MAX_REWARD_MONEY_COPPER:
+                    raise ValueError("Слишком большая сумма награды (превышает лимит в медном эквиваленте).")
         else:
             kind = "item"
             if get_item_definition_by_id(item_id) is None:
@@ -684,13 +708,21 @@ def deliver_rewards_to_player(storage: Any, *, target_game_id: str, rewards: lis
     backup_player(player, "before_admin_panel_delivery")
     lines = _apply_rewards_to_player(player, normalized, source="admin_panel_delivery")
     text = "Вы получили в дар от высших сил:\n" + "\n".join(f"• {line}" for line in lines)
-    player.setdefault("pending_bot_messages", []).append({
+    storage.update_player(player)
+    # Сообщение игроку — через атомарный outbox, чтобы пересохранение игрока
+    # ботом не затёрло его (lost update).
+    gift_message = {
         "type": "admin_gift",
         "text": text,
         "created_at": _now().isoformat(),
         "source": "admin_panel",
-    })
-    storage.update_player(player)
+    }
+    enqueue = getattr(storage, "enqueue_bot_messages", None)
+    if callable(enqueue):
+        enqueue(game_id, [gift_message])
+    else:  # запасной путь для хранилищ без атомарного outbox
+        player.setdefault("pending_bot_messages", []).append(gift_message)
+        storage.update_player(player)
     write_admin_audit(
         platform=str(admin_session.get("platform") or "admin_panel"),
         admin_user_id=str(admin_session.get("admin_user_id") or "unknown"),
@@ -821,7 +853,7 @@ def create_admin_player_view_token(storage: Any, *, target_game_id: str, admin_s
         "admin_key": str(admin_session.get("admin_key") or ""),
         "target_game_id": game_id,
         "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(minutes=30)).isoformat(),
+        "expires_at": (now + timedelta(minutes=ADMIN_PLAYER_VIEW_TTL_MINUTES)).isoformat(),
     }
     if _storage_supports_admin_sessions(storage):
         storage.cleanup_expired_admin_panel_sessions()
@@ -865,14 +897,50 @@ def get_admin_player_view_profile(storage: Any, token: str) -> dict[str, Any] | 
         if removed:
             _save_data(storage, data)
 
-    player = storage.get_player_by_game_id(str(session.get("target_game_id") or "")) if hasattr(storage, "get_player_by_game_id") else None
+    target_game_id = str(session.get("target_game_id") or "")
+    player = storage.get_player_by_game_id(target_game_id) if hasattr(storage, "get_player_by_game_id") else None
     if not player:
         return None
     from site_api import frontend_profile
     profile = frontend_profile(player)
-    profile["readOnly"] = True
+    # Админ заходит в чужой профиль с правом редактирования (как игрок) плюс
+    # отдельная кнопка «удалить из профиля игрока». Право даётся через обычный
+    # профильный веб-токен этого игрока — все существующие профильные эндпоинты
+    # работают без дублирования логики.
     profile["adminView"] = True
-    return {"profile": profile, "session": {"expires_at": session.get("expires_at"), "target_game_id": session.get("target_game_id")}}
+    profile["adminEdit"] = True
+    edit_token = ""
+    try:
+        from services.web_profile import ADMIN_PROFILE_EDIT_SCOPE
+        # Отдельный scope + короткий TTL (как окно просмотра): не разлогинивает
+        # игрока (его PROFILE-сессия не трогается) и не оставляет долгоживущего
+        # доступа после закрытия окна просмотра.
+        platform = str(session.get("platform") or "admin_panel")
+        if hasattr(storage, "create_web_session"):
+            edit_token = storage.create_web_session(
+                game_id=target_game_id,
+                scope=ADMIN_PROFILE_EDIT_SCOPE,
+                platform=platform,
+                lifetime_minutes=ADMIN_PLAYER_VIEW_TTL_MINUTES,
+            )
+    except Exception:
+        edit_token = ""
+    if edit_token:
+        try:
+            write_admin_audit(
+                platform=str(session.get("platform") or "admin_panel"),
+                admin_user_id=str(session.get("admin_user_id") or "unknown"),
+                command="admin_panel_edit_profile_session",
+                action="admin_panel_edit_profile_session",
+                details={"target_game_id": target_game_id},
+            )
+        except Exception:
+            pass
+    return {
+        "profile": profile,
+        "editToken": edit_token,
+        "session": {"expires_at": session.get("expires_at"), "target_game_id": session.get("target_game_id")},
+    }
 
 
 def _uploaded_image_format(blob: bytes) -> str | None:
