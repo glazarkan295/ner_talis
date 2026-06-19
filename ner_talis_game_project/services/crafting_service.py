@@ -20,6 +20,7 @@ from project_paths import resolve_project_path
 from services.derived_stats_service import safe_int
 from services.inventory_service import add_inventory_item, apply_generated_item_level_and_price, inventory_add_result_notice, remove_empty_stacks_and_recalculate
 from services.item_registry import build_inventory_item, get_item_definition_by_id, get_item_definition_by_name, registry_item_to_inventory_item
+from services.race_bonus_service import alchemy_ingredient_refund, crafting_extra_effect_triggered
 
 CHECK_TIMER = "Проверить таймер"
 PROFILE_BUTTON = "Профиль"
@@ -750,6 +751,43 @@ def _recipe_craft_seconds(recipe: dict[str, Any]) -> int:
 def _total_craft_seconds(recipe: dict[str, Any], quantity: int) -> int:
     return _recipe_craft_seconds(recipe) * max(1, safe_int(quantity, 1))
 
+def _apply_elf_alchemy_refund(
+    player: dict[str, Any],
+    recipe: dict[str, Any],
+    quantity: int,
+    workshop_id: str,
+) -> list[str]:
+    """Эльфийское «Чутьё зельевара»: вернуть часть алхимических ингредиентов."""
+    if workshop_id != "alchemy":
+        return []
+    ingredient_keys: list[tuple[str, int]] = []
+    names: dict[str, str] = {}
+    for ingredient in recipe.get("ingredients") or []:
+        if not isinstance(ingredient, dict):
+            continue
+        item_id = str(ingredient.get("item_id") or "").strip()
+        if not item_id:
+            continue  # обобщённые ингредиенты (по типу) не возвращаем
+        amount = max(1, safe_int(ingredient.get("amount"), 1))
+        ingredient_keys.append((item_id, amount))
+        names[item_id] = str(ingredient.get("name") or _item_name(item_id))
+    refunds = alchemy_ingredient_refund(player, ingredient_keys, quantity)
+    lines: list[str] = []
+    for item_id, amount in refunds.items():
+        if amount <= 0:
+            continue
+        name = names.get(item_id) or _item_name(item_id)
+        add_inventory_item(
+            player,
+            build_inventory_item(name, amount, item_id=item_id),
+            amount,
+            item_id=item_id,
+            default_source="Чутьё зельевара",
+        )
+        lines.append(f"🌿 Чутьё зельевара: сэкономлено {name} ×{amount}.")
+    return lines
+
+
 def _start_craft(storage: Any, player: dict[str, Any], quantity_text: str) -> CraftResponse:
     context = _active_context(player)
     recipe = recipe_by_id().get(str(context.get("selected_recipe_id") or ""))
@@ -765,6 +803,7 @@ def _start_craft(storage: Any, player: dict[str, Any], quantity_text: str) -> Cr
         return CraftResponse("Не хватает ресурсов для выбранного количества.", _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
     _consume_recipe_ingredients(player, recipe, quantity)
     workshop_id = str(recipe.get("workshop") or "smeltery")
+    refund_lines = _apply_elf_alchemy_refund(player, recipe, quantity, workshop_id)
     seconds = _total_craft_seconds(recipe, quantity)
     craft_payload = {"recipe_id": recipe.get("id"), "quantity": quantity, "workshop_id": workshop_id}
     if workshop_id == "alchemy":
@@ -795,6 +834,8 @@ def _start_craft(storage: Any, player: dict[str, Any], quantity_text: str) -> Cr
         f"Время: {format_duration(seconds)}\n\n"
         "Когда таймер закончится, придёт сообщение с результатом."
     )
+    if refund_lines:
+        text += "\n\n" + "\n".join(refund_lines)
     return CraftResponse(text, [[CHECK_TIMER], [CRAFT_DISTRICT]], WORKSHOP_BY_ID[workshop_id]["zone"], scheduled_timer=build_timer_schedule(player, timer))
 
 
@@ -908,7 +949,7 @@ def _roll_quality_variant(definition: dict[str, Any]) -> dict[str, Any] | None:
     return next((variant for variant in variants if str(variant.get("quality")) == wanted), variants[0])
 
 
-def _crafted_output_item(item_id: str, item_name: str, amount: int) -> dict[str, Any]:
+def _crafted_output_item(item_id: str, item_name: str, amount: int, *, bonus_effect: bool = False) -> dict[str, Any]:
     definition = get_item_definition_by_id(item_id)
     if not definition:
         return build_inventory_item(item_name, amount, item_id=item_id)
@@ -942,6 +983,9 @@ def _crafted_output_item(item_id: str, item_name: str, amount: int) -> dict[str,
         item["asset_icon"] = item["icon"]
     pool = [entry for entry in variant.get("effect_pool") or [] if isinstance(entry, dict)]
     count = max(1, safe_int(variant.get("effects_count"), 1))
+    # Дворф «Мастерская закалка»: +1 эффект, если в пуле есть запасной вариант.
+    if bonus_effect and len(pool) > count:
+        count += 1
     if len(pool) > count:
         pool = random.sample(pool, count)
     stat_modifiers: dict[str, int] = {}
@@ -999,14 +1043,21 @@ def complete_craft_timer(storage: Any, player: dict[str, Any], timer_id: str | N
         per_craft_amount = _roll_recipe_output_amount(recipe)
         amount = per_craft_amount * quantity
         definition = get_item_definition_by_id(str(item_id or "")) if item_id else None
+        craft_skill = str(WORKSHOP_BY_ID.get(workshop_id, {}).get("skill") or workshop_id)
         if isinstance(definition, dict) and definition.get("quality_variants") and amount > 1:
             result = None
             for _ in range(amount):
-                crafted_item = _crafted_output_item(str(item_id), str(item_name), 1)
+                crafted_item = _crafted_output_item(
+                    str(item_id), str(item_name), 1,
+                    bonus_effect=crafting_extra_effect_triggered(player, craft_skill),
+                )
                 apply_generated_item_level_and_price(player, crafted_item, "crafted")
                 result = add_inventory_item(player, crafted_item, 1, item_id=str(item_id), default_source="Ремесло")
         else:
-            crafted_item = _crafted_output_item(str(item_id), str(item_name), amount)
+            crafted_item = _crafted_output_item(
+                str(item_id), str(item_name), amount,
+                bonus_effect=crafting_extra_effect_triggered(player, craft_skill),
+            )
             apply_generated_item_level_and_price(player, crafted_item, "crafted")
             result = add_inventory_item(player, crafted_item, amount, item_id=str(item_id) if item_id else None, default_source="Ремесло")
         if workshop_id == "alchemy":

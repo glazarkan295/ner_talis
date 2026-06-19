@@ -10,17 +10,42 @@ if str(ROOT_DIR) not in sys.path:
 from services.pve_battle_models import DamageType, calculate_final_damage
 from services.pve_battle_service import calculate_player_derived_stats, player_attack_raw_damage
 from services.race_bonus_service import (
-    alchemy_quality_chance_bonus_percent,
+    DWARF_GEM_DROP_POOL,
+    alchemy_ingredient_refund,
     combat_hp_regen_percent,
-    crafting_quality_chance_bonus_percent,
+    crafting_extra_effect_triggered,
     effect_resistance_bonus_percent,
     extra_alchemy_ingredient_chance_percent,
     incoming_periodic_damage_multiplier,
     incoming_physical_damage_multiplier,
-    metal_material_cost_multiplier,
+    mining_gem_drop,
     npc_purchase_refund_amount,
     search_event_weights,
 )
+
+
+class _AlwaysHitRng:
+    """RNG stub: uniform() returns 0 (always under any positive %), randint min."""
+
+    def uniform(self, a, b):
+        return 0.0
+
+    def randint(self, a, b):
+        return a
+
+    def choice(self, seq):
+        return seq[0]
+
+
+class _NeverHitRng:
+    def uniform(self, a, b):
+        return 100.0
+
+    def randint(self, a, b):
+        return a
+
+    def choice(self, seq):
+        return seq[0]
 
 
 class RaceBonusRuntimeTests(unittest.TestCase):
@@ -58,8 +83,18 @@ class RaceBonusRuntimeTests(unittest.TestCase):
         self.assertEqual(elf_type, DamageType.MAGIC)
         self.assertEqual(human_type, DamageType.MAGIC)
         self.assertGreater(elf_damage, human_damage)
-        self.assertEqual(alchemy_quality_chance_bonus_percent(elf), 4)
         self.assertEqual(extra_alchemy_ingredient_chance_percent(elf), 3)
+
+        # Чутьё зельевара: возвращает часть ингредиентов (qty>=2 участвуют).
+        ingredients = [("water", 3), ("clover", 5), ("fat", 1)]
+        refund = alchemy_ingredient_refund(elf, ingredients, 1, rng=_AlwaysHitRng())
+        self.assertIn("water", refund)
+        self.assertIn("clover", refund)
+        self.assertNotIn("fat", refund)  # qty 1 не участвует
+        self.assertTrue(1 <= refund["water"] <= 2)
+        # Не-эльфы и никогда-срабатывающий rng ничего не возвращают.
+        self.assertEqual(alchemy_ingredient_refund(human, ingredients, 1, rng=_AlwaysHitRng()), {})
+        self.assertEqual(alchemy_ingredient_refund(elf, ingredients, 1, rng=_NeverHitRng()), {})
 
         base = [("alchemy_ingredient", 25), ("stone_or_ore", 17), ("berries", 20), ("trap", 10), ("glint", 8), ("battle", 20)]
         adjusted = dict(search_event_weights(elf, base))
@@ -69,10 +104,16 @@ class RaceBonusRuntimeTests(unittest.TestCase):
         dwarf = self.make_player("dwarf")
         human = self.make_player("human")
 
-        self.assertGreater(calculate_player_derived_stats(dwarf)["max_hp"], calculate_player_derived_stats(human)["max_hp"])
-        self.assertEqual(crafting_quality_chance_bonus_percent(dwarf, "weapon"), 4)
-        self.assertEqual(metal_material_cost_multiplier(dwarf, "armor"), 0.97)
-        self.assertEqual(crafting_quality_chance_bonus_percent(human, "weapon"), 0)
+        self.assertGreater(calculate_player_derived_stats(dwarf)["endurance"], calculate_player_derived_stats(human)["endurance"])
+        # Каменное чутьё: 4% шанс камня при добыче руды.
+        self.assertIn(mining_gem_drop(dwarf, _AlwaysHitRng()), DWARF_GEM_DROP_POOL)
+        self.assertIsNone(mining_gem_drop(dwarf, _NeverHitRng()))
+        self.assertIsNone(mining_gem_drop(human, _AlwaysHitRng()))
+        # Мастерская закалка: +1 эффект на оружии/броне (по навыку).
+        self.assertTrue(crafting_extra_effect_triggered(dwarf, "blacksmithing", _AlwaysHitRng()))
+        self.assertTrue(crafting_extra_effect_triggered(dwarf, "leatherworking", _AlwaysHitRng()))
+        self.assertFalse(crafting_extra_effect_triggered(dwarf, "alchemy", _AlwaysHitRng()))
+        self.assertFalse(crafting_extra_effect_triggered(human, "blacksmithing", _AlwaysHitRng()))
 
     def test_undead_bonuses_work(self):
         undead = self.make_player("undead")

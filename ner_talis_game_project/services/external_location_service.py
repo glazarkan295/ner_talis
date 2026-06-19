@@ -18,11 +18,11 @@ from typing import Any, Iterable
 
 from project_paths import resolve_project_path
 from services.derived_stats_service import calculate_energy_stats, ensure_player_resources
-from services.item_registry import build_inventory_item, get_item_definition_by_name, slugify_fallback_item_id
+from services.item_registry import build_inventory_item, get_item_definition_by_id, get_item_definition_by_name, slugify_fallback_item_id
 from services.inventory_service import add_inventory_item as add_inventory_stack, apply_generated_item_level_and_price, inventory_add_result_notice, remove_empty_stacks_and_recalculate
 from services.active_skill_service import normalize_starter_only_skills
 from services.pve_battle_service import BATTLE_ACTIONS, battle_buttons, create_location_battle, handle_battle_action
-from services.race_bonus_service import extra_alchemy_ingredient_chance_percent, search_event_weights
+from services.race_bonus_service import extra_alchemy_ingredient_chance_percent, mining_gem_drop, search_event_weights
 from services.fishing_service import grant_waterside_reward
 from services.small_plateau_service import (
     LOCATION_ID as SMALL_PLATEAU_ID,
@@ -1013,6 +1013,17 @@ def calculate_scaled_seconds(current_energy: int, max_energy: int, base: int, ma
     return min(positive_energy_maximum, max(base, scaled))
 
 
+def _maybe_grant_dwarf_gem(player: dict[str, Any], rng: random.Random) -> str:
+    """Дворф «Каменное чутьё»: 4% шанс камня при добыче руды/камня. Возвращает текст."""
+    gem_id = mining_gem_drop(player, rng)
+    if not gem_id:
+        return ""
+    definition = get_item_definition_by_id(gem_id)
+    gem_name = str((definition or {}).get("name") or (definition or {}).get("name_ru") or "Драгоценный камень")
+    add_item(player, gem_name, 1, item_id=gem_id, source="Каменное чутьё")
+    return f"\n\n💎 Каменное чутьё: среди породы блеснул камень — {gem_name} ×1!"
+
+
 def add_item(player: dict[str, Any], name: str, amount: int, *, item_id: str | None = None, max_stack: int = 999, source: str = "Холмистые луга"):
     if amount <= 0:
         return add_inventory_stack(player, name, 0)
@@ -1938,13 +1949,14 @@ def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng:
         add_result = add_item(player, result, amount, item_id=entry.get("item_id"))
         amount = add_result.added
         extra = inventory_add_result_notice(add_result, result)
+        gem_text = _maybe_grant_dwarf_gem(player, rng)
         player["active_event"] = None
         storage.update_player(player)
         if result == "Обычный камень":
             text = f"Это оказался самый обычный камень. Ничего ценного, но в хозяйстве может пригодиться. Получено: {result} ×{amount}.{extra}"
         else:
             text = f"При осмотре вы замечаете металлические прожилки. Это не простой камень, а небольшой кусок руды. Получено: {result} ×{amount}.{extra}"
-        return LocationResponse(text, location_buttons(location_id), location_id)
+        return LocationResponse(text + gem_text, location_buttons(location_id), location_id)
 
     
     if event_type == "berries" and action == COLLECT:
