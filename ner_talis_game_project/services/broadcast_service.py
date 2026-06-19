@@ -137,19 +137,27 @@ def broadcast_message(
 
     enqueue_bulk = getattr(storage, "enqueue_bot_messages_bulk", None)
     enqueue = getattr(storage, "enqueue_bot_messages", None)
-    if callable(enqueue_bulk):
-        # Один запрос на всю аудиторию (важно для «всех игроков» на больших базах).
-        delivered = enqueue_bulk(recipient_ids, [text])
-    elif callable(enqueue):
-        delivered = 0
+
+    def _enqueue_each() -> int:
+        if not callable(enqueue):
+            raise BroadcastError("Хранилище не поддерживает доставку сообщений.")
+        count = 0
         for game_id in recipient_ids:
             try:
                 if enqueue(game_id, [text]):
-                    delivered += 1
+                    count += 1
             except Exception:
                 continue
+        return count
+
+    if callable(enqueue_bulk):
+        # Один запрос на всю аудиторию (важно для «всех игроков» на больших базах).
+        try:
+            delivered = enqueue_bulk(recipient_ids, [text])
+        except Exception:
+            delivered = _enqueue_each()
     else:
-        raise BroadcastError("Хранилище не поддерживает доставку сообщений.")
+        delivered = _enqueue_each()
 
     return {
         "audience": audience,
