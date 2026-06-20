@@ -42,7 +42,7 @@
 - `broadcast_service.py` — админская рассылка «Общее сообщение»: выбор аудитории (пол / диапазоны уровней / все / конкретные игроки), AUDIENCE_LABELS, select_recipient_ids, broadcast_message → pending_bot_messages.
 - `admin_command_service.py` / `admin_access.py` / `admin_audit.py` — админ-команды в боте, доступ (is_configured_admin_user), аудит (write_admin_audit + V2: append_admin_audit_record / read_admin_audit_records с фильтрами).
 - `admin_rbac.py` — **RBAC админ-панели V2**: роли (owner/admin/support/moderator/content/economy/read_only), права (PERM_*), ROLE_PERMISSIONS, гибрид-резолюция (override в data/admin_roles.json → ENV-bootstrap owner → read_only), has_permission/require_permission, DANGEROUS_ACTIONS.
-- `admin_operation.py` — **единая изменяющая админ-операция V2** (ТЗ §22): record_admin_operation / run_admin_operation → структурная запись в аудит (admin/role/target/before/after/reason/status).
+- `admin_operation.py` — **единая изменяющая админ-операция V2** (ТЗ §22): record_admin_operation / run_admin_operation → структурная запись в аудит (admin/role/target/before/after/reason/status/dangerous). Мутации V1-панели (доставка→rewards.grant, промо create/delete, смена картинки→asset.image_change, edit-session, удаление игрока→player.delete, рассылка→broadcast.send) переведены на эти записи — единый журнал с ролью и опасным флагом. read_admin_audit_records отдаёт поле `dangerous`.
 - `admin_player_service.py` — поиск/сводка/удаление игроков, бэкап.
 - `web_profile.py` — генерация ссылок на сайт-профиль (create_profile_site_link), base URL.
 - `chat_log_service.py` — лог чата игрока + pending_bot_messages (pop_pending_bot_messages — доставка фоновых сообщений ботом).

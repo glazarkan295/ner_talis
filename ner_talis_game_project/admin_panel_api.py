@@ -24,7 +24,7 @@ from services.admin_panel_service import (
     update_item_image_from_base64,
 )
 from services.admin_player_service import delete_player_profile
-from services.admin_audit import write_admin_audit
+from services.admin_operation import record_admin_operation
 
 
 class AdminSessionRequest(BaseModel):
@@ -179,12 +179,16 @@ def create_admin_panel_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=400, detail="Для удаления нужно подтверждение CONFIRM_DELETE.")
         ok, message, player = delete_player_profile(storage, game_id)
         if ok:
-            write_admin_audit(
-                platform=str(session.get("platform") or "admin_panel"),
-                admin_user_id=str(session.get("admin_user_id") or "unknown"),
-                command="admin_panel_delete_player",
-                action="admin_panel_delete_player",
-                details={"game_id": game_id, "deleted_player_name": (player or {}).get("name") if isinstance(player, dict) else None},
+            deleted_name = (player or {}).get("name") if isinstance(player, dict) else None
+            record_admin_operation(
+                session=session,
+                action="player.delete",
+                target_type="player",
+                target_id=game_id,
+                target_name=str(deleted_name or ""),
+                before={"name": deleted_name, "level": (player or {}).get("level") if isinstance(player, dict) else None},
+                after={"deleted": True},
+                details={"game_id": game_id},
             )
             return {"ok": True, "message": message}
         raise HTTPException(status_code=400, detail=message)
@@ -259,11 +263,12 @@ def create_admin_panel_router(get_storage) -> APIRouter:
             )
         except BroadcastError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        write_admin_audit(
-            platform=str(session.get("platform") or "admin_panel"),
-            admin_user_id=str(session.get("admin_user_id") or "unknown"),
-            command="admin_panel_broadcast",
-            action="admin_panel_broadcast",
+        record_admin_operation(
+            session=session,
+            action="broadcast.send",
+            target_type="broadcast",
+            target_id=str(result.get("audience") or payload.audience),
+            target_name=str(result.get("audienceLabel") or result.get("audience") or payload.audience),
             details={
                 "audience": result.get("audience"),
                 "recipients": result.get("recipients"),

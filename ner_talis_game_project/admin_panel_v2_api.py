@@ -406,20 +406,16 @@ def create_admin_panel_v2_router(get_storage) -> APIRouter:
         if card is None:
             raise HTTPException(status_code=404, detail="Игрок не найден.")
         rewards = [r.model_dump() for r in payload.rewards]
+        # deliver_rewards_to_player сам пишет структурную операцию rewards.grant
+        # (с ролью/причиной/до-после), поэтому здесь обёртка не нужна — иначе
+        # одна выдача попала бы в аудит дважды.
         try:
-            result = run_admin_operation(
-                session=session,
-                action="rewards.grant",
-                func=lambda: deliver_rewards_to_player(
-                    storage, target_game_id=game_id, rewards=rewards, admin_session=session
-                ),
-                target_type="player",
-                target_id=game_id,
-                target_name=card.get("name"),
-                before=_player_snapshot(card),
-                after_func=lambda _r: _player_snapshot(admin_player_detail(storage, game_id)),
+            result = deliver_rewards_to_player(
+                storage,
+                target_game_id=game_id,
+                rewards=rewards,
+                admin_session=session,
                 reason=payload.reason,
-                details={"rewards": rewards},
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -68,6 +68,8 @@ def _normalize_audit_record(raw: dict[str, Any]) -> dict[str, Any]:
         "before": raw.get("before"),
         "after": raw.get("after"),
         "session_id": raw.get("session_id") or "",
+        # V2 records carry a precomputed "dangerous" flag; legacy records don't.
+        "dangerous": bool(raw.get("dangerous")),
         "details": details,
     }
 

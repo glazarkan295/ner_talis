@@ -278,5 +278,53 @@ class AdminPanelV2Test(unittest.TestCase):
         )
 
 
+    # ---- V1 panel mutations now flow through the structured audit --------
+
+    def test_v1_panel_mutations_emit_structured_operation_records(self):
+        from services.admin_audit import read_admin_audit_records
+        from services.admin_panel_service import (
+            create_admin_promo,
+            delete_admin_promo,
+            deliver_rewards_to_player,
+        )
+
+        # A V1 admin session is just a dict with platform + admin_user_id.
+        sess = {"platform": "telegram", "admin_user_id": "999"}
+        gid = self._make_player(name="Аудитов")
+
+        deliver_rewards_to_player(
+            self.storage,
+            target_game_id=gid,
+            rewards=[{"item_id": "money_copper", "amount": 50}],
+            admin_session=sess,
+            reason="компенсация",
+        )
+        create_admin_promo(
+            self.storage, code="AUD10", uses_left=3, duration="never",
+            rewards=[{"item_id": "money_copper", "amount": 10}], admin_session=sess,
+        )
+        delete_admin_promo(self.storage, code="AUD10", admin_session=sess)
+
+        grant = read_admin_audit_records(action="rewards.grant")
+        self.assertTrue(grant)
+        self.assertEqual(grant[0]["admin_role"], rbac.OWNER)
+        self.assertEqual(grant[0]["reason"], "компенсация")
+        self.assertEqual(grant[0]["target_id"], gid)
+
+        self.assertTrue(read_admin_audit_records(action="promo.create"))
+
+        deleted = read_admin_audit_records(
+            action="promo.delete", dangerous_actions=rbac.DANGEROUS_ACTIONS
+        )
+        self.assertTrue(deleted)
+        self.assertTrue(deleted[0]["dangerous"])
+
+        # And they show up in the "dangerous only" view used by the audit page.
+        dangerous = read_admin_audit_records(
+            dangerous_only=True, dangerous_actions=rbac.DANGEROUS_ACTIONS
+        )
+        self.assertIn("promo.delete", {r["action"] for r in dangerous})
+
+
 if __name__ == "__main__":
     unittest.main()

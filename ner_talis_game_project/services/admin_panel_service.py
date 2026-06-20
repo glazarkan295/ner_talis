@@ -23,7 +23,7 @@ from typing import Any
 from PIL import Image, UnidentifiedImageError
 
 from project_paths import resolve_project_path
-from services.admin_audit import write_admin_audit
+from services.admin_operation import record_admin_operation
 from services.admin_player_service import (
     backup_player,
     delete_player_profile,
@@ -705,13 +705,17 @@ def _apply_rewards_to_player(player: dict[str, Any], rewards: list[dict[str, Any
     return lines
 
 
-def deliver_rewards_to_player(storage: Any, *, target_game_id: str, rewards: list[dict[str, Any]], admin_session: dict[str, Any]) -> dict[str, Any]:
+def deliver_rewards_to_player(storage: Any, *, target_game_id: str, rewards: list[dict[str, Any]], admin_session: dict[str, Any], reason: str = "") -> dict[str, Any]:
     normalized = _normalize_rewards(rewards)
     game_id = normalize_game_id(target_game_id)
     player = storage.get_player_by_game_id(game_id) if hasattr(storage, "get_player_by_game_id") else None
     if not player:
         raise ValueError(f"Игрок {game_id} не найден.")
     backup_player(player, "before_admin_panel_delivery")
+    before = {
+        "level": _safe_int(player.get("level"), 1),
+        "money": _safe_int(player.get("money_copper", player.get("money", 0)), 0),
+    }
     lines = _apply_rewards_to_player(player, normalized, source="admin_panel_delivery")
     text = "Вы получили в дар от высших сил:\n" + "\n".join(f"• {line}" for line in lines)
     storage.update_player(player)
@@ -729,12 +733,19 @@ def deliver_rewards_to_player(storage: Any, *, target_game_id: str, rewards: lis
     else:  # запасной путь для хранилищ без атомарного outbox
         player.setdefault("pending_bot_messages", []).append(gift_message)
         storage.update_player(player)
-    write_admin_audit(
-        platform=str(admin_session.get("platform") or "admin_panel"),
-        admin_user_id=str(admin_session.get("admin_user_id") or "unknown"),
-        command="admin_panel_delivery",
-        action="admin_panel_delivery",
-        details={"target_game_id": game_id, "rewards": normalized},
+    record_admin_operation(
+        session=admin_session,
+        action="rewards.grant",
+        target_type="player",
+        target_id=game_id,
+        target_name=str(player.get("name") or ""),
+        before=before,
+        after={
+            "level": _safe_int(player.get("level"), 1),
+            "money": _safe_int(player.get("money_copper", player.get("money", 0)), 0),
+        },
+        reason=reason,
+        details={"rewards": normalized},
     )
     return {"ok": True, "target_game_id": game_id, "delivered": lines, "playerMessageQueued": True}
 
@@ -796,12 +807,14 @@ def create_admin_promo(storage: Any, *, code: str, uses_left: int, duration: str
     reward_payload = rewards_to_promo_payload(rewards)
     expires_at = duration_to_expires_at(duration)
     promo = add_promo_code(code=code, uses_left=int(uses_left), reward=reward_payload, expires_at=expires_at, storage=storage)
-    write_admin_audit(
-        platform=str(admin_session.get("platform") or "admin_panel"),
-        admin_user_id=str(admin_session.get("admin_user_id") or "unknown"),
-        command="admin_panel_promo_create",
-        action="admin_panel_promo_create",
-        details={"code": promo.get("code"), "uses_left": uses_left, "expires_at": expires_at, "reward": reward_payload},
+    record_admin_operation(
+        session=admin_session,
+        action="promo.create",
+        target_type="promo",
+        target_id=str(promo.get("code") or code),
+        target_name=str(promo.get("code") or code),
+        after={"uses_left": uses_left, "expires_at": expires_at, "reward": reward_payload},
+        details={"uses_left": uses_left, "expires_at": expires_at, "reward": reward_payload},
     )
     return promo
 
@@ -811,12 +824,14 @@ def create_admin_promo(storage: Any, *, code: str, uses_left: int, duration: str
 def delete_admin_promo(storage: Any, *, code: str, admin_session: dict[str, Any]) -> bool:
     ok = delete_promo_code(code, storage=storage)
     if ok:
-        write_admin_audit(
-            platform=str(admin_session.get("platform") or "admin_panel"),
-            admin_user_id=str(admin_session.get("admin_user_id") or "unknown"),
-            command="admin_panel_promo_delete",
-            action="admin_panel_promo_delete",
-            details={"code": str(code or "")},
+        record_admin_operation(
+            session=admin_session,
+            action="promo.delete",
+            target_type="promo",
+            target_id=str(code or ""),
+            target_name=str(code or ""),
+            before={"code": str(code or "")},
+            after={"deleted": True},
         )
     return ok
 
@@ -933,11 +948,12 @@ def get_admin_player_view_profile(storage: Any, token: str) -> dict[str, Any] | 
         edit_token = ""
     if edit_token:
         try:
-            write_admin_audit(
-                platform=str(session.get("platform") or "admin_panel"),
-                admin_user_id=str(session.get("admin_user_id") or "unknown"),
-                command="admin_panel_edit_profile_session",
-                action="admin_panel_edit_profile_session",
+            record_admin_operation(
+                session=session,
+                action="player.edit_session",
+                target_type="player",
+                target_id=target_game_id,
+                target_name=str(player.get("name") or ""),
                 details={"target_game_id": target_game_id},
             )
         except Exception:
@@ -1040,12 +1056,14 @@ def update_item_image_from_base64(storage: Any, *, item_id: str, filename: str, 
                 player_changes += 1
         if player_changes:
             storage.save(data)
-    write_admin_audit(
-        platform=str(admin_session.get("platform") or "admin_panel"),
-        admin_user_id=str(admin_session.get("admin_user_id") or "unknown"),
-        command="admin_panel_change_item_image",
-        action="admin_panel_change_item_image",
-        details={"item_id": cleaned_item_id, "asset_path": rel_public, "persisted": "icon_overrides"},
+    record_admin_operation(
+        session=admin_session,
+        action="asset.image_change",
+        target_type="item",
+        target_id=cleaned_item_id,
+        target_name=cleaned_item_id,
+        after={"asset_path": rel_public},
+        details={"asset_path": rel_public, "persisted": "icon_overrides"},
     )
     return {"ok": True, "item_id": cleaned_item_id, "asset_path": rel_public, "content_type": normalized_content_type, "changed_files": []}
 
