@@ -155,6 +155,17 @@ class EntityStore:
             self._save(store)
             return dict(envelope)
 
+    def delete(self, entity_id: str) -> bool:
+        """Физически удалить сущность из хранилища (для hard-delete)."""
+        entity_id = str(entity_id)
+        with self._lock, self._file_lock():
+            store = self._load()
+            if entity_id not in store:
+                return False
+            store.pop(entity_id, None)
+            self._save(store)
+            return True
+
     def set_status(self, entity_id: str, status: str, *, actor: str = "", force: bool = False) -> dict[str, Any]:
         if status not in self.statuses:
             raise EntityError(f"Неизвестный статус: {status}.")

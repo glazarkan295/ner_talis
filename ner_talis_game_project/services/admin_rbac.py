@@ -144,6 +144,25 @@ PERM_MESSAGES_CANCEL = "messages.cancel"
 PERM_MESSAGES_VIEW_ERRORS = "messages.view_errors"
 PERM_MESSAGES_MANAGE_DISPATCHER = "messages.manage_dispatcher"
 PERM_MESSAGES_AUDIT = "messages.audit"
+# Конструктор предметов
+PERM_ITEM_VIEW = "item.view"
+PERM_ITEM_CREATE = "item.create"
+PERM_ITEM_EDIT = "item.edit"
+PERM_ITEM_EDIT_PUBLISHED = "item.edit_published"
+PERM_ITEM_VALIDATE = "item.validate"
+PERM_ITEM_PUBLISH = "item.publish"
+PERM_ITEM_DISABLE = "item.disable"
+PERM_ITEM_ARCHIVE = "item.archive"
+PERM_ITEM_DELETE_SOFT = "item.delete_soft"
+PERM_ITEM_DELETE_HARD = "item.delete_hard"
+PERM_ITEM_RESTORE = "item.restore"
+PERM_ITEM_CHANGE_IMAGE = "item.change_image"
+PERM_ITEM_CHANGE_PRICE = "item.change_price"
+PERM_ITEM_CHANGE_EFFECTS = "item.change_effects"
+PERM_ITEM_MASS_EDIT = "item.mass_edit"
+PERM_ITEM_VIEW_TECHNICAL = "item.view_technical"
+PERM_ITEM_VIEW_USAGE = "item.view_usage"
+PERM_ITEM_AUDIT = "item.audit"
 
 ALL_PERMISSIONS = (
     PERM_PLAYERS_VIEW, PERM_CATALOG_VIEW, PERM_ECONOMY_VIEW, PERM_PROMOS_VIEW,
@@ -175,6 +194,12 @@ ALL_PERMISSIONS = (
     PERM_MESSAGES_SEND_DIRECT, PERM_MESSAGES_SEND_BROADCAST,
     PERM_MESSAGES_RETRY, PERM_MESSAGES_CANCEL, PERM_MESSAGES_VIEW_ERRORS,
     PERM_MESSAGES_MANAGE_DISPATCHER, PERM_MESSAGES_AUDIT,
+    PERM_ITEM_VIEW, PERM_ITEM_CREATE, PERM_ITEM_EDIT, PERM_ITEM_EDIT_PUBLISHED,
+    PERM_ITEM_VALIDATE, PERM_ITEM_PUBLISH, PERM_ITEM_DISABLE, PERM_ITEM_ARCHIVE,
+    PERM_ITEM_DELETE_SOFT, PERM_ITEM_DELETE_HARD, PERM_ITEM_RESTORE,
+    PERM_ITEM_CHANGE_IMAGE, PERM_ITEM_CHANGE_PRICE, PERM_ITEM_CHANGE_EFFECTS,
+    PERM_ITEM_MASS_EDIT, PERM_ITEM_VIEW_TECHNICAL, PERM_ITEM_VIEW_USAGE,
+    PERM_ITEM_AUDIT,
 )
 
 # Опасные действия — требуют двойного подтверждения на фронте и помечаются в
@@ -205,6 +230,14 @@ DANGEROUS_ACTIONS = frozenset({
     "achievement.archive",
     "achievement.grant_manual",
     "achievement.revoke_manual",
+    "item.publish",
+    "item.disable",
+    "item.archive",
+    "item.delete_soft",
+    "item.delete_hard",
+    "item.restore",
+    "item.change_image",
+    "item.mass_edit",
 })
 
 # owner → все права (sentinel). Остальные роли — явные множества.
@@ -218,6 +251,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_ACHIEVEMENT_VIEW, PERM_ACHIEVEMENT_VIEW_PLAYER_PROGRESS,
         PERM_MESSAGES_VIEW_QUEUE, PERM_MESSAGES_VIEW_PLAYER,
         PERM_MESSAGES_SEND_DIRECT, PERM_MESSAGES_RETRY,
+        PERM_ITEM_VIEW,
     },
     MODERATOR: {
         PERM_PLAYERS_VIEW, PERM_MODERATION_VIEW,
@@ -225,6 +259,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_GUILD_VIEW, PERM_GUILD_MANAGE_MEMBERS,
         PERM_ACHIEVEMENT_VIEW,
         PERM_MESSAGES_VIEW_PLAYER,
+        PERM_ITEM_VIEW,
     },
     # content создаёт и правит ЧЕРНОВИКИ мира/событий/гильдий/достижений, но не
     # публикует и не запускает (publish/start/disband → admin/owner).
@@ -238,6 +273,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_ACHIEVEMENT_VIEW, PERM_ACHIEVEMENT_CREATE, PERM_ACHIEVEMENT_EDIT,
         PERM_ACHIEVEMENT_VALIDATE, PERM_ACHIEVEMENT_VIEW_HIDDEN,
         PERM_ACHIEVEMENT_MANAGE_CATEGORIES, PERM_ACHIEVEMENT_MANAGE_REWARDS,
+        PERM_ITEM_VIEW, PERM_ITEM_CREATE, PERM_ITEM_EDIT, PERM_ITEM_VALIDATE,
+        PERM_ITEM_CHANGE_IMAGE, PERM_ITEM_CHANGE_PRICE, PERM_ITEM_CHANGE_EFFECTS,
+        PERM_ITEM_VIEW_TECHNICAL, PERM_ITEM_VIEW_USAGE,
     },
     # economy подтверждает события с крупными наградами/множителями экономики.
     ECONOMY: {
@@ -245,6 +283,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_PROMOS_VIEW, PERM_AUDIT_VIEW,
         PERM_WORLD_EVENT_VIEW, PERM_WORLD_EVENT_REWARD, PERM_GUILD_VIEW,
         PERM_ACHIEVEMENT_VIEW,
+        PERM_ITEM_VIEW, PERM_ITEM_CHANGE_PRICE, PERM_ITEM_VIEW_USAGE,
     },
     READ_ONLY: {
         PERM_PLAYERS_VIEW, PERM_CATALOG_VIEW, PERM_ECONOMY_VIEW,
@@ -252,6 +291,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_SYSTEM_VIEW, PERM_BACKUP_VIEW,
         PERM_WORLD_VIEW, PERM_GUILD_VIEW, PERM_WORLD_EVENT_VIEW,
         PERM_ACHIEVEMENT_VIEW, PERM_MESSAGES_VIEW_QUEUE,
+        PERM_ITEM_VIEW, PERM_ITEM_VIEW_USAGE,
     },
 }
 

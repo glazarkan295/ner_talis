@@ -70,3 +70,8 @@ data/achievement_categories.json.tmp
 data/bot_message_queue.json
 data/bot_message_queue.json.lock
 data/bot_message_queue.json.tmp
+
+# Runtime item constructor store
+data/item_constructor.json
+data/item_constructor.json.lock
+data/item_constructor.json.tmp
