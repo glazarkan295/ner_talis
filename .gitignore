@@ -75,3 +75,8 @@ data/bot_message_queue.json.tmp
 data/item_constructor.json
 data/item_constructor.json.lock
 data/item_constructor.json.tmp
+
+# Runtime effect constructor store
+data/effect_constructor.json
+data/effect_constructor.json.lock
+data/effect_constructor.json.tmp

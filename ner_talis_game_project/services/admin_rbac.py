@@ -163,6 +163,16 @@ PERM_ITEM_MASS_EDIT = "item.mass_edit"
 PERM_ITEM_VIEW_TECHNICAL = "item.view_technical"
 PERM_ITEM_VIEW_USAGE = "item.view_usage"
 PERM_ITEM_AUDIT = "item.audit"
+# Конструктор эффектов / зон / проклятий
+PERM_EFFECT_VIEW = "effect.view"
+PERM_EFFECT_CREATE = "effect.create"
+PERM_EFFECT_EDIT = "effect.edit"
+PERM_EFFECT_VALIDATE = "effect.validate"
+PERM_EFFECT_PUBLISH = "effect.publish"
+PERM_EFFECT_DISABLE = "effect.disable"
+PERM_EFFECT_ARCHIVE = "effect.archive"
+PERM_EFFECT_DELETE = "effect.delete"
+PERM_EFFECT_AUDIT = "effect.audit"
 
 ALL_PERMISSIONS = (
     PERM_PLAYERS_VIEW, PERM_CATALOG_VIEW, PERM_ECONOMY_VIEW, PERM_PROMOS_VIEW,
@@ -200,6 +210,9 @@ ALL_PERMISSIONS = (
     PERM_ITEM_CHANGE_IMAGE, PERM_ITEM_CHANGE_PRICE, PERM_ITEM_CHANGE_EFFECTS,
     PERM_ITEM_MASS_EDIT, PERM_ITEM_VIEW_TECHNICAL, PERM_ITEM_VIEW_USAGE,
     PERM_ITEM_AUDIT,
+    PERM_EFFECT_VIEW, PERM_EFFECT_CREATE, PERM_EFFECT_EDIT, PERM_EFFECT_VALIDATE,
+    PERM_EFFECT_PUBLISH, PERM_EFFECT_DISABLE, PERM_EFFECT_ARCHIVE,
+    PERM_EFFECT_DELETE, PERM_EFFECT_AUDIT,
 )
 
 # Опасные действия — требуют двойного подтверждения на фронте и помечаются в
@@ -238,6 +251,10 @@ DANGEROUS_ACTIONS = frozenset({
     "item.restore",
     "item.change_image",
     "item.mass_edit",
+    "effect.publish",
+    "effect.disable",
+    "effect.archive",
+    "effect.delete",
 })
 
 # owner → все права (sentinel). Остальные роли — явные множества.
@@ -251,7 +268,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_ACHIEVEMENT_VIEW, PERM_ACHIEVEMENT_VIEW_PLAYER_PROGRESS,
         PERM_MESSAGES_VIEW_QUEUE, PERM_MESSAGES_VIEW_PLAYER,
         PERM_MESSAGES_SEND_DIRECT, PERM_MESSAGES_RETRY,
-        PERM_ITEM_VIEW,
+        PERM_ITEM_VIEW, PERM_EFFECT_VIEW,
     },
     MODERATOR: {
         PERM_PLAYERS_VIEW, PERM_MODERATION_VIEW,
@@ -259,7 +276,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_GUILD_VIEW, PERM_GUILD_MANAGE_MEMBERS,
         PERM_ACHIEVEMENT_VIEW,
         PERM_MESSAGES_VIEW_PLAYER,
-        PERM_ITEM_VIEW,
+        PERM_ITEM_VIEW, PERM_EFFECT_VIEW,
     },
     # content создаёт и правит ЧЕРНОВИКИ мира/событий/гильдий/достижений, но не
     # публикует и не запускает (publish/start/disband → admin/owner).
@@ -276,6 +293,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_ITEM_VIEW, PERM_ITEM_CREATE, PERM_ITEM_EDIT, PERM_ITEM_VALIDATE,
         PERM_ITEM_CHANGE_IMAGE, PERM_ITEM_CHANGE_PRICE, PERM_ITEM_CHANGE_EFFECTS,
         PERM_ITEM_VIEW_TECHNICAL, PERM_ITEM_VIEW_USAGE,
+        PERM_EFFECT_VIEW, PERM_EFFECT_CREATE, PERM_EFFECT_EDIT, PERM_EFFECT_VALIDATE,
     },
     # economy подтверждает события с крупными наградами/множителями экономики.
     ECONOMY: {
@@ -284,6 +302,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_WORLD_EVENT_VIEW, PERM_WORLD_EVENT_REWARD, PERM_GUILD_VIEW,
         PERM_ACHIEVEMENT_VIEW,
         PERM_ITEM_VIEW, PERM_ITEM_CHANGE_PRICE, PERM_ITEM_VIEW_USAGE,
+        PERM_EFFECT_VIEW,
     },
     READ_ONLY: {
         PERM_PLAYERS_VIEW, PERM_CATALOG_VIEW, PERM_ECONOMY_VIEW,
@@ -291,7 +310,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_SYSTEM_VIEW, PERM_BACKUP_VIEW,
         PERM_WORLD_VIEW, PERM_GUILD_VIEW, PERM_WORLD_EVENT_VIEW,
         PERM_ACHIEVEMENT_VIEW, PERM_MESSAGES_VIEW_QUEUE,
-        PERM_ITEM_VIEW, PERM_ITEM_VIEW_USAGE,
+        PERM_ITEM_VIEW, PERM_ITEM_VIEW_USAGE, PERM_EFFECT_VIEW,
     },
 }
 
