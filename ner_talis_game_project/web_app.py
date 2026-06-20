@@ -28,6 +28,7 @@ from project_paths import resolve_project_path
 from services.web_profile import PAVILION_SCOPE, PROFILE_SCOPE
 from admin_panel_api import create_admin_panel_router
 from admin_panel_v2_api import create_admin_panel_v2_router
+from admin_world_api import create_admin_world_router
 from site_api import (
     create_profile_api_router,
     frontend_profile,
@@ -307,6 +308,7 @@ def create_app() -> FastAPI:
     app.include_router(create_profile_api_router(storage))
     app.include_router(create_admin_panel_router(storage))
     app.include_router(create_admin_panel_v2_router(storage))
+    app.include_router(create_admin_world_router(storage))
 
     @app.get("/assets/admin_uploads/{asset_path:path}", include_in_schema=False)
     async def runtime_uploaded_asset(asset_path: str):

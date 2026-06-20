@@ -44,3 +44,8 @@ data/courier_transfers.json.tmp
 
 # Runtime admin backups (created by reset/delivery)
 data/admin_backups/
+
+# Runtime world-constructor registry (admin-created content)
+data/world_content.json
+data/world_content.json.lock
+data/world_content.json.tmp

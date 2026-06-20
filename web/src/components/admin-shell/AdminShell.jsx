@@ -3,6 +3,7 @@ import "./AdminShell.css";
 import { fetchMe, getAdminSessionToken } from "../../api/adminV2Api.js";
 import { OverviewSection } from "./sections/OverviewSection.jsx";
 import { PlayersSection } from "./sections/PlayersSection.jsx";
+import { WorldSection } from "./sections/WorldSection.jsx";
 import { AuditSection } from "./sections/AuditSection.jsx";
 import { RolesSection } from "./sections/RolesSection.jsx";
 import { SessionsSection } from "./sections/SessionsSection.jsx";
@@ -12,6 +13,7 @@ import { SessionsSection } from "./sections/SessionsSection.jsx";
 const NAV = [
   { id: "overview", label: "Обзор", icon: "🏠", perm: null },
   { id: "players", label: "Игроки", icon: "👤", perm: "players.view" },
+  { id: "world", label: "Конструктор мира", icon: "🌍", perm: "world.view" },
   { id: "audit", label: "Аудит", icon: "📜", perm: "audit.view" },
   { id: "sessions", label: "Сессии", icon: "🔑", perm: "system.view" },
   { id: "roles", label: "Роли и доступ", icon: "🛡️", perm: "roles.manage" },
@@ -104,6 +106,7 @@ export function AdminShell() {
 
         {active === "overview" && <OverviewSection me={me} />}
         {active === "players" && hasPerm("players.view") && <PlayersSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "world" && hasPerm("world.view") && <WorldSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "audit" && hasPerm("audit.view") && <AuditSection guarded={guarded} />}
         {active === "sessions" && hasPerm("system.view") && (
           <SessionsSection guarded={guarded} canRevoke={hasPerm("system.manage")} />
