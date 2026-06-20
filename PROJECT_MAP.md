@@ -13,7 +13,7 @@
 - `ner_talis_game_project/web_app.py` — FastAPI-приложение сайта (профиль + админка).
 - `ner_talis_game_project/site_api.py` — API профиля игрока (frontend_profile, эндпоинты инвентаря/навыков/характеристик/использования предметов/edit-field).
 - `ner_talis_game_project/admin_panel_api.py` — API админ-панели V1 (роуты /api/admin/...).
-- `ner_talis_game_project/admin_panel_v2_api.py` — API админ-панели **V2** (/api/admin/v2/...): RBAC-aware, аудируемые. P0: /me (роль+права), /audit (вьювер с фильтрами, право audit.view), /roles (owner-only, через admin_operation). Подключён в web_app параллельно V1.
+- `ner_talis_game_project/admin_panel_v2_api.py` — API админ-панели **V2** (/api/admin/v2/...): RBAC-aware, аудируемые. P0: /me (роль+права), /audit (вьювер с фильтрами, право audit.view), /roles (owner-only, через admin_operation), /sessions + /sessions/revoke (список/отзыв активных сессий, токены маскируются sha256-id; права system.view/system.manage). Подключён в web_app параллельно V1. Вход: команда `/admin_panel_v2` (build_admin_panel_v2_url) + роут GET /admin_panel_v2 (тот же Vite-бандл, тот же scope активации, что и V1).
 - `ner_talis_game_project/project_paths.py` — resolve_project_path / project_path (доступ к data/ и ресурсам).
 
 ## services/ (ядро логики)
@@ -65,7 +65,9 @@
 ## web/src (React SPA, Vite)
 - `App.jsx` — роутинг: профиль игрока / админ-просмотр профиля / админ-панель; прокидывает onEditProfileField и др.
 - `api/profileApi.js` — вызовы API профиля (useItem/sellItem/editProfileField/...).
-- `api/adminApi.js` — вызовы API админки (loadCatalog/deletePromo/...).
+- `api/adminApi.js` — вызовы API админки V1 (loadCatalog/deletePromo/...); общий session-token плюминг (sessionStorage + Bearer + обмен activation-токена) — переиспользуется V2.
+- `api/adminV2Api.js` — клиент API V2 (fetchMe/fetchAudit/fetchRoles/assignRole/clearRole/fetchSessions/revokeSession) + isAdminPanelV2Path.
+- `components/admin-shell/` — каркас админ-консоли **V2**: AdminShell.jsx (левое меню, фильтрация пунктов по правам из /me, fallback на Обзор при понижении роли), ConfirmModal.jsx (опасные действия требуют причину → в аудит), TechnicalData.jsx (сырой JSON под «Технические данные»), sections/ (Overview/Audit/Roles/Sessions). Открывается на /admin_panel_v2 (App.jsx роутит до V1).
 - `components/player-profile/PlayerProfile.jsx` — профиль: вкладки Персонаж/Инвентарь/Навыки/Информация/Передача (CourierTab — только для своего профиля); модалки (ItemModal, FinesModal, ProfileEditModal, nt-center-modal); CollapsiblePanel; сводка (Имя/Раса/Пол + карандаши).
 - `components/player-profile/PlayerProfile.css` — стили профиля (модалки, попапы, мобильное центрирование ≤560px).
 - `components/admin-panel/AdminPanel.jsx` — каталог/доставка/Общее сообщение (BroadcastSection)/промокоды/игроки (карточка с last_activity); просмотр чужого профиля открывает редактируемый PlayerProfile (adminEdit, editToken).
