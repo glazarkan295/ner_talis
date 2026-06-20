@@ -83,6 +83,45 @@ class WorldRegistryTest(unittest.TestCase):
         result = registry.validate_envelope(env)
         self.assertTrue(result["ok"], result["errors"])
 
+    def test_button_requires_existing_locations(self):
+        # Button pointing at a missing location fails; once the locations exist it passes.
+        env = registry.create_content("button", "btn_go", {
+            "text": "В город", "owner_location": "wild1", "action": "goto_location", "target": "city1",
+            "show_telegram": True,
+        })
+        bad = registry.validate_envelope(env)
+        self.assertFalse(bad["ok"])
+        registry.create_content("location", "wild1", {"name": "Дичь", "type": "wild", "short_description": "x"})
+        registry.create_content("location", "city1", {"name": "Город", "type": "city", "short_description": "x"})
+        good = registry.validate_envelope(registry.get_content("button", "btn_go"))
+        self.assertTrue(good["ok"], good["errors"])
+
+    def test_transition_validation(self):
+        registry.create_content("location", "loc_a", {"name": "A", "type": "wild", "short_description": "x"})
+        registry.create_content("location", "loc_b", {"name": "B", "type": "city", "short_description": "x"})
+        ok = registry.validate_envelope(registry.create_content("transition", "a_to_b", {
+            "from_location": "loc_a", "to_location": "loc_b", "access_condition": "always", "cost": 5,
+        }))
+        self.assertTrue(ok["ok"], ok["errors"])
+        # Self-loop + unknown target + bad condition + negative cost are errors.
+        bad = registry.validate_envelope(registry.create_content("transition", "bad_one", {
+            "from_location": "loc_a", "to_location": "loc_a", "access_condition": "nope", "cost": -3,
+        }))
+        self.assertFalse(bad["ok"])
+        joined = " ".join(bad["errors"]).lower()
+        self.assertIn("ту же локацию", joined)
+        self.assertIn("условие", joined)
+
+    def test_location_dead_end_warning_clears_with_exit(self):
+        registry.create_content("location", "lonely", {"name": "Тупик", "type": "wild", "short_description": "x"})
+        before = registry.validate_envelope(registry.get_content("location", "lonely"))
+        self.assertTrue(any("тупик" in w.lower() for w in before["warnings"]))
+        # Add an outgoing transition -> warning clears, still valid.
+        registry.create_content("location", "exitloc", {"name": "Выход", "type": "city", "short_description": "x"})
+        registry.create_content("transition", "out", {"from_location": "lonely", "to_location": "exitloc"})
+        after = registry.validate_envelope(registry.get_content("location", "lonely"))
+        self.assertFalse(any("тупик" in w.lower() for w in after["warnings"]))
+
     def test_mob_validation_catches_bad_drop_and_stats(self):
         env = registry.create_content("mob", "broken_mob", {
             "name": "Глюк", "type": "beast", "hp": 0,

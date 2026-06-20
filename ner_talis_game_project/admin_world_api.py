@@ -117,6 +117,8 @@ def create_admin_world_router(get_storage) -> APIRouter:
             "statuses": [{"value": s, "label": registry.STATUS_LABELS.get(s, s)} for s in registry.STATUSES],
             "locationTypes": list(registry.LOCATION_TYPES),
             "mobTypes": list(registry.MOB_TYPES),
+            "buttonActions": list(registry.BUTTON_ACTIONS),
+            "accessConditions": list(registry.ACCESS_CONDITIONS),
         }
 
     @router.get("/{kind}")

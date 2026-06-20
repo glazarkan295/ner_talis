@@ -72,12 +72,31 @@ STATUS_TRANSITIONS: dict[str, set[str]] = {
 # --- Поддерживаемые типы контента ------------------------------------------
 KIND_LOCATION = "location"
 KIND_MOB = "mob"
-# По мере роста сюда добавляются button/transition/loot/event/npc/quest/raid.
-KINDS = (KIND_LOCATION, KIND_MOB)
+KIND_BUTTON = "button"
+KIND_TRANSITION = "transition"
+# По мере роста сюда добавляются loot/event/npc/quest/raid.
+KINDS = (KIND_LOCATION, KIND_MOB, KIND_BUTTON, KIND_TRANSITION)
 
 LOCATION_TYPES = (
     "city", "starting", "wild", "dungeon", "fortress", "raid",
     "world_boss", "port", "market", "camp", "story", "event",
+)
+# Локации, для которых тупик (нет выходов) — норма (сюжет/событие/лагерь).
+_DEAD_END_OK_TYPES = {"story", "event", "camp"}
+
+BUTTON_ACTIONS = (
+    "goto_location", "show_message", "start_search", "start_battle",
+    "open_shop", "open_npc", "open_quests", "open_raids", "give_item",
+    "take_item", "check_condition", "start_event", "open_fishing",
+    "open_camp", "go_back",
+)
+# Действия кнопки, которые считаются «выходом» из локации (против тупика).
+_EXIT_BUTTON_ACTIONS = {"goto_location", "go_back"}
+
+ACCESS_CONDITIONS = (
+    "always", "from_level", "need_item", "need_quest", "need_reputation",
+    "blocked_fine", "blocked_mute_ban", "blocked_battle", "blocked_timer",
+    "blocked_event",
 )
 
 MOB_TYPES = (
@@ -327,9 +346,17 @@ def _validate_location(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
         if value and _has_markup(value):
             errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
 
-    # Предупреждение про тупиковую локацию (переходы появятся позже).
     if not loc_type:
         warnings.append("Не указан тип локации.")
+
+    # Тупиковая локация (нет выходов) — норма только для сюжет/событие/лагерь.
+    loc_id = str(envelope.get("id") or "")
+    if loc_id and loc_type not in _DEAD_END_OK_TYPES:
+        try:
+            if not location_has_exit(loc_id):
+                warnings.append("Локация выглядит тупиковой: нет переходов или кнопок выхода.")
+        except Exception:
+            pass
 
     return errors, warnings
 
@@ -446,9 +473,111 @@ def _validate_mob(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
+def _location_exists(loc_id: Any) -> bool:
+    loc_id = str(loc_id or "").strip()
+    if not loc_id:
+        return False
+    return get_content(KIND_LOCATION, loc_id) is not None
+
+
+def location_has_exit(loc_id: str) -> bool:
+    """Есть ли у локации выход — переход наружу или кнопка goto/go_back."""
+    loc_id = str(loc_id or "").strip()
+    if not loc_id:
+        return False
+    for t in list_content(KIND_TRANSITION):
+        if str((t.get("data") or {}).get("from_location") or "") == loc_id:
+            return True
+    for b in list_content(KIND_BUTTON):
+        data = b.get("data") or {}
+        if str(data.get("owner_location") or "") == loc_id and data.get("action") in _EXIT_BUTTON_ACTIONS:
+            return True
+    return False
+
+
+def _validate_button(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Проверка кнопки локации (ТЗ §4)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    text = _str_field(data, "text")
+    if not text:
+        errors.append("Не заполнен текст кнопки.")
+    elif _has_markup(text):
+        errors.append("В тексте кнопки недопустимая разметка/HTML.")
+
+    owner = _str_field(data, "owner_location")
+    if not owner:
+        errors.append("Не указана локация-владелец кнопки.")
+    elif not _location_exists(owner):
+        errors.append(f"Локация-владелец «{owner}» не существует.")
+
+    action = _str_field(data, "action")
+    if not action:
+        errors.append("Не выбрано действие кнопки.")
+    elif action not in BUTTON_ACTIONS:
+        errors.append(f"Неизвестное действие кнопки: {action}.")
+
+    target = _str_field(data, "target")
+    if action == "goto_location":
+        if not target:
+            errors.append("Для перехода укажите целевую локацию.")
+        elif not _location_exists(target):
+            errors.append(f"Целевая локация «{target}» не существует.")
+
+    order = data.get("order")
+    if order not in (None, "") and _num(order) is None:
+        warnings.append("Порядок отображения — не число.")
+    if not data.get("show_telegram") and not data.get("show_vk"):
+        warnings.append("Кнопка скрыта и в Telegram, и в VK.")
+
+    return errors, warnings
+
+
+def _validate_transition(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Проверка перехода между локациями (ТЗ §5)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    frm = _str_field(data, "from_location")
+    to = _str_field(data, "to_location")
+    if not frm:
+        errors.append("Не указана локация-источник.")
+    elif not _location_exists(frm):
+        errors.append(f"Локация-источник «{frm}» не существует.")
+    if not to:
+        errors.append("Не указана целевая локация.")
+    elif not _location_exists(to):
+        errors.append(f"Целевая локация «{to}» не существует.")
+    if frm and to and frm == to:
+        errors.append("Переход ведёт в ту же локацию.")
+
+    cond = _str_field(data, "access_condition")
+    if cond and cond not in ACCESS_CONDITIONS:
+        errors.append(f"Неизвестное условие доступа: {cond}.")
+
+    cost = data.get("cost")
+    if cost not in (None, ""):
+        c = _num(cost)
+        if c is None:
+            errors.append("Стоимость перехода — не число.")
+        elif c < 0:
+            errors.append("Стоимость перехода не может быть отрицательной.")
+
+    name = _str_field(data, "name")
+    if name and _has_markup(name):
+        errors.append("В названии перехода недопустимая разметка/HTML.")
+
+    return errors, warnings
+
+
 VALIDATORS: dict[str, Callable[[dict[str, Any]], tuple[list[str], list[str]]]] = {
     KIND_LOCATION: _validate_location,
     KIND_MOB: _validate_mob,
+    KIND_BUTTON: _validate_button,
+    KIND_TRANSITION: _validate_transition,
 }
 
 
