@@ -107,6 +107,45 @@ class BlackMarketRaidFineTest(unittest.TestCase):
             self.assertTrue(entry["source"])
         self.assertEqual(fine_entries_for_profile({"level": 1}), [])
 
+    def test_city_payment_keeps_forced_fine_and_explains_where_to_pay(self):
+        # Баг: оплата у городского управляющего списывала деньги за оплачиваемые
+        # штрафы, но бессрочное взыскание оставалось «висеть» без пояснений —
+        # игроку казалось, что деньги пропали, а штраф никуда не делся.
+        _tmp, _storage, player = self.make_storage_player(level=100, money=100000)
+        base = 1_000_000  # created_at_ts must stay > 0 (0 is treated as "unset")
+        now = base + 30 * SECONDS_PER_FINE_DAY
+        overdue = create_raid_fine(player, "black_market", now=base)
+        overdue["created_at_ts"] = now - 10 * SECONDS_PER_FINE_DAY  # ~day 11 -> overdue
+        forced = create_raid_fine(player, "underground_casino", now=base)
+        forced["created_at_ts"] = now - 30 * SECONDS_PER_FINE_DAY   # ~day 31 -> forced
+        advance_fine_state(player, now=now)
+        money_before = player["money_copper"]
+
+        result = pay_fine(player, place="city", now=now)
+
+        remaining = player.get("active_fines") or []
+        self.assertEqual(len(remaining), 1)
+        self.assertEqual(remaining[0]["status"], "forced_collection")
+        self.assertLess(player["money_copper"], money_before)  # payable fine charged
+        self.assertIn("бессрочные взыскания", result.text)
+        self.assertIn("Крепостной Ратуше", result.text)
+        self.assertNotIn("Долг перед городом погашен", result.text)
+
+    def test_city_payment_refuses_when_only_forced_fine_and_takes_no_money(self):
+        _tmp, _storage, player = self.make_storage_player(level=100, money=100000)
+        base = 1_000_000
+        now = base + 30 * SECONDS_PER_FINE_DAY
+        forced = create_raid_fine(player, "underground_casino", now=base)
+        forced["created_at_ts"] = now - 30 * SECONDS_PER_FINE_DAY
+        advance_fine_state(player, now=now)
+        money_before = player["money_copper"]
+
+        result = pay_fine(player, place="city", now=now)
+
+        self.assertEqual(player["money_copper"], money_before)  # nothing charged
+        self.assertEqual(len(player.get("active_fines") or []), 1)
+        self.assertIn("крепост", result.text.casefold())
+
 
 if __name__ == "__main__":
     unittest.main()
