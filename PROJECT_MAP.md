@@ -12,7 +12,8 @@
 - `ner_talis_game_project/main.py` — запуск ботов (run_bots: Telegram/VK), восстановление таймеров (recover_runtime_timers), запуск планировщика эффектов (_start_player_effect_scheduler_once).
 - `ner_talis_game_project/web_app.py` — FastAPI-приложение сайта (профиль + админка).
 - `ner_talis_game_project/site_api.py` — API профиля игрока (frontend_profile, эндпоинты инвентаря/навыков/характеристик/использования предметов/edit-field).
-- `ner_talis_game_project/admin_panel_api.py` — API админ-панели (роуты /api/admin/...).
+- `ner_talis_game_project/admin_panel_api.py` — API админ-панели V1 (роуты /api/admin/...).
+- `ner_talis_game_project/admin_panel_v2_api.py` — API админ-панели **V2** (/api/admin/v2/...): RBAC-aware, аудируемые. P0: /me (роль+права), /audit (вьювер с фильтрами, право audit.view), /roles (owner-only, через admin_operation). Подключён в web_app параллельно V1.
 - `ner_talis_game_project/project_paths.py` — resolve_project_path / project_path (доступ к data/ и ресурсам).
 
 ## services/ (ядро логики)
