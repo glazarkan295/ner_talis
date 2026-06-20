@@ -12,6 +12,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from admin_achievement_api import create_admin_achievement_router
+from services import achievement_engine as engine
 from services import achievement_service as ach
 from services import admin_rbac as rbac
 from services.admin_audit import read_admin_audit_records
@@ -19,6 +20,7 @@ from services.admin_panel_service import (
     consume_or_read_admin_session,
     create_admin_panel_activation_token,
 )
+from services.registration_service import create_player, load_races
 from storage.json_storage import JsonStorage
 
 
@@ -73,6 +75,70 @@ class AchievementServiceTest(unittest.TestCase):
             "condition_logic": "n_of", "conditions": [{"type": "kill_mob"}, {"type": "catch_fish"}],
         })
         self.assertFalse(ach.validate(env)["ok"])
+
+
+class AchievementEngineTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        base = Path(self._tmp.name)
+        self._saved = {k: os.environ.get(k) for k in ("ACHIEVEMENTS_PATH", "ACHIEVEMENT_CATEGORIES_PATH")}
+        os.environ["ACHIEVEMENTS_PATH"] = str(base / "ach.json")
+        os.environ["ACHIEVEMENT_CATEGORIES_PATH"] = str(base / "cat.json")
+        self.addCleanup(self._restore)
+        self.storage = JsonStorage(str(base / "players.json"))
+        ach.categories().create("combat", {"name": "Бой"})
+        ach.store().create("hunter", {
+            "name": "Охотник", "description": "Победить 3 мобов", "category": "combat",
+            "condition_logic": "all", "conditions": [{"type": "kill_mob", "amount": 3}],
+            "rewards": [{"type": "coins", "amount": 100}],
+        })
+        ach.store().set_status("hunter", ach.STATUS_PUBLISHED, force=True)
+
+    def _restore(self):
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def _player(self):
+        races = load_races("data/races.json")
+        gid = self.storage.generate_game_id()
+        player = create_player(game_id=gid, platform="telegram", external_user_id="55", name="Гер", race_id="human", races=races)
+        self.storage.save_new_player(player, "telegram", "55")
+        return self.storage.get_player_by_game_id(gid)
+
+    def test_progress_grants_on_completion_and_pays_reward(self):
+        player = self._player()
+        money_before = int(player.get("money_copper", player.get("money", 0)) or 0)
+        self.assertEqual(engine.record_progress(self.storage, player, "kill_mob", 2), [])
+        self.assertFalse(engine.is_earned(player, "hunter"))
+        newly = engine.record_progress(self.storage, player, "kill_mob", 1)
+        self.assertEqual(newly, ["hunter"])
+        self.assertTrue(engine.is_earned(player, "hunter"))
+        self.assertEqual(int(player.get("money_copper", 0)), money_before + 100)
+        # Idempotent: not granted twice.
+        self.assertEqual(engine.record_progress(self.storage, player, "kill_mob", 5), [])
+
+    def test_manual_grant_and_revoke(self):
+        player = self._player()
+        self.assertTrue(engine.grant(self.storage, player, "hunter", source="manual", by="t:1", reason="приз"))
+        self.assertFalse(engine.grant(self.storage, player, "hunter", source="manual"))  # already
+        self.assertTrue(engine.revoke(self.storage, player, "hunter", by="t:1", reason="ошибка"))
+        self.assertFalse(engine.is_earned(player, "hunter"))
+
+    def test_hidden_achievement_masked_in_player_view(self):
+        ach.store().create("secret", {
+            "name": "Секрет", "description": "?", "category": "combat", "visibility": "hidden_until_earned",
+            "conditions": [{"type": "find_pearl", "amount": 1}],
+        })
+        ach.store().set_status("secret", ach.STATUS_PUBLISHED, force=True)
+        player = self._player()
+        view = engine.player_view(player)
+        names = [a["name"] for a in view["inProgress"]]
+        self.assertIn("???", names)
+        self.assertNotIn("Секрет", names)
 
 
 class AchievementApiTest(unittest.TestCase):
@@ -149,6 +215,41 @@ class AchievementApiTest(unittest.TestCase):
         token = self._token("999")
         self.assertEqual(self.client.post("/api/admin/v2/achievements", headers=self._auth(token), json={"id": "ach_x", "data": {"name": "x"}}).status_code, 403)
         self.assertEqual(self.client.get("/api/admin/v2/achievements", headers=self._auth(token)).status_code, 200)
+
+    def _make_player(self):
+        races = load_races("data/races.json")
+        gid = self.storage.generate_game_id()
+        player = create_player(game_id=gid, platform="telegram", external_user_id="77", name="Игр", race_id="human", races=races)
+        self.storage.save_new_player(player, "telegram", "77")
+        return gid
+
+    def _published_achievement(self, token, aid="hero"):
+        self._make_category(token)
+        self.client.post("/api/admin/v2/achievements", headers=self._auth(token), json={"id": aid, "data": {"name": "Герой", "description": "x", "category": "combat", "conditions": [{"type": "reach_level", "amount": 1}]}})
+        self.client.post(f"/api/admin/v2/achievements/{aid}/publish", headers=self._auth(token), json={})
+
+    def test_manual_grant_revoke_and_progress_api(self):
+        token = self._token("999")
+        self._published_achievement(token)
+        gid = self._make_player()
+        grant = self.client.post("/api/admin/v2/achievements/hero/grant", headers=self._auth(token), json={"game_id": gid, "reason": "приз"})
+        self.assertEqual(grant.status_code, 200, grant.text)
+        self.assertTrue(grant.json()["granted"])
+        progress = self.client.get(f"/api/admin/v2/achievements/players/{gid}", headers=self._auth(token)).json()["progress"]
+        self.assertTrue(any(a["id"] == "hero" and a["earned"] for a in progress["achievements"]))
+        revoke = self.client.post("/api/admin/v2/achievements/hero/revoke", headers=self._auth(token), json={"game_id": gid, "reason": "откат"})
+        self.assertTrue(revoke.json()["revoked"])
+        # Audited as dangerous manual actions.
+        dangerous = {r["action"] for r in read_admin_audit_records(dangerous_only=True, dangerous_actions=rbac.DANGEROUS_ACTIONS)}
+        self.assertTrue({"achievement.grant_manual", "achievement.revoke_manual"} <= dangerous)
+
+    def test_support_cannot_grant_manual(self):
+        rbac.set_role_override("telegram", "999", rbac.SUPPORT)
+        token = self._token("999")
+        gid = self._make_player()
+        # support has view_player_progress but not grant_manual.
+        self.assertEqual(self.client.get(f"/api/admin/v2/achievements/players/{gid}", headers=self._auth(token)).status_code, 200)
+        self.assertEqual(self.client.post("/api/admin/v2/achievements/hero/grant", headers=self._auth(token), json={"game_id": gid}).status_code, 403)
 
 
 if __name__ == "__main__":

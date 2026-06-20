@@ -12,8 +12,61 @@ import {
   unstuckPlayer,
 } from "../../../api/adminV2Api.js";
 import { loadCatalog } from "../../../api/adminApi.js";
+import {
+  fetchPlayerAchievements,
+  grantAchievementToPlayer,
+  revokeAchievementFromPlayer,
+} from "../../../api/adminAchievementApi.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { TechnicalData } from "../TechnicalData.jsx";
+
+// Admin achievements panel for a player: progress + manual grant/revoke.
+function AchievementsPanel({ gameId, guarded, hasPerm }) {
+  const [data, setData] = useState(null);
+  const [grantId, setGrantId] = useState("");
+  const canGrant = hasPerm("achievement.grant_manual");
+  const canRevoke = hasPerm("achievement.revoke_manual");
+
+  const load = useCallback(async () => {
+    const payload = await guarded(() => fetchPlayerAchievements(gameId));
+    if (payload?.progress) setData(payload.progress);
+  }, [guarded, gameId]);
+  useEffect(() => { load(); }, [load]);
+
+  if (!data) return <div className="ntv2-panel"><h3>Достижения</h3><p className="ntv2-hint">Загрузка…</p></div>;
+  const earned = data.achievements.filter((a) => a.earned);
+  const rest = data.achievements.filter((a) => !a.earned);
+  return (
+    <div className="ntv2-panel">
+      <h3>Достижения ({earned.length}/{data.achievements.length})</h3>
+      <div className="ntv2-list">
+        {earned.map((a) => (
+          <div className="ntv2-list-row" key={a.id}>
+            <b>{a.name || a.id}</b>
+            <span className="ntv2-badge ntv2-badge-owner">{a.rarity || "—"}</span>
+            <span className="ntv2-hint">{a.source === "manual" ? "вручную" : "авто"}</span>
+            {canRevoke ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => guarded(() => revokeAchievementFromPlayer(a.id, gameId, "откат из карточки"), "Достижение отозвано.").then(load)}>Отозвать</button> : null}
+          </div>
+        ))}
+        {rest.map((a) => (
+          <div className="ntv2-list-row" key={a.id}>
+            <span>{a.name || a.id}</span>
+            <span className="ntv2-mono">{a.id}</span>
+            {a.progress ? <span className="ntv2-hint">{a.progress}</span> : null}
+            {canGrant ? <button type="button" className="ntv2-btn" onClick={() => guarded(() => grantAchievementToPlayer(a.id, gameId, "выдано из карточки"), "Достижение выдано.").then(load)}>Выдать</button> : null}
+          </div>
+        ))}
+        {!data.achievements.length ? <p className="ntv2-hint">Опубликованных достижений нет.</p> : null}
+      </div>
+      {canGrant ? (
+        <div className="ntv2-form-row" style={{ marginTop: 10 }}>
+          <input className="ntv2-mono" placeholder="id достижения для ручной выдачи" value={grantId} onChange={(e) => setGrantId(e.target.value)} />
+          <button type="button" className="ntv2-btn" disabled={!grantId.trim()} onClick={() => guarded(() => grantAchievementToPlayer(grantId.trim(), gameId, "ручная выдача"), "Достижение выдано.").then(() => { setGrantId(""); load(); })}>Выдать по id</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function rewardKey(item) { return item.item_id || item.id; }
 
@@ -231,6 +284,11 @@ export function PlayerCard({ gameId, guarded, hasPerm, onBack, onDeleted }) {
             })}>Простить штрафы</button>
           ) : null}
         </div>
+      ) : null}
+
+      {/* Достижения */}
+      {hasPerm("achievement.view_player_progress") ? (
+        <AchievementsPanel gameId={gameId} guarded={guarded} hasPerm={hasPerm} />
       ) : null}
 
       {/* Danger zone */}

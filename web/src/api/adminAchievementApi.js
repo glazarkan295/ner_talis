@@ -13,6 +13,10 @@ export const createAchievement = (id, data, reason) => post(base, { id, data, re
 export const updateAchievement = (id, data, reason) => put(`${base}/${encodeURIComponent(id)}`, { data, reason });
 export const achievementLifecycle = (id, verb, reason) => post(`${base}/${encodeURIComponent(id)}/${verb}`, { reason });
 
+export const fetchPlayerAchievements = (gameId) => requestAdminJson(`${base}/players/${encodeURIComponent(gameId)}?_=${t()}`);
+export const grantAchievementToPlayer = (achId, gameId, reason) => post(`${base}/${encodeURIComponent(achId)}/grant`, { game_id: gameId, reason });
+export const revokeAchievementFromPlayer = (achId, gameId, reason) => post(`${base}/${encodeURIComponent(achId)}/revoke`, { game_id: gameId, reason });
+
 export const fetchAchievementCategories = () => requestAdminJson(`${base}/categories?_=${t()}`);
 export const createAchievementCategory = (id, data, reason) => post(`${base}/categories`, { id, data, reason });
 export const updateAchievementCategory = (id, data, reason) => put(`${base}/categories/${encodeURIComponent(id)}`, { data, reason });

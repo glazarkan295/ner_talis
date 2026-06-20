@@ -23,14 +23,18 @@ from services.admin_rbac import (
     PERM_ACHIEVEMENT_CREATE,
     PERM_ACHIEVEMENT_DISABLE,
     PERM_ACHIEVEMENT_EDIT,
+    PERM_ACHIEVEMENT_GRANT_MANUAL,
     PERM_ACHIEVEMENT_MANAGE_CATEGORIES,
     PERM_ACHIEVEMENT_PUBLISH,
+    PERM_ACHIEVEMENT_REVOKE_MANUAL,
     PERM_ACHIEVEMENT_VALIDATE,
     PERM_ACHIEVEMENT_VIEW,
+    PERM_ACHIEVEMENT_VIEW_PLAYER_PROGRESS,
     identity_key,
     require_permission,
 )
 from services import achievement_service as ach
+from services import achievement_engine as engine
 
 
 class IdDataRequest(BaseModel):
@@ -48,6 +52,12 @@ class DataRequest(BaseModel):
 
 class ActionRequest(BaseModel):
     token: str | None = Field(default=None, min_length=16)
+    reason: str = ""
+
+
+class PlayerActionRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    game_id: str = Field(min_length=2)
     reason: str = ""
 
 
@@ -268,5 +278,52 @@ def create_admin_achievement_router(get_storage) -> APIRouter:
     @router.post("/{ach_id}/archive")
     def archive_achievement(ach_id: str, payload: ActionRequest, request: Request) -> dict[str, Any]:
         return _lifecycle(ach_id, payload, request, perm=PERM_ACHIEVEMENT_ARCHIVE, action="achievement.archive", target_status=ach.STATUS_ARCHIVE)
+
+    # ----- прогресс игрока + ручная выдача/откат (achievement engine) -----
+    def _load_player(storage, game_id):
+        player = storage.get_player_by_game_id(game_id) if hasattr(storage, "get_player_by_game_id") else None
+        if not player:
+            raise HTTPException(status_code=404, detail="Игрок не найден.")
+        return player
+
+    @router.get("/players/{game_id}")
+    def player_progress(game_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, token)
+        _require(session, PERM_ACHIEVEMENT_VIEW_PLAYER_PROGRESS)
+        player = _load_player(storage, game_id)
+        return {"ok": True, "progress": engine.admin_player_progress(player)}
+
+    @router.post("/{ach_id}/grant")
+    def grant_manual(ach_id: str, payload: PlayerActionRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_ACHIEVEMENT_GRANT_MANUAL)
+        if ach.store().get(ach_id) is None:
+            raise HTTPException(status_code=404, detail="Достижение не найдено.")
+        player = _load_player(storage, payload.game_id)
+        granted = run_admin_operation(
+            session=session, action="achievement.grant_manual",
+            func=lambda: engine.grant(storage, player, ach_id, source="manual", by=_actor(session), reason=payload.reason),
+            target_type="achievement", target_id=ach_id, target_name=payload.game_id,
+            after_func=lambda r: {"granted": bool(r)}, reason=payload.reason,
+            details={"game_id": payload.game_id},
+        )
+        return {"ok": True, "granted": bool(granted)}
+
+    @router.post("/{ach_id}/revoke")
+    def revoke_manual(ach_id: str, payload: PlayerActionRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_ACHIEVEMENT_REVOKE_MANUAL)
+        player = _load_player(storage, payload.game_id)
+        removed = run_admin_operation(
+            session=session, action="achievement.revoke_manual",
+            func=lambda: engine.revoke(storage, player, ach_id, by=_actor(session), reason=payload.reason),
+            target_type="achievement", target_id=ach_id, target_name=payload.game_id,
+            after_func=lambda r: {"revoked": bool(r)}, reason=payload.reason,
+            details={"game_id": payload.game_id},
+        )
+        return {"ok": True, "revoked": bool(removed)}
 
     return router
