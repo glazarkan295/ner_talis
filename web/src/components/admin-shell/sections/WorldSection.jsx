@@ -12,8 +12,14 @@ import {
 import { loadCatalog } from "../../../api/adminApi.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 
-const KIND_LABELS = { location: "🗺️ Локации", mob: "⚔️ Мобы", button: "🔘 Кнопки", transition: "🔀 Переходы" };
-const KIND_NEW_LABEL = { location: "＋ Новая локация", mob: "＋ Новый моб", button: "＋ Новая кнопка", transition: "＋ Новый переход" };
+const KIND_LABELS = {
+  location: "🗺️ Локации", mob: "⚔️ Мобы", button: "🔘 Кнопки", transition: "🔀 Переходы",
+  event: "✨ События", npc: "🧙 NPC", quest: "📜 Квесты",
+};
+const KIND_NEW_LABEL = {
+  location: "＋ Новая локация", mob: "＋ Новый моб", button: "＋ Новая кнопка", transition: "＋ Новый переход",
+  event: "＋ Новое событие", npc: "＋ Новый NPC", quest: "＋ Новый квест",
+};
 
 const STATUS_TONE = {
   published: "ntv2-badge-owner",
@@ -53,7 +59,28 @@ const EMPTY_TRANSITION = {
   allowed_with_fine: false, allowed_in_battle: false, allowed_during_timer: false,
 };
 
-const EMPTY_BY_KIND = { location: EMPTY_LOCATION, mob: EMPTY_MOB, button: EMPTY_BUTTON, transition: EMPTY_TRANSITION };
+const EMPTY_EVENT = {
+  name: "", text: "", location: "", type: "found_item", result: "give_item",
+  chance: 25, cooldown: 0, min_level: "", max_level: "",
+  required_item: "", consumed_item: "", given_item: "", battle_mob: "",
+  effect: "", repeatable: true,
+};
+
+const EMPTY_NPC = {
+  name: "", role: "", location: "", description: "", image: "",
+  first_message: "", functions: [],
+};
+
+const EMPTY_QUEST = {
+  name: "", description: "", npc_giver: "", location: "",
+  goal_type: "kill_mob", goal_target: "", reward: "",
+  repeatable: false, cooldown: 0,
+};
+
+const EMPTY_BY_KIND = {
+  location: EMPTY_LOCATION, mob: EMPTY_MOB, button: EMPTY_BUTTON, transition: EMPTY_TRANSITION,
+  event: EMPTY_EVENT, npc: EMPTY_NPC, quest: EMPTY_QUEST,
+};
 
 function itemTitle(kind, item) {
   const d = item.data || {};
@@ -237,7 +264,104 @@ function TransitionForm({ value, onChange, meta, disabled, locationOptions }) {
   );
 }
 
-const FORM_BY_KIND = { location: LocationForm, mob: MobForm, button: ButtonForm, transition: TransitionForm };
+function RefSelect({ value, onChange, options, disabled, placeholder = "— не выбрано —" }) {
+  return (
+    <select value={value || ""} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+      <option value="">{placeholder}</option>
+      {(options || []).map((o) => <option key={o.id} value={o.id}>{o.name} ({o.id})</option>)}
+    </select>
+  );
+}
+
+function EventForm({ value, onChange, meta, disabled, refOptions }) {
+  const set = (k, v) => onChange({ ...value, [k]: v });
+  return (
+    <div className="ntv2-world-form">
+      <div className="ntv2-form-row">
+        <Field label="Название"><input value={value.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
+        <Field label="Тип"><select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.eventTypes || []).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+      </div>
+      <Field label="Локация"><RefSelect value={value.location} onChange={(v) => set("location", v)} options={refOptions.location} disabled={disabled} /></Field>
+      <Field label="Текст игроку"><textarea rows={3} value={value.text} disabled={disabled} onChange={(e) => set("text", e.target.value)} /></Field>
+      <div className="ntv2-form-row">
+        <Field label="Шанс %"><input type="number" value={value.chance} disabled={disabled} onChange={(e) => set("chance", e.target.value)} /></Field>
+        <Field label="Кулдаун (сек)"><input type="number" value={value.cooldown} disabled={disabled} onChange={(e) => set("cooldown", e.target.value)} /></Field>
+        <Field label="Ур. от"><input type="number" value={value.min_level} disabled={disabled} onChange={(e) => set("min_level", e.target.value)} /></Field>
+        <Field label="Ур. до"><input type="number" value={value.max_level} disabled={disabled} onChange={(e) => set("max_level", e.target.value)} /></Field>
+      </div>
+      <Field label="Результат"><select value={value.result} disabled={disabled} onChange={(e) => set("result", e.target.value)}>{(meta.eventResultTypes || []).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+      <div className="ntv2-form-row">
+        <Field label="Выдаваемый предмет (item_id)"><input className="ntv2-mono" value={value.given_item} disabled={disabled} onChange={(e) => set("given_item", e.target.value)} /></Field>
+        <Field label="Требуемый предмет"><input className="ntv2-mono" value={value.required_item} disabled={disabled} onChange={(e) => set("required_item", e.target.value)} /></Field>
+        <Field label="Списываемый предмет"><input className="ntv2-mono" value={value.consumed_item} disabled={disabled} onChange={(e) => set("consumed_item", e.target.value)} /></Field>
+      </div>
+      <div className="ntv2-form-row">
+        <Field label="Запускаемый бой (моб)"><RefSelect value={value.battle_mob} onChange={(v) => set("battle_mob", v)} options={refOptions.mob} disabled={disabled} /></Field>
+        <Field label="Накладываемый эффект"><input value={value.effect} disabled={disabled} onChange={(e) => set("effect", e.target.value)} /></Field>
+        <label className="ntv2-check"><input type="checkbox" checked={Boolean(value.repeatable)} disabled={disabled} onChange={(e) => set("repeatable", e.target.checked)} /> Повторяемое</label>
+      </div>
+    </div>
+  );
+}
+
+function NpcForm({ value, onChange, meta, disabled, refOptions }) {
+  const set = (k, v) => onChange({ ...value, [k]: v });
+  const fns = Array.isArray(value.functions) ? value.functions : [];
+  const toggleFn = (fn) => set("functions", fns.includes(fn) ? fns.filter((f) => f !== fn) : [...fns, fn]);
+  return (
+    <div className="ntv2-world-form">
+      <div className="ntv2-form-row">
+        <Field label="Имя"><input value={value.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
+        <Field label="Роль"><input value={value.role} disabled={disabled} onChange={(e) => set("role", e.target.value)} /></Field>
+        <Field label="Локация"><RefSelect value={value.location} onChange={(v) => set("location", v)} options={refOptions.location} disabled={disabled} /></Field>
+      </div>
+      <Field label="Первое сообщение"><textarea rows={2} value={value.first_message} disabled={disabled} onChange={(e) => set("first_message", e.target.value)} /></Field>
+      <Field label="Описание"><textarea rows={3} value={value.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
+      <Field label="Изображение (URL)"><input value={value.image} disabled={disabled} onChange={(e) => set("image", e.target.value)} /></Field>
+      <div className="ntv2-panel">
+        <h4 className="ntv2-subhead">Функции</h4>
+        <div className="ntv2-form-row" style={{ gap: 12 }}>
+          {(meta.npcFunctions || []).map((fn) => (
+            <label className="ntv2-check" key={fn}><input type="checkbox" checked={fns.includes(fn)} disabled={disabled} onChange={() => toggleFn(fn)} /> {fn}</label>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuestForm({ value, onChange, meta, disabled, refOptions }) {
+  const set = (k, v) => onChange({ ...value, [k]: v });
+  let targetControl;
+  if (value.goal_type === "kill_mob") targetControl = <RefSelect value={value.goal_target} onChange={(v) => set("goal_target", v)} options={refOptions.mob} disabled={disabled} />;
+  else if (value.goal_type === "visit_location") targetControl = <RefSelect value={value.goal_target} onChange={(v) => set("goal_target", v)} options={refOptions.location} disabled={disabled} />;
+  else if (value.goal_type === "talk_npc") targetControl = <RefSelect value={value.goal_target} onChange={(v) => set("goal_target", v)} options={refOptions.npc} disabled={disabled} />;
+  else targetControl = <input className="ntv2-mono" value={value.goal_target} disabled={disabled} placeholder="item_id / объект" onChange={(e) => set("goal_target", e.target.value)} />;
+  return (
+    <div className="ntv2-world-form">
+      <Field label="Название"><input value={value.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
+      <Field label="Описание"><textarea rows={3} value={value.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
+      <div className="ntv2-form-row">
+        <Field label="NPC-выдаватель"><RefSelect value={value.npc_giver} onChange={(v) => set("npc_giver", v)} options={refOptions.npc} disabled={disabled} /></Field>
+        <Field label="Локация"><RefSelect value={value.location} onChange={(v) => set("location", v)} options={refOptions.location} disabled={disabled} /></Field>
+      </div>
+      <div className="ntv2-form-row">
+        <Field label="Цель"><select value={value.goal_type} disabled={disabled} onChange={(e) => set("goal_type", e.target.value)}>{(meta.questGoalTypes || []).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+        <Field label="Объект цели">{targetControl}</Field>
+      </div>
+      <Field label="Награда (описание / JSON)"><textarea rows={2} value={value.reward} disabled={disabled} onChange={(e) => set("reward", e.target.value)} /></Field>
+      <div className="ntv2-form-row" style={{ gap: 14 }}>
+        <label className="ntv2-check"><input type="checkbox" checked={Boolean(value.repeatable)} disabled={disabled} onChange={(e) => set("repeatable", e.target.checked)} /> Повторяемое</label>
+        <Field label="Кулдаун (сек)"><input type="number" value={value.cooldown} disabled={disabled} onChange={(e) => set("cooldown", e.target.value)} /></Field>
+      </div>
+    </div>
+  );
+}
+
+const FORM_BY_KIND = {
+  location: LocationForm, mob: MobForm, button: ButtonForm, transition: TransitionForm,
+  event: EventForm, npc: NpcForm, quest: QuestForm,
+};
 
 export function WorldSection({ guarded, hasPerm }) {
   const [meta, setMeta] = useState(null);
@@ -246,7 +370,7 @@ export function WorldSection({ guarded, hasPerm }) {
   const [statusFilter, setStatusFilter] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
-  const [locationOptions, setLocationOptions] = useState([]);
+  const [refOptions, setRefOptions] = useState({ location: [], mob: [], npc: [] });
 
   const can = useMemo(() => ({
     create: hasPerm("world.create_draft"),
@@ -262,15 +386,24 @@ export function WorldSection({ guarded, hasPerm }) {
     if (payload) setItems(payload.items || []);
   }, [guarded, kind, statusFilter]);
 
-  const loadLocationOptions = useCallback(async () => {
-    const payload = await guarded(() => fetchWorldItems("location"));
-    if (payload) setLocationOptions((payload.items || []).map((i) => ({ id: i.id, name: i.data?.name || i.id })));
+  // Какие справочники объектов нужны форме текущего типа (для пикеров-ссылок).
+  const neededRefs = useMemo(() => ({
+    button: ["location"], transition: ["location"],
+    event: ["location", "mob"], npc: ["location"],
+    quest: ["location", "mob", "npc"],
+  }[kind] || []), [kind]);
+
+  const loadRefs = useCallback(async (kinds) => {
+    const entries = await Promise.all(kinds.map(async (k) => {
+      const payload = await guarded(() => fetchWorldItems(k));
+      return [k, (payload?.items || []).map((i) => ({ id: i.id, name: i.data?.name || i.id }))];
+    }));
+    setRefOptions((cur) => ({ ...cur, ...Object.fromEntries(entries) }));
   }, [guarded]);
 
   useEffect(() => { (async () => { const m = await guarded(() => fetchWorldMeta()); if (m) setMeta(m); })(); }, [guarded]);
   useEffect(() => { loadList(); }, [loadList]);
-  // Кнопки/переходы ссылаются на локации — держим актуальный список для пикеров.
-  useEffect(() => { if (kind === "button" || kind === "transition") loadLocationOptions(); }, [kind, loadLocationOptions]);
+  useEffect(() => { if (neededRefs.length) loadRefs(neededRefs); }, [neededRefs, loadRefs]);
 
   const statuses = meta?.statuses || [];
   const Form = FORM_BY_KIND[kind] || LocationForm;
@@ -319,7 +452,7 @@ export function WorldSection({ guarded, hasPerm }) {
           <Field label="ID (латиница, напр. small_plateau)"><input value={editing.id} onChange={(e) => setEditing({ ...editing, id: e.target.value })} /></Field>
         ) : <p className="ntv2-hint ntv2-mono">{editing.id}</p>}
 
-        <Form value={editing.data} onChange={(data) => setEditing({ ...editing, data })} meta={meta} locationOptions={locationOptions} disabled={!(editing.isNew ? can.create : can.edit)} />
+        <Form value={editing.data} onChange={(data) => setEditing({ ...editing, data })} meta={meta} locationOptions={refOptions.location} refOptions={refOptions} disabled={!(editing.isNew ? can.create : can.edit)} />
 
         {v ? (
           <div className={`ntv2-panel ${v.ok ? "" : "ntv2-danger-zone"}`}>

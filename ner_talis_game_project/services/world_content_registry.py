@@ -74,8 +74,14 @@ KIND_LOCATION = "location"
 KIND_MOB = "mob"
 KIND_BUTTON = "button"
 KIND_TRANSITION = "transition"
-# По мере роста сюда добавляются loot/event/npc/quest/raid.
-KINDS = (KIND_LOCATION, KIND_MOB, KIND_BUTTON, KIND_TRANSITION)
+KIND_EVENT = "event"
+KIND_NPC = "npc"
+KIND_QUEST = "quest"
+# По мере роста сюда добавляются loot/raid.
+KINDS = (
+    KIND_LOCATION, KIND_MOB, KIND_BUTTON, KIND_TRANSITION,
+    KIND_EVENT, KIND_NPC, KIND_QUEST,
+)
 
 LOCATION_TYPES = (
     "city", "starting", "wild", "dungeon", "fortress", "raid",
@@ -97,6 +103,25 @@ ACCESS_CONDITIONS = (
     "always", "from_level", "need_item", "need_quest", "need_reputation",
     "blocked_fine", "blocked_mute_ban", "blocked_battle", "blocked_timer",
     "blocked_event",
+)
+
+EVENT_TYPES = (
+    "found_resource", "found_item", "met_mob", "trap", "chest", "npc",
+    "story", "curse", "raid", "energy_loss", "buff", "debuff",
+    "hidden_transition", "rare_find",
+)
+EVENT_RESULT_TYPES = (
+    "give_item", "give_currency", "give_exp", "take_item", "take_currency",
+    "take_energy", "start_battle", "move_player", "apply_buff", "apply_debuff",
+    "show_text", "open_buttons", "start_timer", "give_fine", "start_raid",
+)
+NPC_FUNCTIONS = (
+    "shop", "dialog", "give_quest", "accept_quest", "repair", "pay_fines",
+    "raids", "board", "craft", "teleport", "trade", "training", "informant",
+)
+QUEST_GOAL_TYPES = (
+    "bring_item", "kill_mob", "find_resource", "visit_location",
+    "talk_npc", "deliver_item", "activate_object",
 )
 
 MOB_TYPES = (
@@ -573,11 +598,155 @@ def _validate_transition(envelope: dict[str, Any]) -> tuple[list[str], list[str]
     return errors, warnings
 
 
+def _mob_exists(mob_id: Any) -> bool:
+    mob_id = str(mob_id or "").strip()
+    return bool(mob_id) and get_content(KIND_MOB, mob_id) is not None
+
+
+def _npc_exists(npc_id: Any) -> bool:
+    npc_id = str(npc_id or "").strip()
+    return bool(npc_id) and get_content(KIND_NPC, npc_id) is not None
+
+
+def _check_item_ref(data: dict[str, Any], key: str, label: str, errors: list[str]) -> None:
+    item_id = _str_field(data, key)
+    if item_id and not _item_exists(item_id):
+        errors.append(f"{label} «{item_id}» не существует в каталоге.")
+
+
+def _validate_event(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Проверка события поиска (ТЗ §8)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "name"):
+        errors.append("Не заполнено название события.")
+    if not _str_field(data, "text"):
+        errors.append("Не заполнен текст события для игрока.")
+
+    location = _str_field(data, "location")
+    if not location:
+        errors.append("Не указана локация события.")
+    elif not _location_exists(location):
+        errors.append(f"Локация «{location}» не существует.")
+
+    ev_type = _str_field(data, "type")
+    if ev_type and ev_type not in EVENT_TYPES:
+        errors.append(f"Неизвестный тип события: {ev_type}.")
+    result = _str_field(data, "result")
+    if result and result not in EVENT_RESULT_TYPES:
+        errors.append(f"Неизвестный результат события: {result}.")
+
+    chance = _num(data.get("chance"))
+    if chance is not None and (chance < 0 or chance > 100):
+        errors.append("Шанс события должен быть 0–100.")
+    cooldown = _num(data.get("cooldown"))
+    if cooldown is not None and cooldown < 0:
+        errors.append("Кулдаун не может быть отрицательным.")
+
+    min_level = _num(data.get("min_level"))
+    max_level = _num(data.get("max_level"))
+    if min_level is not None and max_level is not None and min_level > max_level:
+        errors.append("Минимальный уровень события больше максимального.")
+
+    _check_item_ref(data, "required_item", "Требуемый предмет", errors)
+    _check_item_ref(data, "consumed_item", "Списываемый предмет", errors)
+    _check_item_ref(data, "given_item", "Выдаваемый предмет", errors)
+
+    battle_mob = _str_field(data, "battle_mob")
+    if battle_mob and not _mob_exists(battle_mob):
+        errors.append(f"Запускаемый моб «{battle_mob}» не существует.")
+
+    for key in ("name", "text"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    return errors, warnings
+
+
+def _validate_npc(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Проверка NPC (ТЗ §9)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "name"):
+        errors.append("Не заполнено имя NPC.")
+
+    location = _str_field(data, "location")
+    if location and not _location_exists(location):
+        errors.append(f"Локация «{location}» не существует.")
+    elif not location:
+        warnings.append("Не указана локация NPC.")
+
+    functions = data.get("functions")
+    if functions not in (None, ""):
+        if not isinstance(functions, list):
+            errors.append("Функции NPC должны быть списком.")
+        else:
+            for fn in functions:
+                if fn not in NPC_FUNCTIONS:
+                    errors.append(f"Неизвестная функция NPC: {fn}.")
+
+    for key in ("name", "description", "first_message"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    return errors, warnings
+
+
+def _validate_quest(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Проверка простого квеста/поручения (ТЗ §10)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "name"):
+        errors.append("Не заполнено название задания.")
+
+    goal_type = _str_field(data, "goal_type")
+    if goal_type and goal_type not in QUEST_GOAL_TYPES:
+        errors.append(f"Неизвестная цель задания: {goal_type}.")
+    target = _str_field(data, "goal_target")
+    if goal_type and not target:
+        errors.append("Не указана цель задания (предмет/моб/локация/NPC).")
+    elif target:
+        if goal_type in ("bring_item", "deliver_item") and not _item_exists(target):
+            errors.append(f"Цель-предмет «{target}» не существует в каталоге.")
+        elif goal_type == "kill_mob" and not _mob_exists(target):
+            errors.append(f"Цель-моб «{target}» не существует.")
+        elif goal_type == "visit_location" and not _location_exists(target):
+            errors.append(f"Цель-локация «{target}» не существует.")
+        elif goal_type == "talk_npc" and not _npc_exists(target):
+            errors.append(f"Цель-NPC «{target}» не существует.")
+
+    npc_giver = _str_field(data, "npc_giver")
+    if npc_giver and not _npc_exists(npc_giver):
+        errors.append(f"NPC-выдаватель «{npc_giver}» не существует.")
+    location = _str_field(data, "location")
+    if location and not _location_exists(location):
+        errors.append(f"Локация «{location}» не существует.")
+
+    cooldown = _num(data.get("cooldown"))
+    if cooldown is not None and cooldown < 0:
+        errors.append("Кулдаун не может быть отрицательным.")
+
+    for key in ("name", "description"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    return errors, warnings
+
+
 VALIDATORS: dict[str, Callable[[dict[str, Any]], tuple[list[str], list[str]]]] = {
     KIND_LOCATION: _validate_location,
     KIND_MOB: _validate_mob,
     KIND_BUTTON: _validate_button,
     KIND_TRANSITION: _validate_transition,
+    KIND_EVENT: _validate_event,
+    KIND_NPC: _validate_npc,
+    KIND_QUEST: _validate_quest,
 }
 
 

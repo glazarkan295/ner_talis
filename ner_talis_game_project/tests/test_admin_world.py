@@ -74,6 +74,55 @@ class WorldRegistryTest(unittest.TestCase):
         result = registry.validate_envelope(env)
         self.assertFalse(result["ok"])
 
+    def test_event_validation_cross_refs(self):
+        registry.create_content("location", "cave", {"name": "Пещера", "type": "dungeon", "short_description": "x"})
+        registry.create_content("mob", "bat", {"name": "Летучая мышь", "type": "beast", "hp": 10})
+        ok = registry.validate_envelope(registry.create_content("event", "find_gold", {
+            "name": "Находка", "text": "Вы нашли монеты", "location": "cave",
+            "type": "found_item", "result": "give_currency", "chance": 30,
+            "given_item": "money_copper", "battle_mob": "bat",
+        }))
+        self.assertTrue(ok["ok"], ok["errors"])
+        bad = registry.validate_envelope(registry.create_content("event", "broken_ev", {
+            "name": "Глюк", "text": "x", "location": "nowhere",
+            "result": "nope", "chance": 200, "battle_mob": "ghost",
+        }))
+        self.assertFalse(bad["ok"])
+        joined = " ".join(bad["errors"]).lower()
+        self.assertIn("локация", joined)
+        self.assertIn("шанс", joined)
+        self.assertIn("моб", joined)
+
+    def test_npc_function_validation(self):
+        registry.create_content("location", "square", {"name": "Площадь", "type": "city", "short_description": "x"})
+        ok = registry.validate_envelope(registry.create_content("npc", "smith", {
+            "name": "Кузнец", "location": "square", "functions": ["shop", "repair", "craft"],
+        }))
+        self.assertTrue(ok["ok"], ok["errors"])
+        bad = registry.validate_envelope(registry.create_content("npc", "weird", {
+            "name": "Странный", "functions": ["fly", "shop"],
+        }))
+        self.assertFalse(bad["ok"])
+        self.assertTrue(any("функция" in e.lower() for e in bad["errors"]))
+
+    def test_quest_goal_cross_refs(self):
+        registry.create_content("mob", "wolf2", {"name": "Волк", "type": "beast", "hp": 30})
+        registry.create_content("location", "town", {"name": "Город", "type": "city", "short_description": "x"})
+        registry.create_content("npc", "elder", {"name": "Старейшина", "location": "town"})
+        ok = registry.validate_envelope(registry.create_content("quest", "hunt", {
+            "name": "Охота", "goal_type": "kill_mob", "goal_target": "wolf2",
+            "npc_giver": "elder", "location": "town",
+        }))
+        self.assertTrue(ok["ok"], ok["errors"])
+        bad = registry.validate_envelope(registry.create_content("quest", "bad_quest", {
+            "name": "Плохой", "goal_type": "kill_mob", "goal_target": "dragon_x",
+            "npc_giver": "ghost_npc",
+        }))
+        self.assertFalse(bad["ok"])
+        joined = " ".join(bad["errors"]).lower()
+        self.assertIn("моб", joined)
+        self.assertIn("npc", joined)
+
     def test_mob_validation_ok_with_currency_drop(self):
         env = registry.create_content("mob", "wolf", {
             "name": "Волк", "type": "beast", "min_level": 1, "max_level": 5,

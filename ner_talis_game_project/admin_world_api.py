@@ -119,6 +119,10 @@ def create_admin_world_router(get_storage) -> APIRouter:
             "mobTypes": list(registry.MOB_TYPES),
             "buttonActions": list(registry.BUTTON_ACTIONS),
             "accessConditions": list(registry.ACCESS_CONDITIONS),
+            "eventTypes": list(registry.EVENT_TYPES),
+            "eventResultTypes": list(registry.EVENT_RESULT_TYPES),
+            "npcFunctions": list(registry.NPC_FUNCTIONS),
+            "questGoalTypes": list(registry.QUEST_GOAL_TYPES),
         }
 
     @router.get("/{kind}")
