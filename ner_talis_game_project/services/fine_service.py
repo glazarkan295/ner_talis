@@ -461,61 +461,6 @@ def fine_card(player: dict[str, Any], *, place: str = "city", now: float | int |
     return FineActionResult(text, buttons, zone_id)
 
 
-def pay_fine(player: dict[str, Any], *, place: str, now: float | int | None = None) -> FineActionResult:
-    advance_fine_state(player, now=now)
-    fine = _fine(player)
-    zone_id = "seldar_town_hall" if place == "city" else "fortress_in_gorge_fortress_hall"
-    back = CITY_HALL_BACK if place == "city" else FORTRESS_BACK
-    if fine is None:
-        return FineActionResult("В городской книге долгов на ваше имя нет активных штрафов.", [[back]], zone_id)
-    status = str(fine.get("status") or FINE_STATUS_VOLUNTARY)
-    if place == "city" and status == FINE_STATUS_FORCED:
-        return FineActionResult(
-            "Управляющий просматривает книгу взысканий и медленно закрывает её.\n\n"
-            "— Ваше дело уже передано крепостной администрации. Здесь я больше не могу принять оплату.\n\n"
-            "Штраф теперь можно погасить только в Крепостной Ратуше, у Управляющего в Крепости в ущелье.",
-            [[back]],
-            zone_id,
-        )
-    if place == "fortress" and status != FINE_STATUS_FORCED:
-        return FineActionResult(
-            "Крепостной Управляющий проверяет записи и качает головой.\n\n"
-            "— Это дело ещё числится за городом. Пока взыскание не передано крепости, оплату принимает Управляющий в городской Ратуше.",
-            [[back]],
-            zone_id,
-        )
-    amount = max(0, safe_int(fine.get("current_amount"), 0))
-    balance = _money(player)
-    if balance < amount:
-        return FineActionResult(
-            f"Недостаточно медных монет для оплаты штрафа. Штраф составляет {amount} медных монет.",
-            [[back]],
-            zone_id,
-        )
-    _set_money(player, balance - amount)
-    fine["status"] = FINE_STATUS_PAID
-    fine["paid_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(_now_ts(now)))
-    fine["movement_restricted"] = False
-    fine["can_pay_in_city_hall"] = False
-    fine["can_pay_in_fortress_hall"] = False
-    player.setdefault("paid_fines", []).append(dict(fine))
-    player.pop("active_fine", None)
-    if place == "fortress":
-        text = (
-            "Крепостной Управляющий поднимает взгляд от тяжёлой книги взысканий.\n\n"
-            f"— Долг перед городом передан нам. Сумма с процентами: {amount} медных монет.\n\n"
-            "Вы выплачиваете штраф. Управляющий пересчитывает монеты, ставит печать и делает короткую отметку в книге.\n\n"
-            "— Запрет снят. Можешь возвращаться в город и стартовые земли."
-        )
-    else:
-        text = (
-            "Управляющий неторопливо сверяет вашу запись в городской книге долгов.\n\n"
-            f"— Штраф найден. Сумма к оплате: {amount} медных монет.\n\n"
-            "Вы передаёте нужную сумму. Управляющий ставит печать на странице и закрывает книгу.\n\n"
-            "— Долг перед городом погашен. В следующий раз советую выбирать места для сделок осторожнее."
-        )
-    return FineActionResult(text, [[back]], zone_id)
-
 # --- Multi-fine v2 helpers -------------------------------------------------
 # Re-defined near the end intentionally: legacy save files used ``active_fine``;
 # new logic stores all active fines in ``active_fines`` and keeps active_fine as
@@ -783,11 +728,28 @@ def pay_fine(player: dict[str, Any], *, place: str, now: float | int | None = No
     remaining = [fine for fine in fines if str(fine.get("id") or "") not in paid_ids and fine.get("status") != FINE_STATUS_PAID]
     player["active_fines"] = remaining
     _sync_active_fine_alias(player)
-    suffix = " Запрет снят." if place == "fortress" and not is_forced_collection(player) else ""
+    remaining_forced = [fine for fine in remaining if str(fine.get("status") or "") == FINE_STATUS_FORCED]
+    if place == "fortress":
+        suffix = " Запрет снят." if not is_forced_collection(player) else ""
+    elif remaining_forced:
+        # На городском управляющем гасятся только добровольные/просроченные
+        # штрафы. Бессрочные взыскания уже переданы крепости — без этого
+        # пояснения игроку кажется, что деньги списались, а штраф «висит».
+        total_forced = sum(max(0, safe_int(f.get("current_amount"), 0)) for f in remaining_forced)
+        suffix = (
+            f"\n\n⚠️ Остаются бессрочные взыскания: {len(remaining_forced)} шт. на "
+            f"{total_forced} медных монет. Они уже переданы крепости и здесь не "
+            "оплачиваются. Погасить их можно только в Крепостной Ратуше у "
+            "Управляющего: Городские ворота → Крепость в ущелье → Крепостная ратуша."
+        )
+    elif not remaining:
+        suffix = " Долг перед городом погашен."
+    else:
+        suffix = ""
     text = (
         "Управляющий сверяет записи в книге долгов.\n\n"
         f"Оплачено штрафов: {len(payable)}. Сумма: {amount} медных монет.\n\n"
-        "Печати поставлены, оплаченные взыскания закрыты. Долг перед городом погашен."
+        "Печати поставлены, оплаченные взыскания закрыты."
         f"{suffix}"
     )
     return FineActionResult(text, [[back]], zone_id)
