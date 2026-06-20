@@ -692,11 +692,17 @@ class VkRegistrationBot:
     def _register_message_dispatcher(self) -> None:
         """Подключить живой VK-отправитель к очереди (если включён диспетчер)."""
         try:
+            from services import bot_message_queue
             from services.message_delivery import (
                 dispatcher_enabled,
                 register_platform_sender,
                 start_message_dispatcher,
             )
+
+            try:
+                bot_message_queue.configure_queue(self.storage)
+            except Exception:
+                pass
 
             if not dispatcher_enabled():
                 return

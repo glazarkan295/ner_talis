@@ -42,6 +42,13 @@
       }
     },
     {
+      "effect_id": "curse_bearer",
+      "name": "Носитель проклятья",
+      "type": "permanent_achievement_effect",
+      "source": "curse_what_curse",
+      "description": "Проклятье стало частью вас. Если вас убьют в PVP, убийцу на время настигнет одно из посмертных проклятий."
+    },
+    {
       "effect_id": "amulet_burn",
       "name": "Ожог от амулета",
       "type": "permanent_damage_effect",
@@ -65,7 +72,7 @@
       "achievement_id": "curse_what_curse",
       "name": "Проклятье? Какое проклятье?",
       "rarity": "legendary",
-      "description": "Ослабление всех проклятий на игроке в 2 раза.",
+      "description": "Даёт постоянный эффект «Носитель проклятья»: если носителя убьют в PVP, убийцу на время настигнет одно из посмертных проклятий.",
       "requirement": "Игрок ходит с Древним Проклятьем больше 60 активных дней. Засчитываются только дни с активностью не меньше 30 минут."
     },
     {
@@ -74,6 +81,44 @@
       "rarity": "legendary",
       "description": "Открывает возможность найти скрытые события на локации, скрытые варианты действий в событиях, скрытые награды и не только.",
       "requirement": "1000 завершённых поисков на Малом плато."
+    }
+  ],
+  "postmortem_curses": [
+    {
+      "effect_id": "postmortem_curse_weakness",
+      "name": "Посмертная слабость",
+      "weight": 1,
+      "duration_seconds": 3600,
+      "description": "Проклятье носителя вытягивает из убийцы часть силы и стойкости.",
+      "stat_modifiers": {
+        "bonus_strength": -3,
+        "bonus_endurance": -3
+      }
+    },
+    {
+      "effect_id": "postmortem_curse_blindness",
+      "name": "Посмертная слепота",
+      "weight": 1,
+      "duration_seconds": 3600,
+      "description": "Перед глазами убийцы остаётся тень погибшего носителя.",
+      "stat_modifiers": {
+        "bonus_accuracy": -12,
+        "bonus_dodge": -8
+      }
+    },
+    {
+      "effect_id": "postmortem_curse_decay",
+      "name": "Посмертное тление",
+      "weight": 1,
+      "duration_seconds": 3600,
+      "description": "Проклятье временно подтачивает жизненную силу убийцы.",
+      "resource_max_percent": {
+        "max_hp": -10
+      },
+      "stat_modifiers": {
+        "bonus_physical_defense": -5,
+        "bonus_magic_defense": -5
+      }
     }
   ],
   "search_milestones": [

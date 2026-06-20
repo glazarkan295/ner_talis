@@ -316,6 +316,15 @@ def create_app() -> FastAPI:
     app.include_router(create_admin_achievement_router(storage))
     app.include_router(create_admin_messages_router(storage))
 
+    # Очередь сообщений читает/пишет ту же БД, что и боты (SQLite/Postgres),
+    # чтобы админка видела реальный статус доставки. На json-хранилище остаётся
+    # файловый backend.
+    try:
+        from services import bot_message_queue
+        bot_message_queue.configure_queue(storage())
+    except Exception:
+        logging.getLogger(__name__).warning("Failed to configure message queue backend", exc_info=True)
+
     @app.get("/assets/admin_uploads/{asset_path:path}", include_in_schema=False)
     async def runtime_uploaded_asset(asset_path: str):
         file_path = _safe_uploaded_asset_path(asset_path)

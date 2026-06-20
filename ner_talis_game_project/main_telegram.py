@@ -174,11 +174,18 @@ async def _register_message_dispatcher(application) -> None:
     """
     import asyncio
 
+    from services import bot_message_queue
     from services.message_delivery import (
         dispatcher_enabled,
         register_platform_sender,
         start_message_dispatcher,
     )
+
+    # Очередь использует ту же БД, что и боты (если поддерживается хранилищем).
+    try:
+        bot_message_queue.configure_queue(application.bot_data.get("storage"))
+    except Exception:
+        pass
 
     if not dispatcher_enabled():
         return

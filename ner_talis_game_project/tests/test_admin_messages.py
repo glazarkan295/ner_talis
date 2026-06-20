@@ -22,6 +22,7 @@ from services.admin_panel_service import (
 )
 from services.registration_service import create_player, load_races
 from storage.json_storage import JsonStorage
+from storage.sqlite_storage import SQLiteStorage
 
 
 class MessageQueueTest(unittest.TestCase):
@@ -166,6 +167,50 @@ class MessagesApiTest(unittest.TestCase):
         gid = self._make_player()
         self.assertEqual(self.client.get("/api/admin/v2/messages/stats", headers=self._auth(token)).status_code, 200)
         self.assertEqual(self.client.post("/api/admin/v2/messages/send", headers=self._auth(token), json={"game_id": gid, "text": "x"}).status_code, 403)
+
+
+class SqliteQueueBackendTest(unittest.TestCase):
+    """Та же логика очереди поверх БД-хранилища (row-per-message)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.storage = SQLiteStorage(str(Path(self._tmp.name) / "players.sqlite3"))
+        self.assertTrue(mq.configure_queue(self.storage))
+        mq.set_sender(None)
+        self.addCleanup(mq.use_json_file_backend)
+        self.addCleanup(lambda: mq.set_sender(None))
+
+    def test_enqueue_dedupe_and_dispatch_on_db(self):
+        a, created_a = mq.enqueue(game_id="NT-1", platform="telegram", recipient="111", text="hi", delivery_key="k1")
+        b, created_b = mq.enqueue(game_id="NT-1", platform="telegram", recipient="111", text="hi2", delivery_key="k1")
+        self.assertTrue(created_a)
+        self.assertFalse(created_b)
+        self.assertEqual(a["id"], b["id"])
+        # Dispatch with a fake sender marks it sent in the DB.
+        counts = mq.dispatch_once(lambda m: (mq.RESULT_SENT, ""))
+        self.assertEqual(counts["sent"], 1)
+        self.assertEqual(mq.get(a["id"])["status"], "sent")
+        self.assertEqual(mq.stats()["by_status"]["sent"], 1)
+
+    def test_priority_and_retry_backoff_on_db(self):
+        mq.enqueue(game_id="NT-1", platform="telegram", recipient="1", text="low", priority="low")
+        crit, _ = mq.enqueue(game_id="NT-1", platform="telegram", recipient="1", text="crit", priority="critical")
+        order = []
+        mq.dispatch_once(lambda m: (order.append(m["text"]) or (mq.RESULT_FAILED_TEMPORARY, "net")))
+        self.assertEqual(order[0], "crit")  # critical claimed first
+        self.assertEqual(mq.get(crit["id"])["status"], "retry_wait")
+
+    def test_list_and_player_filter_on_db(self):
+        mq.enqueue(game_id="NT-A", platform="telegram", recipient="1", text="a")
+        mq.enqueue(game_id="NT-B", platform="vk", recipient="2", text="b")
+        self.assertEqual(len(mq.list_messages(game_id="NT-A")), 1)
+        self.assertEqual(len(mq.list_messages()), 2)
+
+    def test_meta_persists_on_db(self):
+        mq.enqueue(game_id="NT-1", platform="telegram", recipient="1", text="x")
+        mq.dispatch_once(lambda m: (mq.RESULT_SENT, ""))
+        self.assertIsNotNone(mq.dispatcher_status()["last_run"])
 
 
 if __name__ == "__main__":

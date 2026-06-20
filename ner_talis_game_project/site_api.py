@@ -49,6 +49,7 @@ from services.market_service import (
 )
 from services.web_profile import ADMIN_PROFILE_EDIT_SCOPE, PROFILE_SCOPE
 from services.active_skill_service import refresh_unlocked_active_skills, resource_cost_with_modifiers, skill_level, is_skill_weapon_compatible, skill_weapon_requirement_text, can_spend_skill_points_on, player_branch, selected_main_path, selected_secondary_path, path_level, secondary_path_limit
+from services.small_plateau_service import ensure_curse_bearer_effect
 
 FRONT_TO_BACK_STAT = {
     "strength": "strength",
@@ -1224,6 +1225,7 @@ def normalize_effect_for_frontend(effect: Any) -> dict[str, Any] | None:
 
 def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
     prune_expired_effects(player)
+    ensure_curse_bearer_effect(player)
     refresh_unlocked_active_skills(player)
     recalculate_inventory_overflow(player)
     derived = calculate_player_derived_stats(player)

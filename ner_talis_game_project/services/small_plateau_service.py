@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import random
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,8 @@ AMULET_BURN_ID = "amulet_burn"
 SEVERE_AMULET_BURN_ID = "severe_amulet_burn"
 SEEKER_ACHIEVEMENT_ID = "seeker"
 CURSE_ACHIEVEMENT_ID = "curse_what_curse"
+CURSE_BEARER_EFFECT_ID = "curse_bearer"
+POSTMORTEM_CURSE_SOURCE = "curse_bearer_pvp_death"
 COPPER_PER_SILVER = 1000
 
 
@@ -97,10 +100,32 @@ def _effect_id(effect: dict[str, Any]) -> str:
     return str(effect.get("id") or effect.get("effect_id") or "")
 
 
-def has_effect(player_state: dict[str, Any], effect_id: str) -> bool:
-    if effect_id in _effects_dict(player_state):
+def _effect_is_active(effect: dict[str, Any]) -> bool:
+    if not isinstance(effect, dict):
+        return False
+    expires_at = effect.get("expires_at")
+    if expires_at in (None, ""):
         return True
-    return any(_effect_id(effect) == effect_id for effect in _active_effects_list(player_state) if isinstance(effect, dict))
+    if isinstance(expires_at, (int, float)):
+        return float(expires_at) > time.time()
+    try:
+        parsed = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed > datetime.now(timezone.utc)
+
+
+def has_effect(player_state: dict[str, Any], effect_id: str) -> bool:
+    stored = _effects_dict(player_state).get(effect_id)
+    if isinstance(stored, dict) and _effect_is_active(stored):
+        return True
+    return any(
+        _effect_id(effect) == effect_id and _effect_is_active(effect)
+        for effect in _active_effects_list(player_state)
+        if isinstance(effect, dict)
+    )
 
 
 def _mechanic_effect_template(effect_id: str) -> dict[str, Any]:
@@ -123,6 +148,21 @@ def add_effect(player_state: dict[str, Any], effect_id: str, payload: dict[str, 
             break
     else:
         effects.append(dict(payload))
+
+
+def grant_curse_bearer_effect(player_state: dict[str, Any]) -> None:
+    """Permanent reward effect for «Проклятье? Какое проклятье?»."""
+    add_effect(player_state, CURSE_BEARER_EFFECT_ID)
+
+
+def ensure_curse_bearer_effect(player_state: dict[str, Any]) -> bool:
+    """Sync legacy achievement-only players to the new permanent effect."""
+    if not has_achievement(player_state, CURSE_ACHIEVEMENT_ID):
+        return False
+    already_had_effect = has_effect(player_state, CURSE_BEARER_EFFECT_ID)
+    if not already_had_effect:
+        grant_curse_bearer_effect(player_state)
+    return not already_had_effect
 
 
 def remove_effect(player_state: dict[str, Any], effect_id: str) -> None:
@@ -168,14 +208,17 @@ def filter_seeker_only(player_state: dict[str, Any], items: list[dict[str, Any]]
 
 
 def add_achievement(player_state: dict[str, Any], achievement_id: str) -> None:
-    if has_achievement(player_state, achievement_id):
-        return
-    mechanics = get_mechanics_data()
-    for achievement in mechanics.get("achievements", []):
-        if isinstance(achievement, dict) and str(achievement.get("achievement_id")) == achievement_id:
-            _achievements(player_state).append(dict(achievement))
-            return
-    _achievements(player_state).append(achievement_id)
+    already_has_achievement = has_achievement(player_state, achievement_id)
+    if not already_has_achievement:
+        mechanics = get_mechanics_data()
+        for achievement in mechanics.get("achievements", []):
+            if isinstance(achievement, dict) and str(achievement.get("achievement_id")) == achievement_id:
+                _achievements(player_state).append(dict(achievement))
+                break
+        else:
+            _achievements(player_state).append(achievement_id)
+    if achievement_id == CURSE_ACHIEVEMENT_ID:
+        grant_curse_bearer_effect(player_state)
 
 
 def add_currency(player_state: dict[str, Any], currency: str, amount: int) -> None:
@@ -414,9 +457,7 @@ def roll_ancient_curse_trigger(player_state: dict[str, Any], action_type: str, r
         return {"triggered": False}
     if action_type not in {"city_quarter_walk", "fortress_quarter_walk", "location_search", "camp_rest"}:
         return {"triggered": False}
-    # Достижение «Проклятье? Какое проклятье?» ослабляет негативные эффекты
-    # проклятий вдвое — шанс «заблудиться» падает с 20% до 10%.
-    trigger_chance = 0.10 if has_achievement(player_state, CURSE_ACHIEVEMENT_ID) else 0.20
+    trigger_chance = 0.20
     if rng.random() >= trigger_chance:
         return {"triggered": False}
     player_state["current_city"] = "outside_seldar"
@@ -436,8 +477,7 @@ def cleanse_ancient_curse_at_hidden_place(player_state: dict[str, Any]) -> dict[
         return {"success": False, "text": str(texts.get("not_enough_silver") or "Вам нужно 100 серебряных монет, чтобы снять проклятье.")}
     remove_effect(player_state, ANCIENT_CURSE_ID)
     max_hp = int(player_state.get("max_hp", player_state.get("hp", 1)) or 1)
-    # «Проклятье? Какое проклятье?» вдвое смягчает негативный эффект — штраф −40% → −20%.
-    penalty_percent = 0.20 if has_achievement(player_state, CURSE_ACHIEVEMENT_ID) else 0.40
+    penalty_percent = 0.40
     damage = max(1, int(max_hp * penalty_percent))
     player_state["hp"] = max(1, int(player_state.get("hp", max_hp) or max_hp) - damage)
     _small_plateau_state(player_state)["hidden_coin_place_active"] = False
@@ -471,6 +511,7 @@ def tick_amulet_burn_hourly(player_state: dict[str, Any]) -> dict[str, Any] | No
 
 
 def register_ancient_curse_active_day(player_state: dict[str, Any], activity_minutes_today: int) -> dict[str, Any] | None:
+    ensure_curse_bearer_effect(player_state)
     if not has_effect(player_state, ANCIENT_CURSE_ID):
         return None
     if int(activity_minutes_today) < 30:
@@ -487,6 +528,64 @@ def register_ancient_curse_active_day(player_state: dict[str, Any], activity_min
         add_achievement(player_state, CURSE_ACHIEVEMENT_ID)
         return {
             "achievement_id": CURSE_ACHIEVEMENT_ID,
-            "text": "Получено легендарное достижение «Проклятье? Какое проклятье?»: ослабление всех проклятий на игроке в 2 раза.",
+            "effect_id": CURSE_BEARER_EFFECT_ID,
+            "text": "Получено легендарное достижение «Проклятье? Какое проклятье?» и постоянный эффект «Носитель проклятья». Если вас убьют в PVP, убийцу на время настигнет одно из посмертных проклятий.",
         }
     return None
+
+
+def _postmortem_curse_templates() -> list[dict[str, Any]]:
+    templates = get_mechanics_data().get("postmortem_curses", [])
+    return [dict(item) for item in templates if isinstance(item, dict)]
+
+
+def _choose_postmortem_curse(rng: random.Random) -> dict[str, Any]:
+    templates = _postmortem_curse_templates()
+    if not templates:
+        return {
+            "effect_id": "postmortem_curse_weakness",
+            "name": "Посмертная слабость",
+            "description": "Проклятье носителя ослабляет убийцу после PVP-убийства.",
+            "duration_seconds": 3600,
+            "stat_modifiers": {"bonus_strength": -2, "bonus_endurance": -2},
+        }
+    return weighted_choice(templates, rng)
+
+
+def apply_pvp_kill_postmortem_curse(killer: dict[str, Any], victim: dict[str, Any], rng: random.Random | None = None, now_ts: float | int | None = None) -> dict[str, Any]:
+    """Apply the curse-bearer's postmortem PVP curse to the killer.
+
+    Call this after a confirmed PVP kill, passing the killer and the killed
+    victim. It is intentionally isolated from a concrete PVP implementation:
+    current runtime has PVP counters/contracts, while the full PVP battle loop
+    can wire this hook in when player-vs-player death is resolved.
+    """
+    ensure_curse_bearer_effect(victim)
+    if not has_effect(victim, CURSE_BEARER_EFFECT_ID):
+        return {"applied": False, "reason": "victim_has_no_curse_bearer"}
+
+    rng = rng or random.Random()
+    now = int(time.time() if now_ts is None else now_ts)
+    template = _choose_postmortem_curse(rng)
+    effect_id = str(template.get("effect_id") or template.get("id") or "postmortem_curse")
+    duration_seconds = max(60, int(template.get("duration_seconds") or 3600))
+    expires_at = datetime.fromtimestamp(now + duration_seconds, tz=timezone.utc).isoformat()
+    payload = {
+        **template,
+        "id": effect_id,
+        "effect_id": effect_id,
+        "type": "curse",
+        "kind": "negative",
+        "active": True,
+        "source": POSTMORTEM_CURSE_SOURCE,
+        "duration_seconds": duration_seconds,
+        "expires_at": expires_at,
+        "pvp_victim_id": victim.get("game_id") or victim.get("public_id"),
+        "pvp_victim_name": victim.get("name") or victim.get("nickname"),
+    }
+    add_effect(killer, effect_id, payload)
+    return {
+        "applied": True,
+        "effect": payload,
+        "text": f"Посмертное проклятье «{payload.get('name', 'Проклятье')}» настигло убийцу.",
+    }

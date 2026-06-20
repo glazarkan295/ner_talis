@@ -45,6 +45,7 @@ if "vk_api" not in sys.modules:
 from services.registration_service import create_player, load_races
 from services.inventory_service import add_inventory_item
 from services.item_registry import get_item_definition_by_id, registry_item_to_inventory_item
+from services.small_plateau_service import CURSE_ACHIEVEMENT_ID, CURSE_BEARER_EFFECT_ID
 from services.web_profile import PROFILE_SCOPE, create_profile_site_link
 from site_api import create_profile_api_router, equipment_modifier_totals, frontend_profile, is_inventory_item_usable
 from storage.json_storage import JsonStorage
@@ -76,6 +77,15 @@ class ProfileSiteFixesTest(unittest.TestCase):
         self.assertRegex(values["Дух"], r"^\d+ / \d+$")
         self.assertRegex(values["Мана"], r"^\d+ / \d+$")
         self.assertNotIn("Концентрация", values)
+
+    def test_frontend_profile_syncs_legacy_curse_achievement_effect(self):
+        player = self._new_player()
+        player["achievements"] = [CURSE_ACHIEVEMENT_ID]
+
+        profile = frontend_profile(player)
+
+        self.assertTrue(any(effect.get("id") == CURSE_BEARER_EFFECT_ID for effect in profile["effects"]))
+        self.assertTrue(any(effect.get("id") == CURSE_BEARER_EFFECT_ID for effect in player.get("active_effects", [])))
 
     def test_frontend_profile_filters_legacy_concentration_skill_costs(self):
         player = self._new_player()

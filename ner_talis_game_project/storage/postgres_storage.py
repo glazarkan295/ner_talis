@@ -164,6 +164,27 @@ class PostgresStorage:
             """))
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_admin_panel_sessions_expires_at ON admin_panel_sessions(expires_at)"))
             connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS outgoing_messages (
+                    id TEXT PRIMARY KEY,
+                    delivery_key TEXT,
+                    game_id TEXT,
+                    status TEXT NOT NULL,
+                    priority TEXT NOT NULL,
+                    next_attempt_at TEXT,
+                    created_at TEXT NOT NULL,
+                    data JSONB NOT NULL
+                )
+            """))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_outgoing_status_next ON outgoing_messages(status, next_attempt_at)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_outgoing_delivery_key ON outgoing_messages(delivery_key)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_outgoing_game_id ON outgoing_messages(game_id)"))
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS outgoing_message_meta (
+                    id INTEGER PRIMARY KEY,
+                    data JSONB NOT NULL
+                )
+            """))
+            connection.execute(text("""
                 CREATE TABLE IF NOT EXISTS promo_codes (
                     code TEXT PRIMARY KEY,
                     data JSONB NOT NULL,
@@ -808,6 +829,125 @@ class PostgresStorage:
             )
             # rowcount > 0 служит атомарным «claim» одноразового токена активации.
             return bool((result.rowcount or 0) > 0)
+
+    # --- Исходящая очередь сообщений (row-per-message, для масштаба) -------
+    _OUTGOING_PRIORITY_ORDER = (
+        "CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1"
+        " WHEN 'normal' THEN 2 WHEN 'low' THEN 3 ELSE 4 END"
+    )
+
+    def _outgoing_params(self, message: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": str(message.get("id")),
+            "delivery_key": str(message.get("delivery_key") or ""),
+            "game_id": str(message.get("game_id") or ""),
+            "status": str(message.get("status") or "queued"),
+            "priority": str(message.get("priority") or "normal"),
+            "next_attempt_at": message.get("next_attempt_at"),
+            "created_at": str(message.get("created_at") or ""),
+            "data": self._dumps(message),
+        }
+
+    _OUTGOING_UPSERT = """
+        INSERT INTO outgoing_messages
+        (id, delivery_key, game_id, status, priority, next_attempt_at, created_at, data)
+        VALUES (:id, :delivery_key, :game_id, :status, :priority, :next_attempt_at,
+                :created_at, CAST(:data AS jsonb))
+        ON CONFLICT (id) DO UPDATE SET
+            delivery_key = EXCLUDED.delivery_key, game_id = EXCLUDED.game_id,
+            status = EXCLUDED.status, priority = EXCLUDED.priority,
+            next_attempt_at = EXCLUDED.next_attempt_at, data = EXCLUDED.data
+    """
+
+    def enqueue_outgoing_message(self, message: dict[str, Any]) -> dict[str, Any]:
+        delivery_key = str(message.get("delivery_key") or "")
+        with self.engine.begin() as connection:
+            if delivery_key:
+                row = connection.execute(
+                    text("SELECT data FROM outgoing_messages WHERE delivery_key = :k LIMIT 1"),
+                    {"k": delivery_key},
+                ).mappings().first()
+                if row:
+                    return self._loads(row["data"], {})
+            connection.execute(text(self._OUTGOING_UPSERT), self._outgoing_params(message))
+        return dict(message)
+
+    def get_outgoing_message(self, message_id: str) -> dict[str, Any] | None:
+        with self.engine.begin() as connection:
+            row = connection.execute(
+                text("SELECT data FROM outgoing_messages WHERE id = :id"),
+                {"id": str(message_id)},
+            ).mappings().first()
+        return self._loads(row["data"], {}) if row else None
+
+    def update_outgoing_message(self, message_id: str, message: dict[str, Any]) -> None:
+        with self.engine.begin() as connection:
+            connection.execute(text(self._OUTGOING_UPSERT), self._outgoing_params({**message, "id": str(message_id)}))
+
+    def list_outgoing_messages(self, *, status: str | None = None, game_id: str | None = None, errors_only: bool = False, limit: int = 200, offset: int = 0) -> list[dict[str, Any]]:
+        clauses, params = [], {"limit": max(1, min(int(limit), 1000)), "offset": max(0, int(offset))}
+        if status:
+            clauses.append("status = :status")
+            params["status"] = str(status)
+        if game_id:
+            clauses.append("game_id = :game_id")
+            params["game_id"] = str(game_id)
+        if errors_only:
+            clauses.append("status IN ('failed', 'blocked', 'retry_wait')")
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        with self.engine.begin() as connection:
+            rows = connection.execute(
+                text(f"SELECT data FROM outgoing_messages{where} ORDER BY created_at DESC LIMIT :limit OFFSET :offset"),
+                params,
+            ).mappings().all()
+        return [self._loads(r["data"], {}) for r in rows]
+
+    def claim_due_outgoing_messages(self, *, now_iso: str, limit: int = 25) -> list[dict[str, Any]]:
+        with self.engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT id, data FROM outgoing_messages"
+                    " WHERE status IN ('queued', 'retry_wait')"
+                    " AND (next_attempt_at IS NULL OR next_attempt_at <= :now)"
+                    f" ORDER BY {self._OUTGOING_PRIORITY_ORDER}, created_at LIMIT :limit"
+                    " FOR UPDATE SKIP LOCKED"
+                ),
+                {"now": now_iso, "limit": max(1, int(limit))},
+            ).mappings().all()
+            claimed: list[dict[str, Any]] = []
+            for row in rows:
+                message = self._loads(row["data"], {})
+                if not isinstance(message, dict):
+                    continue
+                message["status"] = "sending"
+                connection.execute(
+                    text("UPDATE outgoing_messages SET status = 'sending', data = CAST(:data AS jsonb) WHERE id = :id"),
+                    {"data": self._dumps(message), "id": row["id"]},
+                )
+                claimed.append(message)
+            return claimed
+
+    def outgoing_message_status_counts(self) -> dict[str, int]:
+        with self.engine.begin() as connection:
+            rows = connection.execute(
+                text("SELECT status, COUNT(*) AS n FROM outgoing_messages GROUP BY status")
+            ).mappings().all()
+        return {row["status"]: int(row["n"]) for row in rows}
+
+    def get_outgoing_dispatcher_meta(self) -> dict[str, Any]:
+        with self.engine.begin() as connection:
+            row = connection.execute(
+                text("SELECT data FROM outgoing_message_meta WHERE id = 1")
+            ).mappings().first()
+        meta = self._loads(row["data"], {}) if row else {}
+        return meta if isinstance(meta, dict) else {}
+
+    def set_outgoing_dispatcher_meta(self, meta: dict[str, Any]) -> None:
+        with self.engine.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO outgoing_message_meta(id, data) VALUES (1, CAST(:data AS jsonb))
+                ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
+            """), {"data": self._dumps(meta or {})})
 
     def delete_admin_panel_sessions_for_admin(self, admin_key: str, scope: str) -> int:
         with self.engine.begin() as connection:

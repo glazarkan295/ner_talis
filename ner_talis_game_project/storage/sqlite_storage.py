@@ -116,10 +116,32 @@ class SQLiteStorage:
                     expires_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS outgoing_messages (
+                    id TEXT PRIMARY KEY,
+                    delivery_key TEXT,
+                    game_id TEXT,
+                    status TEXT NOT NULL,
+                    priority TEXT NOT NULL,
+                    next_attempt_at TEXT,
+                    created_at TEXT NOT NULL,
+                    data TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS outgoing_message_meta (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    data TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_site_sessions_expires_at
                     ON site_sessions(expires_at);
                 CREATE INDEX IF NOT EXISTS idx_admin_panel_sessions_expires_at
                     ON admin_panel_sessions(expires_at);
+                CREATE INDEX IF NOT EXISTS idx_outgoing_status_next
+                    ON outgoing_messages(status, next_attempt_at);
+                CREATE INDEX IF NOT EXISTS idx_outgoing_delivery_key
+                    ON outgoing_messages(delivery_key);
+                CREATE INDEX IF NOT EXISTS idx_outgoing_game_id
+                    ON outgoing_messages(game_id);
                 """
             )
 
@@ -781,6 +803,121 @@ class SQLiteStorage:
                 (now,),
             )
             return cursor.rowcount
+
+    # --- Исходящая очередь сообщений (row-per-message, для масштаба) -------
+    _OUTGOING_PRIORITY_ORDER = (
+        "CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1"
+        " WHEN 'normal' THEN 2 WHEN 'low' THEN 3 ELSE 4 END"
+    )
+
+    def _outgoing_cols(self, message: dict[str, Any]) -> tuple:
+        return (
+            str(message.get("id")),
+            str(message.get("delivery_key") or ""),
+            str(message.get("game_id") or ""),
+            str(message.get("status") or "queued"),
+            str(message.get("priority") or "normal"),
+            message.get("next_attempt_at"),
+            str(message.get("created_at") or ""),
+            self._serialize(message),
+        )
+
+    def enqueue_outgoing_message(self, message: dict[str, Any]) -> dict[str, Any]:
+        delivery_key = str(message.get("delivery_key") or "")
+        with self._lock, self._connect() as connection:
+            if delivery_key:
+                row = connection.execute(
+                    "SELECT data FROM outgoing_messages WHERE delivery_key = ? LIMIT 1",
+                    (delivery_key,),
+                ).fetchone()
+                if row:
+                    return self._deserialize(row["data"])
+            connection.execute(
+                "INSERT OR REPLACE INTO outgoing_messages"
+                "(id, delivery_key, game_id, status, priority, next_attempt_at, created_at, data)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                self._outgoing_cols(message),
+            )
+            return dict(message)
+
+    def get_outgoing_message(self, message_id: str) -> dict[str, Any] | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT data FROM outgoing_messages WHERE id = ?", (str(message_id),)
+            ).fetchone()
+            return self._deserialize(row["data"]) if row else None
+
+    def update_outgoing_message(self, message_id: str, message: dict[str, Any]) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                "INSERT OR REPLACE INTO outgoing_messages"
+                "(id, delivery_key, game_id, status, priority, next_attempt_at, created_at, data)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                self._outgoing_cols({**message, "id": str(message_id)}),
+            )
+
+    def list_outgoing_messages(self, *, status: str | None = None, game_id: str | None = None, errors_only: bool = False, limit: int = 200, offset: int = 0) -> list[dict[str, Any]]:
+        clauses, params = [], []
+        if status:
+            clauses.append("status = ?")
+            params.append(str(status))
+        if game_id:
+            clauses.append("game_id = ?")
+            params.append(str(game_id))
+        if errors_only:
+            clauses.append("status IN ('failed', 'blocked', 'retry_wait')")
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.extend([max(1, min(int(limit), 1000)), max(0, int(offset))])
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT data FROM outgoing_messages{where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                tuple(params),
+            ).fetchall()
+            return [self._deserialize(r["data"]) for r in rows]
+
+    def claim_due_outgoing_messages(self, *, now_iso: str, limit: int = 25) -> list[dict[str, Any]]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                "SELECT id, data FROM outgoing_messages"
+                " WHERE status IN ('queued', 'retry_wait')"
+                " AND (next_attempt_at IS NULL OR next_attempt_at <= ?)"
+                f" ORDER BY {self._OUTGOING_PRIORITY_ORDER}, created_at LIMIT ?",
+                (now_iso, max(1, int(limit))),
+            ).fetchall()
+            claimed: list[dict[str, Any]] = []
+            for row in rows:
+                message = self._deserialize(row["data"])
+                if not isinstance(message, dict):
+                    continue
+                message["status"] = "sending"
+                connection.execute(
+                    "UPDATE outgoing_messages SET status = 'sending', data = ? WHERE id = ?",
+                    (self._serialize(message), row["id"]),
+                )
+                claimed.append(message)
+            return claimed
+
+    def outgoing_message_status_counts(self) -> dict[str, int]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                "SELECT status, COUNT(*) AS n FROM outgoing_messages GROUP BY status"
+            ).fetchall()
+            return {row["status"]: int(row["n"]) for row in rows}
+
+    def get_outgoing_dispatcher_meta(self) -> dict[str, Any]:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT data FROM outgoing_message_meta WHERE id = 1"
+            ).fetchone()
+            meta = self._deserialize(row["data"]) if row else {}
+            return meta if isinstance(meta, dict) else {}
+
+    def set_outgoing_dispatcher_meta(self, meta: dict[str, Any]) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                "INSERT OR REPLACE INTO outgoing_message_meta(id, data) VALUES (1, ?)",
+                (self._serialize(meta or {}),),
+            )
 
     def list_admin_player_cards(self, query: str = "", limit: int = 200) -> list[dict[str, Any]]:
         """Лёгкий список игроков для админ-панели без чтения полных профилей."""
