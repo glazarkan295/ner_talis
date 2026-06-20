@@ -1,0 +1,481 @@
+{
+  "id": "NT-32ACD4A8A6",
+  "game_id": "NT-32ACD4A8A6",
+  "public_id": "a085b9ff-dec5-40fd-9f8b-110981b4e236",
+  "main_platform": "telegram",
+  "linked_accounts": {
+    "telegram": "111"
+  },
+  "name": "Странник",
+  "gender": "not_selected",
+  "gender_label": "Не выбран",
+  "race_id": "human",
+  "race_name": "Человек",
+  "level": 1,
+  "experience": 0,
+  "experience_to_next": 100,
+  "total_experience": 0,
+  "current_city": "seldar",
+  "current_zone": "seldar_central_square",
+  "location_id": "seldar_central_square",
+  "money": 0,
+  "debt": 0,
+  "energy": 100,
+  "max_energy": 100,
+  "bonus_max_energy": 0,
+  "in_battle": false,
+  "is_dead": false,
+  "stats": {
+    "strength": 3,
+    "dexterity": 3,
+    "endurance": 4,
+    "intelligence": 3,
+    "wisdom": 3,
+    "perception": 4
+  },
+  "invested_stats": {
+    "strength": 0,
+    "dexterity": 0,
+    "endurance": 0,
+    "intelligence": 0,
+    "wisdom": 0,
+    "perception": 0
+  },
+  "stat_bonuses": {
+    "strength": 0,
+    "dexterity": 0,
+    "endurance": 0,
+    "intelligence": 0,
+    "wisdom": 0,
+    "perception": 0
+  },
+  "free_stat_points": 0,
+  "free_skill_points": 0,
+  "hp": null,
+  "spirit": null,
+  "mana": null,
+  "branch": "Без ветви",
+  "skill_branch": null,
+  "main_skill_path": null,
+  "secondary_skill_path": null,
+  "chosen_skill_groups": [],
+  "branch_choice_hint_sent": false,
+  "secondary_path_hint_sent": false,
+  "path_threshold_hint_sent": false,
+  "has_identification_amulet": true,
+  "unlocked_skill_sources": [],
+  "skill_equip_capacity": 2,
+  "inventory": [],
+  "storage": [],
+  "equipment": {
+    "weapon1": {
+      "id": "starter_wooden_staff",
+      "name": "Деревянный посох",
+      "icon": "/assets/items/starter/wooden_staff.png",
+      "type": "Оружие",
+      "slot": "weapon1",
+      "subtype": "Посох",
+      "quality": "обычный",
+      "special_type": null,
+      "state": "обычное",
+      "item_level": 1,
+      "starter_item": true,
+      "bound_on_receive": true,
+      "requirements": {
+        "level": 1
+      },
+      "combat": {
+        "damage_type": "Дробящий физический",
+        "damage_min": 4,
+        "damage_max": 7,
+        "attack_speed": "Обычная",
+        "range": "Ближний бой",
+        "two_handed": true
+      },
+      "stats": [
+        "Мана: +2"
+      ],
+      "properties": [],
+      "gem_slots": 0,
+      "enchant_slots": 0,
+      "can_enchant": false,
+      "can_insert_gems": false,
+      "set": null,
+      "scalable": false,
+      "curse": null,
+      "can_upgrade": true,
+      "can_trade": false,
+      "can_sell": true,
+      "sell_price_copper": 20,
+      "description": "Простой посох из неровной древесины. Слабое стартовое оружие, подходящее для первых боёв и обучения.",
+      "asset_icon": "/assets/items/starter/wooden_staff.png",
+      "slotKey": "weapon1",
+      "targetSlotKey": "weapon1",
+      "level": 1,
+      "category": "Оружие",
+      "stat_modifiers": {
+        "armor": 0,
+        "magic_armor": 0,
+        "bonus_hp": 0,
+        "bonus_spirit": 0,
+        "bonus_mana": 2,
+        "bonus_accuracy": 1,
+        "bonus_dodge": 0,
+        "bonus_strength": 0,
+        "bonus_endurance": 0,
+        "bonus_agility": 0,
+        "bonus_perception": 0,
+        "bonus_intelligence": 0,
+        "bonus_wisdom": 0
+      },
+      "actions": [
+        "Снять"
+      ],
+      "amount": 1
+    },
+    "chest": {
+      "id": "starter_tunic",
+      "name": "Туника",
+      "icon": "/assets/items/starter/tunic.png",
+      "type": "Броня",
+      "slot": "chest",
+      "subtype": "Тканевая броня",
+      "quality": "обычный",
+      "special_type": null,
+      "state": "обычное",
+      "item_level": 1,
+      "starter_item": true,
+      "bound_on_receive": true,
+      "requirements": {
+        "level": 1
+      },
+      "combat": {},
+      "stats": [
+        "Броня: +2"
+      ],
+      "properties": [],
+      "gem_slots": 0,
+      "enchant_slots": 0,
+      "can_enchant": false,
+      "can_insert_gems": false,
+      "set": null,
+      "scalable": false,
+      "curse": null,
+      "can_upgrade": true,
+      "can_trade": false,
+      "can_sell": true,
+      "sell_price_copper": 20,
+      "description": "Грубая, но целая туника. Даёт минимальную защиту тела и немного повышает выживаемость новичка.",
+      "asset_icon": "/assets/items/starter/tunic.png",
+      "slotKey": "chest",
+      "targetSlotKey": "chest",
+      "level": 1,
+      "category": "Снаряжение",
+      "stat_modifiers": {
+        "armor": 2,
+        "magic_armor": 1,
+        "bonus_hp": 5,
+        "bonus_spirit": 0,
+        "bonus_mana": 0,
+        "bonus_accuracy": 0,
+        "bonus_dodge": 0,
+        "bonus_strength": 0,
+        "bonus_endurance": 0,
+        "bonus_agility": 0,
+        "bonus_perception": 0,
+        "bonus_intelligence": 0,
+        "bonus_wisdom": 0
+      },
+      "actions": [
+        "Снять"
+      ],
+      "amount": 1
+    },
+    "pants": {
+      "id": "starter_canvas_pants",
+      "name": "Холщевые штаны",
+      "icon": "/assets/items/starter/canvas_pants.png",
+      "type": "Броня",
+      "slot": "pants",
+      "subtype": "Тканевая броня",
+      "quality": "обычный",
+      "special_type": null,
+      "state": "обычное",
+      "item_level": 1,
+      "starter_item": true,
+      "bound_on_receive": true,
+      "requirements": {
+        "level": 1
+      },
+      "combat": {},
+      "stats": [
+        "Дух: +1"
+      ],
+      "properties": [],
+      "gem_slots": 0,
+      "enchant_slots": 0,
+      "can_enchant": false,
+      "can_insert_gems": false,
+      "set": null,
+      "scalable": false,
+      "curse": null,
+      "can_upgrade": true,
+      "can_trade": false,
+      "can_sell": true,
+      "sell_price_copper": 20,
+      "description": "Простые холщевые штаны. Почти не защищают, но не сковывают движение.",
+      "asset_icon": "/assets/items/starter/canvas_pants.png",
+      "slotKey": "pants",
+      "targetSlotKey": "pants",
+      "level": 1,
+      "category": "Снаряжение",
+      "stat_modifiers": {
+        "armor": 1,
+        "magic_armor": 0,
+        "bonus_hp": 0,
+        "bonus_spirit": 1,
+        "bonus_mana": 0,
+        "bonus_accuracy": 0,
+        "bonus_dodge": 1,
+        "bonus_strength": 0,
+        "bonus_endurance": 0,
+        "bonus_agility": 0,
+        "bonus_perception": 0,
+        "bonus_intelligence": 0,
+        "bonus_wisdom": 0
+      },
+      "actions": [
+        "Снять"
+      ],
+      "amount": 1
+    },
+    "boots": {
+      "id": "starter_old_boots",
+      "name": "Старые сапоги",
+      "icon": "/assets/items/starter/old_boots.png",
+      "type": "Броня",
+      "slot": "boots",
+      "subtype": "Лёгкие сапоги",
+      "quality": "обычный",
+      "special_type": null,
+      "state": "изношенное",
+      "item_level": 1,
+      "starter_item": true,
+      "bound_on_receive": true,
+      "requirements": {
+        "level": 1
+      },
+      "combat": {},
+      "stats": [
+        "Уклонение: +2"
+      ],
+      "properties": [],
+      "gem_slots": 0,
+      "enchant_slots": 0,
+      "can_enchant": false,
+      "can_insert_gems": false,
+      "set": null,
+      "scalable": false,
+      "curse": null,
+      "can_upgrade": true,
+      "can_trade": false,
+      "can_sell": true,
+      "sell_price_copper": 20,
+      "description": "Потрёпанные сапоги с мягкой подошвой. Защищают ноги и немного помогают уклоняться.",
+      "asset_icon": "/assets/items/starter/old_boots.png",
+      "slotKey": "boots",
+      "targetSlotKey": "boots",
+      "level": 1,
+      "category": "Снаряжение",
+      "stat_modifiers": {
+        "armor": 1,
+        "magic_armor": 0,
+        "bonus_hp": 0,
+        "bonus_spirit": 0,
+        "bonus_mana": 0,
+        "bonus_accuracy": 0,
+        "bonus_dodge": 2,
+        "bonus_strength": 0,
+        "bonus_endurance": 0,
+        "bonus_agility": 0,
+        "bonus_perception": 0,
+        "bonus_intelligence": 0,
+        "bonus_wisdom": 0
+      },
+      "actions": [
+        "Снять"
+      ],
+      "amount": 1
+    },
+    "helmet": {
+      "id": "starter_bandana",
+      "name": "Бандана",
+      "icon": "/assets/items/starter/bandana.png",
+      "type": "Броня",
+      "slot": "helmet",
+      "subtype": "Тканевый головной убор",
+      "quality": "обычный",
+      "special_type": null,
+      "state": "обычное",
+      "item_level": 1,
+      "starter_item": true,
+      "bound_on_receive": true,
+      "requirements": {
+        "level": 1
+      },
+      "combat": {},
+      "stats": [
+        "Точность: +1"
+      ],
+      "properties": [],
+      "gem_slots": 0,
+      "enchant_slots": 0,
+      "can_enchant": false,
+      "can_insert_gems": false,
+      "set": null,
+      "scalable": false,
+      "curse": null,
+      "can_upgrade": true,
+      "can_trade": false,
+      "can_sell": true,
+      "sell_price_copper": 20,
+      "description": "Обычная тканевая бандана. Почти не защищает, но не мешает обзору и помогает внимательнее целиться.",
+      "asset_icon": "/assets/items/starter/bandana.png",
+      "slotKey": "helmet",
+      "targetSlotKey": "helmet",
+      "level": 1,
+      "category": "Снаряжение",
+      "stat_modifiers": {
+        "armor": 1,
+        "magic_armor": 0,
+        "bonus_hp": 0,
+        "bonus_spirit": 0,
+        "bonus_mana": 0,
+        "bonus_accuracy": 1,
+        "bonus_dodge": 0,
+        "bonus_strength": 0,
+        "bonus_endurance": 0,
+        "bonus_agility": 0,
+        "bonus_perception": 1,
+        "bonus_intelligence": 0,
+        "bonus_wisdom": 0
+      },
+      "actions": [
+        "Снять"
+      ],
+      "amount": 1
+    }
+  },
+  "skills": {
+    "active": [
+      {
+        "id": "basic_attack",
+        "name": "Обычный удар",
+        "level": 0,
+        "skill_type": "active",
+        "category": "Физическая атака ближнего боя",
+        "resource_branch": "neutral",
+        "upgradeable": false,
+        "has_modifiers": false,
+        "cooldown_turns": 0,
+        "target": "1 противник",
+        "spirit_cost": 0,
+        "mana_cost": 0,
+        "damage_type": "physical",
+        "base_damage_formula": "ceil(5 + player_level * 1.2)",
+        "damage": "5 + уровень персонажа × 1.2",
+        "uses_hit_check": true,
+        "can_crit": true,
+        "crit_type": "physical",
+        "defense_type": "physical_defense",
+        "description": "Урон зависит от уровня персонажа."
+      },
+      {
+        "id": "magic_spark",
+        "name": "Магический сгусток",
+        "level": 0,
+        "skill_type": "active",
+        "category": "Магическая атака",
+        "resource_branch": "neutral",
+        "upgradeable": false,
+        "has_modifiers": false,
+        "cooldown_turns": 0,
+        "target": "1 противник",
+        "spirit_cost": 0,
+        "mana_cost": 2,
+        "damage_type": "magic",
+        "base_damage_formula": "ceil(6 + player_level * 1.2)",
+        "damage": "6 + уровень персонажа × 1.2",
+        "uses_hit_check": true,
+        "can_crit": true,
+        "crit_type": "magic",
+        "defense_type": "magic_defense",
+        "description": "Урон зависит от уровня персонажа."
+      }
+    ],
+    "passive": []
+  },
+  "starter_pack_applied": true,
+  "active_effects": [],
+  "active_sets": [],
+  "known_recipes": [],
+  "alchemy_level": 1,
+  "alchemy_experience": 0,
+  "unlocked_alchemy_recipes": [],
+  "alchemy_known_failures": [],
+  "owned_special_recipes": [],
+  "crafting_levels": {
+    "smelting": {
+      "level": 1,
+      "experience": 0
+    },
+    "blacksmithing": {
+      "level": 1,
+      "experience": 0
+    },
+    "leatherworking": {
+      "level": 1,
+      "experience": 0
+    },
+    "jewelcrafting": {
+      "level": 1,
+      "experience": 0
+    },
+    "alchemy": {
+      "level": 1,
+      "experience": 0
+    },
+    "enchanting": {
+      "level": 1,
+      "experience": 0
+    }
+  },
+  "housing": {
+    "plot_type": null,
+    "buildings": []
+  },
+  "achievements": [],
+  "rating": {
+    "globalPlace": "—",
+    "pvePlace": "—",
+    "pvpPlace": "—",
+    "craftPlace": "—"
+  },
+  "pve_kills": 0,
+  "pvp_kills": 0,
+  "soul_particles_absorbed": 0,
+  "created_at": "2026-06-20T12:38:02.435833+00:00",
+  "last_unstuck_at": 1781959082.479123,
+  "active_timer": null,
+  "active_event": null,
+  "active_battle": null,
+  "current_location": "seldar_central_square",
+  "pending_bot_messages": [
+    {
+      "type": "admin_message",
+      "text": "привет",
+      "created_at": "2026-06-20T12:38:02.493195+00:00",
+      "source": "admin_panel_v2"
+    }
+  ]
+}

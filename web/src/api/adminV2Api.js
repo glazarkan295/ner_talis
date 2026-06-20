@@ -50,3 +50,71 @@ export function revokeSession(id, reason) {
     body: JSON.stringify({ id, reason }),
   });
 }
+
+// ---- Player control-center -------------------------------------------------
+
+export function fetchPlayers(q = "") {
+  const params = new URLSearchParams({ q });
+  return requestAdminJson(`/api/admin/v2/players?${params.toString()}&_=${Date.now()}`);
+}
+
+export function fetchPlayer(gameId) {
+  return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}?_=${Date.now()}`);
+}
+
+export function fetchPlayerLogs(gameId) {
+  return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/logs?_=${Date.now()}`);
+}
+
+export function fetchPlayerChat(gameId) {
+  return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/chat?_=${Date.now()}`);
+}
+
+export function openPlayerView(gameId) {
+  return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/view-token`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export function grantRewards(gameId, rewards, reason) {
+  return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/rewards`, {
+    method: "POST",
+    body: JSON.stringify({ rewards, reason }),
+  });
+}
+
+export function messagePlayer(gameId, text, reason) {
+  return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/message`, {
+    method: "POST",
+    body: JSON.stringify({ text, reason }),
+  });
+}
+
+export function unstuckPlayer(gameId, reason) {
+  return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/unstuck`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function forgiveFine(gameId, reason) {
+  return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/forgive-fine`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function resetPlayer(gameId, reason) {
+  return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/reset`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function deletePlayer(gameId, reason) {
+  return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ confirm: "CONFIRM_DELETE", reason }),
+  });
+}

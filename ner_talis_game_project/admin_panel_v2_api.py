@@ -15,13 +15,32 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from services.admin_audit import read_admin_audit_records
-from services.admin_operation import record_admin_operation
-from services.admin_panel_service import require_admin_session
+from services.admin_operation import (
+    record_admin_operation,
+    run_admin_operation,
+)
+from services.admin_panel_service import (
+    admin_player_detail,
+    create_admin_player_view_token,
+    deliver_rewards_to_player,
+    list_admin_players,
+    player_chat_last_24h,
+    player_logs_last_24h,
+    require_admin_session,
+)
+from services.admin_player_service import delete_player_profile, reset_player_progress
 from services.admin_rbac import (
     ALL_PERMISSIONS,
     DANGEROUS_ACTIONS,
     OWNER,
     PERM_AUDIT_VIEW,
+    PERM_FINES_MANAGE,
+    PERM_PLAYERS_DELETE,
+    PERM_PLAYERS_MESSAGE,
+    PERM_PLAYERS_RESET,
+    PERM_PLAYERS_UNSTUCK,
+    PERM_PLAYERS_VIEW,
+    PERM_REWARDS_GRANT,
     PERM_ROLES_MANAGE,
     PERM_SYSTEM_MANAGE,
     PERM_SYSTEM_VIEW,
@@ -53,8 +72,48 @@ class SessionRevokeRequest(BaseModel):
     reason: str = ""
 
 
+class PlayerRewardItem(BaseModel):
+    item_id: str
+    amount: int = Field(gt=0)
+
+
+class PlayerRewardRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    rewards: list[PlayerRewardItem]
+    reason: str = ""
+
+
+class PlayerMessageRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    text: str = Field(min_length=1)
+    reason: str = ""
+
+
+class PlayerActionRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    reason: str = ""
+
+
+class PlayerDeleteRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    confirm: str = ""
+    reason: str = ""
+
+
 def _session_token_id(token: Any) -> str:
     return hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()[:16]
+
+
+def _player_snapshot(detail: dict[str, Any] | None) -> dict[str, Any]:
+    """Лёгкий слепок ключевых полей игрока для before/after в аудите."""
+    if not isinstance(detail, dict):
+        return {}
+    return {
+        "level": detail.get("level"),
+        "experience": detail.get("experience"),
+        "money": detail.get("money"),
+        "location": detail.get("location"),
+    }
 
 
 def _bearer_token(request: Request | None) -> str:
@@ -262,5 +321,278 @@ def create_admin_panel_v2_router(get_storage) -> APIRouter:
             reason=payload.reason,
         )
         return {"ok": True, "removed": removed}
+
+    # ---- Центр управления игроком (P1) -------------------------------------
+
+    def _load_card(storage: Any, game_id: str) -> dict[str, Any] | None:
+        detail = admin_player_detail(storage, game_id)
+        if detail is None:
+            return None
+        # Активные штрафы — отдельным блоком карточки (read + forgive).
+        try:
+            from services.fine_service import active_fines
+
+            player = storage.get_player_by_game_id(game_id) if hasattr(storage, "get_player_by_game_id") else None
+            fines = active_fines(player) if isinstance(player, dict) else []
+        except Exception:
+            fines = []
+        detail = dict(detail)
+        detail["fines"] = [
+            {
+                "id": f.get("id"),
+                "source": f.get("source_name") or f.get("source"),
+                "amount": f.get("current_amount"),
+                "day": f.get("current_day"),
+                "status": f.get("status"),
+            }
+            for f in fines
+            if isinstance(f, dict)
+        ]
+        return detail
+
+    @router.get("/players")
+    def get_players(
+        request: Request,
+        token: str | None = Query(default=None, min_length=16),
+        q: str = "",
+        limit: int = Query(default=200, ge=1, le=1000),
+    ) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, token)
+        _require(session, PERM_PLAYERS_VIEW)
+        return {"ok": True, "players": list_admin_players(storage, query=q, limit=limit)}
+
+    @router.get("/players/{game_id}")
+    def get_player(game_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, token)
+        _require(session, PERM_PLAYERS_VIEW)
+        card = _load_card(storage, game_id)
+        if card is None:
+            raise HTTPException(status_code=404, detail="Игрок не найден.")
+        return {"ok": True, "player": card}
+
+    @router.get("/players/{game_id}/logs")
+    def get_player_logs(game_id: str, request: Request, token: str | None = Query(default=None, min_length=16), limit: int = Query(default=200, ge=1, le=1000)) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, token)
+        _require(session, PERM_PLAYERS_VIEW)
+        return {"ok": True, "logs": player_logs_last_24h(storage, game_id=game_id, limit=limit)}
+
+    @router.get("/players/{game_id}/chat")
+    def get_player_chat(game_id: str, request: Request, token: str | None = Query(default=None, min_length=16), limit: int = Query(default=200, ge=1, le=1000)) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, token)
+        _require(session, PERM_PLAYERS_VIEW)
+        return {"ok": True, "chat": player_chat_last_24h(storage, game_id=game_id, limit=limit)}
+
+    @router.post("/players/{game_id}/view-token")
+    def player_view_token(game_id: str, payload: PlayerActionRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_PLAYERS_VIEW)
+        try:
+            view_token = create_admin_player_view_token(storage, target_game_id=game_id, admin_session=session)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {"ok": True, "token": view_token, "url": f"/admin_view_profile?token={view_token}"}
+
+    @router.post("/players/{game_id}/rewards")
+    def grant_rewards(game_id: str, payload: PlayerRewardRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_REWARDS_GRANT)
+        card = _load_card(storage, game_id)
+        if card is None:
+            raise HTTPException(status_code=404, detail="Игрок не найден.")
+        rewards = [r.model_dump() for r in payload.rewards]
+        try:
+            result = run_admin_operation(
+                session=session,
+                action="rewards.grant",
+                func=lambda: deliver_rewards_to_player(
+                    storage, target_game_id=game_id, rewards=rewards, admin_session=session
+                ),
+                target_type="player",
+                target_id=game_id,
+                target_name=card.get("name"),
+                before=_player_snapshot(card),
+                after_func=lambda _r: _player_snapshot(admin_player_detail(storage, game_id)),
+                reason=payload.reason,
+                details={"rewards": rewards},
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, **(result if isinstance(result, dict) else {})}
+
+    @router.post("/players/{game_id}/message")
+    def message_player(game_id: str, payload: PlayerMessageRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_PLAYERS_MESSAGE)
+        card = _load_card(storage, game_id)
+        if card is None:
+            raise HTTPException(status_code=404, detail="Игрок не найден.")
+        from datetime import datetime, timezone
+
+        message = {
+            "type": "admin_message",
+            "text": payload.text,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "source": "admin_panel_v2",
+        }
+
+        def _send() -> bool:
+            enqueue = getattr(storage, "enqueue_bot_messages", None)
+            if callable(enqueue):
+                enqueue(game_id, [message])
+                return True
+            player = storage.get_player_by_game_id(game_id)
+            if not player:
+                raise ValueError("Игрок не найден.")
+            player.setdefault("pending_bot_messages", []).append(message)
+            storage.update_player(player)
+            return True
+
+        run_admin_operation(
+            session=session,
+            action="player.message",
+            func=_send,
+            target_type="player",
+            target_id=game_id,
+            target_name=card.get("name"),
+            reason=payload.reason,
+            details={"text": payload.text[:200]},
+        )
+        return {"ok": True}
+
+    @router.post("/players/{game_id}/unstuck")
+    def unstuck(game_id: str, payload: PlayerActionRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_PLAYERS_UNSTUCK)
+        card = _load_card(storage, game_id)
+        if card is None:
+            raise HTTPException(status_code=404, detail="Игрок не найден.")
+
+        def _unstuck() -> str:
+            from services.city_service import unstuck_player
+
+            player = storage.get_player_by_game_id(game_id)
+            if not player:
+                raise ValueError("Игрок не найден.")
+            # Админский разблок не должен упираться в 30-минутный кулдаун игрока.
+            player["last_unstuck_at"] = 0
+            response = unstuck_player(storage, player)
+            return getattr(response, "text", "")
+
+        text = run_admin_operation(
+            session=session,
+            action="player.unstuck",
+            func=_unstuck,
+            target_type="player",
+            target_id=game_id,
+            target_name=card.get("name"),
+            before={"location": card.get("location")},
+            after_func=lambda _r: _player_snapshot(admin_player_detail(storage, game_id)),
+            reason=payload.reason,
+        )
+        return {"ok": True, "message": text}
+
+    @router.post("/players/{game_id}/forgive-fine")
+    def forgive_fine(game_id: str, payload: PlayerActionRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_FINES_MANAGE)
+        card = _load_card(storage, game_id)
+        if card is None:
+            raise HTTPException(status_code=404, detail="Игрок не найден.")
+        before_fines = card.get("fines") or []
+
+        def _forgive() -> int:
+            player = storage.get_player_by_game_id(game_id)
+            if not player:
+                raise ValueError("Игрок не найден.")
+            player["active_fines"] = []
+            player.pop("active_fine", None)
+            storage.update_player(player)
+            return len(before_fines)
+
+        run_admin_operation(
+            session=session,
+            action="fines.forgive",
+            func=_forgive,
+            target_type="player",
+            target_id=game_id,
+            target_name=card.get("name"),
+            before={"fines": before_fines},
+            after_func=lambda _r: {"fines": []},
+            reason=payload.reason,
+        )
+        return {"ok": True, "forgiven": len(before_fines)}
+
+    @router.post("/players/{game_id}/reset")
+    def reset_player(game_id: str, payload: PlayerActionRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_PLAYERS_RESET)
+        card = _load_card(storage, game_id)
+        if card is None:
+            raise HTTPException(status_code=404, detail="Игрок не найден.")
+
+        def _reset() -> str:
+            ok, message, _player = reset_player_progress(storage, game_id)
+            if not ok:
+                raise ValueError(message)
+            return message
+
+        try:
+            message = run_admin_operation(
+                session=session,
+                action="player.reset",
+                func=_reset,
+                target_type="player",
+                target_id=game_id,
+                target_name=card.get("name"),
+                before=_player_snapshot(card),
+                after_func=lambda _r: _player_snapshot(admin_player_detail(storage, game_id)),
+                reason=payload.reason,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "message": message}
+
+    @router.delete("/players/{game_id}")
+    def delete_player(game_id: str, payload: PlayerDeleteRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_PLAYERS_DELETE)
+        if payload.confirm != "CONFIRM_DELETE":
+            raise HTTPException(status_code=400, detail="Для удаления нужно подтверждение CONFIRM_DELETE.")
+        card = _load_card(storage, game_id)
+        if card is None:
+            raise HTTPException(status_code=404, detail="Игрок не найден.")
+
+        def _delete() -> str:
+            ok, message, _player = delete_player_profile(storage, game_id)
+            if not ok:
+                raise ValueError(message)
+            return message
+
+        try:
+            message = run_admin_operation(
+                session=session,
+                action="player.delete",
+                func=_delete,
+                target_type="player",
+                target_id=game_id,
+                target_name=card.get("name"),
+                before={"name": card.get("name"), "level": card.get("level")},
+                after_func=lambda _r: {"deleted": True},
+                reason=payload.reason,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "message": message}
 
     return router

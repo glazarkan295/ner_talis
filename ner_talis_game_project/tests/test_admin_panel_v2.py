@@ -17,6 +17,7 @@ from services.admin_panel_service import (
     consume_or_read_admin_session,
     create_admin_panel_activation_token,
 )
+from services.registration_service import create_player, load_races
 from storage.json_storage import JsonStorage
 
 
@@ -52,6 +53,20 @@ class AdminPanelV2Test(unittest.TestCase):
 
     def _auth(self, token):
         return {"Authorization": f"Bearer {token}"}
+
+    def _make_player(self, *, name="Странник", external_user_id="111"):
+        races = load_races("data/races.json")
+        game_id = self.storage.generate_game_id()
+        player = create_player(
+            game_id=game_id,
+            platform="telegram",
+            external_user_id=external_user_id,
+            name=name,
+            race_id="human",
+            races=races,
+        )
+        self.storage.save_new_player(player, "telegram", external_user_id)
+        return game_id
 
     def test_me_returns_owner_role_and_permissions(self):
         token = self._session_token("999")
@@ -165,6 +180,100 @@ class AdminPanelV2Test(unittest.TestCase):
                 headers=self._auth(token),
                 json={"id": "deadbeefdeadbeef"},
             ).status_code,
+            403,
+        )
+
+    # ---- Player control-center ------------------------------------------
+
+    def test_owner_lists_and_opens_player_card(self):
+        gid = self._make_player(name="Карточкин")
+        token = self._session_token("999")
+        listing = self.client.get("/api/admin/v2/players", headers=self._auth(token))
+        self.assertEqual(listing.status_code, 200, listing.text)
+        self.assertTrue(any(p["game_id"] == gid for p in listing.json()["players"]))
+        card = self.client.get(f"/api/admin/v2/players/{gid}", headers=self._auth(token))
+        self.assertEqual(card.status_code, 200, card.text)
+        body = card.json()["player"]
+        self.assertEqual(body["game_id"], gid)
+        self.assertEqual(body["level"], 1)
+        self.assertIn("fines", body)
+
+    def test_owner_can_unstuck_message_and_grant_audited(self):
+        gid = self._make_player()
+        token = self._session_token("999")
+        self.assertEqual(
+            self.client.post(f"/api/admin/v2/players/{gid}/unstuck", headers=self._auth(token), json={"reason": "застрял"}).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.post(f"/api/admin/v2/players/{gid}/message", headers=self._auth(token), json={"text": "привет"}).status_code,
+            200,
+        )
+        grant = self.client.post(
+            f"/api/admin/v2/players/{gid}/rewards",
+            headers=self._auth(token),
+            json={"rewards": [{"item_id": "money_copper", "amount": 100}], "reason": "компенсация"},
+        )
+        self.assertEqual(grant.status_code, 200, grant.text)
+        # Player got the coins.
+        card = self.client.get(f"/api/admin/v2/players/{gid}", headers=self._auth(token)).json()["player"]
+        self.assertGreaterEqual(card["money"], 100)
+        # All three actions are in the audit.
+        audit = self.client.get("/api/admin/v2/audit", headers=self._auth(token)).json()["records"]
+        actions = {r["action"] for r in audit}
+        self.assertTrue({"player.unstuck", "player.message", "rewards.grant"} <= actions)
+
+    def test_owner_can_reset_and_delete_player(self):
+        gid = self._make_player()
+        token = self._session_token("999")
+        reset = self.client.post(f"/api/admin/v2/players/{gid}/reset", headers=self._auth(token), json={"reason": "по просьбе"})
+        self.assertEqual(reset.status_code, 200, reset.text)
+        delete = self.client.request(
+            "DELETE",
+            f"/api/admin/v2/players/{gid}",
+            headers=self._auth(token),
+            json={"reason": "бан", "confirm": "CONFIRM_DELETE"},
+        )
+        self.assertEqual(delete.status_code, 200, delete.text)
+        # Gone now.
+        self.assertEqual(self.client.get(f"/api/admin/v2/players/{gid}", headers=self._auth(token)).status_code, 404)
+        audit = {r["action"] for r in self.client.get("/api/admin/v2/audit?dangerous_only=true", headers=self._auth(token)).json()["records"]}
+        self.assertIn("player.reset", audit)
+        self.assertIn("player.delete", audit)
+
+    def test_forgive_fine_clears_active_fines(self):
+        gid = self._make_player()
+        player = self.storage.get_player_by_game_id(gid)
+        player["active_fines"] = [{"id": "fine_test_1", "status": "voluntary", "current_amount": 500, "current_day": 1, "source_name": "Налёт"}]
+        player["active_fine"] = player["active_fines"][0]
+        self.storage.update_player(player)
+        token = self._session_token("999")
+        card = self.client.get(f"/api/admin/v2/players/{gid}", headers=self._auth(token)).json()["player"]
+        self.assertEqual(len(card["fines"]), 1)
+        res = self.client.post(f"/api/admin/v2/players/{gid}/forgive-fine", headers=self._auth(token), json={"reason": "прощено"})
+        self.assertEqual(res.status_code, 200, res.text)
+        card2 = self.client.get(f"/api/admin/v2/players/{gid}", headers=self._auth(token)).json()["player"]
+        self.assertEqual(card2["fines"], [])
+
+    def test_support_can_unstuck_but_not_reset_or_delete(self):
+        gid = self._make_player()
+        rbac.set_role_override("telegram", "999", rbac.SUPPORT)
+        token = self._session_token("999")
+        self.assertEqual(self.client.post(f"/api/admin/v2/players/{gid}/unstuck", headers=self._auth(token), json={}).status_code, 200)
+        self.assertEqual(self.client.post(f"/api/admin/v2/players/{gid}/reset", headers=self._auth(token), json={}).status_code, 403)
+        self.assertEqual(
+            self.client.request("DELETE", f"/api/admin/v2/players/{gid}", headers=self._auth(token), json={"reason": "x"}).status_code,
+            403,
+        )
+
+    def test_readonly_can_view_but_not_act(self):
+        gid = self._make_player()
+        rbac.set_role_override("telegram", "999", rbac.READ_ONLY)
+        token = self._session_token("999")
+        self.assertEqual(self.client.get(f"/api/admin/v2/players/{gid}", headers=self._auth(token)).status_code, 200)
+        self.assertEqual(self.client.post(f"/api/admin/v2/players/{gid}/message", headers=self._auth(token), json={"text": "x"}).status_code, 403)
+        self.assertEqual(
+            self.client.post(f"/api/admin/v2/players/{gid}/rewards", headers=self._auth(token), json={"rewards": [{"item_id": "money_copper", "amount": 1}]}).status_code,
             403,
         )
 

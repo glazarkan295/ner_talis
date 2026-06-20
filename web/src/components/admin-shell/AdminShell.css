@@ -111,6 +111,19 @@
 .ntv2-audit-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; opacity: .85; margin-top: 4px; }
 .ntv2-audit-reason { font-style: italic; opacity: .8; }
 
+/* Player control-center card */
+.ntv2-player-row { cursor: pointer; text-align: left; font-family: inherit; color: var(--parch); }
+.ntv2-player-row:hover { border-color: var(--line-strong); }
+.ntv2-card-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.ntv2-card-head h2 { margin: 0; }
+.ntv2-subhead { color: var(--gold); margin: 0 0 8px; font-size: 14px; }
+.ntv2-catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; max-height: 320px; overflow: auto; padding: 4px; }
+.ntv2-catalog-card { display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--parch); padding: 8px; font-family: inherit; font-size: 12px; text-align: center; }
+.ntv2-catalog-card:hover { border-color: var(--line-strong); }
+.ntv2-catalog-card img { width: 100%; max-width: 64px; aspect-ratio: 1; object-fit: contain; border-radius: 8px; background: rgba(0, 0, 0, .2); }
+.ntv2-danger-zone { border-color: rgba(255, 120, 90, .45); }
+.ntv2-danger-zone h3 { color: var(--danger); }
+
 /* Technical data collapse + raw JSON */
 .ntv2-tech { margin-top: 8px; }
 .ntv2-tech > summary { cursor: pointer; font-size: 13px; opacity: .75; }

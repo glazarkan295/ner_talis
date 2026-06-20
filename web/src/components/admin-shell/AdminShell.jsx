@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "./AdminShell.css";
 import { fetchMe, getAdminSessionToken } from "../../api/adminV2Api.js";
 import { OverviewSection } from "./sections/OverviewSection.jsx";
+import { PlayersSection } from "./sections/PlayersSection.jsx";
 import { AuditSection } from "./sections/AuditSection.jsx";
 import { RolesSection } from "./sections/RolesSection.jsx";
 import { SessionsSection } from "./sections/SessionsSection.jsx";
@@ -10,6 +11,7 @@ import { SessionsSection } from "./sections/SessionsSection.jsx";
 // is handled by hasPerm below, so listing the concrete permission is enough.
 const NAV = [
   { id: "overview", label: "Обзор", icon: "🏠", perm: null },
+  { id: "players", label: "Игроки", icon: "👤", perm: "players.view" },
   { id: "audit", label: "Аудит", icon: "📜", perm: "audit.view" },
   { id: "sessions", label: "Сессии", icon: "🔑", perm: "system.view" },
   { id: "roles", label: "Роли и доступ", icon: "🛡️", perm: "roles.manage" },
@@ -101,6 +103,7 @@ export function AdminShell() {
         {ok ? <div className="ntv2-banner ntv2-ok">{ok}</div> : null}
 
         {active === "overview" && <OverviewSection me={me} />}
+        {active === "players" && hasPerm("players.view") && <PlayersSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "audit" && hasPerm("audit.view") && <AuditSection guarded={guarded} />}
         {active === "sessions" && hasPerm("system.view") && (
           <SessionsSection guarded={guarded} canRevoke={hasPerm("system.manage")} />
