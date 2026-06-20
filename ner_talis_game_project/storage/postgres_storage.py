@@ -786,6 +786,20 @@ class PostgresStorage:
                 ON CONFLICT (token) DO UPDATE SET data = EXCLUDED.data, expires_at = EXCLUDED.expires_at
             """), {"token": str(token), "data": self._dumps(session), "expires_at": str(expires_at)})
 
+    def list_admin_panel_sessions(self) -> list[dict[str, Any]]:
+        with self.engine.begin() as connection:
+            rows = connection.execute(
+                text("SELECT token, data FROM admin_panel_sessions")
+            ).mappings().all()
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            session = self._loads(row["data"], {})
+            if isinstance(session, dict):
+                session = dict(session)
+                session["token"] = row["token"]
+                result.append(session)
+        return result
+
     def delete_admin_panel_session(self, token: str) -> bool:
         with self.engine.begin() as connection:
             result = connection.execute(

@@ -747,6 +747,17 @@ class SQLiteStorage:
                 (str(token), self._serialize(session), str(expires_at)),
             )
 
+    def list_admin_panel_sessions(self) -> list[dict[str, Any]]:
+        with self._lock, self._connect() as connection:
+            result: list[dict[str, Any]] = []
+            for row in connection.execute("SELECT token, data FROM admin_panel_sessions"):
+                session = self._deserialize(row["data"])
+                if isinstance(session, dict):
+                    session = dict(session)
+                    session["token"] = row["token"]
+                    result.append(session)
+            return result
+
     def delete_admin_panel_session(self, token: str) -> bool:
         with self._lock, self._connect() as connection:
             cursor = connection.execute("DELETE FROM admin_panel_sessions WHERE token = ?", (str(token),))

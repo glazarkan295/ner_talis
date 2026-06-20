@@ -102,6 +102,72 @@ class AdminPanelV2Test(unittest.TestCase):
     def test_missing_session_is_401(self):
         self.assertEqual(self.client.get("/api/admin/v2/me").status_code, 401)
 
+    def test_owner_lists_sessions_with_masked_ids(self):
+        token = self._session_token("999")
+        res = self.client.get("/api/admin/v2/sessions", headers=self._auth(token))
+        self.assertEqual(res.status_code, 200, res.text)
+        sessions = res.json()["sessions"]
+        self.assertTrue(sessions)
+        current = next(s for s in sessions if s["isCurrent"])
+        self.assertEqual(current["adminUserId"], "999")
+        self.assertEqual(current["role"], rbac.OWNER)
+        # Token never leaks; only a short hashed id is exposed.
+        self.assertEqual(len(current["id"]), 16)
+        self.assertNotIn("token", current)
+
+    def test_owner_can_revoke_another_session(self):
+        owner_token = self._session_token("999")
+        # Second admin session to revoke.
+        rbac.set_role_override("telegram", "555", rbac.SUPPORT)
+        victim_token = self._session_token("555")
+        sessions = self.client.get(
+            "/api/admin/v2/sessions", headers=self._auth(owner_token)
+        ).json()["sessions"]
+        victim = next(s for s in sessions if s["adminUserId"] == "555")
+        res = self.client.post(
+            "/api/admin/v2/sessions/revoke",
+            headers=self._auth(owner_token),
+            json={"id": victim["id"], "reason": "подозрительная активность"},
+        )
+        self.assertEqual(res.status_code, 200, res.text)
+        self.assertTrue(res.json()["removed"])
+        # Revoked session no longer authenticates.
+        self.assertEqual(
+            self.client.get("/api/admin/v2/me", headers=self._auth(victim_token)).status_code,
+            403,
+        )
+        # And it is audited.
+        audit = self.client.get(
+            "/api/admin/v2/audit?action=session.revoke", headers=self._auth(owner_token)
+        ).json()
+        self.assertTrue(audit["records"])
+
+    def test_revoke_unknown_session_is_404(self):
+        token = self._session_token("999")
+        res = self.client.post(
+            "/api/admin/v2/sessions/revoke",
+            headers=self._auth(token),
+            json={"id": "deadbeefdeadbeef"},
+        )
+        self.assertEqual(res.status_code, 404, res.text)
+
+    def test_support_cannot_revoke_sessions(self):
+        rbac.set_role_override("telegram", "999", rbac.SUPPORT)
+        token = self._session_token("999")
+        # Support can view sessions? PERM_SYSTEM_VIEW is not in support set -> 403.
+        self.assertEqual(
+            self.client.get("/api/admin/v2/sessions", headers=self._auth(token)).status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.post(
+                "/api/admin/v2/sessions/revoke",
+                headers=self._auth(token),
+                json={"id": "deadbeefdeadbeef"},
+            ).status_code,
+            403,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

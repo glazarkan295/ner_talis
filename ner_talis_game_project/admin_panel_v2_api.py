@@ -8,6 +8,7 @@ checks a permission via admin_rbac and records an admin_operation in the audit.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -22,8 +23,9 @@ from services.admin_rbac import (
     OWNER,
     PERM_AUDIT_VIEW,
     PERM_ROLES_MANAGE,
+    PERM_SYSTEM_MANAGE,
+    PERM_SYSTEM_VIEW,
     ROLE_LABELS,
-    ROLE_PERMISSIONS,
     ROLES,
     get_role_overrides,
     identity_key,
@@ -43,6 +45,16 @@ class RoleAssignRequest(BaseModel):
     admin_user_id: str
     role: str
     reason: str = ""
+
+
+class SessionRevokeRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    id: str = Field(min_length=4)
+    reason: str = ""
+
+
+def _session_token_id(token: Any) -> str:
+    return hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()[:16]
 
 
 def _bearer_token(request: Request | None) -> str:
@@ -204,5 +216,51 @@ def create_admin_panel_v2_router(get_storage) -> APIRouter:
             reason="reset role override",
         )
         return {"ok": True, "key": target_key, "removed": removed, "role": after}
+
+    @router.get("/sessions")
+    def get_sessions(request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, token)
+        _require(session, PERM_SYSTEM_VIEW)
+        current = _bearer_token(request) or str(token or "")
+        raw = storage.list_admin_panel_sessions() if hasattr(storage, "list_admin_panel_sessions") else []
+        items: list[dict[str, Any]] = []
+        for sess in raw:
+            tok = sess.get("token") or ""
+            items.append({
+                "id": _session_token_id(tok),
+                "platform": sess.get("platform"),
+                "adminUserId": str(sess.get("admin_user_id") or ""),
+                "scope": sess.get("scope"),
+                "kind": sess.get("kind"),
+                "role": resolve_admin_role(sess.get("platform"), sess.get("admin_user_id")),
+                "createdAt": sess.get("activated_at") or sess.get("created_at"),
+                "expiresAt": sess.get("expires_at"),
+                "isCurrent": tok == current,
+            })
+        items.sort(key=lambda s: str(s.get("createdAt") or ""), reverse=True)
+        return {"ok": True, "sessions": items}
+
+    @router.post("/sessions/revoke")
+    def revoke_session(payload: SessionRevokeRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_SYSTEM_MANAGE)
+        raw = storage.list_admin_panel_sessions() if hasattr(storage, "list_admin_panel_sessions") else []
+        target = next((s for s in raw if _session_token_id(s.get("token") or "") == payload.id), None)
+        if target is None:
+            raise HTTPException(status_code=404, detail="Сессия не найдена.")
+        removed = bool(storage.delete_admin_panel_session(target.get("token")))
+        record_admin_operation(
+            session=session,
+            action="session.revoke",
+            target_type="admin_session",
+            target_id=payload.id,
+            target_name=str(target.get("admin_user_id") or ""),
+            before={"scope": target.get("scope"), "expires_at": target.get("expires_at")},
+            after={"revoked": removed},
+            reason=payload.reason,
+        )
+        return {"ok": True, "removed": removed}
 
     return router
