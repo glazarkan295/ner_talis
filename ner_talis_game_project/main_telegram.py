@@ -165,6 +165,36 @@ def _import_telegram_runtime():
     }
 
 
+async def _register_message_dispatcher(application) -> None:
+    """post_init: подключить живой Telegram-отправитель к очереди сообщений.
+
+    Активно только при BOT_MESSAGE_DISPATCHER_ENABLED. Отправка из фонового
+    потока — через run_coroutine_threadsafe на текущем event loop бота (тот же
+    приём, что и доставка результатов таймеров).
+    """
+    import asyncio
+
+    from services.message_delivery import (
+        dispatcher_enabled,
+        register_platform_sender,
+        start_message_dispatcher,
+    )
+
+    if not dispatcher_enabled():
+        return
+    loop = asyncio.get_running_loop()
+
+    def _telegram_send(recipient: str, text: str) -> None:
+        future = asyncio.run_coroutine_threadsafe(
+            application.bot.send_message(chat_id=int(recipient), text=text),
+            loop,
+        )
+        future.result(timeout=30)
+
+    register_platform_sender("telegram", _telegram_send)
+    start_message_dispatcher()
+
+
 def build_application():
     runtime = _import_telegram_runtime()
     Application = runtime["Application"]
@@ -182,6 +212,7 @@ def build_application():
     application = (
         Application.builder()
         .token(token)
+        .post_init(_register_message_dispatcher)
         .connect_timeout(get_float_env("TELEGRAM_CONNECT_TIMEOUT", 30.0))
         .read_timeout(get_float_env("TELEGRAM_READ_TIMEOUT", 30.0))
         .write_timeout(get_float_env("TELEGRAM_WRITE_TIMEOUT", 30.0))

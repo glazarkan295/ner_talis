@@ -439,15 +439,17 @@ def create_admin_panel_v2_router(get_storage) -> APIRouter:
         }
 
         def _send() -> bool:
-            enqueue = getattr(storage, "enqueue_bot_messages", None)
-            if callable(enqueue):
-                enqueue(game_id, [message])
-                return True
-            player = storage.get_player_by_game_id(game_id)
-            if not player:
-                raise ValueError("Игрок не найден.")
-            player.setdefault("pending_bot_messages", []).append(message)
-            storage.update_player(player)
+            from services.message_delivery import notify_player
+            status = notify_player(
+                storage, game_id, payload.text, type="admin_message",
+                priority="high", source="admin_panel_v2", fallback_message=message,
+            )
+            if status == "skipped":
+                player = storage.get_player_by_game_id(game_id)
+                if not player:
+                    raise ValueError("Игрок не найден.")
+                player.setdefault("pending_bot_messages", []).append(message)
+                storage.update_player(player)
             return True
 
         run_admin_operation(

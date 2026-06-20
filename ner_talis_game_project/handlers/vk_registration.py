@@ -87,6 +87,7 @@ class VkRegistrationBot:
 
     def run(self) -> None:
         print("VK bot started")
+        self._register_message_dispatcher()
         for event in self.longpoll.listen():
             if event.type != VkBotEventType.MESSAGE_NEW:
                 continue
@@ -687,6 +688,22 @@ class VkRegistrationBot:
             send_callback=send_timer_result,
             platform_filter=VK_PLATFORM,
         )
+
+    def _register_message_dispatcher(self) -> None:
+        """Подключить живой VK-отправитель к очереди (если включён диспетчер)."""
+        try:
+            from services.message_delivery import (
+                dispatcher_enabled,
+                register_platform_sender,
+                start_message_dispatcher,
+            )
+
+            if not dispatcher_enabled():
+                return
+            register_platform_sender("vk", lambda recipient, text: self.send(int(recipient), text))
+            start_message_dispatcher()
+        except Exception:
+            logger.exception("Failed to register VK message dispatcher")
 
     def send(self, peer_id: int, text: str, keyboard: str | None = None) -> None:
         params = {

@@ -139,10 +139,14 @@ def _notify(storage: Any, player: dict[str, Any], data: dict[str, Any], lines: l
     if lines:
         text += "\n\nНаграда:\n" + "\n".join(f"• {line}" for line in lines)
     message = {"type": "achievement", "text": text, "created_at": _now_iso(), "source": "achievement"}
-    enqueue = getattr(storage, "enqueue_bot_messages", None)
-    if callable(enqueue):
-        enqueue(game_id, [message])
-    else:
+    ach_id = data.get("id") or ""
+    from services.message_delivery import notify_player
+    status = notify_player(
+        storage, game_id, text, type="achievement", priority="high",
+        delivery_key=(f"achievement:{ach_id}:{game_id}" if ach_id else None),
+        source="achievement", fallback_message=message,
+    )
+    if status == "skipped":
         player.setdefault("pending_bot_messages", []).append(message)
 
 

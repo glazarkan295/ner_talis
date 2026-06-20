@@ -727,10 +727,14 @@ def deliver_rewards_to_player(storage: Any, *, target_game_id: str, rewards: lis
         "created_at": _now().isoformat(),
         "source": "admin_panel",
     }
-    enqueue = getattr(storage, "enqueue_bot_messages", None)
-    if callable(enqueue):
-        enqueue(game_id, [gift_message])
-    else:  # запасной путь для хранилищ без атомарного outbox
+    # Мгновенная доставка через очередь (если включена), иначе атомарный outbox —
+    # ровно один путь, без дублей.
+    from services.message_delivery import notify_player
+    status = notify_player(
+        storage, game_id, text, type="admin_gift", priority="high",
+        source="admin_panel", fallback_message=gift_message,
+    )
+    if status == "skipped":  # хранилище без outbox — крайний запасной путь
         player.setdefault("pending_bot_messages", []).append(gift_message)
         storage.update_player(player)
     record_admin_operation(
