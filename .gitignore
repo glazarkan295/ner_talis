@@ -38,3 +38,6 @@ data/port_market_state.json
 data/courier_transfers.json
 data/courier_transfers.json.lock
 data/courier_transfers.json.tmp
+
+# IDE workspace files
+*.code-workspace

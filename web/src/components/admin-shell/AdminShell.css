@@ -1,0 +1,138 @@
+/* Admin Panel V2 — operational console. Warm dark palette matching the V1
+   panel, but built as a sidebar shell instead of top tabs so it scales to many
+   sections. Token names kept local (ntv2-*) so it never collides with V1. */
+.ntv2 {
+  --gold: #ffd98f;
+  --parch: #f1dfbd;
+  --line: rgba(214, 172, 91, .28);
+  --line-strong: rgba(214, 172, 91, .55);
+  --panel: rgba(255, 255, 255, .04);
+  --danger: #ff7a5a;
+  display: flex;
+  min-height: 100vh;
+  color: var(--parch);
+  background: radial-gradient(circle at top, #241c16 0, #080706 56%, #030303 100%);
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.ntv2-boot { margin: auto; padding: 40px; font-size: 18px; }
+
+/* Sidebar */
+.ntv2-sidebar {
+  width: 240px;
+  flex: 0 0 240px;
+  border-right: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(20, 16, 12, .96), rgba(8, 7, 6, .9));
+  display: flex;
+  flex-direction: column;
+  padding: 16px 12px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  box-sizing: border-box;
+}
+.ntv2-brand { padding: 6px 8px 16px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.ntv2-brand-title { color: var(--gold); font-size: 20px; }
+.ntv2-brand-sub { font-size: 12px; opacity: .7; }
+.ntv2-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.ntv2-nav-item {
+  display: flex; align-items: center; gap: 10px;
+  text-align: left; cursor: pointer;
+  border: 1px solid transparent; border-radius: 10px;
+  background: transparent; color: var(--parch);
+  padding: 10px 12px; font-size: 15px; font-family: inherit;
+}
+.ntv2-nav-item:hover { background: rgba(255, 255, 255, .05); }
+.ntv2-nav-item.active { color: #1c1208; background: var(--gold); }
+.ntv2-nav-icon { font-size: 16px; }
+.ntv2-sidebar-foot { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 8px; }
+.ntv2-role-pill { text-align: center; border: 1px solid var(--line-strong); border-radius: 999px; padding: 4px 10px; font-size: 13px; color: var(--gold); }
+.ntv2-v1-link { color: var(--parch); opacity: .6; font-size: 12px; text-decoration: none; text-align: center; }
+.ntv2-v1-link:hover { opacity: 1; }
+
+/* Main */
+.ntv2-main { flex: 1; padding: 22px 26px; max-width: 1100px; }
+.ntv2-section h2 { color: var(--gold); margin: 0 0 16px; }
+.ntv2-section h3 { color: var(--gold); margin: 18px 0 10px; font-size: 16px; }
+.ntv2-banner { border-radius: 12px; padding: 10px 12px; margin-bottom: 14px; }
+.ntv2-error { background: rgba(145, 35, 20, .32); border: 1px solid rgba(255, 120, 90, .5); border-radius: 10px; padding: 8px 10px; }
+.ntv2-ok { background: rgba(40, 115, 65, .28); border: 1px solid rgba(135, 220, 150, .45); }
+.ntv2-hint { opacity: .7; font-size: 13px; }
+.ntv2-mono { font-family: 'Courier New', monospace; }
+
+/* Inputs/buttons */
+.ntv2 input, .ntv2 select, .ntv2 textarea {
+  border: 1px solid var(--line); border-radius: 10px;
+  background: rgba(20, 16, 12, .92); color: var(--parch);
+  padding: 9px 11px; font-family: inherit; font-size: 14px;
+}
+.ntv2-btn {
+  cursor: pointer; border: 1px solid var(--line); border-radius: 10px;
+  background: linear-gradient(145deg, #47351f, #1b1410); color: var(--parch);
+  padding: 9px 14px; font-family: inherit; font-size: 14px;
+}
+.ntv2-btn:disabled { opacity: .45; cursor: not-allowed; }
+.ntv2-btn-primary { background: var(--gold); color: #1c1208; border-color: var(--gold); }
+.ntv2-btn-danger { background: linear-gradient(145deg, #6e2418, #38120c); border-color: rgba(255, 120, 90, .5); color: #ffd9cf; }
+
+/* Cards / panels */
+.ntv2-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.ntv2-card { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); padding: 14px; }
+.ntv2-card-label { font-size: 12px; opacity: .65; }
+.ntv2-card-value { font-size: 17px; color: var(--gold); margin-top: 4px; }
+.ntv2-panel { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); padding: 14px 16px; margin: 14px 0; }
+
+/* Badges / chips */
+.ntv2-badge { display: inline-block; border: 1px solid var(--line-strong); border-radius: 999px; padding: 2px 9px; font-size: 12px; }
+.ntv2-badge-owner { background: var(--gold); color: #1c1208; border-color: var(--gold); }
+.ntv2-badge-danger { background: rgba(145, 35, 20, .4); border-color: rgba(255, 120, 90, .5); color: #ffd9cf; }
+.ntv2-badge-error { background: rgba(120, 80, 10, .4); border-color: rgba(255, 200, 90, .5); color: #ffe9bf; }
+.ntv2-perm-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.ntv2-perm-chip { font-family: 'Courier New', monospace; font-size: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 3px 7px; background: rgba(0, 0, 0, .25); }
+
+/* Filters / forms */
+.ntv2-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+.ntv2-form-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ntv2-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+
+/* Lists */
+.ntv2-list { display: grid; gap: 8px; }
+.ntv2-list-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 8px 12px; }
+.ntv2-list-row-current { border-color: var(--line-strong); }
+
+/* Audit */
+.ntv2-audit-list { display: grid; gap: 8px; }
+.ntv2-audit-row { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+.ntv2-audit-danger { border-color: rgba(255, 120, 90, .45); }
+.ntv2-audit-error { background: rgba(145, 35, 20, .14); }
+.ntv2-audit-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ntv2-audit-time { font-size: 12px; opacity: .6; }
+.ntv2-audit-action { font-family: 'Courier New', monospace; color: var(--gold); }
+.ntv2-audit-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; opacity: .85; margin-top: 4px; }
+.ntv2-audit-reason { font-style: italic; opacity: .8; }
+
+/* Technical data collapse + raw JSON */
+.ntv2-tech { margin-top: 8px; }
+.ntv2-tech > summary { cursor: pointer; font-size: 13px; opacity: .75; }
+.ntv2-pre { white-space: pre-wrap; background: rgba(0, 0, 0, .3); border-radius: 8px; padding: 10px; overflow: auto; font-size: 12px; margin-top: 6px; }
+
+/* Modal */
+.ntv2-modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .72); display: grid; place-items: center; padding: 18px; z-index: 50; }
+.ntv2-modal { max-width: 520px; width: 100%; border: 1px solid var(--line-strong); border-radius: 16px; background: #15100d; padding: 18px 20px; }
+.ntv2-modal-danger { border-color: rgba(255, 120, 90, .6); }
+.ntv2-modal h3 { color: var(--gold); margin: 0 0 8px; }
+.ntv2-modal-danger-tag { color: var(--danger); font-size: 13px; margin: 0 0 8px; }
+.ntv2-modal-body { margin-bottom: 12px; }
+.ntv2-field { display: grid; gap: 4px; margin-bottom: 12px; font-size: 13px; }
+.ntv2-field textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.ntv2-modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+@media (max-width: 760px) {
+  .ntv2 { flex-direction: column; }
+  .ntv2-sidebar { width: auto; flex: none; height: auto; position: static; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .ntv2-brand { border: none; padding: 0 8px 0 0; margin: 0; }
+  .ntv2-nav { flex-direction: row; flex-wrap: wrap; flex: 1; }
+  .ntv2-nav-item { padding: 7px 10px; font-size: 14px; }
+  .ntv2-sidebar-foot { border: none; padding: 0; flex-direction: row; }
+  .ntv2-main { padding: 16px; }
+}

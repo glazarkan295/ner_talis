@@ -413,6 +413,18 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="В ссылке нет token админ-панели.")
         return HTMLResponse("<h1>Админ-панель Нер-Талис</h1><p>Соберите web/dist, чтобы открыть React-интерфейс админ-панели.</p>")
 
+    @app.get("/admin_panel_v2", response_class=HTMLResponse, response_model=None)
+    def admin_panel_v2_page(token: str | None = Query(default=None)):
+        react = _react_index_or_none()
+        if react:
+            return react
+        if not token:
+            raise HTTPException(status_code=400, detail="В ссылке нет token админ-панели.")
+        return HTMLResponse(
+            "<h1>Админ-консоль Нер-Талис V2</h1>"
+            "<p>Соберите web/dist, чтобы открыть React-интерфейс админ-панели V2.</p>"
+        )
+
     @app.get("/admin_view_profile", response_class=HTMLResponse, response_model=None)
     def admin_view_profile_page(token: str | None = Query(default=None)):
         react = _react_index_or_none()
