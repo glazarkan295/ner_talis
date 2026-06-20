@@ -65,3 +65,8 @@ data/achievements.json.tmp
 data/achievement_categories.json
 data/achievement_categories.json.lock
 data/achievement_categories.json.tmp
+
+# Runtime bot message queue
+data/bot_message_queue.json
+data/bot_message_queue.json.lock
+data/bot_message_queue.json.tmp

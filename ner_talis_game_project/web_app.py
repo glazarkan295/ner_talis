@@ -31,6 +31,7 @@ from admin_panel_v2_api import create_admin_panel_v2_router
 from admin_world_api import create_admin_world_router
 from admin_community_api import create_admin_community_router
 from admin_achievement_api import create_admin_achievement_router
+from admin_messages_api import create_admin_messages_router
 from site_api import (
     create_profile_api_router,
     frontend_profile,
@@ -313,6 +314,7 @@ def create_app() -> FastAPI:
     app.include_router(create_admin_world_router(storage))
     app.include_router(create_admin_community_router(storage))
     app.include_router(create_admin_achievement_router(storage))
+    app.include_router(create_admin_messages_router(storage))
 
     @app.get("/assets/admin_uploads/{asset_path:path}", include_in_schema=False)
     async def runtime_uploaded_asset(asset_path: str):
