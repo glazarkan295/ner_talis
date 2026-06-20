@@ -132,6 +132,10 @@
 .ntv2-world-form .ntv2-field { display: grid; gap: 4px; font-size: 13px; }
 .ntv2-world-form .ntv2-field input, .ntv2-world-form .ntv2-field select, .ntv2-world-form .ntv2-field textarea { width: 100%; box-sizing: border-box; }
 .ntv2-world-form .ntv2-form-row .ntv2-field { flex: 1; min-width: 120px; }
+.ntv2-drop-row { gap: 6px; }
+.ntv2-drop-row input[type="number"] { padding: 6px 8px; }
+.ntv2-subnav-item { cursor: pointer; font-family: inherit; color: var(--parch); background: transparent; }
+.ntv2-subnav-item:hover { border-color: var(--line-strong); }
 
 /* Technical data collapse + raw JSON */
 .ntv2-tech { margin-top: 8px; }

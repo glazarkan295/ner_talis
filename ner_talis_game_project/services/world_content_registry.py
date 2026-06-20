@@ -71,13 +71,26 @@ STATUS_TRANSITIONS: dict[str, set[str]] = {
 
 # --- Поддерживаемые типы контента ------------------------------------------
 KIND_LOCATION = "location"
-# По мере роста сюда добавляются button/transition/mob/loot/event/npc/quest/raid.
-KINDS = (KIND_LOCATION,)
+KIND_MOB = "mob"
+# По мере роста сюда добавляются button/transition/loot/event/npc/quest/raid.
+KINDS = (KIND_LOCATION, KIND_MOB)
 
 LOCATION_TYPES = (
     "city", "starting", "wild", "dungeon", "fortress", "raid",
     "world_boss", "port", "market", "camp", "story", "event",
 )
+
+MOB_TYPES = (
+    "beast", "undead", "bandit", "monster", "magic",
+    "human", "boss", "world_boss", "event", "raid",
+)
+
+# Экономические «потолки» награды за одного моба — превышение даёт warning
+# (не блок), чтобы конструктор не плодил инфляцию незаметно.
+MAX_MOB_EXPERIENCE = 1_000_000
+MAX_MOB_COINS = 1_000_000
+# Валюта-синтетика из админ-наград допустима и в дропе.
+_CURRENCY_ITEM_IDS = {"money_copper", "money_silver", "money_gold"}
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_]{1,63}$")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
@@ -321,8 +334,121 @@ def _validate_location(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
+def _num(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _item_exists(item_id: str) -> bool:
+    iid = str(item_id or "").strip()
+    if not iid:
+        return False
+    if iid in _CURRENCY_ITEM_IDS:
+        return True
+    try:  # ленивый импорт, чтобы движок оставался автономным
+        from services.item_registry import get_item_definition_by_id
+
+        return get_item_definition_by_id(iid) is not None
+    except Exception:  # реестр недоступен — не валим проверку
+        return True
+
+
+def _validate_drop_rows(rows: Any, errors: list[str], warnings: list[str]) -> None:
+    """Проверка таблицы дропа моба (ТЗ §7)."""
+    if rows in (None, ""):
+        return
+    if not isinstance(rows, list):
+        errors.append("Дроп должен быть списком строк.")
+        return
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            errors.append(f"Дроп строка {index}: неверный формат.")
+            continue
+        item_id = str(row.get("item_id") or "").strip()
+        if not item_id:
+            errors.append(f"Дроп строка {index}: не указан предмет.")
+        elif not _item_exists(item_id):
+            errors.append(f"Дроп строка {index}: предмет «{item_id}» не существует.")
+        chance = _num(row.get("chance"))
+        if chance is None:
+            errors.append(f"Дроп строка {index}: шанс не число.")
+        elif chance < 0 or chance > 100:
+            errors.append(f"Дроп строка {index}: шанс должен быть 0–100.")
+        cmin = _num(row.get("min_count"))
+        cmax = _num(row.get("max_count"))
+        if cmin is not None and cmin < 0:
+            errors.append(f"Дроп строка {index}: количество не может быть отрицательным.")
+        if cmin is not None and cmax is not None and cmin > cmax:
+            errors.append(f"Дроп строка {index}: мин. количество больше макс.")
+
+
+def _validate_mob(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Проверка моба и его дропа (ТЗ §6–7)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "name"):
+        errors.append("Не заполнено название моба.")
+    mob_type = _str_field(data, "type")
+    if mob_type and mob_type not in MOB_TYPES:
+        errors.append(f"Неизвестный тип моба: {mob_type}.")
+
+    min_level = _num(data.get("min_level"))
+    max_level = _num(data.get("max_level"))
+    if min_level is not None and min_level < 1:
+        errors.append("Минимальный уровень должен быть ≥ 1.")
+    if min_level is not None and max_level is not None and min_level > max_level:
+        errors.append("Минимальный уровень моба больше максимального.")
+
+    hp = _num(data.get("hp"))
+    if hp is None or hp <= 0:
+        errors.append("HP моба должно быть положительным.")
+
+    # Боевые/числовые поля не должны быть отрицательными.
+    numeric_fields = (
+        "phys_damage", "mag_damage", "accuracy", "evasion",
+        "phys_defense", "mag_defense", "crit_chance", "crit_damage",
+        "experience", "coins", "spawn_chance",
+    )
+    for key in numeric_fields:
+        if data.get(key) in (None, ""):
+            continue
+        value = _num(data.get(key))
+        if value is None:
+            errors.append(f"Поле «{key}» — не число.")
+        elif value < 0:
+            errors.append(f"Поле «{key}» не может быть отрицательным.")
+
+    chance = _num(data.get("spawn_chance"))
+    if chance is not None and chance > 100:
+        errors.append("Шанс появления должен быть ≤ 100.")
+
+    # Экономические пороги — предупреждения.
+    exp = _num(data.get("experience"))
+    if exp is not None and exp > MAX_MOB_EXPERIENCE:
+        warnings.append("Очень большой опыт за моба — проверьте баланс.")
+    coins = _num(data.get("coins"))
+    if coins is not None and coins > MAX_MOB_COINS:
+        warnings.append("Очень много валюты за моба — проверьте экономику.")
+
+    for key in ("name", "description"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+
+    _validate_drop_rows(data.get("drop"), errors, warnings)
+
+    if not mob_type:
+        warnings.append("Не указан тип моба.")
+    return errors, warnings
+
+
 VALIDATORS: dict[str, Callable[[dict[str, Any]], tuple[list[str], list[str]]]] = {
     KIND_LOCATION: _validate_location,
+    KIND_MOB: _validate_mob,
 }
 
 

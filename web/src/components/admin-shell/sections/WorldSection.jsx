@@ -6,14 +6,14 @@ import {
   fetchWorldItems,
   fetchWorldMeta,
   publishWorldItem,
-  setWorldStatus,
   updateWorldItem,
   validateWorldItem,
 } from "../../../api/adminWorldApi.js";
+import { loadCatalog } from "../../../api/adminApi.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
-import { TechnicalData } from "../TechnicalData.jsx";
 
-const KIND_LABELS = { location: "🗺️ Локации" };
+const KIND_LABELS = { location: "🗺️ Локации", mob: "⚔️ Мобы" };
+const KIND_NEW_LABEL = { location: "＋ Новая локация", mob: "＋ Новый моб" };
 
 const STATUS_TONE = {
   published: "ntv2-badge-owner",
@@ -32,8 +32,23 @@ const EMPTY_LOCATION = {
   city_functions: false, safe: false,
 };
 
-function LocationForm({ value, onChange, locationTypes, disabled }) {
-  function set(key, v) { onChange({ ...value, [key]: v }); }
+const EMPTY_MOB = {
+  name: "", type: "beast", description: "", image: "",
+  min_level: 1, max_level: 5, hp: 100,
+  phys_damage: 0, mag_damage: 0, accuracy: 0, evasion: 0,
+  phys_defense: 0, mag_defense: 0, crit_chance: 0, crit_damage: 0,
+  experience: 0, coins: 0, spawn_chance: 100, can_be_enhanced: false,
+  locations: "", drop: [],
+};
+
+const EMPTY_BY_KIND = { location: EMPTY_LOCATION, mob: EMPTY_MOB };
+
+function Field({ label, children }) {
+  return <label className="ntv2-field"><span>{label}</span>{children}</label>;
+}
+
+function LocationForm({ value, onChange, meta, disabled }) {
+  const set = (k, v) => onChange({ ...value, [k]: v });
   const flag = (key, label) => (
     <label className="ntv2-check" key={key}>
       <input type="checkbox" checked={Boolean(value[key])} disabled={disabled} onChange={(e) => set(key, e.target.checked)} /> {label}
@@ -41,48 +56,111 @@ function LocationForm({ value, onChange, locationTypes, disabled }) {
   );
   return (
     <div className="ntv2-world-form">
-      <label className="ntv2-field"><span>Название</span>
-        <input value={value.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></label>
+      <Field label="Название"><input value={value.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
       <div className="ntv2-form-row">
-        <label className="ntv2-field"><span>Тип</span>
-          <select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>
-            {locationTypes.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select></label>
-        <label className="ntv2-field"><span>Опасность</span>
-          <input value={value.danger} disabled={disabled} onChange={(e) => set("danger", e.target.value)} /></label>
-        <label className="ntv2-field"><span>Мин. уровень</span>
-          <input type="number" value={value.min_level} disabled={disabled} onChange={(e) => set("min_level", e.target.value)} /></label>
+        <Field label="Тип"><select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.locationTypes || []).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+        <Field label="Опасность"><input value={value.danger} disabled={disabled} onChange={(e) => set("danger", e.target.value)} /></Field>
+        <Field label="Мин. уровень"><input type="number" value={value.min_level} disabled={disabled} onChange={(e) => set("min_level", e.target.value)} /></Field>
       </div>
       <div className="ntv2-form-row">
-        <label className="ntv2-field"><span>Уровни мобов: от</span>
-          <input type="number" value={value.mob_level_min} disabled={disabled} onChange={(e) => set("mob_level_min", e.target.value)} /></label>
-        <label className="ntv2-field"><span>до</span>
-          <input type="number" value={value.mob_level_max} disabled={disabled} onChange={(e) => set("mob_level_max", e.target.value)} /></label>
+        <Field label="Уровни мобов: от"><input type="number" value={value.mob_level_min} disabled={disabled} onChange={(e) => set("mob_level_min", e.target.value)} /></Field>
+        <Field label="до"><input type="number" value={value.mob_level_max} disabled={disabled} onChange={(e) => set("mob_level_max", e.target.value)} /></Field>
       </div>
-      <label className="ntv2-field"><span>Краткое описание</span>
-        <textarea rows={2} value={value.short_description} disabled={disabled} onChange={(e) => set("short_description", e.target.value)} /></label>
-      <label className="ntv2-field"><span>Полное описание</span>
-        <textarea rows={4} value={value.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></label>
-      <label className="ntv2-field"><span>Изображение (URL)</span>
-        <input value={value.image} disabled={disabled} onChange={(e) => set("image", e.target.value)} /></label>
+      <Field label="Краткое описание"><textarea rows={2} value={value.short_description} disabled={disabled} onChange={(e) => set("short_description", e.target.value)} /></Field>
+      <Field label="Полное описание"><textarea rows={4} value={value.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
+      <Field label="Изображение (URL)"><input value={value.image} disabled={disabled} onChange={(e) => set("image", e.target.value)} /></Field>
       <div className="ntv2-form-row" style={{ gap: 14 }}>
-        {flag("can_search", "Поиск")}
-        {flag("can_camp", "Лагерь")}
-        {flag("can_fish", "Рыбалка")}
-        {flag("can_teleport", "Телепорт")}
-        {flag("city_functions", "Городские функции")}
-        {flag("safe", "Безопасная")}
+        {flag("can_search", "Поиск")}{flag("can_camp", "Лагерь")}{flag("can_fish", "Рыбалка")}
+        {flag("can_teleport", "Телепорт")}{flag("city_functions", "Городские функции")}{flag("safe", "Безопасная")}
       </div>
     </div>
   );
 }
 
+function DropEditor({ rows, onChange, disabled }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+
+  useEffect(() => {
+    if (!query.trim()) { setResults([]); return undefined; }
+    const id = window.setTimeout(async () => {
+      try { const c = await loadCatalog("", query, ""); setResults((c.items || []).slice(0, 8)); } catch { setResults([]); }
+    }, 250);
+    return () => window.clearTimeout(id);
+  }, [query]);
+
+  const list = Array.isArray(rows) ? rows : [];
+  const setRow = (i, patch) => onChange(list.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const addRow = (item_id = "") => onChange([...list, { item_id, chance: 10, min_count: 1, max_count: 1, only_enhanced: false, only_event: false }]);
+  const removeRow = (i) => onChange(list.filter((_, idx) => idx !== i));
+
+  return (
+    <div className="ntv2-panel">
+      <h4 className="ntv2-subhead">Дроп ({list.length})</h4>
+      {!disabled ? (
+        <div className="ntv2-filters">
+          <input placeholder="Найти предмет в каталоге" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <button type="button" className="ntv2-btn" onClick={() => addRow("")}>＋ Пустая строка</button>
+        </div>
+      ) : null}
+      {results.length ? (
+        <div className="ntv2-catalog-grid">
+          {results.map((item) => (
+            <button type="button" key={item.item_id || item.id} className="ntv2-catalog-card" onClick={() => { addRow(item.item_id || item.id); setQuery(""); }}>
+              {item.icon ? <img src={item.icon} alt="" /> : null}<span>{item.name}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="ntv2-list">
+        {list.map((row, i) => (
+          <div className="ntv2-list-row ntv2-drop-row" key={i}>
+            <input className="ntv2-mono" style={{ flex: 2 }} placeholder="item_id" value={row.item_id} disabled={disabled} onChange={(e) => setRow(i, { item_id: e.target.value })} />
+            <input type="number" title="шанс %" style={{ width: 80 }} value={row.chance} disabled={disabled} onChange={(e) => setRow(i, { chance: e.target.value })} />
+            <input type="number" title="мин" style={{ width: 70 }} value={row.min_count} disabled={disabled} onChange={(e) => setRow(i, { min_count: e.target.value })} />
+            <input type="number" title="макс" style={{ width: 70 }} value={row.max_count} disabled={disabled} onChange={(e) => setRow(i, { max_count: e.target.value })} />
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.only_enhanced)} disabled={disabled} onChange={(e) => setRow(i, { only_enhanced: e.target.checked })} /> усил.</label>
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.only_event)} disabled={disabled} onChange={(e) => setRow(i, { only_event: e.target.checked })} /> событие</label>
+            {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => removeRow(i)}>×</button> : null}
+          </div>
+        ))}
+        {!list.length ? <p className="ntv2-hint">Дроп пуст. Добавьте строки или найдите предмет в каталоге.</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function MobForm({ value, onChange, meta, disabled }) {
+  const set = (k, v) => onChange({ ...value, [k]: v });
+  const num = (key, label) => <Field label={label} key={key}><input type="number" value={value[key]} disabled={disabled} onChange={(e) => set(key, e.target.value)} /></Field>;
+  return (
+    <div className="ntv2-world-form">
+      <div className="ntv2-form-row">
+        <Field label="Название"><input value={value.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
+        <Field label="Тип"><select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.mobTypes || []).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+      </div>
+      <div className="ntv2-form-row">{num("min_level", "Ур. от")}{num("max_level", "Ур. до")}{num("hp", "HP")}{num("spawn_chance", "Шанс появления %")}</div>
+      <div className="ntv2-form-row">{num("phys_damage", "Физ. урон")}{num("mag_damage", "Маг. урон")}{num("accuracy", "Точность")}{num("evasion", "Уклонение")}</div>
+      <div className="ntv2-form-row">{num("phys_defense", "Физ. защита")}{num("mag_defense", "Маг. защита")}{num("crit_chance", "Крит %")}{num("crit_damage", "Крит урон")}</div>
+      <div className="ntv2-form-row">{num("experience", "Опыт")}{num("coins", "Монеты")}
+        <label className="ntv2-check"><input type="checkbox" checked={Boolean(value.can_be_enhanced)} disabled={disabled} onChange={(e) => set("can_be_enhanced", e.target.checked)} /> Может быть усиленным</label>
+      </div>
+      <Field label="Локации появления (id через запятую)"><input value={value.locations} disabled={disabled} onChange={(e) => set("locations", e.target.value)} /></Field>
+      <Field label="Описание"><textarea rows={3} value={value.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
+      <Field label="Изображение (URL)"><input value={value.image} disabled={disabled} onChange={(e) => set("image", e.target.value)} /></Field>
+      <DropEditor rows={value.drop} onChange={(drop) => set("drop", drop)} disabled={disabled} />
+    </div>
+  );
+}
+
+const FORM_BY_KIND = { location: LocationForm, mob: MobForm };
+
 export function WorldSection({ guarded, hasPerm }) {
   const [meta, setMeta] = useState(null);
-  const [kind] = useState("location");
+  const [kind, setKind] = useState("location");
   const [items, setItems] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
-  const [editing, setEditing] = useState(null); // {id, data, status, validation, isNew}
+  const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
 
   const can = useMemo(() => ({
@@ -103,14 +181,11 @@ export function WorldSection({ guarded, hasPerm }) {
   useEffect(() => { loadList(); }, [loadList]);
 
   const statuses = meta?.statuses || [];
-  const locationTypes = meta?.locationTypes || [];
+  const Form = FORM_BY_KIND[kind] || LocationForm;
 
-  function startCreate() {
-    setEditing({ id: "", data: { ...EMPTY_LOCATION }, status: "draft", validation: null, isNew: true });
-  }
-  function openItem(item) {
-    setEditing({ id: item.id, data: { ...EMPTY_LOCATION, ...(item.data || {}) }, status: item.status, validation: item.validation, isNew: false });
-  }
+  function switchKind(k) { setKind(k); setEditing(null); setStatusFilter(""); }
+  function startCreate() { setEditing({ id: "", data: { ...(EMPTY_BY_KIND[kind] || {}) }, status: "draft", validation: null, isNew: true }); }
+  function openItem(item) { setEditing({ id: item.id, data: { ...(EMPTY_BY_KIND[kind] || {}), ...(item.data || {}) }, status: item.status, validation: item.validation, isNew: false }); }
 
   async function save() {
     const e = editing;
@@ -130,35 +205,29 @@ export function WorldSection({ guarded, hasPerm }) {
   }
 
   async function refreshEditing() {
-    await loadList();
-    const fresh = items.find((i) => i.id === editing.id);
+    const payload = await guarded(() => fetchWorldItems(kind, statusFilter));
+    if (payload) setItems(payload.items || []);
+    const fresh = (payload?.items || []).find((i) => i.id === editing.id);
     if (fresh) setEditing((cur) => ({ ...cur, status: fresh.status }));
   }
 
   if (!meta) return <section className="ntv2-section"><h2>Конструктор мира</h2><p className="ntv2-hint">Загрузка…</p></section>;
 
-  // --- Editor view ---
   if (editing) {
     const v = editing.validation;
     return (
       <section className="ntv2-section">
         <div className="ntv2-card-head">
           <button type="button" className="ntv2-btn" onClick={() => setEditing(null)}>← К списку</button>
-          <h2>{editing.isNew ? "Новая локация" : editing.data.name || editing.id}</h2>
+          <h2>{editing.isNew ? KIND_NEW_LABEL[kind] : editing.data.name || editing.id}</h2>
           {!editing.isNew ? <span className={`ntv2-badge ${STATUS_TONE[editing.status] || ""}`}>{statusLabel(statuses, editing.status)}</span> : null}
         </div>
 
         {editing.isNew ? (
-          <label className="ntv2-field"><span>ID (латиница, напр. small_plateau)</span>
-            <input value={editing.id} onChange={(e) => setEditing({ ...editing, id: e.target.value })} /></label>
+          <Field label="ID (латиница, напр. small_plateau)"><input value={editing.id} onChange={(e) => setEditing({ ...editing, id: e.target.value })} /></Field>
         ) : <p className="ntv2-hint ntv2-mono">{editing.id}</p>}
 
-        <LocationForm
-          value={editing.data}
-          onChange={(data) => setEditing({ ...editing, data })}
-          locationTypes={locationTypes}
-          disabled={!(editing.isNew ? can.create : can.edit)}
-        />
+        <Form value={editing.data} onChange={(data) => setEditing({ ...editing, data })} meta={meta} disabled={!(editing.isNew ? can.create : can.edit)} />
 
         {v ? (
           <div className={`ntv2-panel ${v.ok ? "" : "ntv2-danger-zone"}`}>
@@ -170,9 +239,7 @@ export function WorldSection({ guarded, hasPerm }) {
 
         <div className="ntv2-form-row" style={{ marginTop: 14 }}>
           {(editing.isNew ? can.create : can.edit) ? (
-            <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={editing.isNew && !editing.id.trim()} onClick={save}>
-              {editing.isNew ? "Создать черновик" : "Сохранить"}
-            </button>
+            <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={editing.isNew && !editing.id.trim()} onClick={save}>{editing.isNew ? "Создать черновик" : "Сохранить"}</button>
           ) : null}
           {!editing.isNew && can.validate ? <button type="button" className="ntv2-btn" onClick={runValidate}>Проверить</button> : null}
           {!editing.isNew && can.publish ? (
@@ -199,12 +266,8 @@ export function WorldSection({ guarded, hasPerm }) {
         </div>
 
         <ConfirmModal
-          open={Boolean(confirm)}
-          title={confirm?.title}
-          body={confirm?.body}
-          dangerous={confirm?.dangerous}
-          confirmLabel={confirm?.confirmLabel}
-          requireReason
+          open={Boolean(confirm)} title={confirm?.title} body={confirm?.body}
+          dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (reason) => { await confirm.run(reason); setConfirm(null); }}
           onCancel={() => setConfirm(null)}
         />
@@ -212,13 +275,12 @@ export function WorldSection({ guarded, hasPerm }) {
     );
   }
 
-  // --- List view ---
   return (
     <section className="ntv2-section">
       <h2>Конструктор мира</h2>
       <div className="ntv2-subnav">
         {meta.kinds.map((k) => (
-          <span key={k} className={`ntv2-subnav-item${k === kind ? " active" : ""}`}>{KIND_LABELS[k] || k}</span>
+          <button key={k} type="button" className={`ntv2-subnav-item${k === kind ? " active" : ""}`} onClick={() => switchKind(k)}>{KIND_LABELS[k] || k}</button>
         ))}
       </div>
       <div className="ntv2-filters">
@@ -226,7 +288,7 @@ export function WorldSection({ guarded, hasPerm }) {
           <option value="">Все статусы</option>
           {statuses.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
-        {can.create ? <button type="button" className="ntv2-btn ntv2-btn-primary" onClick={startCreate}>＋ Новая локация</button> : null}
+        {can.create ? <button type="button" className="ntv2-btn ntv2-btn-primary" onClick={startCreate}>{KIND_NEW_LABEL[kind]}</button> : null}
       </div>
       {!items.length ? <p className="ntv2-hint">Пока нет объектов. {can.create ? "Создайте первый черновик." : ""}</p> : null}
       <div className="ntv2-list">

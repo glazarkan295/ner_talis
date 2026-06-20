@@ -74,6 +74,29 @@ class WorldRegistryTest(unittest.TestCase):
         result = registry.validate_envelope(env)
         self.assertFalse(result["ok"])
 
+    def test_mob_validation_ok_with_currency_drop(self):
+        env = registry.create_content("mob", "wolf", {
+            "name": "Волк", "type": "beast", "min_level": 1, "max_level": 5,
+            "hp": 50, "experience": 20, "coins": 10,
+            "drop": [{"item_id": "money_copper", "chance": 60, "min_count": 5, "max_count": 20}],
+        })
+        result = registry.validate_envelope(env)
+        self.assertTrue(result["ok"], result["errors"])
+
+    def test_mob_validation_catches_bad_drop_and_stats(self):
+        env = registry.create_content("mob", "broken_mob", {
+            "name": "Глюк", "type": "beast", "hp": 0,
+            "drop": [
+                {"item_id": "definitely_not_real_item_zzz", "chance": 150, "min_count": 9, "max_count": 2},
+            ],
+        })
+        result = registry.validate_envelope(env)
+        self.assertFalse(result["ok"])
+        joined = " ".join(result["errors"]).lower()
+        self.assertIn("hp", joined)
+        self.assertIn("не существует", joined)
+        self.assertIn("шанс", joined)
+
 
 class WorldApiTest(unittest.TestCase):
     def setUp(self):
@@ -169,6 +192,28 @@ class WorldApiTest(unittest.TestCase):
     def test_unknown_kind_is_404(self):
         token = self._token("999")
         self.assertEqual(self.client.get("/api/admin/v2/world/dragon", headers=self._auth(token)).status_code, 404)
+
+    def test_meta_exposes_mob_kind_and_types(self):
+        token = self._token("999")
+        meta = self.client.get("/api/admin/v2/world/kinds", headers=self._auth(token)).json()
+        self.assertIn("mob", meta["kinds"])
+        self.assertIn("beast", meta["mobTypes"])
+
+    def test_mob_create_validate_publish(self):
+        token = self._token("999")
+        created = self.client.post(
+            "/api/admin/v2/world/mob",
+            headers=self._auth(token),
+            json={"id": "wolf", "data": {
+                "name": "Волк", "type": "beast", "min_level": 1, "max_level": 5,
+                "hp": 50, "experience": 20, "coins": 10,
+                "drop": [{"item_id": "money_copper", "chance": 60, "min_count": 5, "max_count": 20}],
+            }},
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        publish = self.client.post("/api/admin/v2/world/mob/wolf/publish", headers=self._auth(token), json={"reason": "релиз"})
+        self.assertEqual(publish.status_code, 200, publish.text)
+        self.assertEqual(publish.json()["item"]["status"], "published")
 
 
 if __name__ == "__main__":
