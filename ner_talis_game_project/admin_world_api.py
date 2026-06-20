@@ -22,6 +22,7 @@ from services.admin_rbac import (
     PERM_WORLD_DISABLE,
     PERM_WORLD_EDIT_DRAFT,
     PERM_WORLD_PUBLISH,
+    PERM_WORLD_TEST_RUN,
     PERM_WORLD_VALIDATE,
     PERM_WORLD_VIEW,
     identity_key,
@@ -123,6 +124,7 @@ def create_admin_world_router(get_storage) -> APIRouter:
             "eventResultTypes": list(registry.EVENT_RESULT_TYPES),
             "npcFunctions": list(registry.NPC_FUNCTIONS),
             "questGoalTypes": list(registry.QUEST_GOAL_TYPES),
+            "raidTypes": list(registry.RAID_TYPES),
         }
 
     @router.get("/{kind}")
@@ -242,6 +244,37 @@ def create_admin_world_router(get_storage) -> APIRouter:
             details={"kind": kind},
         )
         return {"ok": True, "validation": result}
+
+    @router.get("/{kind}/{content_id}/preview")
+    def preview(kind: str, content_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, token)
+        _require(session, PERM_WORLD_VIEW)
+        _ensure_kind(kind)
+        data = registry.build_preview(kind, content_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail="Объект не найден.")
+        return {"ok": True, "preview": data}
+
+    @router.post("/{kind}/{content_id}/test-run")
+    def test_run(kind: str, content_id: str, payload: WorldActionRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_WORLD_TEST_RUN)
+        _ensure_kind(kind)
+        report = registry.test_run(kind, content_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="Объект не найден.")
+        record_admin_operation(
+            session=session,
+            action="world.test_run",
+            target_type=kind,
+            target_id=content_id,
+            after={"ok": report["ok"], "checked": len(report["checks"])},
+            reason=payload.reason,
+            details={"kind": kind},
+        )
+        return {"ok": True, "report": report}
 
     @router.post("/{kind}/{content_id}/publish")
     def publish(kind: str, content_id: str, payload: WorldActionRequest, request: Request) -> dict[str, Any]:

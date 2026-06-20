@@ -55,3 +55,14 @@ function lifecycle(kind, id, verb, reason) {
 export const publishWorldItem = (kind, id, reason) => lifecycle(kind, id, "publish", reason);
 export const disableWorldItem = (kind, id, reason) => lifecycle(kind, id, "disable", reason);
 export const archiveWorldItem = (kind, id, reason) => lifecycle(kind, id, "archive", reason);
+
+export function previewWorldItem(kind, id) {
+  return requestAdminJson(`/api/admin/v2/world/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/preview?_=${Date.now()}`);
+}
+
+export function testRunWorldItem(kind, id) {
+  return requestAdminJson(`/api/admin/v2/world/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/test-run`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}

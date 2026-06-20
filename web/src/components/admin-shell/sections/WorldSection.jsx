@@ -5,20 +5,23 @@ import {
   disableWorldItem,
   fetchWorldItems,
   fetchWorldMeta,
+  previewWorldItem,
   publishWorldItem,
+  testRunWorldItem,
   updateWorldItem,
   validateWorldItem,
 } from "../../../api/adminWorldApi.js";
 import { loadCatalog } from "../../../api/adminApi.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { TechnicalData } from "../TechnicalData.jsx";
 
 const KIND_LABELS = {
   location: "🗺️ Локации", mob: "⚔️ Мобы", button: "🔘 Кнопки", transition: "🔀 Переходы",
-  event: "✨ События", npc: "🧙 NPC", quest: "📜 Квесты",
+  event: "✨ События", npc: "🧙 NPC", quest: "📜 Квесты", raid: "🐉 Рейды",
 };
 const KIND_NEW_LABEL = {
   location: "＋ Новая локация", mob: "＋ Новый моб", button: "＋ Новая кнопка", transition: "＋ Новый переход",
-  event: "＋ Новое событие", npc: "＋ Новый NPC", quest: "＋ Новый квест",
+  event: "＋ Новое событие", npc: "＋ Новый NPC", quest: "＋ Новый квест", raid: "＋ Новый рейд",
 };
 
 const STATUS_TONE = {
@@ -77,9 +80,14 @@ const EMPTY_QUEST = {
   repeatable: false, cooldown: 0,
 };
 
+const EMPTY_RAID = {
+  name: "", description: "", entry_location: "", raid_type: "world_boss",
+  boss_mob: "", min_level: 1, max_members: 5, required_items: "", cooldown: 0, reward: "",
+};
+
 const EMPTY_BY_KIND = {
   location: EMPTY_LOCATION, mob: EMPTY_MOB, button: EMPTY_BUTTON, transition: EMPTY_TRANSITION,
-  event: EMPTY_EVENT, npc: EMPTY_NPC, quest: EMPTY_QUEST,
+  event: EMPTY_EVENT, npc: EMPTY_NPC, quest: EMPTY_QUEST, raid: EMPTY_RAID,
 };
 
 function itemTitle(kind, item) {
@@ -358,9 +366,33 @@ function QuestForm({ value, onChange, meta, disabled, refOptions }) {
   );
 }
 
+function RaidForm({ value, onChange, meta, disabled, refOptions }) {
+  const set = (k, v) => onChange({ ...value, [k]: v });
+  return (
+    <div className="ntv2-world-form">
+      <div className="ntv2-form-row">
+        <Field label="Название"><input value={value.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
+        <Field label="Тип рейда"><select value={value.raid_type} disabled={disabled} onChange={(e) => set("raid_type", e.target.value)}>{(meta.raidTypes || []).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+      </div>
+      <div className="ntv2-form-row">
+        <Field label="Локация входа"><RefSelect value={value.entry_location} onChange={(v) => set("entry_location", v)} options={refOptions.location} disabled={disabled} /></Field>
+        <Field label="Босс (моб)"><RefSelect value={value.boss_mob} onChange={(v) => set("boss_mob", v)} options={refOptions.mob} disabled={disabled} /></Field>
+      </div>
+      <div className="ntv2-form-row">
+        <Field label="Мин. уровень"><input type="number" value={value.min_level} disabled={disabled} onChange={(e) => set("min_level", e.target.value)} /></Field>
+        <Field label="Макс. участников"><input type="number" value={value.max_members} disabled={disabled} onChange={(e) => set("max_members", e.target.value)} /></Field>
+        <Field label="Кулдаун (сек)"><input type="number" value={value.cooldown} disabled={disabled} onChange={(e) => set("cooldown", e.target.value)} /></Field>
+      </div>
+      <Field label="Требуемые предметы (item_id через запятую)"><input className="ntv2-mono" value={value.required_items} disabled={disabled} onChange={(e) => set("required_items", e.target.value)} /></Field>
+      <Field label="Описание"><textarea rows={3} value={value.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
+      <Field label="Награда (описание / JSON)"><textarea rows={2} value={value.reward} disabled={disabled} onChange={(e) => set("reward", e.target.value)} /></Field>
+    </div>
+  );
+}
+
 const FORM_BY_KIND = {
   location: LocationForm, mob: MobForm, button: ButtonForm, transition: TransitionForm,
-  event: EventForm, npc: NpcForm, quest: QuestForm,
+  event: EventForm, npc: NpcForm, quest: QuestForm, raid: RaidForm,
 };
 
 export function WorldSection({ guarded, hasPerm }) {
@@ -371,6 +403,8 @@ export function WorldSection({ guarded, hasPerm }) {
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [refOptions, setRefOptions] = useState({ location: [], mob: [], npc: [] });
+  const [preview, setPreview] = useState(null);
+  const [testReport, setTestReport] = useState(null);
 
   const can = useMemo(() => ({
     create: hasPerm("world.create_draft"),
@@ -379,6 +413,7 @@ export function WorldSection({ guarded, hasPerm }) {
     publish: hasPerm("world.publish"),
     disable: hasPerm("world.disable"),
     archive: hasPerm("world.archive"),
+    testRun: hasPerm("world.test_run"),
   }), [hasPerm]);
 
   const loadList = useCallback(async () => {
@@ -390,7 +425,7 @@ export function WorldSection({ guarded, hasPerm }) {
   const neededRefs = useMemo(() => ({
     button: ["location"], transition: ["location"],
     event: ["location", "mob"], npc: ["location"],
-    quest: ["location", "mob", "npc"],
+    quest: ["location", "mob", "npc"], raid: ["location", "mob"],
   }[kind] || []), [kind]);
 
   const loadRefs = useCallback(async (kinds) => {
@@ -408,9 +443,20 @@ export function WorldSection({ guarded, hasPerm }) {
   const statuses = meta?.statuses || [];
   const Form = FORM_BY_KIND[kind] || LocationForm;
 
-  function switchKind(k) { setKind(k); setEditing(null); setStatusFilter(""); }
-  function startCreate() { setEditing({ id: "", data: { ...(EMPTY_BY_KIND[kind] || {}) }, status: "draft", validation: null, isNew: true }); }
-  function openItem(item) { setEditing({ id: item.id, data: { ...(EMPTY_BY_KIND[kind] || {}), ...(item.data || {}) }, status: item.status, validation: item.validation, isNew: false }); }
+  function resetPanels() { setPreview(null); setTestReport(null); }
+  function switchKind(k) { setKind(k); setEditing(null); setStatusFilter(""); resetPanels(); }
+  function startCreate() { resetPanels(); setEditing({ id: "", data: { ...(EMPTY_BY_KIND[kind] || {}) }, status: "draft", validation: null, isNew: true }); }
+  function openItem(item) { resetPanels(); setEditing({ id: item.id, data: { ...(EMPTY_BY_KIND[kind] || {}), ...(item.data || {}) }, status: item.status, validation: item.validation, isNew: false }); }
+
+  async function runPreview() {
+    const payload = await guarded(() => previewWorldItem(kind, editing.id));
+    if (payload?.preview) { setPreview(payload.preview); setTestReport(null); }
+  }
+
+  async function runTestRun() {
+    const payload = await guarded(() => testRunWorldItem(kind, editing.id), "Тестовый проход выполнен.");
+    if (payload?.report) { setTestReport(payload.report); setPreview(payload.report.preview || null); }
+  }
 
   async function save() {
     const e = editing;
@@ -467,6 +513,8 @@ export function WorldSection({ guarded, hasPerm }) {
             <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={editing.isNew && !editing.id.trim()} onClick={save}>{editing.isNew ? "Создать черновик" : "Сохранить"}</button>
           ) : null}
           {!editing.isNew && can.validate ? <button type="button" className="ntv2-btn" onClick={runValidate}>Проверить</button> : null}
+          {!editing.isNew ? <button type="button" className="ntv2-btn" onClick={runPreview}>Предпросмотр</button> : null}
+          {!editing.isNew && can.testRun ? <button type="button" className="ntv2-btn" onClick={runTestRun}>Тестовый проход</button> : null}
           {!editing.isNew && can.publish ? (
             <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({
               title: "Опубликовать в игру?", dangerous: true, confirmLabel: "Опубликовать",
@@ -489,6 +537,44 @@ export function WorldSection({ guarded, hasPerm }) {
             })}>В архив</button>
           ) : null}
         </div>
+
+        {testReport ? (
+          <div className={`ntv2-panel ${testReport.ok ? "" : "ntv2-danger-zone"}`}>
+            <h4 className="ntv2-subhead">{testReport.ok ? "✅ Тестовый проход пройден" : "❌ Тестовый проход: есть проблемы"}</h4>
+            <div className="ntv2-list">
+              {testReport.checks.map((c, i) => (
+                <div className={`ntv2-list-row${c.ok ? "" : " ntv2-danger-zone"}`} key={i}>
+                  <span className="ntv2-badge">{c.kind}</span>
+                  <b>{c.title}</b>
+                  <span className="ntv2-mono">{c.id}</span>
+                  <span className={`ntv2-badge ${c.ok ? "ntv2-badge-owner" : "ntv2-badge-error"}`}>{c.ok ? "ок" : "ошибки"}</span>
+                  {(c.errors || []).map((e, j) => <span className="ntv2-error" key={j}>{e}</span>)}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {preview ? (
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Предпросмотр</h4>
+            <div className="ntv2-preview-card">
+              <b>{preview.title}</b>
+              {preview.text ? <p>{preview.text}</p> : null}
+              {preview.kind === "location" ? (
+                <>
+                  {preview.telegramButtons?.length ? <p className="ntv2-hint">Telegram: {preview.telegramButtons.map((b) => `[${b}]`).join(" ")}</p> : null}
+                  {preview.vkButtons?.length ? <p className="ntv2-hint">VK: {preview.vkButtons.map((b) => `[${b}]`).join(" ")}</p> : null}
+                  {preview.transitions?.length ? <p className="ntv2-hint">Переходы: {preview.transitions.map((t) => t.to).join(", ")}</p> : null}
+                  {preview.events?.length ? <p className="ntv2-hint">События: {preview.events.map((e) => `${e.name} (${e.chance ?? "?"}%)`).join(", ")}</p> : null}
+                  {preview.npcs?.length ? <p className="ntv2-hint">NPC: {preview.npcs.map((n) => n.name).join(", ")}</p> : null}
+                  {preview.mobs?.length ? <p className="ntv2-hint">Мобы: {preview.mobs.map((m) => m.name).join(", ")}</p> : null}
+                </>
+              ) : null}
+            </div>
+            <TechnicalData label="Предпросмотр (данные)" value={preview} />
+          </div>
+        ) : null}
 
         <ConfirmModal
           open={Boolean(confirm)} title={confirm?.title} body={confirm?.body}

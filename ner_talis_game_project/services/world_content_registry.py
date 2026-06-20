@@ -77,10 +77,10 @@ KIND_TRANSITION = "transition"
 KIND_EVENT = "event"
 KIND_NPC = "npc"
 KIND_QUEST = "quest"
-# По мере роста сюда добавляются loot/raid.
+KIND_RAID = "raid"
 KINDS = (
     KIND_LOCATION, KIND_MOB, KIND_BUTTON, KIND_TRANSITION,
-    KIND_EVENT, KIND_NPC, KIND_QUEST,
+    KIND_EVENT, KIND_NPC, KIND_QUEST, KIND_RAID,
 )
 
 LOCATION_TYPES = (
@@ -123,6 +123,7 @@ QUEST_GOAL_TYPES = (
     "bring_item", "kill_mob", "find_resource", "visit_location",
     "talk_npc", "deliver_item", "activate_object",
 )
+RAID_TYPES = ("world_boss", "dungeon", "expedition", "event_raid")
 
 MOB_TYPES = (
     "beast", "undead", "bandit", "monster", "magic",
@@ -739,6 +740,48 @@ def _validate_quest(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
+def _validate_raid(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Проверка рейдовой точки (ТЗ §11)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "name"):
+        errors.append("Не заполнено название рейда.")
+
+    entry = _str_field(data, "entry_location")
+    if not entry:
+        errors.append("Не указана локация входа в рейд.")
+    elif not _location_exists(entry):
+        errors.append(f"Локация входа «{entry}» не существует.")
+
+    raid_type = _str_field(data, "raid_type")
+    if raid_type and raid_type not in RAID_TYPES:
+        errors.append(f"Неизвестный тип рейда: {raid_type}.")
+
+    boss = _str_field(data, "boss_mob")
+    if boss and not _mob_exists(boss):
+        errors.append(f"Босс «{boss}» не существует среди мобов.")
+
+    min_level = _num(data.get("min_level"))
+    if min_level is not None and min_level < 1:
+        errors.append("Минимальный уровень должен быть ≥ 1.")
+    max_members = _num(data.get("max_members"))
+    if max_members is not None and max_members < 1:
+        errors.append("Максимум участников должен быть ≥ 1.")
+    elif max_members is None:
+        warnings.append("Не указан максимум участников.")
+    cooldown = _num(data.get("cooldown"))
+    if cooldown is not None and cooldown < 0:
+        errors.append("Кулдаун не может быть отрицательным.")
+
+    for key in ("name", "description"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    return errors, warnings
+
+
 VALIDATORS: dict[str, Callable[[dict[str, Any]], tuple[list[str], list[str]]]] = {
     KIND_LOCATION: _validate_location,
     KIND_MOB: _validate_mob,
@@ -747,6 +790,7 @@ VALIDATORS: dict[str, Callable[[dict[str, Any]], tuple[list[str], list[str]]]] =
     KIND_EVENT: _validate_event,
     KIND_NPC: _validate_npc,
     KIND_QUEST: _validate_quest,
+    KIND_RAID: _validate_raid,
 }
 
 
@@ -757,3 +801,131 @@ def validate_envelope(envelope: dict[str, Any]) -> dict[str, Any]:
         return {"ok": True, "errors": [], "warnings": []}
     errors, warnings = validator(envelope)
     return {"ok": not errors, "errors": errors, "warnings": warnings}
+
+
+# --- Предпросмотр и тестовый проход (ТЗ §12) -------------------------------
+def _spawns_in_location(mob_data: dict[str, Any], loc_id: str) -> bool:
+    raw = mob_data.get("locations")
+    if isinstance(raw, list):
+        ids = [str(x).strip() for x in raw]
+    else:
+        ids = [p.strip() for p in str(raw or "").split(",")]
+    return loc_id in [i for i in ids if i]
+
+
+def _related_to_location(loc_id: str) -> dict[str, list[dict[str, Any]]]:
+    """Собрать связанные с локацией объекты для предпросмотра/теста."""
+    buttons = [b for b in list_content(KIND_BUTTON)
+               if str((b.get("data") or {}).get("owner_location") or "") == loc_id]
+    buttons.sort(key=lambda b: _num((b.get("data") or {}).get("order")) or 0)
+    return {
+        "buttons": buttons,
+        "transitions": [t for t in list_content(KIND_TRANSITION)
+                        if str((t.get("data") or {}).get("from_location") or "") == loc_id],
+        "events": [e for e in list_content(KIND_EVENT)
+                   if str((e.get("data") or {}).get("location") or "") == loc_id],
+        "npcs": [n for n in list_content(KIND_NPC)
+                 if str((n.get("data") or {}).get("location") or "") == loc_id],
+        "mobs": [m for m in list_content(KIND_MOB)
+                 if _spawns_in_location(m.get("data") or {}, loc_id)],
+    }
+
+
+def build_preview(kind: str, content_id: str) -> dict[str, Any] | None:
+    """Как объект увидит игрок. Для локации — полная сцена с кнопками/событиями."""
+    envelope = get_content(kind, content_id)
+    if envelope is None:
+        return None
+    data = envelope.get("data") or {}
+    if kind != KIND_LOCATION:
+        return {
+            "kind": kind, "id": content_id,
+            "title": data.get("name") or data.get("text") or content_id,
+            "text": data.get("description") or data.get("text") or "",
+            "status": envelope.get("status"),
+        }
+
+    related = _related_to_location(content_id)
+
+    def _btn_view(b):
+        d = b.get("data") or {}
+        return {
+            "text": d.get("text"), "action": d.get("action"), "target": d.get("target"),
+            "telegram": bool(d.get("show_telegram")), "vk": bool(d.get("show_vk")),
+            "status": b.get("status"),
+        }
+
+    visible = [b for b in related["buttons"] if b.get("status") != STATUS_ARCHIVED]
+    return {
+        "kind": kind, "id": content_id,
+        "title": data.get("name") or content_id,
+        "text": data.get("description") or data.get("short_description") or "",
+        "status": envelope.get("status"),
+        "telegramButtons": [(b.get("data") or {}).get("text") for b in visible if (b.get("data") or {}).get("show_telegram")],
+        "vkButtons": [(b.get("data") or {}).get("text") for b in visible if (b.get("data") or {}).get("show_vk")],
+        "buttons": [_btn_view(b) for b in related["buttons"]],
+        "transitions": [{
+            "to": (t.get("data") or {}).get("to_location"),
+            "name": (t.get("data") or {}).get("name"),
+            "access": (t.get("data") or {}).get("access_condition"),
+            "status": t.get("status"),
+        } for t in related["transitions"]],
+        "events": [{
+            "name": (e.get("data") or {}).get("name"),
+            "type": (e.get("data") or {}).get("type"),
+            "chance": (e.get("data") or {}).get("chance"),
+            "result": (e.get("data") or {}).get("result"),
+            "status": e.get("status"),
+        } for e in related["events"]],
+        "npcs": [{
+            "name": (n.get("data") or {}).get("name"),
+            "role": (n.get("data") or {}).get("role"),
+            "functions": (n.get("data") or {}).get("functions"),
+            "status": n.get("status"),
+        } for n in related["npcs"]],
+        "mobs": [{
+            "name": (m.get("data") or {}).get("name"),
+            "type": (m.get("data") or {}).get("type"),
+            "status": m.get("status"),
+        } for m in related["mobs"]],
+    }
+
+
+def test_run(kind: str, content_id: str) -> dict[str, Any] | None:
+    """Тестовый проход: валидация объекта и (для локации) всего его подграфа.
+
+    Это безопасная сухая проверка связей перед публикацией — она не трогает
+    живую игру и тестовый профиль, а собирает проблемы по объекту и всем
+    связанным с ним кнопкам/переходам/событиям/NPC/мобам.
+    """
+    envelope = get_content(kind, content_id)
+    if envelope is None:
+        return None
+
+    checks: list[dict[str, Any]] = []
+
+    def _add(env: dict[str, Any]) -> None:
+        result = validate_envelope(env)
+        data = env.get("data") or {}
+        checks.append({
+            "kind": env.get("kind"),
+            "id": env.get("id"),
+            "title": data.get("name") or data.get("text") or env.get("id"),
+            "status": env.get("status"),
+            "ok": result["ok"],
+            "errors": result["errors"],
+            "warnings": result["warnings"],
+        })
+
+    _add(envelope)
+    if kind == KIND_LOCATION:
+        related = _related_to_location(content_id)
+        for group in ("buttons", "transitions", "events", "npcs"):
+            for env in related[group]:
+                _add(env)
+
+    return {
+        "ok": all(c["ok"] for c in checks),
+        "checks": checks,
+        "preview": build_preview(kind, content_id),
+    }

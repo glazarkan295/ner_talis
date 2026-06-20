@@ -136,6 +136,8 @@
 .ntv2-drop-row input[type="number"] { padding: 6px 8px; }
 .ntv2-subnav-item { cursor: pointer; font-family: inherit; color: var(--parch); background: transparent; }
 .ntv2-subnav-item:hover { border-color: var(--line-strong); }
+.ntv2-preview-card { border: 1px dashed var(--line-strong); border-radius: 12px; background: rgba(0,0,0,.2); padding: 12px 14px; }
+.ntv2-preview-card p { margin: 6px 0; }
 
 /* Technical data collapse + raw JSON */
 .ntv2-tech { margin-top: 8px; }

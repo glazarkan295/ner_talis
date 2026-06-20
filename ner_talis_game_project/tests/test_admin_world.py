@@ -123,6 +123,57 @@ class WorldRegistryTest(unittest.TestCase):
         self.assertIn("моб", joined)
         self.assertIn("npc", joined)
 
+    def test_raid_validation_cross_refs(self):
+        registry.create_content("location", "gate", {"name": "Врата", "type": "raid", "short_description": "x"})
+        registry.create_content("mob", "dragon", {"name": "Дракон", "type": "world_boss", "hp": 9999})
+        ok = registry.validate_envelope(registry.create_content("raid", "dragon_raid", {
+            "name": "Логово дракона", "entry_location": "gate", "raid_type": "world_boss",
+            "boss_mob": "dragon", "min_level": 50, "max_members": 10,
+        }))
+        self.assertTrue(ok["ok"], ok["errors"])
+        bad = registry.validate_envelope(registry.create_content("raid", "bad_raid", {
+            "name": "Глюк", "entry_location": "nowhere", "raid_type": "weird", "boss_mob": "phantom",
+        }))
+        self.assertFalse(bad["ok"])
+        joined = " ".join(bad["errors"]).lower()
+        self.assertIn("локация входа", joined)
+        self.assertIn("тип рейда", joined)
+        self.assertIn("босс", joined)
+
+    def test_preview_and_test_run_for_location(self):
+        registry.create_content("location", "hub", {"name": "Узел", "type": "wild", "short_description": "Перекрёсток"})
+        registry.create_content("location", "town2", {"name": "Город", "type": "city", "short_description": "x"})
+        registry.create_content("button", "b1", {
+            "text": "В город", "owner_location": "hub", "action": "goto_location",
+            "target": "town2", "show_telegram": True, "show_vk": False,
+        })
+        registry.create_content("transition", "t1", {"from_location": "hub", "to_location": "town2"})
+        registry.create_content("event", "ev1", {"name": "Находка", "text": "...", "location": "hub", "chance": 20})
+
+        preview = registry.build_preview("location", "hub")
+        self.assertEqual(preview["title"], "Узел")
+        self.assertIn("В город", preview["telegramButtons"])
+        self.assertNotIn("В город", preview["vkButtons"])
+        self.assertEqual(len(preview["transitions"]), 1)
+        self.assertEqual(len(preview["events"]), 1)
+
+        report = registry.test_run("location", "hub")
+        self.assertTrue(report["ok"], report["checks"])
+        # The subgraph (location + button + transition + event) is all checked.
+        kinds = {c["kind"] for c in report["checks"]}
+        self.assertTrue({"location", "button", "transition", "event"} <= kinds)
+
+    def test_test_run_surfaces_subgraph_errors(self):
+        registry.create_content("location", "trap_loc", {"name": "Ловушка", "type": "wild", "short_description": "x"})
+        # Button on this location points at a missing target -> subgraph error.
+        registry.create_content("button", "bad_btn", {
+            "text": "Туда", "owner_location": "trap_loc", "action": "goto_location",
+            "target": "ghost_loc", "show_telegram": True,
+        })
+        report = registry.test_run("location", "trap_loc")
+        self.assertFalse(report["ok"])
+        self.assertTrue(any(c["kind"] == "button" and not c["ok"] for c in report["checks"]))
+
     def test_mob_validation_ok_with_currency_drop(self):
         env = registry.create_content("mob", "wolf", {
             "name": "Волк", "type": "beast", "min_level": 1, "max_level": 5,
@@ -286,6 +337,29 @@ class WorldApiTest(unittest.TestCase):
         meta = self.client.get("/api/admin/v2/world/kinds", headers=self._auth(token)).json()
         self.assertIn("mob", meta["kinds"])
         self.assertIn("beast", meta["mobTypes"])
+        self.assertIn("raid", meta["kinds"])
+        self.assertIn("world_boss", meta["raidTypes"])
+
+    def test_preview_and_test_run_endpoints(self):
+        token = self._token("999")
+        self._create_location(token, cid="hub", data={"name": "Узел", "type": "wild", "short_description": "x"})
+        self._create_location(token, cid="dest", data={"name": "Цель", "type": "city", "short_description": "x"})
+        self.client.post("/api/admin/v2/world/transition", headers=self._auth(token),
+                         json={"id": "hub_dest", "data": {"from_location": "hub", "to_location": "dest"}})
+        preview = self.client.get("/api/admin/v2/world/location/hub/preview", headers=self._auth(token))
+        self.assertEqual(preview.status_code, 200, preview.text)
+        self.assertEqual(len(preview.json()["preview"]["transitions"]), 1)
+        report = self.client.post("/api/admin/v2/world/location/hub/test-run", headers=self._auth(token), json={})
+        self.assertEqual(report.status_code, 200, report.text)
+        self.assertTrue(report.json()["report"]["ok"])
+
+    def test_test_run_requires_permission(self):
+        rbac.set_role_override("telegram", "999", rbac.READ_ONLY)
+        token = self._token("999")
+        self.assertEqual(
+            self.client.post("/api/admin/v2/world/location/x/test-run", headers=self._auth(token), json={}).status_code,
+            403,
+        )
 
     def test_mob_create_validate_publish(self):
         token = self._token("999")
