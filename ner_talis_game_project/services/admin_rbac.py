@@ -90,6 +90,35 @@ PERM_BROADCAST_SEND = "broadcast.send"
 # Система
 PERM_SYSTEM_MANAGE = "system.manage"
 PERM_ROLES_MANAGE = "roles.manage"
+# Конструктор мира (data-driven контент: локации/мобы/дроп/события/NPC/квесты/рейды)
+# — единый жизненный цикл черновик→проверка→публикация→архив, права по этапам.
+PERM_WORLD_VIEW = "world.view"
+PERM_WORLD_CREATE_DRAFT = "world.create_draft"
+PERM_WORLD_EDIT_DRAFT = "world.edit_draft"
+PERM_WORLD_VALIDATE = "world.validate"
+PERM_WORLD_PUBLISH = "world.publish"
+PERM_WORLD_DISABLE = "world.disable"
+PERM_WORLD_ARCHIVE = "world.archive"
+PERM_WORLD_TEST_RUN = "world.test_run"
+# Гильдии
+PERM_GUILD_VIEW = "guild.view"
+PERM_GUILD_CREATE = "guild.create"
+PERM_GUILD_EDIT = "guild.edit"
+PERM_GUILD_DISABLE = "guild.disable"
+PERM_GUILD_MANAGE_MEMBERS = "guild.manage_members"
+PERM_GUILD_MANAGE_STORAGE = "guild.manage_storage"
+PERM_GUILD_MANAGE_TREASURY = "guild.manage_treasury"
+PERM_GUILD_AUDIT = "guild.audit"
+# Мировые события / праздники / мировые боссы
+PERM_WORLD_EVENT_VIEW = "world_event.view"
+PERM_WORLD_EVENT_CREATE = "world_event.create"
+PERM_WORLD_EVENT_EDIT = "world_event.edit"
+PERM_WORLD_EVENT_SCHEDULE = "world_event.schedule"
+PERM_WORLD_EVENT_START = "world_event.start"
+PERM_WORLD_EVENT_STOP = "world_event.stop"
+PERM_WORLD_EVENT_REWARD = "world_event.reward"
+PERM_WORLD_EVENT_ARCHIVE = "world_event.archive"
+PERM_WORLD_EVENT_AUDIT = "world_event.audit"
 
 ALL_PERMISSIONS = (
     PERM_PLAYERS_VIEW, PERM_CATALOG_VIEW, PERM_ECONOMY_VIEW, PERM_PROMOS_VIEW,
@@ -102,6 +131,15 @@ ALL_PERMISSIONS = (
     PERM_ECONOMY_MANAGE, PERM_CONTENT_EDIT, PERM_ASSETS_MANAGE,
     PERM_PROMOS_MANAGE, PERM_BROADCAST_SEND,
     PERM_SYSTEM_MANAGE, PERM_ROLES_MANAGE,
+    PERM_WORLD_VIEW, PERM_WORLD_CREATE_DRAFT, PERM_WORLD_EDIT_DRAFT,
+    PERM_WORLD_VALIDATE, PERM_WORLD_PUBLISH, PERM_WORLD_DISABLE,
+    PERM_WORLD_ARCHIVE, PERM_WORLD_TEST_RUN,
+    PERM_GUILD_VIEW, PERM_GUILD_CREATE, PERM_GUILD_EDIT, PERM_GUILD_DISABLE,
+    PERM_GUILD_MANAGE_MEMBERS, PERM_GUILD_MANAGE_STORAGE,
+    PERM_GUILD_MANAGE_TREASURY, PERM_GUILD_AUDIT,
+    PERM_WORLD_EVENT_VIEW, PERM_WORLD_EVENT_CREATE, PERM_WORLD_EVENT_EDIT,
+    PERM_WORLD_EVENT_SCHEDULE, PERM_WORLD_EVENT_START, PERM_WORLD_EVENT_STOP,
+    PERM_WORLD_EVENT_REWARD, PERM_WORLD_EVENT_ARCHIVE, PERM_WORLD_EVENT_AUDIT,
 )
 
 # Опасные действия — требуют двойного подтверждения на фронте и помечаются в
@@ -118,6 +156,15 @@ DANGEROUS_ACTIONS = frozenset({
     "system.maintenance_on",
     "system.feature_flag",
     "roles.change",
+    # Конструктор мира / события / гильдии — действия, меняющие живой мир.
+    "world.publish",
+    "world.disable",
+    "world.archive",
+    "guild.disable",
+    "world_event.start",
+    "world_event.stop",
+    "world_event.reward",
+    "world_event.archive",
 })
 
 # owner → все права (sentinel). Остальные роли — явные множества.
@@ -127,22 +174,34 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     SUPPORT: {
         PERM_PLAYERS_VIEW, PERM_PLAYERS_UNSTUCK, PERM_PLAYERS_MESSAGE,
         PERM_REWARDS_GRANT, PERM_BACKUP_VIEW, PERM_AUDIT_VIEW,
+        PERM_GUILD_VIEW, PERM_WORLD_EVENT_VIEW,
     },
     MODERATOR: {
         PERM_PLAYERS_VIEW, PERM_MODERATION_VIEW,
         PERM_MOD_WARN, PERM_MOD_MUTE,
+        PERM_GUILD_VIEW, PERM_GUILD_MANAGE_MEMBERS,
     },
+    # content создаёт и правит ЧЕРНОВИКИ мира/событий/гильдий, но не публикует и
+    # не запускает (publish/start/disband → admin/owner).
     CONTENT: {
         PERM_CATALOG_VIEW, PERM_CONTENT_EDIT, PERM_ASSETS_MANAGE,
+        PERM_WORLD_VIEW, PERM_WORLD_CREATE_DRAFT, PERM_WORLD_EDIT_DRAFT,
+        PERM_WORLD_VALIDATE, PERM_WORLD_TEST_RUN,
+        PERM_GUILD_VIEW, PERM_GUILD_CREATE, PERM_GUILD_EDIT,
+        PERM_WORLD_EVENT_VIEW, PERM_WORLD_EVENT_CREATE,
+        PERM_WORLD_EVENT_EDIT, PERM_WORLD_EVENT_SCHEDULE,
     },
+    # economy подтверждает события с крупными наградами/множителями экономики.
     ECONOMY: {
         PERM_ECONOMY_VIEW, PERM_ECONOMY_MANAGE, PERM_CATALOG_VIEW,
         PERM_PROMOS_VIEW, PERM_AUDIT_VIEW,
+        PERM_WORLD_EVENT_VIEW, PERM_WORLD_EVENT_REWARD, PERM_GUILD_VIEW,
     },
     READ_ONLY: {
         PERM_PLAYERS_VIEW, PERM_CATALOG_VIEW, PERM_ECONOMY_VIEW,
         PERM_PROMOS_VIEW, PERM_MODERATION_VIEW, PERM_AUDIT_VIEW,
         PERM_SYSTEM_VIEW, PERM_BACKUP_VIEW,
+        PERM_WORLD_VIEW, PERM_GUILD_VIEW, PERM_WORLD_EVENT_VIEW,
     },
 }
 

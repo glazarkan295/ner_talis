@@ -59,9 +59,42 @@ class RbacMatrixTest(unittest.TestCase):
     def test_read_only_has_no_mutations(self):
         for perm in (rbac.PERM_PLAYERS_DELETE, rbac.PERM_REWARDS_GRANT,
                      rbac.PERM_CURRENCY_CHANGE, rbac.PERM_MOD_WARN,
-                     rbac.PERM_PROMOS_MANAGE, rbac.PERM_BROADCAST_SEND):
+                     rbac.PERM_PROMOS_MANAGE, rbac.PERM_BROADCAST_SEND,
+                     rbac.PERM_WORLD_PUBLISH, rbac.PERM_WORLD_CREATE_DRAFT,
+                     rbac.PERM_WORLD_EVENT_START, rbac.PERM_GUILD_CREATE):
             self.assertFalse(rbac.has_permission(rbac.READ_ONLY, perm), perm)
         self.assertTrue(rbac.has_permission(rbac.READ_ONLY, rbac.PERM_PLAYERS_VIEW))
+        # read_only всё же видит мир/события/гильдии (view-роль).
+        self.assertTrue(rbac.has_permission(rbac.READ_ONLY, rbac.PERM_WORLD_VIEW))
+        self.assertTrue(rbac.has_permission(rbac.READ_ONLY, rbac.PERM_WORLD_EVENT_VIEW))
+
+    def test_world_constructor_scope(self):
+        # content делает черновики и проверки, но не публикует/не отключает.
+        self.assertTrue(rbac.has_permission(rbac.CONTENT, rbac.PERM_WORLD_CREATE_DRAFT))
+        self.assertTrue(rbac.has_permission(rbac.CONTENT, rbac.PERM_WORLD_EDIT_DRAFT))
+        self.assertTrue(rbac.has_permission(rbac.CONTENT, rbac.PERM_WORLD_VALIDATE))
+        self.assertTrue(rbac.has_permission(rbac.CONTENT, rbac.PERM_WORLD_TEST_RUN))
+        self.assertFalse(rbac.has_permission(rbac.CONTENT, rbac.PERM_WORLD_PUBLISH))
+        self.assertFalse(rbac.has_permission(rbac.CONTENT, rbac.PERM_WORLD_DISABLE))
+        # publish/launch — у admin и owner.
+        self.assertTrue(rbac.has_permission(rbac.ADMIN, rbac.PERM_WORLD_PUBLISH))
+        self.assertTrue(rbac.has_permission(rbac.OWNER, rbac.PERM_WORLD_PUBLISH))
+
+    def test_guild_and_world_event_scope(self):
+        # content создаёт черновики событий, но не запускает и не выдаёт награды.
+        self.assertTrue(rbac.has_permission(rbac.CONTENT, rbac.PERM_WORLD_EVENT_CREATE))
+        self.assertFalse(rbac.has_permission(rbac.CONTENT, rbac.PERM_WORLD_EVENT_START))
+        self.assertFalse(rbac.has_permission(rbac.CONTENT, rbac.PERM_WORLD_EVENT_REWARD))
+        # economy подтверждает награды событий.
+        self.assertTrue(rbac.has_permission(rbac.ECONOMY, rbac.PERM_WORLD_EVENT_REWARD))
+        # moderator модерирует состав гильдий.
+        self.assertTrue(rbac.has_permission(rbac.MODERATOR, rbac.PERM_GUILD_MANAGE_MEMBERS))
+        self.assertFalse(rbac.has_permission(rbac.MODERATOR, rbac.PERM_GUILD_DISABLE))
+
+    def test_new_dangerous_actions_flagged(self):
+        for action in ("world.publish", "world_event.start", "world_event.reward",
+                       "guild.disable"):
+            self.assertIn(action, rbac.DANGEROUS_ACTIONS, action)
 
 
 class RoleResolutionTest(unittest.TestCase):
