@@ -57,3 +57,11 @@ data/guilds.json.tmp
 data/world_events.json
 data/world_events.json.lock
 data/world_events.json.tmp
+
+# Runtime achievement stores (admin-created)
+data/achievements.json
+data/achievements.json.lock
+data/achievements.json.tmp
+data/achievement_categories.json
+data/achievement_categories.json.lock
+data/achievement_categories.json.tmp

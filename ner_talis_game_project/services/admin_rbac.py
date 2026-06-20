@@ -119,6 +119,21 @@ PERM_WORLD_EVENT_STOP = "world_event.stop"
 PERM_WORLD_EVENT_REWARD = "world_event.reward"
 PERM_WORLD_EVENT_ARCHIVE = "world_event.archive"
 PERM_WORLD_EVENT_AUDIT = "world_event.audit"
+# Достижения
+PERM_ACHIEVEMENT_VIEW = "achievement.view"
+PERM_ACHIEVEMENT_CREATE = "achievement.create"
+PERM_ACHIEVEMENT_EDIT = "achievement.edit"
+PERM_ACHIEVEMENT_VALIDATE = "achievement.validate"
+PERM_ACHIEVEMENT_PUBLISH = "achievement.publish"
+PERM_ACHIEVEMENT_DISABLE = "achievement.disable"
+PERM_ACHIEVEMENT_ARCHIVE = "achievement.archive"
+PERM_ACHIEVEMENT_GRANT_MANUAL = "achievement.grant_manual"
+PERM_ACHIEVEMENT_REVOKE_MANUAL = "achievement.revoke_manual"
+PERM_ACHIEVEMENT_VIEW_HIDDEN = "achievement.view_hidden"
+PERM_ACHIEVEMENT_VIEW_PLAYER_PROGRESS = "achievement.view_player_progress"
+PERM_ACHIEVEMENT_MANAGE_CATEGORIES = "achievement.manage_categories"
+PERM_ACHIEVEMENT_MANAGE_REWARDS = "achievement.manage_rewards"
+PERM_ACHIEVEMENT_AUDIT = "achievement.audit"
 
 ALL_PERMISSIONS = (
     PERM_PLAYERS_VIEW, PERM_CATALOG_VIEW, PERM_ECONOMY_VIEW, PERM_PROMOS_VIEW,
@@ -140,6 +155,12 @@ ALL_PERMISSIONS = (
     PERM_WORLD_EVENT_VIEW, PERM_WORLD_EVENT_CREATE, PERM_WORLD_EVENT_EDIT,
     PERM_WORLD_EVENT_SCHEDULE, PERM_WORLD_EVENT_START, PERM_WORLD_EVENT_STOP,
     PERM_WORLD_EVENT_REWARD, PERM_WORLD_EVENT_ARCHIVE, PERM_WORLD_EVENT_AUDIT,
+    PERM_ACHIEVEMENT_VIEW, PERM_ACHIEVEMENT_CREATE, PERM_ACHIEVEMENT_EDIT,
+    PERM_ACHIEVEMENT_VALIDATE, PERM_ACHIEVEMENT_PUBLISH, PERM_ACHIEVEMENT_DISABLE,
+    PERM_ACHIEVEMENT_ARCHIVE, PERM_ACHIEVEMENT_GRANT_MANUAL,
+    PERM_ACHIEVEMENT_REVOKE_MANUAL, PERM_ACHIEVEMENT_VIEW_HIDDEN,
+    PERM_ACHIEVEMENT_VIEW_PLAYER_PROGRESS, PERM_ACHIEVEMENT_MANAGE_CATEGORIES,
+    PERM_ACHIEVEMENT_MANAGE_REWARDS, PERM_ACHIEVEMENT_AUDIT,
 )
 
 # Опасные действия — требуют двойного подтверждения на фронте и помечаются в
@@ -165,6 +186,11 @@ DANGEROUS_ACTIONS = frozenset({
     "world_event.stop",
     "world_event.reward",
     "world_event.archive",
+    "achievement.publish",
+    "achievement.disable",
+    "achievement.archive",
+    "achievement.grant_manual",
+    "achievement.revoke_manual",
 })
 
 # owner → все права (sentinel). Остальные роли — явные множества.
@@ -175,14 +201,16 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_PLAYERS_VIEW, PERM_PLAYERS_UNSTUCK, PERM_PLAYERS_MESSAGE,
         PERM_REWARDS_GRANT, PERM_BACKUP_VIEW, PERM_AUDIT_VIEW,
         PERM_GUILD_VIEW, PERM_WORLD_EVENT_VIEW,
+        PERM_ACHIEVEMENT_VIEW, PERM_ACHIEVEMENT_VIEW_PLAYER_PROGRESS,
     },
     MODERATOR: {
         PERM_PLAYERS_VIEW, PERM_MODERATION_VIEW,
         PERM_MOD_WARN, PERM_MOD_MUTE,
         PERM_GUILD_VIEW, PERM_GUILD_MANAGE_MEMBERS,
+        PERM_ACHIEVEMENT_VIEW,
     },
-    # content создаёт и правит ЧЕРНОВИКИ мира/событий/гильдий, но не публикует и
-    # не запускает (publish/start/disband → admin/owner).
+    # content создаёт и правит ЧЕРНОВИКИ мира/событий/гильдий/достижений, но не
+    # публикует и не запускает (publish/start/disband → admin/owner).
     CONTENT: {
         PERM_CATALOG_VIEW, PERM_CONTENT_EDIT, PERM_ASSETS_MANAGE,
         PERM_WORLD_VIEW, PERM_WORLD_CREATE_DRAFT, PERM_WORLD_EDIT_DRAFT,
@@ -190,18 +218,23 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_GUILD_VIEW, PERM_GUILD_CREATE, PERM_GUILD_EDIT,
         PERM_WORLD_EVENT_VIEW, PERM_WORLD_EVENT_CREATE,
         PERM_WORLD_EVENT_EDIT, PERM_WORLD_EVENT_SCHEDULE,
+        PERM_ACHIEVEMENT_VIEW, PERM_ACHIEVEMENT_CREATE, PERM_ACHIEVEMENT_EDIT,
+        PERM_ACHIEVEMENT_VALIDATE, PERM_ACHIEVEMENT_VIEW_HIDDEN,
+        PERM_ACHIEVEMENT_MANAGE_CATEGORIES, PERM_ACHIEVEMENT_MANAGE_REWARDS,
     },
     # economy подтверждает события с крупными наградами/множителями экономики.
     ECONOMY: {
         PERM_ECONOMY_VIEW, PERM_ECONOMY_MANAGE, PERM_CATALOG_VIEW,
         PERM_PROMOS_VIEW, PERM_AUDIT_VIEW,
         PERM_WORLD_EVENT_VIEW, PERM_WORLD_EVENT_REWARD, PERM_GUILD_VIEW,
+        PERM_ACHIEVEMENT_VIEW,
     },
     READ_ONLY: {
         PERM_PLAYERS_VIEW, PERM_CATALOG_VIEW, PERM_ECONOMY_VIEW,
         PERM_PROMOS_VIEW, PERM_MODERATION_VIEW, PERM_AUDIT_VIEW,
         PERM_SYSTEM_VIEW, PERM_BACKUP_VIEW,
         PERM_WORLD_VIEW, PERM_GUILD_VIEW, PERM_WORLD_EVENT_VIEW,
+        PERM_ACHIEVEMENT_VIEW,
     },
 }
 

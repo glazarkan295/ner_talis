@@ -6,6 +6,7 @@ import { PlayersSection } from "./sections/PlayersSection.jsx";
 import { WorldSection } from "./sections/WorldSection.jsx";
 import { GuildsSection } from "./sections/GuildsSection.jsx";
 import { EventsSection } from "./sections/EventsSection.jsx";
+import { AchievementsSection } from "./sections/AchievementsSection.jsx";
 import { AuditSection } from "./sections/AuditSection.jsx";
 import { RolesSection } from "./sections/RolesSection.jsx";
 import { SessionsSection } from "./sections/SessionsSection.jsx";
@@ -18,6 +19,7 @@ const NAV = [
   { id: "world", label: "Конструктор мира", icon: "🌍", perm: "world.view" },
   { id: "guilds", label: "Гильдии", icon: "🏰", perm: "guild.view" },
   { id: "events", label: "Мировые события", icon: "🌌", perm: "world_event.view" },
+  { id: "achievements", label: "Достижения", icon: "🏆", perm: "achievement.view" },
   { id: "audit", label: "Аудит", icon: "📜", perm: "audit.view" },
   { id: "sessions", label: "Сессии", icon: "🔑", perm: "system.view" },
   { id: "roles", label: "Роли и доступ", icon: "🛡️", perm: "roles.manage" },
@@ -113,6 +115,7 @@ export function AdminShell() {
         {active === "world" && hasPerm("world.view") && <WorldSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "guilds" && hasPerm("guild.view") && <GuildsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "events" && hasPerm("world_event.view") && <EventsSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "achievements" && hasPerm("achievement.view") && <AchievementsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "audit" && hasPerm("audit.view") && <AuditSection guarded={guarded} />}
         {active === "sessions" && hasPerm("system.view") && (
           <SessionsSection guarded={guarded} canRevoke={hasPerm("system.manage")} />
