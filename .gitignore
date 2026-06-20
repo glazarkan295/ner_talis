@@ -49,3 +49,11 @@ data/admin_backups/
 data/world_content.json
 data/world_content.json.lock
 data/world_content.json.tmp
+
+# Runtime community stores (admin-created)
+data/guilds.json
+data/guilds.json.lock
+data/guilds.json.tmp
+data/world_events.json
+data/world_events.json.lock
+data/world_events.json.tmp
