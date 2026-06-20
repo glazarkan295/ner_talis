@@ -13,7 +13,11 @@ if str(ROOT_DIR) not in sys.path:
 
 from admin_panel_api import create_admin_panel_router
 from services.admin_command_service import execute_admin_command
-from services.admin_panel_service import create_admin_panel_activation_token, build_admin_panel_url
+from services.admin_panel_service import (
+    create_admin_panel_activation_token,
+    build_admin_panel_url,
+    build_admin_panel_v2_url,
+)
 from services.registration_service import create_player, load_races
 from storage.json_storage import JsonStorage
 from storage.sqlite_storage import SQLiteStorage
@@ -139,6 +143,31 @@ class AdminPanelSiteTest(unittest.TestCase):
             self.assertTrue(result.handled)
             self.assertIn("Админ-панель", result.text)
             self.assertIn("https://example.test/admin_panel?token=", result.text)
+
+    def test_admin_panel_v2_command_returns_v2_link(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.environ["SITE_BASE_URL"] = "https://example.test"
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            token = create_admin_panel_activation_token(storage, platform="telegram", admin_user_id="999")
+            self.assertIn("/admin_panel_v2?token=", build_admin_panel_v2_url(token))
+            result = execute_admin_command(text="/admin_panel_v2", storage=storage, platform="telegram", admin_user_id="999")
+            self.assertTrue(result.handled)
+            self.assertIn("V2", result.text)
+            self.assertIn("https://example.test/admin_panel_v2?token=", result.text)
+
+    def test_admin_panel_v2_link_activates_same_session_scope(self):
+        # One activation flow must open either console: the V2 link's token
+        # exchanges into a working admin session just like V1.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.environ["SITE_BASE_URL"] = "https://example.test"
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            result = execute_admin_command(text="/admin_panel_v2", storage=storage, platform="telegram", admin_user_id="999")
+            url = result.text.split("Открыть: ", 1)[1].split("\n", 1)[0].strip()
+            token = url.split("token=", 1)[1]
+            client = self._client(storage)
+            activated = client.get(f"/api/admin/session/{token}")
+            self.assertEqual(activated.status_code, 200, activated.text)
+            self.assertTrue(activated.json()["sessionToken"])
 
 
 if __name__ == "__main__":

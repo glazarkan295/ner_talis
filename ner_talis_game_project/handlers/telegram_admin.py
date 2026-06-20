@@ -10,6 +10,7 @@ from services.admin_command_service import execute_admin_command
 ADMIN_COMMANDS = (
     "admin_help",
     "admin_panel",
+    "admin_panel_v2",
     "admin_promo_add",
     "admin_promo_bulk",
     "admin_promo_off",

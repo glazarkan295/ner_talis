@@ -455,6 +455,12 @@ def build_admin_panel_url(token: str) -> str:
     return f"{_base_url()}/admin_panel?token={token}"
 
 
+def build_admin_panel_v2_url(token: str) -> str:
+    # V2 reuses the same activation/session scope as V1 — only the entry path
+    # differs, so one activation link can open either console.
+    return f"{_base_url()}/admin_panel_v2?token={token}"
+
+
 def _item_id(item: dict[str, Any]) -> str:
     return str(item.get("id") or item.get("item_id") or "").strip()
 
