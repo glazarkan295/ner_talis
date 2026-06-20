@@ -41,3 +41,6 @@ data/courier_transfers.json.tmp
 
 # IDE workspace files
 *.code-workspace
+
+# Runtime admin backups (created by reset/delivery)
+data/admin_backups/
