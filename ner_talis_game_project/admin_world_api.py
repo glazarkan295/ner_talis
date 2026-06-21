@@ -135,6 +135,13 @@ def create_admin_world_router(get_storage) -> APIRouter:
             "redistributionModes": list(registry.REDISTRIBUTION_MODES),
             "eventGroups": list(registry.EVENT_GROUPS),
             "depletionTriggers": list(registry.DEPLETION_TRIGGERS),
+            # Справочники расширенного конструктора мобов.
+            "mobVariantTypes": list(registry.MOB_VARIANT_TYPES),
+            "mobAttackTypes": list(registry.MOB_ATTACK_TYPES),
+            "mobSkillTypes": list(registry.MOB_SKILL_TYPES),
+            "mobSkillConditions": list(registry.MOB_SKILL_CONDITIONS),
+            "mobBehaviorTypes": list(registry.MOB_BEHAVIOR_TYPES),
+            "mobResistTypes": list(registry.MOB_RESIST_TYPES),
         }
 
     @router.get("/{kind}")

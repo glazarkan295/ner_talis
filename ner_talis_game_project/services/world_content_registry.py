@@ -90,6 +90,17 @@ KIND_LOCATION_DEPLETION_RULE = "location_depletion_rule"
 KIND_LOCATION_EMPTY_EVENT = "location_empty_event"
 KIND_LOCATION_HIDDEN_EVENT = "location_hidden_event"
 KIND_LOCATION_EVENT_ANSWER = "location_event_answer"
+# Расширенный конструктор мобов (ТЗ «Конструктор мобов»): под-объекты моба в том
+# же генерик-движке. Связь моб↔локация ведётся через KIND_LOCATION_MOB_SPAWN
+# (тот же объект с двух сторон), отдельного mob_location_link нет — без дублей.
+KIND_MOB_VARIANT = "mob_variant"
+KIND_MOB_SKILL = "mob_skill"
+KIND_MOB_PASSIVE = "mob_passive"
+KIND_MOB_RESISTANCE = "mob_resistance"
+KIND_MOB_EFFECT = "mob_effect"
+KIND_MOB_EVENT_LINK = "mob_event_link"
+KIND_MOB_ZONE_LINK = "mob_zone_link"
+KIND_MOB_PHASE = "mob_phase"
 KINDS = (
     KIND_LOCATION, KIND_MOB, KIND_BUTTON, KIND_TRANSITION,
     KIND_EVENT, KIND_NPC, KIND_QUEST, KIND_RAID,
@@ -98,6 +109,8 @@ KINDS = (
     KIND_LOCATION_WEEKLY_ROTATION, KIND_LOCATION_DEPLETION_RULE,
     KIND_LOCATION_EMPTY_EVENT, KIND_LOCATION_HIDDEN_EVENT,
     KIND_LOCATION_EVENT_ANSWER,
+    KIND_MOB_VARIANT, KIND_MOB_SKILL, KIND_MOB_PASSIVE, KIND_MOB_RESISTANCE,
+    KIND_MOB_EFFECT, KIND_MOB_EVENT_LINK, KIND_MOB_ZONE_LINK, KIND_MOB_PHASE,
 )
 
 LOCATION_TYPES = (
@@ -142,9 +155,40 @@ QUEST_GOAL_TYPES = (
 )
 RAID_TYPES = ("world_boss", "dungeon", "expedition", "event_raid")
 
-MOB_TYPES = (
+MOB_TYPES = (  # ТЗ §5 (расширено)
     "beast", "undead", "bandit", "monster", "magic",
     "human", "boss", "world_boss", "event", "raid",
+    "dwarf", "elf", "lizardfolk", "spirit", "demon", "cursed",
+    "mechanism", "golem", "elemental", "elite_boss", "holiday", "guild",
+)
+
+# --- Справочники расширенного конструктора мобов ---------------------------
+MOB_VARIANT_TYPES = (  # ТЗ §6.1
+    "normal", "enhanced", "elite", "rare", "dangerous", "mini_boss",
+    "boss", "raid", "world_boss", "event", "holiday", "cursed", "zonal",
+)
+MOB_ATTACK_TYPES = (  # ТЗ §8
+    "physical", "magical", "mixed", "poison", "bleed", "fire", "frost",
+    "water", "earth", "wind", "spirit", "curse", "pure",
+)
+MOB_SKILL_TYPES = (  # ТЗ §9.2
+    "basic_attack", "heavy_attack", "magic_attack", "aoe_attack", "poison",
+    "bleed", "stun", "burn", "curse", "weaken", "reduce_accuracy",
+    "reduce_evasion", "reduce_defense", "self_heal", "regen", "summon",
+    "self_buff", "defensive_stance", "counter", "vampirism", "flee", "boss_phase",
+)
+MOB_SKILL_CONDITIONS = (  # ТЗ §9.3
+    "always", "hp_below", "player_uses_magic", "player_uses_physical",
+    "after_n_turns", "mob_enhanced", "mob_elite", "zone_active",
+    "world_event_active", "raid_battle", "has_allies", "player_has_effect",
+)
+MOB_BEHAVIOR_TYPES = (  # ТЗ §25.1
+    "aggressive", "cautious", "defensive", "fast", "magical", "poisonous",
+    "summoner", "support", "boss_phases", "random",
+)
+MOB_RESIST_TYPES = (  # ТЗ §11.1
+    "physical", "magical", "fire", "water", "frost", "earth", "wind",
+    "spirit", "poison", "bleed", "stun", "curse", "periodic", "crit",
 )
 
 # --- Справочники расширенного конструктора локаций -------------------------
@@ -538,6 +582,20 @@ def _validate_mob(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
     coins = _num(data.get("coins"))
     if coins is not None and coins > MAX_MOB_COINS:
         warnings.append("Очень много валюты за моба — проверьте экономику.")
+
+    # Боевые параметры (ТЗ §8).
+    attack_type = _str_field(data, "attack_type")
+    if attack_type and attack_type not in MOB_ATTACK_TYPES:
+        errors.append(f"Неизвестный тип атаки: {attack_type}.")
+    behavior = _str_field(data, "behavior")
+    if behavior and behavior not in MOB_BEHAVIOR_TYPES:
+        errors.append(f"Неизвестное поведение моба: {behavior}.")
+    bmin = _num(data.get("min_in_battle"))
+    bmax = _num(data.get("max_in_battle"))
+    if bmin is not None and bmin < 1:
+        errors.append("Минимум мобов в бою должен быть ≥ 1.")
+    if bmin is not None and bmax is not None and bmin > bmax:
+        errors.append("Минимум мобов в бою больше максимума.")
 
     for key in ("name", "description"):
         value = _str_field(data, key)
@@ -1191,6 +1249,204 @@ def _validate_location_event_answer(envelope: dict[str, Any]) -> tuple[list[str]
     return errors, warnings
 
 
+# --- Валидаторы расширенного конструктора мобов ----------------------------
+def _zone_exists(zone_id: Any) -> bool:
+    zid = str(zone_id or "").strip()
+    return bool(zid) and get_content(KIND_LOCATION_ZONE, zid) is not None
+
+
+def _event_exists(event_id: Any) -> bool:
+    eid = str(event_id or "").strip()
+    if not eid:
+        return False
+    return (get_content(KIND_EVENT, eid) is not None
+            or get_content(KIND_LOCATION_HIDDEN_EVENT, eid) is not None)
+
+
+def _check_mob_ref(data: dict[str, Any], errors: list[str]) -> None:
+    mob_id = _str_field(data, "mob_id")
+    if not mob_id:
+        errors.append("Не указан моб.")
+    elif not _mob_exists(mob_id):
+        errors.append(f"Моб «{mob_id}» не существует.")
+
+
+def _validate_mob_variant(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Вариант моба (обычный/усиленный/элитный/босс… ТЗ §6)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "name"):
+        errors.append("Не заполнено название варианта.")
+    _check_mob_ref(data, errors)
+    vtype = _str_field(data, "variant_type")
+    if vtype and vtype not in MOB_VARIANT_TYPES:
+        errors.append(f"Неизвестный тип варианта: {vtype}.")
+
+    # Множители не отрицательные.
+    for key in ("hp_mult", "damage_mult", "defense_mult", "accuracy_mult",
+                "evasion_mult", "exp_mult", "coins_mult", "drop_mult"):
+        if data.get(key) in (None, ""):
+            continue
+        value = _num(data.get(key))
+        if value is None:
+            errors.append(f"Множитель «{key}» — не число.")
+        elif value < 0:
+            errors.append(f"Множитель «{key}» не может быть отрицательным.")
+
+    _check_chance(data, "spawn_chance", errors, "Появление варианта")
+    for key in ("name", "description"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    return errors, warnings
+
+
+def _validate_mob_skill(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Навык моба (ТЗ §9)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "name"):
+        errors.append("Не заполнено название навыка.")
+    _check_mob_ref(data, errors)
+    stype = _str_field(data, "skill_type")
+    if stype and stype not in MOB_SKILL_TYPES:
+        errors.append(f"Неизвестный тип навыка: {stype}.")
+    cond = _str_field(data, "use_condition")
+    if cond and cond not in MOB_SKILL_CONDITIONS:
+        errors.append(f"Неизвестное условие использования: {cond}.")
+
+    _check_chance(data, "use_chance", errors, "Использование навыка")
+    cooldown = _num(data.get("cooldown"))
+    if cooldown is not None and cooldown < 0:
+        errors.append("Кулдаун не может быть отрицательным.")
+
+    for key in ("name", "player_text", "player_description"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    return errors, warnings
+
+
+def _validate_mob_passive(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Пассивная особенность моба (ТЗ §10)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "name"):
+        errors.append("Не заполнено название особенности.")
+    _check_mob_ref(data, errors)
+    for key in ("name", "player_description", "description"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    return errors, warnings
+
+
+def _validate_mob_resistance(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Сопротивление или слабость моба (ТЗ §11)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    _check_mob_ref(data, errors)
+    rtype = _str_field(data, "resist_type")
+    if not rtype:
+        errors.append("Не выбран тип сопротивления/слабости.")
+    elif rtype not in MOB_RESIST_TYPES:
+        errors.append(f"Неизвестный тип сопротивления/слабости: {rtype}.")
+    if data.get("value") not in (None, "") and _num(data.get("value")) is None:
+        errors.append("Значение сопротивления — не число.")
+    return errors, warnings
+
+
+def _validate_mob_effect(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Эффект, который моб накладывает/получает (ТЗ §12)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "name"):
+        errors.append("Не заполнено название эффекта.")
+    _check_mob_ref(data, errors)
+    effect_id = _str_field(data, "effect_id")
+    if effect_id and not _effect_exists(effect_id):
+        errors.append(f"Эффект «{effect_id}» не существует.")
+    _check_chance(data, "chance", errors, "Наложение эффекта")
+    duration = _num(data.get("duration"))
+    if duration is not None and duration < 0:
+        errors.append("Длительность не может быть отрицательной.")
+    for key in ("name", "player_text"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    return errors, warnings
+
+
+def _validate_mob_event_link(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Привязка моба к (скрытому) событию (ТЗ §16)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    _check_mob_ref(data, errors)
+    event_id = _str_field(data, "event_id")
+    if not event_id:
+        errors.append("Не указано событие.")
+    elif not _event_exists(event_id):
+        errors.append(f"Событие «{event_id}» не существует.")
+    _check_chance(data, "spawn_chance", errors, "Появление в событии")
+    count = _num(data.get("count"))
+    if count is not None and count < 1:
+        errors.append("Количество мобов в событии должно быть ≥ 1.")
+    variant = _str_field(data, "variant_type")
+    if variant and variant not in MOB_VARIANT_TYPES:
+        errors.append(f"Неизвестный вариант моба: {variant}.")
+    return errors, warnings
+
+
+def _validate_mob_zone_link(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Связь моба с зоной локации (ТЗ §21)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    _check_mob_ref(data, errors)
+    zone_id = _str_field(data, "zone_id")
+    if not zone_id:
+        errors.append("Не указана зона.")
+    elif not _zone_exists(zone_id):
+        errors.append(f"Зона «{zone_id}» не существует.")
+    if data.get("spawn_chance_delta") not in (None, "") and _num(data.get("spawn_chance_delta")) is None:
+        errors.append("Изменение шанса встречи — не число.")
+    variant = _str_field(data, "variant_type")
+    if variant and variant not in MOB_VARIANT_TYPES:
+        errors.append(f"Неизвестный вариант моба: {variant}.")
+    return errors, warnings
+
+
+def _validate_mob_phase(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Фаза боя босса (ТЗ §26)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "name"):
+        errors.append("Не заполнено название фазы.")
+    _check_mob_ref(data, errors)
+    if not _str_field(data, "start_condition"):
+        warnings.append("Не указано условие начала фазы.")
+    for key in ("name", "player_text", "transition_message"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    return errors, warnings
+
+
 VALIDATORS: dict[str, Callable[[dict[str, Any]], tuple[list[str], list[str]]]] = {
     KIND_LOCATION: _validate_location,
     KIND_MOB: _validate_mob,
@@ -1210,6 +1466,14 @@ VALIDATORS: dict[str, Callable[[dict[str, Any]], tuple[list[str], list[str]]]] =
     KIND_LOCATION_EMPTY_EVENT: _validate_location_empty_event,
     KIND_LOCATION_HIDDEN_EVENT: _validate_location_hidden_event,
     KIND_LOCATION_EVENT_ANSWER: _validate_location_event_answer,
+    KIND_MOB_VARIANT: _validate_mob_variant,
+    KIND_MOB_SKILL: _validate_mob_skill,
+    KIND_MOB_PASSIVE: _validate_mob_passive,
+    KIND_MOB_RESISTANCE: _validate_mob_resistance,
+    KIND_MOB_EFFECT: _validate_mob_effect,
+    KIND_MOB_EVENT_LINK: _validate_mob_event_link,
+    KIND_MOB_ZONE_LINK: _validate_mob_zone_link,
+    KIND_MOB_PHASE: _validate_mob_phase,
 }
 
 
