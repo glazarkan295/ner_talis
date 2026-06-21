@@ -7,13 +7,17 @@ import {
   fetchEvents,
   updateEvent,
 } from "../../../api/adminCommunityApi.js";
+import { tr, EVENT_REPEAT_TYPE, WORLD_EVENT_TYPE } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 
 const STATUS_TONE = { active: "ntv2-badge-owner", finished: "ntv2-badge-owner", disabled: "ntv2-badge-danger", scheduled: "ntv2-badge-error" };
 
 const EMPTY_EVENT = {
   name: "", type: "festive", short_description: "", description: "",
-  start_date: "", end_date: "", repeat_yearly: false, image: "",
+  start_date: "", end_date: "", image: "",
+  // Повтор (ТЗ §4.1/§4.2): тип + параметры в зависимости от типа.
+  repeat_enabled: false, repeat_type: "yearly", repeat_weekday: "", repeat_day_of_month: "",
+  repeat_month: "", repeat_start_hour: "", repeat_end_hour: "",
   exp_multiplier: "", drop_multiplier: "", coin_multiplier: "",
   start_message: "", end_message: "",
 };
@@ -49,7 +53,12 @@ export function EventsSection({ guarded, hasPerm }) {
 
   async function openItem(id) {
     const payload = await guarded(() => fetchEvent(id));
-    if (payload?.item) setEditing({ id, data: { ...EMPTY_EVENT, ...(payload.item.data || {}) }, status: payload.item.status, validation: payload.validation, isNew: false });
+    if (payload?.item) {
+      const merged = { ...EMPTY_EVENT, ...(payload.item.data || {}) };
+      // Совместимость со старым флагом repeat_yearly → новый блок повтора.
+      if (merged.repeat_yearly && !payload.item.data?.repeat_enabled) { merged.repeat_enabled = true; merged.repeat_type = "yearly"; }
+      setEditing({ id, data: merged, status: payload.item.status, validation: payload.validation, isNew: false });
+    }
   }
   function startCreate() { setEditing({ id: "", data: { ...EMPTY_EVENT }, status: "draft", validation: null, isNew: true }); }
 
@@ -99,12 +108,27 @@ export function EventsSection({ guarded, hasPerm }) {
         <div className="ntv2-world-form">
           <div className="ntv2-form-row">
             <Field label="Название"><input value={d.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
-            <Field label="Тип"><select value={d.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.types || []).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+            <Field label="Тип"><select value={d.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.types || []).map((x) => <option key={x} value={x}>{tr(WORLD_EVENT_TYPE, x)}</option>)}</select></Field>
           </div>
           <div className="ntv2-form-row">
             <Field label="Дата начала (ISO)"><input value={d.start_date} disabled={disabled} placeholder="2026-12-31" onChange={(e) => set("start_date", e.target.value)} /></Field>
             <Field label="Дата окончания (ISO)"><input value={d.end_date} disabled={disabled} placeholder="2027-01-10" onChange={(e) => set("end_date", e.target.value)} /></Field>
-            <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.repeat_yearly)} disabled={disabled} onChange={(e) => set("repeat_yearly", e.target.checked)} /> Каждый год</label>
+          </div>
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Повтор</h4>
+            <div className="ntv2-form-row" style={{ alignItems: "center", gap: 12 }}>
+              <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.repeat_enabled)} disabled={disabled} onChange={(e) => set("repeat_enabled", e.target.checked)} /> Повторять</label>
+              {d.repeat_enabled ? <Field label="Тип повтора"><select value={d.repeat_type} disabled={disabled} onChange={(e) => set("repeat_type", e.target.value)}>{(meta.repeatTypes || []).map((x) => <option key={x} value={x}>{tr(EVENT_REPEAT_TYPE, x)}</option>)}</select></Field> : null}
+              {d.repeat_enabled && d.repeat_type === "weekly" ? <Field label="День недели (0=Пн…6=Вс)"><input type="number" min="0" max="6" value={d.repeat_weekday} disabled={disabled} onChange={(e) => set("repeat_weekday", e.target.value)} /></Field> : null}
+              {d.repeat_enabled && d.repeat_type === "monthly" ? <Field label="День месяца (1–31)"><input type="number" min="1" max="31" value={d.repeat_day_of_month} disabled={disabled} onChange={(e) => set("repeat_day_of_month", e.target.value)} /></Field> : null}
+              {d.repeat_enabled && d.repeat_type === "yearly" ? <Field label="Месяц (1–12)"><input type="number" min="1" max="12" value={d.repeat_month} disabled={disabled} onChange={(e) => set("repeat_month", e.target.value)} /></Field> : null}
+            </div>
+            {d.repeat_enabled ? (
+              <div className="ntv2-form-row">
+                <Field label="Час запуска (0–23)"><input type="number" min="0" max="23" value={d.repeat_start_hour} disabled={disabled} onChange={(e) => set("repeat_start_hour", e.target.value)} /></Field>
+                <Field label="Час завершения (0–23)"><input type="number" min="0" max="23" value={d.repeat_end_hour} disabled={disabled} onChange={(e) => set("repeat_end_hour", e.target.value)} /></Field>
+              </div>
+            ) : null}
           </div>
           <div className="ntv2-form-row">
             <Field label={`×Опыт (≤${meta.maxMultiplier})`}><input type="number" value={d.exp_multiplier} disabled={disabled} onChange={(e) => set("exp_multiplier", e.target.value)} /></Field>

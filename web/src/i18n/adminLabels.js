@@ -190,6 +190,18 @@ export const FINE_RESTRICTION = {
   raise_raid_chance: "Повышенный шанс облавы", debuff: "Дебаф на персонажа", debtor_mark: "Метка должника",
 };
 
+// --- Мировые события -------------------------------------------------------
+export const WORLD_EVENT_TYPE = {
+  festive: "Праздничное", seasonal: "Сезонное", permanent: "Постоянное", threat: "Угроза",
+  world_boss: "Мировой босс", global_raid: "Глобальный рейд", mob_invasion: "Нашествие мобов",
+  fair: "Ярмарка", city: "Городское", guild: "Гильдейское", story: "Сюжетное",
+  economic: "Экономическое", boosted_drop: "Повышенный дроп", boosted_exp: "Повышенный опыт",
+  new_location: "Новая локация",
+};
+export const EVENT_REPEAT_TYPE = {
+  none: "Не повторять", weekly: "Каждую неделю", monthly: "Каждый месяц", yearly: "Каждый год",
+};
+
 // --- Действия аудита (частые; код доступен в подсказке/тех-блоке) -----------
 export const ACTION_LABEL = {
   "rewards.grant": "Выдача награды", "players.message": "Сообщение игроку",
