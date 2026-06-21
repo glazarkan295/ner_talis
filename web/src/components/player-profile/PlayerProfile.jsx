@@ -221,6 +221,49 @@ function qualityClass(quality = "обычный") {
   return `quality-${String(quality).toLowerCase().replace(/\s+/g, "-")}`;
 }
 
+const QUALITY_RANK = { обычный: 0, необычный: 1, редкий: 2, эпический: 3, легендарный: 4, мифический: 5, божественный: 6, уникальный: 7 };
+function qualityRank(item) { return QUALITY_RANK[String(item?.quality || "").toLowerCase()] ?? 0; }
+
+const INVENTORY_SORTS = [
+  { id: "new", label: "По новизне" },
+  { id: "quality", label: "По качеству" },
+  { id: "level", label: "По уровню" },
+  { id: "price", label: "По цене" },
+  { id: "amount", label: "По количеству" },
+  { id: "type", label: "По типу" },
+  { id: "name", label: "По названию" },
+];
+const INVENTORY_FILTERS = [
+  { id: "all", label: "Все" },
+  { id: "equip", label: "Можно надеть" },
+  { id: "use", label: "Можно использовать" },
+  { id: "sell", label: "Можно продать" },
+  { id: "overflow", label: "В перегрузе" },
+];
+
+function itemActionList(item) { return Array.isArray(item?.actions) ? item.actions : []; }
+function matchesInventoryFilter(item, filter) {
+  if (filter === "equip") return itemActionList(item).includes("Надеть");
+  if (filter === "use") return itemActionList(item).includes("Использовать");
+  if (filter === "sell") return item.marketSellAvailable || itemActionList(item).includes("Продать");
+  if (filter === "overflow") return Boolean(item.overflowSlot);
+  return true;
+}
+function sortInventory(items, sort) {
+  if (sort === "new") return items;
+  const copy = [...items];
+  const num = (v) => Number(v) || 0;
+  const sorters = {
+    quality: (a, b) => qualityRank(b) - qualityRank(a),
+    level: (a, b) => num(b.level) - num(a.level),
+    price: (a, b) => num(b.sellPrice || b.price) - num(a.sellPrice || a.price),
+    amount: (a, b) => num(b.amount) - num(a.amount),
+    type: (a, b) => String(a.type || a.category || "").localeCompare(String(b.type || b.category || "")),
+    name: (a, b) => String(a.name || "").localeCompare(String(b.name || "")),
+  };
+  return sorters[sort] ? copy.sort(sorters[sort]) : copy;
+}
+
 function itemIcon(item) {
   return item?.icon || item?.asset_icon || item?.assetIcon || item?.image || item?.imageUrl || null;
 }
@@ -526,11 +569,18 @@ function ItemModal({ item, slotKey, position, readOnly = false, adminEdit = fals
           {!readOnly && (actions.includes("Снять") || slotKey) ? <button type="button" onClick={() => onUnequipItem?.(slotKey || itemSlot(item), item)}>Снять</button> : null}
           {!readOnly && actions.includes("Использовать") ? <button type="button" onClick={() => onUseItem?.(item)}>Использовать</button> : null}
           {!readOnly && !slotKey && actions.includes("Продать") ? <button type="button" onClick={() => onRequestSell?.(item)}>Продать</button> : null}
-          {!readOnly && !slotKey ? <button className="nt-danger" type="button" onClick={() => onRequestDrop?.(item)}>Выбросить</button> : null}
-          {adminEdit && !slotKey ? <button className="nt-danger" type="button" onClick={() => onAdminRemoveItem?.(item)}>Удалить из профиля игрока</button> : null}
           {readOnly ? <span className="nt-readonly-note">Только просмотр</span> : null}
           <button className="nt-secondary" type="button" onClick={onClose}>Закрыть</button>
         </footer>
+        {(!readOnly && !slotKey) || (adminEdit && !slotKey) ? (
+          <div className="nt-danger-zone">
+            <span className="nt-danger-zone-label">Опасная зона</span>
+            <div className="nt-danger-zone-actions">
+              {!readOnly && !slotKey ? <button className="nt-danger" type="button" onClick={() => onRequestDrop?.(item)}>Выбросить</button> : null}
+              {adminEdit && !slotKey ? <button className="nt-danger" type="button" onClick={() => onAdminRemoveItem?.(item)}>Удалить из профиля игрока</button> : null}
+            </div>
+          </div>
+        ) : null}
       </article>
     </div>
   );
@@ -539,12 +589,19 @@ function ItemModal({ item, slotKey, position, readOnly = false, adminEdit = fals
 function DropItemModal({ item, position, onClose, onConfirm }) {
   const maxAmount = Math.max(1, Number(item?.amount || 1));
   const [amount, setAmount] = useState(1);
-  // Reset the quantity whenever a different item stack is opened, otherwise the
-  // field keeps the previous item's number.
-  useEffect(() => { setAmount(1); }, [item?.id, item?.inventoryIndex]);
+  const [confirmed, setConfirmed] = useState(false);
+  // Reset the quantity (and the danger-confirm checkbox) whenever a different
+  // item stack is opened, otherwise the field keeps the previous item's state.
+  useEffect(() => { setAmount(1); setConfirmed(false); }, [item?.id, item?.inventoryIndex]);
   if (!item) return null;
 
+  // Rare and above are easy to lose by accident, so they require an explicit
+  // second confirmation before the «Выбросить» button unlocks.
+  const precious = qualityRank(item) >= 2;
+  const blocked = precious && !confirmed;
+
   function submit() {
+    if (blocked) return;
     onConfirm?.(item, clamp(Number(amount) || 1, 1, maxAmount));
   }
 
@@ -553,14 +610,20 @@ function DropItemModal({ item, position, onClose, onConfirm }) {
       <article className="nt-modal nt-small-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
         <div className="nt-modal-kicker">Выброс предмета</div>
-        <h3>{item.name}</h3>
+        <h3 className={qualityClass(item.quality)}>{item.name}</h3>
         <p>Доступно: ×{maxAmount}</p>
         <label className="nt-field-label">
           <span>Количество</span>
           <input type="number" min="1" max={maxAmount} value={amount} onChange={(event) => setAmount(event.target.value)} autoFocus />
         </label>
+        {precious ? (
+          <label className="nt-confirm-check">
+            <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+            <span>Это <strong>{item.quality}</strong> предмет. Я понимаю, что выброшенный предмет восстановить нельзя.</span>
+          </label>
+        ) : null}
         <footer className="nt-modal-actions">
-          <button className="nt-danger" type="button" onClick={submit}>Выбросить</button>
+          <button className="nt-danger" type="button" onClick={submit} disabled={blocked}>Выбросить</button>
           <button className="nt-secondary" type="button" onClick={onClose}>Отмена</button>
         </footer>
       </article>
@@ -869,21 +932,33 @@ function CharacterTab({ profile, readOnly = false, onOpenItem, onOpenSlot, onCon
 function InventoryTab({ profile, onOpenItem }) {
   const [category, setCategory] = useState("Всё");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState("new");
+  const [filter, setFilter] = useState("all");
   const inventory = profile.inventory || [];
   const freeSlots = inventoryFreeSlots(profile, inventory);
   const capacity = inventoryCapacity(profile);
-  const filtered = useMemo(() => inventory.filter((item) => {
-    const categoryOk = category === "Всё" || item.category === category || (category === "Материалы" && item.isMaterial);
-    const queryOk = !query || String(item.name || "").toLowerCase().includes(query.toLowerCase());
-    return categoryOk && queryOk;
-  }), [inventory, category, query]);
+  const overloaded = Boolean(profile.player?.inventoryOverloaded);
+  const overflowCount = profile.player?.inventoryOverflowUsed || inventory.filter((i) => i.overflowSlot).length;
+  const filtered = useMemo(() => {
+    const base = inventory.filter((item) => {
+      const categoryOk = category === "Всё" || item.category === category || (category === "Материалы" && item.isMaterial);
+      const queryOk = !query || String(item.name || "").toLowerCase().includes(query.toLowerCase());
+      return categoryOk && queryOk && matchesInventoryFilter(item, filter);
+    });
+    return sortInventory(base, sort);
+  }, [inventory, category, query, filter, sort]);
 
   return (
     <div className="nt-stack">
+      {overloaded ? <div className="nt-warning nt-warning-warning"><span className="nt-warning-dot" />Инвентарь перегружен: {overflowCount} предметов находятся в дополнительных слотах.</div> : null}
       <Panel title="Инвентарь" right={<span className="nt-badge">Свободно: {freeSlots} / {capacity}</span>}>
         {!profile.readOnly && !profile.adminView && profile.market?.sellFromProfile ? <p className="nt-market-sell-hint">Вы на рынке в разделе продажи: откройте предмет и нажмите «Продать».</p> : null}
         <div className="nt-toolbar">
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск предмета" />
+          <div className="nt-inv-controls">
+            <select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Фильтр">{INVENTORY_FILTERS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</select>
+            <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Сортировка">{INVENTORY_SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
+          </div>
           <div className="nt-category-row">{INVENTORY_CATEGORIES.map((item) => <button key={item} className={category === item ? "active" : ""} type="button" onClick={() => setCategory(item)}>{item}</button>)}</div>
         </div>
         <div className="nt-icon-grid">

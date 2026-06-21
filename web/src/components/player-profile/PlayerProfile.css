@@ -700,3 +700,34 @@ button { cursor: pointer; }
 .nt-rating-places { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
 .nt-rating-place { display: flex; justify-content: space-between; border: 1px solid rgba(214,172,91,.22); border-radius: 9px; padding: 6px 10px; font-size: 13px; }
 @media (max-width: 720px) { .nt-overview-grid { grid-template-columns: 1fr; } }
+
+/* --- Профиль V2: контролы инвентаря ------------------------------------ */
+.nt-inv-controls { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.nt-inv-controls select { flex: 1; min-width: 150px; }
+
+/* --- Профиль V2: опасная зона / усиленное подтверждение ---------------- */
+.nt-danger-zone {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(220, 70, 70, 0.4);
+  border-radius: 8px;
+  background: rgba(220, 70, 70, 0.06);
+}
+.nt-danger-zone-label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #d35454;
+  margin-bottom: 6px;
+}
+.nt-danger-zone-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.nt-confirm-check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 10px 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.nt-confirm-check input { margin-top: 3px; }
