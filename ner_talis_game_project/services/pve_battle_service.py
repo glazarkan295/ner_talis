@@ -620,10 +620,149 @@ def build_enemy(mob_key: str, rank: EnemyRank, level: int, index: int, location_
     return enemy
 
 
+def build_constructor_enemy(mob_data: dict[str, Any], level: int, index: int) -> EnemyBattleState:
+    """Собрать боевого врага из карточки моба конструктора (ТЗ §7).
+
+    HP/защиты/точность/уклонение/крит берутся прямо из карточки; урон движок
+    считает через enemy_raw_damage, поэтому суммарный урон прокидываем явным
+    полем base_damage (в serialize ниже) — иначе он считался бы по уровню.
+    """
+    def _n(key, default=0):
+        try:
+            return float(mob_data.get(key))
+        except (TypeError, ValueError):
+            return default
+
+    hp = max(1, int(_n("hp", 1)))
+    phys = _n("phys_damage", 0)
+    mag = _n("mag_damage", 0)
+    if phys > 0 and mag > 0:
+        damage_type = DamageType.MIXED
+        total = phys + mag
+        split = DamageSplit(physical=max(0, round(phys / total * 100)), magic=max(0, 100 - round(phys / total * 100)))
+    elif mag > 0:
+        damage_type = DamageType.MAGIC
+        split = DamageSplit(physical=0, magic=100)
+    else:
+        damage_type = DamageType.PHYSICAL
+        split = DamageSplit(physical=100, magic=0)
+
+    enemy = EnemyBattleState(
+        mob_id=f"c_{index}_{uuid.uuid4().hex[:6]}",
+        name=str(mob_data.get("name") or "Существо"),
+        rank=EnemyRank.NORMAL,
+        biological_type=str(mob_data.get("type") or "monster"),
+        role="attacker",
+        level=max(1, int(level)),
+        damage_type=damage_type,
+        current_hp=hp,
+        max_hp=hp,
+        armor=0,
+        magic_armor=0,
+        physical_defense=max(0, int(_n("phys_defense", 0))),
+        magic_defense=max(0, int(_n("mag_defense", 0))),
+        accuracy=max(1, int(_n("accuracy", 1) or 1)),
+        dodge=max(0, int(_n("evasion", 0))),
+        crit_chance=max(0, int(_n("crit_chance", 0))),
+        crit_damage=max(0, int(_n("crit_damage", 100) or 100)),
+        damage_split=split,
+        skills=[],
+        features=[],
+    )
+    enemy.validate_damage_type()
+    return enemy
+
+
+def create_constructor_battle(player: dict[str, Any], rng: random.Random, location_id: str) -> tuple[dict[str, Any], str] | None:
+    """Бой из опубликованных спаунов конструктора (ТЗ §15/§22). None — нет
+    подходящего спауна (вызывающий откатывается на легаси-бой)."""
+    try:
+        from services import location_runtime as lr
+        from services import world_runtime as wr
+    except Exception:
+        return None
+    if not lr.live_enabled():
+        return None
+    player_level = max(1, safe_int(player.get("level"), 1))
+    spawn = lr.pick_mob_spawn(location_id, player_level, rng=rng)
+    if not spawn:
+        return None
+    mob_id = str(spawn.get("mob_id") or "")
+    mob_data = wr.get_published(wr.registry.KIND_MOB, mob_id)
+    if not mob_data:
+        return None
+    spawn_data = spawn.get("data") or {}
+
+    def _i(key, default):
+        try:
+            return int(float(spawn_data.get(key)))
+        except (TypeError, ValueError):
+            return default
+
+    count_min = max(1, _i("min_in_battle", 1))
+    count_max = max(count_min, _i("max_in_battle", count_min))
+    count = rng.randint(count_min, count_max)
+    # Недельный запас (§22): нельзя вывести в бой больше, чем осталось.
+    remaining = spawn.get("remaining")
+    if remaining is not None:
+        if remaining <= 0:
+            return None
+        count = max(1, min(count, int(remaining)))
+
+    lvl_min = _i("mob_level_min", 0) or int(float(mob_data.get("min_level") or player_level))
+    lvl_max = _i("mob_level_max", 0) or int(float(mob_data.get("max_level") or lvl_min or player_level))
+    lvl_max = max(lvl_min, lvl_max)
+
+    enemies = []
+    for index in range(count):
+        level = rng.randint(lvl_min, lvl_max) if lvl_max >= lvl_min and lvl_min > 0 else max(1, player_level)
+        enemies.append(build_constructor_enemy(mob_data, level, index + 1))
+
+    intro = str(mob_data.get("description") or f"На вас выходит {mob_data.get('name') or 'существо'}.")
+    battle = BattleState(
+        battle_id=f"pve_{uuid.uuid4().hex[:12]}",
+        player_id=str(player.get("game_id") or player.get("id") or "player"),
+        location_id=location_id,
+        battle_type="random_event",
+        round_number=1,
+        player_state=make_player_battle_state(player),
+        enemies=enemies,
+        can_escape=True,
+        battle_log=[intro],
+    )
+    battle_dict = serialize_battle(battle)
+    # Тегируем врагов конструкторными данными: source_mob_id (для списания запаса
+    # при победе §22) и base_damage (чтобы движок использовал урон из карточки).
+    base_damage = max(1, int(float(mob_data.get("phys_damage") or 0) + float(mob_data.get("mag_damage") or 0)))
+    for enemy_dict in battle_dict.get("enemies", []):
+        enemy_dict["source_mob_id"] = mob_id
+        enemy_dict["base_damage"] = base_damage
+    apply_inventory_battle_stimulant_to_battle(player, battle_dict)
+    battle_dict["origin_location_id"] = location_id
+    battle_dict["return_location"] = location_id
+    battle_dict["player_name"] = player_display_name(player)
+    player["active_battle"] = battle_dict
+    player["active_event"] = None
+    player["in_battle"] = True
+    player["current_location"] = location_id
+    player["current_zone"] = f"{location_id}_battle"
+    player["location_id"] = f"{location_id}_battle"
+    sync_player_from_battle(player, battle_dict)
+    return battle_dict, format_battle_started_text(battle_dict)
+
+
 def create_location_battle(player: dict[str, Any], rng: random.Random | None = None, location_id: str | None = None) -> tuple[dict[str, Any], str]:
     normalize_starter_only_skills(player)
     rng = rng or random.Random()
     location_id = normalize_battle_location(location_id or player.get("current_location") or player.get("location_id") or "hilly_meadows")
+    # Если включён живой слой и у локации есть конструкторные спауны — строим бой
+    # из них (иначе ниже обычная легаси-логика).
+    try:
+        constructor_battle = create_constructor_battle(player, rng, location_id)
+    except Exception:
+        constructor_battle = None
+    if constructor_battle is not None:
+        return constructor_battle
     player_level = max(1, safe_int(player.get("level"), 1))
     rank = choose_battle_rank(rng, player_level, location_id)
     mob_key = choose_mob_key(rank, rng, player_level, location_id)
@@ -732,6 +871,11 @@ def enemy_damage_split(enemy: dict[str, Any]) -> DamageSplit:
 def enemy_raw_damage(enemy: dict[str, Any]) -> int:
     rank = enemy_rank(enemy)
     mult = RANK_MULTIPLIERS.get(rank, RANK_MULTIPLIERS[EnemyRank.NORMAL])
+    # Конструкторные враги несут явный урон из карточки моба (base_damage):
+    # его и используем (с ранговым множителем), не считая по уровню/имени.
+    explicit = enemy.get("base_damage")
+    if explicit not in (None, ""):
+        return max(1, math.ceil(safe_int(explicit, 1) * mult["damage"]))
     level = max(1, safe_int(enemy.get("level"), 1))
     base = 4 + level * 2.25
     name = str(enemy.get("name") or "")
@@ -1339,6 +1483,13 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
     catalog = mob_catalog(reward_location_id)
     xp_total = 0
     loot_lines: list[str] = []
+    # Конструктор локаций §18/§22/§23: при победе списываем недельный запас
+    # мобов и дропа. Активно только при включённом WORLD_CONSTRUCTOR_LIVE и для
+    # конструкторных боёв (враг несёт mob_id) — легаси-враги дают no-op.
+    try:
+        from services import location_runtime as _loc_rt
+    except Exception:
+        _loc_rt = None
     for enemy in enemies:
         rank = enemy_rank(enemy)
         level = max(1, safe_int(enemy.get("level"), 1))
@@ -1360,8 +1511,25 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
                 if add_result.added > 0:
                     note = inventory_add_result_notice(add_result, item_name)
                     loot_lines.append(f"{item_name} ×{add_result.added}{note}")
+                    if _loc_rt is not None and item_id:
+                        try:
+                            _loc_rt.consume_for_item(reward_location_id, item_id, add_result.added)
+                        except Exception:
+                            pass
                 elif add_result.discarded > 0:
                     loot_lines.append(f"{item_name}: не поместилось ×{add_result.discarded}")
+    # Списываем побеждённых мобов из недельного запаса локации. Берём именно
+    # source_mob_id (конструкторный id), а не инстансный mob_id — у легаси-врагов
+    # source_mob_id нет, поэтому для них это no-op.
+    if _loc_rt is not None:
+        for enemy in enemies:
+            source_mob_id = enemy.get("source_mob_id")
+            if source_mob_id:
+                try:
+                    _loc_rt.consume_for_mob(reward_location_id, str(source_mob_id), 1)
+                except Exception:
+                    pass
+
     group_count = max(1, len(enemies))
     xp_total = math.ceil(xp_total * max(0.55, 1 - ((group_count - 1) * 0.05)))
     # Global balance change: experience received from killing mobs is reduced by 20%.

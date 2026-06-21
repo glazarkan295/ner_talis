@@ -25,14 +25,19 @@ from services.external_location_service import (
 from services.small_plateau_service import (
     ANCIENT_CURSE_ID,
     AMULET_BURN_ID,
+    CURSE_ACHIEVEMENT_ID,
+    CURSE_BEARER_EFFECT_ID,
     SEEKER_ACHIEVEMENT_ID,
     add_achievement,
     add_effect,
+    apply_pvp_kill_postmortem_curse,
     cleanse_ancient_curse_at_hidden_place,
     filter_seeker_only,
     handle_cursed_coin_choice,
+    has_effect,
     player_has_seeker,
     register_ancient_curse_active_day,
+    roll_ancient_curse_trigger,
     resolve_small_plateau_search,
 )
 from services.player_time_service import advance_all_players_time, advance_player_time, HOUR_SECONDS
@@ -153,6 +158,53 @@ class SmallPlateauIntegrationTest(unittest.TestCase):
         result = register_ancient_curse_active_day(player, 30)  # 61-й день
         self.assertIsNotNone(result)
         self.assertTrue(any(value == "curse_what_curse" or (isinstance(value, dict) and value.get("achievement_id") == "curse_what_curse") for value in player.get("achievements", [])))
+        self.assertTrue(has_effect(player, CURSE_BEARER_EFFECT_ID))
+        self.assertIn("Носитель проклятья", result["text"])
+
+    def test_curse_achievement_grants_bearer_effect_for_legacy_achievement(self):
+        player = {"achievements": [CURSE_ACHIEVEMENT_ID]}
+        add_achievement(player, CURSE_ACHIEVEMENT_ID)
+        self.assertTrue(has_effect(player, CURSE_BEARER_EFFECT_ID))
+
+    def test_curse_achievement_no_longer_weakens_ancient_curse(self):
+        class FixedRandom:
+            def random(self):
+                return 0.15
+
+        player = {"hp": 100, "max_hp": 100, "money_copper": 100000, "money": 100000}
+        add_effect(player, ANCIENT_CURSE_ID, {"id": ANCIENT_CURSE_ID, "effect_id": ANCIENT_CURSE_ID, "active": True})
+        add_achievement(player, CURSE_ACHIEVEMENT_ID)
+
+        trigger = roll_ancient_curse_trigger(player, "location_search", rng=FixedRandom())
+        self.assertTrue(trigger["triggered"])  # 15% still triggers because chance remains 20%.
+
+        result = cleanse_ancient_curse_at_hidden_place(player)
+        self.assertTrue(result["success"])
+        self.assertEqual(60, player["hp"])  # −40% HP, not the old reduced −20%.
+
+    def test_pvp_kill_applies_postmortem_curse_to_killer(self):
+        killer = {"game_id": "NT-KILLER", "name": "Убийца"}
+        victim = {"game_id": "NT-VICTIM", "name": "Носитель"}
+        add_achievement(victim, CURSE_ACHIEVEMENT_ID)
+
+        result = apply_pvp_kill_postmortem_curse(killer, victim, rng=random.Random(1), now_ts=4_000_000_000)
+
+        self.assertTrue(result["applied"])
+        effect = result["effect"]
+        self.assertEqual("curse_bearer_pvp_death", effect["source"])
+        self.assertEqual("curse", effect["type"])
+        self.assertEqual(3600, effect["duration_seconds"])
+        self.assertEqual("NT-VICTIM", effect["pvp_victim_id"])
+        self.assertTrue(has_effect(killer, effect["effect_id"]))
+
+    def test_pvp_kill_without_curse_bearer_does_not_affect_killer(self):
+        killer = {"game_id": "NT-KILLER"}
+        victim = {"game_id": "NT-VICTIM"}
+
+        result = apply_pvp_kill_postmortem_curse(killer, victim, rng=random.Random(1), now_ts=1_700_000_000)
+
+        self.assertFalse(result["applied"])
+        self.assertEqual([], killer.get("active_effects", []))
 
     def test_amulet_burn_ticks_hourly_via_player_time(self):
         player = {"hp": 100, "max_hp": 100}

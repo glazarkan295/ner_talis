@@ -2,13 +2,22 @@ import React, { useEffect, useMemo, useState } from "react";
 import { profileMockData } from "./profileMockData.js";
 
 const TABS = [
+  { id: "overview", label: "Обзор", icon: "head" },
   { id: "character", label: "Персонаж", icon: "head" },
   { id: "inventory", label: "Инвентарь", icon: "bag" },
   { id: "skills", label: "Навыки", icon: "star" },
-  { id: "info", label: "Информация", icon: "scroll" },
+  { id: "info", label: "Журнал", icon: "scroll" },
 ];
 
-const COURIER_TAB = { id: "courier", label: "Передача", icon: "courier" };
+// Вкладка «Сервисы» объединяет Передачу (гонец) и Промокод. Список доступных
+// сервисов приходит с бэкенда (profile.services), но даже без него показываем
+// курьерскую передачу для совместимости со старым ответом API.
+const SERVICES_TAB = { id: "services", label: "Сервисы", icon: "courier" };
+
+// Вкладка «Гильдии» появляется только когда бэкенд вернул блок guild
+// (profile.guild != null). Гильдейская система пока в разработке — без блока
+// вкладка скрыта (ТЗ §14).
+const GUILD_TAB = { id: "guild", label: "Гильдия", icon: "star" };
 
 const INVENTORY_CATEGORIES = ["Всё", "Снаряжение", "Оружие", "Бижутерия", "Расходники", "Ресурсы", "Материалы", "Добыча", "Прочее", "Особое"];
 
@@ -218,6 +227,49 @@ function raceKey(player) {
 
 function qualityClass(quality = "обычный") {
   return `quality-${String(quality).toLowerCase().replace(/\s+/g, "-")}`;
+}
+
+const QUALITY_RANK = { обычный: 0, необычный: 1, редкий: 2, эпический: 3, легендарный: 4, мифический: 5, божественный: 6, уникальный: 7 };
+function qualityRank(item) { return QUALITY_RANK[String(item?.quality || "").toLowerCase()] ?? 0; }
+
+const INVENTORY_SORTS = [
+  { id: "new", label: "По новизне" },
+  { id: "quality", label: "По качеству" },
+  { id: "level", label: "По уровню" },
+  { id: "price", label: "По цене" },
+  { id: "amount", label: "По количеству" },
+  { id: "type", label: "По типу" },
+  { id: "name", label: "По названию" },
+];
+const INVENTORY_FILTERS = [
+  { id: "all", label: "Все" },
+  { id: "equip", label: "Можно надеть" },
+  { id: "use", label: "Можно использовать" },
+  { id: "sell", label: "Можно продать" },
+  { id: "overflow", label: "В перегрузе" },
+];
+
+function itemActionList(item) { return Array.isArray(item?.actions) ? item.actions : []; }
+function matchesInventoryFilter(item, filter) {
+  if (filter === "equip") return itemActionList(item).includes("Надеть");
+  if (filter === "use") return itemActionList(item).includes("Использовать");
+  if (filter === "sell") return item.marketSellAvailable || itemActionList(item).includes("Продать");
+  if (filter === "overflow") return Boolean(item.overflowSlot);
+  return true;
+}
+function sortInventory(items, sort) {
+  if (sort === "new") return items;
+  const copy = [...items];
+  const num = (v) => Number(v) || 0;
+  const sorters = {
+    quality: (a, b) => qualityRank(b) - qualityRank(a),
+    level: (a, b) => num(b.level) - num(a.level),
+    price: (a, b) => num(b.sellPrice || b.price) - num(a.sellPrice || a.price),
+    amount: (a, b) => num(b.amount) - num(a.amount),
+    type: (a, b) => String(a.type || a.category || "").localeCompare(String(b.type || b.category || "")),
+    name: (a, b) => String(a.name || "").localeCompare(String(b.name || "")),
+  };
+  return sorters[sort] ? copy.sort(sorters[sort]) : copy;
 }
 
 function itemIcon(item) {
@@ -474,12 +526,22 @@ function ItemArt({ item, fallback = "◇", className = "nt-item-art" }) {
 
 function RaceInfoPopover({ profile, onClose }) {
   if (!profile) return null;
-  const race = RACE_INFO[raceKey(profile.player)] || RACE_INFO.human;
+  // Источник истины — бэкенд (raceInfo из data/races.json). Захардкоженный
+  // RACE_INFO остаётся лишь запасным вариантом для старого ответа API.
+  const backend = profile.player?.raceInfo;
+  const fallback = RACE_INFO[raceKey(profile.player)] || RACE_INFO.human;
+  const race = {
+    name: backend?.name || fallback.name,
+    stats: backend?.statsText || fallback.stats,
+    description: backend?.description || "",
+    bonuses: (backend?.bonuses && backend.bonuses.length) ? backend.bonuses : fallback.bonuses,
+  };
   return (
     <aside className="nt-race-popover" role="dialog" aria-label="Бонусы расы">
       <button className="nt-popover-close" type="button" onClick={onClose} aria-label="Закрыть">×</button>
       <div className="nt-modal-kicker">Бонусы расы</div>
       <h3>{race.name}</h3>
+      {race.description ? <p className="nt-race-desc">{race.description}</p> : null}
       <div className="nt-modal-block">
         <h4>Стартовые характеристики</h4>
         <p className="nt-race-stats">{race.stats}</p>
@@ -525,11 +587,18 @@ function ItemModal({ item, slotKey, position, readOnly = false, adminEdit = fals
           {!readOnly && (actions.includes("Снять") || slotKey) ? <button type="button" onClick={() => onUnequipItem?.(slotKey || itemSlot(item), item)}>Снять</button> : null}
           {!readOnly && actions.includes("Использовать") ? <button type="button" onClick={() => onUseItem?.(item)}>Использовать</button> : null}
           {!readOnly && !slotKey && actions.includes("Продать") ? <button type="button" onClick={() => onRequestSell?.(item)}>Продать</button> : null}
-          {!readOnly && !slotKey ? <button className="nt-danger" type="button" onClick={() => onRequestDrop?.(item)}>Выбросить</button> : null}
-          {adminEdit && !slotKey ? <button className="nt-danger" type="button" onClick={() => onAdminRemoveItem?.(item)}>Удалить из профиля игрока</button> : null}
           {readOnly ? <span className="nt-readonly-note">Только просмотр</span> : null}
           <button className="nt-secondary" type="button" onClick={onClose}>Закрыть</button>
         </footer>
+        {(!readOnly && !slotKey) || (adminEdit && !slotKey) ? (
+          <div className="nt-danger-zone">
+            <span className="nt-danger-zone-label">Опасная зона</span>
+            <div className="nt-danger-zone-actions">
+              {!readOnly && !slotKey ? <button className="nt-danger" type="button" onClick={() => onRequestDrop?.(item)}>Выбросить</button> : null}
+              {adminEdit && !slotKey ? <button className="nt-danger" type="button" onClick={() => onAdminRemoveItem?.(item)}>Удалить из профиля игрока</button> : null}
+            </div>
+          </div>
+        ) : null}
       </article>
     </div>
   );
@@ -538,12 +607,19 @@ function ItemModal({ item, slotKey, position, readOnly = false, adminEdit = fals
 function DropItemModal({ item, position, onClose, onConfirm }) {
   const maxAmount = Math.max(1, Number(item?.amount || 1));
   const [amount, setAmount] = useState(1);
-  // Reset the quantity whenever a different item stack is opened, otherwise the
-  // field keeps the previous item's number.
-  useEffect(() => { setAmount(1); }, [item?.id, item?.inventoryIndex]);
+  const [confirmed, setConfirmed] = useState(false);
+  // Reset the quantity (and the danger-confirm checkbox) whenever a different
+  // item stack is opened, otherwise the field keeps the previous item's state.
+  useEffect(() => { setAmount(1); setConfirmed(false); }, [item?.id, item?.inventoryIndex]);
   if (!item) return null;
 
+  // Rare and above are easy to lose by accident, so they require an explicit
+  // second confirmation before the «Выбросить» button unlocks.
+  const precious = qualityRank(item) >= 2;
+  const blocked = precious && !confirmed;
+
   function submit() {
+    if (blocked) return;
     onConfirm?.(item, clamp(Number(amount) || 1, 1, maxAmount));
   }
 
@@ -552,14 +628,20 @@ function DropItemModal({ item, position, onClose, onConfirm }) {
       <article className="nt-modal nt-small-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
         <div className="nt-modal-kicker">Выброс предмета</div>
-        <h3>{item.name}</h3>
+        <h3 className={qualityClass(item.quality)}>{item.name}</h3>
         <p>Доступно: ×{maxAmount}</p>
         <label className="nt-field-label">
           <span>Количество</span>
           <input type="number" min="1" max={maxAmount} value={amount} onChange={(event) => setAmount(event.target.value)} autoFocus />
         </label>
+        {precious ? (
+          <label className="nt-confirm-check">
+            <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+            <span>Это <strong>{item.quality}</strong> предмет. Я понимаю, что выброшенный предмет восстановить нельзя.</span>
+          </label>
+        ) : null}
         <footer className="nt-modal-actions">
-          <button className="nt-danger" type="button" onClick={submit}>Выбросить</button>
+          <button className="nt-danger" type="button" onClick={submit} disabled={blocked}>Выбросить</button>
           <button className="nt-secondary" type="button" onClick={onClose}>Отмена</button>
         </footer>
       </article>
@@ -868,21 +950,33 @@ function CharacterTab({ profile, readOnly = false, onOpenItem, onOpenSlot, onCon
 function InventoryTab({ profile, onOpenItem }) {
   const [category, setCategory] = useState("Всё");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState("new");
+  const [filter, setFilter] = useState("all");
   const inventory = profile.inventory || [];
   const freeSlots = inventoryFreeSlots(profile, inventory);
   const capacity = inventoryCapacity(profile);
-  const filtered = useMemo(() => inventory.filter((item) => {
-    const categoryOk = category === "Всё" || item.category === category || (category === "Материалы" && item.isMaterial);
-    const queryOk = !query || String(item.name || "").toLowerCase().includes(query.toLowerCase());
-    return categoryOk && queryOk;
-  }), [inventory, category, query]);
+  const overloaded = Boolean(profile.player?.inventoryOverloaded);
+  const overflowCount = profile.player?.inventoryOverflowUsed || inventory.filter((i) => i.overflowSlot).length;
+  const filtered = useMemo(() => {
+    const base = inventory.filter((item) => {
+      const categoryOk = category === "Всё" || item.category === category || (category === "Материалы" && item.isMaterial);
+      const queryOk = !query || String(item.name || "").toLowerCase().includes(query.toLowerCase());
+      return categoryOk && queryOk && matchesInventoryFilter(item, filter);
+    });
+    return sortInventory(base, sort);
+  }, [inventory, category, query, filter, sort]);
 
   return (
     <div className="nt-stack">
+      {overloaded ? <div className="nt-warning nt-warning-warning"><span className="nt-warning-dot" />Инвентарь перегружен: {overflowCount} предметов находятся в дополнительных слотах.</div> : null}
       <Panel title="Инвентарь" right={<span className="nt-badge">Свободно: {freeSlots} / {capacity}</span>}>
         {!profile.readOnly && !profile.adminView && profile.market?.sellFromProfile ? <p className="nt-market-sell-hint">Вы на рынке в разделе продажи: откройте предмет и нажмите «Продать».</p> : null}
         <div className="nt-toolbar">
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск предмета" />
+          <div className="nt-inv-controls">
+            <select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Фильтр">{INVENTORY_FILTERS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</select>
+            <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Сортировка">{INVENTORY_SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
+          </div>
           <div className="nt-category-row">{INVENTORY_CATEGORIES.map((item) => <button key={item} className={category === item ? "active" : ""} type="button" onClick={() => setCategory(item)}>{item}</button>)}</div>
         </div>
         <div className="nt-icon-grid">
@@ -956,14 +1050,21 @@ function SkillCard({ skill, freePoints, mode = "available", readOnly = false, on
     skillCostText(skill),
     skillCooldownText(skill),
   ].filter(Boolean);
-  const actionLabel = mode === "equipped" ? "Снять" : "Использовать";
+  const actionLabel = mode === "equipped" ? "Снять" : "В слот";
   const actionHandler = mode === "equipped" ? onUnequipSkill : onEquipSkill;
-  const showAction = !readOnly && (mode === "equipped" || canEquipSkill(skill));
+  // Несовместимое с текущим оружием — только в списке доступных (в слоте уже стоит).
+  const weaponBlocked = mode !== "equipped" && skill.weaponRequirementText && skill.weaponCompatible === false;
+  const showAction = !readOnly && (mode === "equipped" || (canEquipSkill(skill) && !weaponBlocked));
   return (
     <article className="nt-skill-card">
       <div className="nt-skill-main">
         <h3>{skill.name}</h3>
         <p>{skill.description || "Описание навыка пока не добавлено."}</p>
+        {skill.weaponRequirementText ? (
+          <p className={`nt-skill-weapon-req${weaponBlocked ? " blocked" : ""}`}>
+            {weaponBlocked ? "⚠ " : ""}Нужно оружие: {skill.weaponRequirementText}
+          </p>
+        ) : null}
         {details.length ? <div className="nt-skill-details">{details.map((detail) => <span key={detail}>{detail}</span>)}</div> : null}
         {modifiers.length ? <div className="nt-modifiers">{modifiers.map((modifier) => <button key={modifier.id || modifier.name} type="button" onClick={(event) => onShowModifier(modifier, event)}>{modifier.name || modifier.label} <b>{modifier.level || modifier.points || 0}</b></button>)}</div> : null}
       </div>
@@ -1298,17 +1399,223 @@ function CourierTab({ profile, onSearchRecipients, onSendTransfer }) {
   );
 }
 
-export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField, onSearchCourierRecipients, onSendCourierTransfer, onAdminRemoveItem }) {
+// --- Профиль V2: Промокод (ТЗ §22, сервис «promo») ------------------------
+function PromoForm({ onRedeemPromo }) {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function submit() {
+    const value = code.trim();
+    if (!value || busy) return;
+    setBusy(true);
+    setMessage("");
+    setError("");
+    try {
+      const payload = await onRedeemPromo?.(value);
+      setMessage(payload?.message || "Промокод успешно применён.");
+      setCode("");
+    } catch (requestError) {
+      setError(requestError.message || "Не удалось применить промокод.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="nt-stack">
+      <Panel title="Промокод">
+        <p className="nt-courier-hint">Введите промокод, чтобы получить награду. Каждый код можно применить ограниченное число раз.</p>
+        <div className="nt-toolbar">
+          <input
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); submit(); } }}
+            placeholder="Например, START100"
+            autoComplete="off"
+          />
+          <button type="button" className="nt-courier-btn primary" onClick={submit} disabled={!code.trim() || busy}>
+            {busy ? "Применяем…" : "Применить"}
+          </button>
+        </div>
+        {message ? <p className="nt-courier-feedback success">{message}</p> : null}
+        {error ? <p className="nt-courier-feedback error">{error}</p> : null}
+      </Panel>
+    </div>
+  );
+}
+
+// --- Профиль V2: вкладка «Сервисы» (ТЗ §22, Передача + Промокод) ----------
+function ServicesTab({ profile, onSearchRecipients, onSendTransfer, onRedeemPromo }) {
+  // Бэкенд диктует список и порядок сервисов; запасной вариант — только Передача.
+  const services = (profile.services && profile.services.length)
+    ? profile.services
+    : [{ id: "transfer", label: "Передача" }];
+  const [active, setActive] = useState(services[0]?.id || "transfer");
+  // Если набор сервисов изменился и текущий пропал — откатываемся на первый.
+  useEffect(() => {
+    if (!services.some((s) => s.id === active)) setActive(services[0]?.id || "transfer");
+  }, [services, active]);
+
+  return (
+    <div className="nt-stack">
+      {services.length > 1 ? (
+        <nav className="nt-subtabs" aria-label="Сервисы">
+          {services.map((service) => (
+            <button
+              key={service.id}
+              type="button"
+              className={active === service.id ? "active" : ""}
+              onClick={() => setActive(service.id)}
+            >
+              {service.label}
+            </button>
+          ))}
+        </nav>
+      ) : null}
+      {active === "transfer" ? <CourierTab profile={profile} onSearchRecipients={onSearchRecipients} onSendTransfer={onSendTransfer} /> : null}
+      {active === "promo" ? <PromoForm onRedeemPromo={onRedeemPromo} /> : null}
+    </div>
+  );
+}
+
+// --- Профиль V2: вкладка «Гильдия» (ТЗ §14) ------------------------------
+function GuildTab({ guild }) {
+  if (!guild) return <div className="nt-stack"><p className="nt-empty-text">Вы не состоите в гильдии.</p></div>;
+  const members = Array.isArray(guild.members) ? guild.members : [];
+  const rows = [
+    ["Название", guild.name],
+    ["Ранг", guild.rankLabel || guild.rank],
+    ["Уровень", guild.level],
+    ["Участники", guild.memberCount ?? (members.length || undefined)],
+  ].filter(([, value]) => value !== undefined && value !== null && value !== "");
+  return (
+    <div className="nt-stack">
+      <Panel title={guild.name || "Гильдия"}>
+        {rows.length ? <div className="nt-lines">{rows.map(([label, value]) => <Row key={label} label={label} value={value} />)}</div> : null}
+        {guild.description ? <p>{guild.description}</p> : null}
+      </Panel>
+      {members.length ? (
+        <CollapsiblePanel title="Состав гильдии">
+          <div className="nt-card-list nt-column-list">
+            {members.map((member) => (
+              <div className="nt-mini-card" key={member.gameId || member.id || member.name}>
+                <CardRow label={member.name || member.gameId || "—"} value={member.rankLabel || member.rank || ""} />
+                {member.level ? <p>ур. {member.level}</p> : null}
+              </div>
+            ))}
+          </div>
+        </CollapsiblePanel>
+      ) : null}
+    </div>
+  );
+}
+
+// --- Профиль V2: вкладка «Обзор» (ТЗ §5) ----------------------------------
+const RESOURCE_BAR_META = [
+  { label: "HP", cls: "nt-bar-hp" },
+  { label: "Мана", cls: "nt-bar-mana" },
+  { label: "Дух", cls: "nt-bar-spirit" },
+  { label: "Энергия", cls: "nt-bar-energy" },
+];
+
+function parseResourceValue(value) {
+  // "156 / 156" -> { current: 156, max: 156 }
+  const parts = String(value || "").split("/");
+  const current = Number(String(parts[0] || "").replace(/[^\d.-]/g, "")) || 0;
+  const max = Number(String(parts[1] || "").replace(/[^\d.-]/g, "")) || 0;
+  return { current, max };
+}
+
+function ResourceBars({ parameters = [] }) {
+  const byLabel = new Map(parameters.map((p) => [p.label, p.value]));
+  return (
+    <div className="nt-resource-bars">
+      {RESOURCE_BAR_META.map(({ label, cls }) => {
+        if (!byLabel.has(label)) return null;
+        const { current, max } = parseResourceValue(byLabel.get(label));
+        const pct = max > 0 ? Math.max(0, Math.min(100, Math.round((current / max) * 100))) : 0;
+        return (
+          <div className="nt-resource-bar" key={label}>
+            <div className="nt-resource-bar-head"><span>{label}</span><span>{current} / {max}</span></div>
+            <div className="nt-resource-bar-track"><div className={`nt-resource-bar-fill ${cls}`} style={{ width: `${pct}%` }} /></div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProfileWarnings({ warnings = [] }) {
+  if (!warnings.length) return null;
+  return (
+    <div className="nt-warnings">
+      {warnings.map((w, i) => (
+        <div className={`nt-warning nt-warning-${w.level || "info"}`} key={(w.type || "") + i}>
+          <span className="nt-warning-dot" />{w.text}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OverviewTab({ profile }) {
+  const player = profile.player || {};
+  const status = profile.status || null;
+  const places = (profile.ratingPlaces || []).filter((p) => p.place !== "—" && p.place != null);
+  const expCurrent = player.experienceCurrent ?? 0;
+  const expNext = player.experienceToNext ?? 0;
+
+  // Модель персонажа в профиле не используется (дополнение к ТЗ §2): сверху —
+  // компактная карточка с основными данными в стилистике старого профиля.
+  return (
+    <div className="nt-overview">
+      <ProfileWarnings warnings={profile.warnings} />
+      <div className="nt-overview-grid">
+        <Panel title="Персонаж" className="nt-overview-character">
+          <div className="nt-overview-headinfo">
+            <div className="nt-overview-name">{player.nickname || "Безымянный"}</div>
+            <div className="nt-overview-sub">{player.raceName} · {player.genderLabel || "—"} · ур. {player.level}</div>
+            <div className="nt-overview-id ntp-mono">{player.userGlobalId || player.publicId || "—"}</div>
+            {status ? <div className="nt-overview-status">Статус: <b>{status.label}</b></div> : null}
+            <Row label="Опыт" value={`${expCurrent} / ${expNext}`} />
+            <Row label="Деньги" value={player.balanceText || "—"} />
+          </div>
+        </Panel>
+        <Panel title="Ресурсы" className="nt-overview-resources">
+          <ResourceBars parameters={profile.parameters} />
+        </Panel>
+      </div>
+      {places.length ? (
+        <Panel title="Мои места в рейтингах">
+          <div className="nt-rating-places">
+            {places.map((p) => <div className="nt-rating-place" key={p.key}><span>{p.label}</span><b>{p.place} место</b></div>)}
+          </div>
+        </Panel>
+      ) : null}
+    </div>
+  );
+}
+
+
+export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField, onSearchCourierRecipients, onSendCourierTransfer, onRedeemPromo, onAdminRemoveItem }) {
   const data = profileOrMock(profile);
-  const [tab, setTab] = useState("character");
+  const [tab, setTab] = useState("overview");
   const [modal, setModal] = useState(null);
   const [slotModal, setSlotModal] = useState(null);
   const [dropModal, setDropModal] = useState(null);
   const [sellModal, setSellModal] = useState(null);
   const adminEdit = Boolean(data.adminEdit);
   const effectiveReadOnly = Boolean(readOnly || data.readOnly || (data.adminView && !adminEdit));
-  // Курьер недоступен в админ-просмотре/редактировании чужого профиля.
-  const visibleTabs = (effectiveReadOnly || adminEdit) ? TABS : [...TABS, COURIER_TAB];
+  // Сервисы (Передача/Промокод) недоступны в админ-просмотре/редактировании
+  // чужого профиля — это личные действия игрока от своего лица.
+  // Вкладка «Гильдия» появляется только при наличии блока guild.
+  const visibleTabs = [
+    ...TABS,
+    ...(data.guild ? [GUILD_TAB] : []),
+    ...((effectiveReadOnly || adminEdit) ? [] : [SERVICES_TAB]),
+  ];
   const background = data.assets?.background || "/assets/profile/backgrounds/1.png";
 
   const equipmentBySlot = data.equipment || {};
@@ -1394,11 +1701,13 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
           {visibleTabs.map(({ id, label, icon }) => <button key={id} className={tab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon"><TabIcon type={icon} /></span><span className="nt-tab-text">{label}</span></button>)}
         </nav>
         <section className="nt-content">
+          {tab === "overview" ? <OverviewTab profile={data} /> : null}
           {tab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} readOnly={effectiveReadOnly} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} onEditProfileField={onEditProfileField} /> : null}
           {tab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
           {tab === "skills" ? <SkillsTab profile={data} readOnly={effectiveReadOnly} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
           {tab === "info" ? <InfoTab profile={data} /> : null}
-          {tab === "courier" ? <CourierTab profile={data} onSearchRecipients={onSearchCourierRecipients} onSendTransfer={onSendCourierTransfer} /> : null}
+          {tab === "guild" ? <GuildTab guild={data.guild} /> : null}
+          {tab === "services" ? <ServicesTab profile={data} onSearchRecipients={onSearchCourierRecipients} onSendTransfer={onSendCourierTransfer} onRedeemPromo={onRedeemPromo} /> : null}
         </section>
       </div>
       <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} readOnly={effectiveReadOnly} adminEdit={adminEdit} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRequestDrop={requestDrop} onRequestSell={requestSell} onAdminRemoveItem={adminRemoveAndClose} />

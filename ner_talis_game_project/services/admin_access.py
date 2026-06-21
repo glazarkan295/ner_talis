@@ -83,6 +83,21 @@ def is_vk_admin_peer(peer_id: str | int | None) -> bool:
     return peer_id is not None and str(peer_id) in vk_admin_peer_ids()
 
 
+def is_configured_admin_user(platform: str | None, user_id: str | int | None) -> bool:
+    """True, если user_id указан в ENV-списках админ-пользователей платформы.
+
+    Используется RBAC для bootstrap: все текущие ENV-админы по умолчанию owner,
+    пока их роль не переопределена в хранилище.
+    """
+    platform_key = str(platform or "").strip().casefold()
+    if platform_key in {"telegram", "tg"}:
+        return _id_in_config(user_id, "TELEGRAM_ADMIN_USER_IDS")
+    if platform_key in {"vk", "vkontakte"}:
+        return _id_in_config(user_id, "VK_ADMIN_USER_IDS")
+    # Неизвестная платформа — проверяем в обоих списках на всякий случай.
+    return _id_in_config(user_id, "TELEGRAM_ADMIN_USER_IDS") or _id_in_config(user_id, "VK_ADMIN_USER_IDS")
+
+
 def check_telegram_admin(chat_id: str | int | None, user_id: str | int | None) -> AdminAccessResult:
     """Проверяет доступ Telegram-админа.
 

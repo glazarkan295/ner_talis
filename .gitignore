@@ -38,3 +38,50 @@ data/port_market_state.json
 data/courier_transfers.json
 data/courier_transfers.json.lock
 data/courier_transfers.json.tmp
+
+# IDE workspace files
+*.code-workspace
+
+# Runtime admin backups (created by reset/delivery)
+data/admin_backups/
+
+# Runtime world-constructor registry (admin-created content)
+data/world_content.json
+data/world_content.json.lock
+data/world_content.json.tmp
+
+# Runtime community stores (admin-created)
+data/guilds.json
+data/guilds.json.lock
+data/guilds.json.tmp
+data/world_events.json
+data/world_events.json.lock
+data/world_events.json.tmp
+
+# Runtime achievement stores (admin-created)
+data/achievements.json
+data/achievements.json.lock
+data/achievements.json.tmp
+data/achievement_categories.json
+data/achievement_categories.json.lock
+data/achievement_categories.json.tmp
+
+# Runtime bot message queue
+data/bot_message_queue.json
+data/bot_message_queue.json.lock
+data/bot_message_queue.json.tmp
+
+# Runtime item constructor store
+data/item_constructor.json
+data/item_constructor.json.lock
+data/item_constructor.json.tmp
+
+# Runtime effect constructor store
+data/effect_constructor.json
+data/effect_constructor.json.lock
+data/effect_constructor.json.tmp
+
+# Runtime site content store
+data/site_content.json
+data/site_content.json.lock
+data/site_content.json.tmp

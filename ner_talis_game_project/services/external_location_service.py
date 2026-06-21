@@ -1445,6 +1445,25 @@ def complete_active_timer(storage: Any, player: dict[str, Any], timer_id: str | 
         storage.update_player(player)
         return LocationResponse("\n".join(lines), small_plateau_buttons(), "small_plateau")
 
+    # Overlay «пустой локации» (Конструктор локаций §31–§34): если живой слой
+    # включён и конструктор сообщает, что локация истощена за эту неделю —
+    # вместо обычной находки игрок получает атмосферное «ничего не нашли».
+    # Бой/ловушка/малое плато выше уже обработаны и сюда не доходят.
+    try:
+        from services import location_runtime
+
+        empty_text = location_runtime.roll_empty_overlay(location_id, rng=rng)
+    except Exception:
+        empty_text = None
+    if empty_text:
+        player["active_event"] = None
+        storage.update_player(player)
+        return LocationResponse(
+            f"✅ Поиск завершён.\n📍 Локация: {location_name(location_id)}\n\n{empty_text}",
+            location_buttons(location_id),
+            location_id,
+        )
+
     if isinstance(event, dict):
         ensure_event_id(event, fallback=f"{timer.get('id')}_event")
     player["active_event"] = event
@@ -1687,6 +1706,27 @@ def event_already_resolving_response(player: dict[str, Any]) -> LocationResponse
     )
 
 
+def _consume_location_item(location_id: str, item_id: Any, amount: Any) -> None:
+    """Списать выданный в событии предмет из недельного лимита локации (§23/§24).
+
+    No-op при выключенном WORLD_CONSTRUCTOR_LIVE или если для предмета нет
+    опубликованного конструкторного лимита — поэтому безопасно вызывать на
+    каждую выдачу (двойного списания не будет).
+    """
+    try:
+        amount = int(amount)
+    except (TypeError, ValueError):
+        return
+    if not item_id or amount <= 0:
+        return
+    try:
+        from services import location_runtime
+
+        location_runtime.consume_for_item(location_id, str(item_id), amount)
+    except Exception:
+        pass
+
+
 def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng: random.Random | None = None) -> LocationResponse:
     rng = rng or random.Random()
     ensure_external_fields(player)
@@ -1729,6 +1769,16 @@ def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng:
     location_id = str(event.get("location_id") or current_location_id(player))
     if location_id not in EXPLORATION_LOCATION_IDS:
         location_id = "hilly_meadows"
+
+    # Локально оборачиваем add_item: любая выдача в событии списывает
+    # соответствующий недельный лимит локации (Конструктор §23/§24). Все ветки
+    # ниже передают item_id ключевым аргументом, поэтому одной обёртки достаточно.
+    _base_add_item = globals()["add_item"]
+
+    def add_item(*args, **kwargs):
+        result = _base_add_item(*args, **kwargs)
+        _consume_location_item(location_id, kwargs.get("item_id"), getattr(result, "added", 0))
+        return result
 
     if event_type == "small_plateau_cursed_coins" and action in {TAKE_CURSED_COINS, LEAVE}:
         result = handle_cursed_coin_choice(player, take_coins=(action == TAKE_CURSED_COINS), rng=rng)
@@ -1944,6 +1994,16 @@ def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng:
 def resolve_glint_event(player: dict[str, Any], event: dict[str, Any], rng: random.Random) -> str:
     variant = event.get("variant")
     location_id = str(event.get("location_id") or current_location_id(player))
+
+    # Та же обёртка, что и в resolve_active_event: выдачи блика списывают
+    # недельные лимиты локации (no-op при выкл-флаге/без лимита).
+    _base_add_item = globals()["add_item"]
+
+    def add_item(*args, **kwargs):
+        result = _base_add_item(*args, **kwargs)
+        _consume_location_item(location_id, kwargs.get("item_id"), getattr(result, "added", 0))
+        return result
+
     if variant == "old_knife_up_slope":
         entry = _roll_resource_entry(location_id, "glint_old_knife_up_slope", rng, [
             {"name_ru": "Железный лом", "weight": 70, "amount_min": 1, "amount_max": 1},

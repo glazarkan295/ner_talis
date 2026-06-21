@@ -1,13 +1,33 @@
 :root {
   font-family: "Trebuchet MS", Georgia, "Times New Roman", serif;
   font-size: 12px;
-  color: #d8c7a3;
-  background: #050606;
+  color: var(--nt-text);
+  background: var(--nt-bg);
+
+  /* --- Единые дизайн-токены Нер-Талис (дополнение к ТЗ §5) ---------------
+     Канонический источник палитры для профиля И админ-панели: атмосфера,
+     цвета и стиль общие для всего сайта. Меняем здесь — меняется везде. */
+  --nt-bg: #050606;
+  --nt-bg-gradient: radial-gradient(circle at top, #241c16 0, #080706 56%, #030303 100%);
+  --nt-gold: #ffd98f;            /* акцент/активные элементы */
+  --nt-gold-ink: #1c1208;        /* текст на золоте */
+  --nt-parch: #f1dfbd;           /* основной светлый текст (админка) */
+  --nt-text: #d8c7a3;            /* основной текст профиля */
+  --nt-text-dim: rgba(216, 199, 163, .75);  /* вторичный текст */
+  --nt-card: #15100d;            /* тёмные карточки/модалки */
+  --nt-panel: rgba(255, 255, 255, .04);     /* мягкая панель */
+  --nt-line: rgba(214, 172, 91, .28);       /* рамки */
+  --nt-line-strong: rgba(214, 172, 91, .55);
+  --nt-hover: rgba(255, 255, 255, .05);
+  --nt-btn: linear-gradient(145deg, #47351f, #1b1410);  /* обычная кнопка */
+  --nt-danger: #ff7a5a;          /* ошибка/опасное */
+  --nt-success: #87dc96;         /* успех */
+  --nt-warning: #ffe9bf;         /* предупреждение */
 }
 
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; min-height: 100%; }
-body { margin: 0; background: #050606; }
+body { margin: 0; background: var(--nt-bg); }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
 
@@ -21,11 +41,11 @@ button { cursor: pointer; }
   justify-content: center;
   align-items: flex-start;
   padding: 20px 8px 34px;
-  background-color: #050606;
+  background-color: var(--nt-bg);
   background-size: cover;
   background-position: center center;
   background-attachment: fixed;
-  color: #d8c7a3;
+  color: var(--nt-text);
 }
 
 .nt-profile::before {
@@ -80,7 +100,7 @@ button { cursor: pointer; }
   border-radius: 999px;
   background: rgba(0,0,0,.18);
   font-size: 10px;
-  color: #d8c7a3;
+  color: var(--nt-text);
   text-align: right;
 }
 
@@ -216,7 +236,7 @@ button { cursor: pointer; }
 
 .nt-attribute-controls { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 .nt-attribute-controls input, .nt-toolbar input, .nt-field-label input, .nt-field-label select {
-  border: 1px solid rgba(168, 137, 83, .27); border-radius: 9px; padding: 5px 7px; color: #d8c7a3; background: rgba(0,0,0,.28); outline: none;
+  border: 1px solid rgba(168, 137, 83, .27); border-radius: 9px; padding: 5px 7px; color: var(--nt-text); background: rgba(0,0,0,.28); outline: none;
 }
 .nt-attribute-controls input { width: 44px; height: 26px; }
 .nt-attribute-controls button { width: 26px; height: 26px; border-radius: 8px; padding: 0; color: #1b150e; background: linear-gradient(180deg, #d0a65c, #85602f); }
@@ -230,7 +250,7 @@ button { cursor: pointer; }
 .nt-icon-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 9px; }
 .nt-item-icon-card {
   position: relative; min-width: 0; aspect-ratio: 1 / 1.12; border: 1px solid rgba(165, 132, 77, .18); border-radius: 12px;
-  padding: 5px; text-align: center; color: #d8c7a3; background: linear-gradient(180deg, rgba(24,24,22,.48), rgba(0,0,0,.18));
+  padding: 5px; text-align: center; color: var(--nt-text); background: linear-gradient(180deg, rgba(24,24,22,.48), rgba(0,0,0,.18));
   display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 4px; overflow: hidden; min-height: 0;
 }
 .nt-item-art { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: grid; place-items: center; font-size: 18px; color: #caa967; }
@@ -257,7 +277,7 @@ button { cursor: pointer; }
 .nt-card-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: 8px; }
 .nt-card-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .nt-card-row strong { color: #d9bd81; font-size: 10px; white-space: nowrap; text-align: right; }
-.nt-mini-card { min-width: 0; border: 1px solid rgba(165, 132, 77, .18); border-radius: 12px; padding: 9px; text-align: left; color: #d8c7a3; background: linear-gradient(180deg, rgba(24,24,22,.48), rgba(0,0,0,.18)); }
+.nt-mini-card { min-width: 0; border: 1px solid rgba(165, 132, 77, .18); border-radius: 12px; padding: 9px; text-align: left; color: var(--nt-text); background: linear-gradient(180deg, rgba(24,24,22,.48), rgba(0,0,0,.18)); }
 .nt-mini-card p { margin: 5px 0; color: #a99a7c; line-height: 1.25; font-size: 10px; }
 .nt-empty-text { margin: 0; color: #918773; font-size: 11px; text-align: left; }
 
@@ -340,13 +360,13 @@ button { cursor: pointer; }
 .nt-race-stats { color: #d9bd81 !important; }
 .nt-modal-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 10px 0; }
 .nt-modal-grid span { color: #9f947f; text-align: left; }
-.nt-modal-grid strong { color: #d8c7a3; text-align: right; }
+.nt-modal-grid strong { color: var(--nt-text); text-align: right; }
 .nt-modal-block { border-top: 1px solid rgba(165, 132, 77, .16); margin-top: 10px; padding-top: 9px; }
 .nt-modal-block h4 { margin: 0 0 6px; color: #d9bd81; text-align: left; }
 .nt-modal-block ul { margin: 0; padding-left: 18px; color: #b9aa8a; }
 .nt-modal-actions { margin-top: 14px; justify-content: flex-start; flex-wrap: wrap; }
 .nt-modal-actions button { border-radius: 10px; padding: 7px 10px; }
-.nt-secondary { background: rgba(0,0,0,.22) !important; color: #d8c7a3 !important; }
+.nt-secondary { background: rgba(0,0,0,.22) !important; color: var(--nt-text) !important; }
 
 .nt-slot-modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .nt-slot-items-list { display: grid; gap: 6px; align-content: start; max-height: 260px; overflow: auto; padding-right: 2px; }
@@ -360,7 +380,7 @@ button { cursor: pointer; }
 .nt-field-label { display: grid; gap: 5px; margin-top: 10px; color: #9f947f; }
 .nt-field-label input, .nt-field-label select { width: 100%; height: 32px; }
 
-.nt-profile-loading { min-height: 100vh; display: grid; place-items: center; color: #d7b46f; background: #050606; font-size: 16px; }
+.nt-profile-loading { min-height: 100vh; display: grid; place-items: center; color: #d7b46f; background: var(--nt-bg); font-size: 16px; }
 .nt-profile-error, .nt-api-error { color: #ffd0c7; }
 .nt-api-error { position: fixed; z-index: 120; top: 12px; left: 50%; transform: translateX(-50%); width: min(760px, calc(100vw - 24px)); padding: 9px 12px; border-radius: 12px; background: rgba(96, 28, 20, .88); border: 1px solid rgba(255, 140, 120, .35); box-shadow: 0 12px 34px rgba(0,0,0,.45); }
 
@@ -511,7 +531,7 @@ button { cursor: pointer; }
   background: linear-gradient(180deg, #d0a65c, #85602f);
 }
 .nt-secondary-button {
-  color: #d8c7a3;
+  color: var(--nt-text);
   background: rgba(0, 0, 0, .28);
 }
 @media (max-width: 430px) {
@@ -617,7 +637,7 @@ button { cursor: pointer; }
 }
 .nt-readonly-banner {
   margin: 6px 0 0;
-  color: #ffd98f;
+  color: var(--nt-gold);
   font-size: 13px;
   opacity: .92;
 }
@@ -628,7 +648,7 @@ button { cursor: pointer; }
   padding: 0 10px;
   border: 1px solid rgba(255,217,143,.35);
   border-radius: 999px;
-  color: #ffd98f;
+  color: var(--nt-gold);
   background: rgba(255,217,143,.08);
 }
 
@@ -638,17 +658,17 @@ button { cursor: pointer; }
 .nt-courier-section:first-of-type { border-top: none; padding-top: 0; }
 .nt-courier-section h4 { margin: 0 0 7px; font-size: 12px; color: #d9bd81; }
 .nt-courier-hint { margin: 6px 0 0; color: #918773; font-size: 10.5px; }
-.nt-courier-chosen { margin: 8px 0 0; color: #d8c7a3; font-size: 11.5px; }
+.nt-courier-chosen { margin: 8px 0 0; color: var(--nt-text); font-size: 11.5px; }
 .nt-courier-btn { height: 30px; padding: 0 12px; border-radius: 9px; font-size: 11px; white-space: nowrap; border: 1px solid rgba(177,143,83,.4); background: rgba(0,0,0,.24); color: #d9bd81; cursor: pointer; }
 .nt-courier-btn:hover:not(:disabled) { border-color: rgba(220,177,97,.62); }
 .nt-courier-btn:disabled { opacity: .45; cursor: not-allowed; }
 .nt-courier-btn.primary { color: #19130c; border-color: rgba(221,179,99,.72); background: linear-gradient(180deg, #d0a65c, #85602f); }
 .nt-courier-results { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-.nt-courier-result { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 9px; border: 1px solid rgba(165, 132, 77, .2); background: rgba(0,0,0,.2); color: #d8c7a3; cursor: pointer; text-align: left; }
+.nt-courier-result { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 9px; border: 1px solid rgba(165, 132, 77, .2); background: rgba(0,0,0,.2); color: var(--nt-text); cursor: pointer; text-align: left; }
 .nt-courier-result:hover { border-color: rgba(220,177,97,.55); }
 .nt-courier-result-meta { color: #918773; font-size: 10px; white-space: nowrap; }
 .nt-courier-pick-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 9px; }
-.nt-courier-pick { position: relative; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 4px; border-radius: 11px; border: 1px solid rgba(165, 132, 77, .18); background: linear-gradient(180deg, rgba(24,24,22,.48), rgba(0,0,0,.18)); color: #d8c7a3; cursor: pointer; }
+.nt-courier-pick { position: relative; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 4px; border-radius: 11px; border: 1px solid rgba(165, 132, 77, .18); background: linear-gradient(180deg, rgba(24,24,22,.48), rgba(0,0,0,.18)); color: var(--nt-text); cursor: pointer; }
 .nt-courier-pick:hover:not(:disabled) { border-color: rgba(220,177,97,.5); }
 .nt-courier-pick:disabled { opacity: .4; cursor: not-allowed; }
 .nt-courier-pick-art { width: 36px; height: 36px; }
@@ -656,19 +676,116 @@ button { cursor: pointer; }
 .nt-courier-pick-amount { font-size: 9px; color: #b9a278; }
 .nt-courier-selected { display: flex; flex-direction: column; gap: 7px; }
 .nt-courier-selected-row { display: grid; grid-template-columns: 1fr 62px 30px; gap: 8px; align-items: center; }
-.nt-courier-selected-name { color: #d8c7a3; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nt-courier-selected-row input { height: 28px; width: 100%; border: 1px solid rgba(168, 137, 83, .27); border-radius: 9px; padding: 4px 6px; color: #d8c7a3; background: rgba(0,0,0,.28); outline: none; }
+.nt-courier-selected-name { color: var(--nt-text); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nt-courier-selected-row input { height: 28px; width: 100%; border: 1px solid rgba(168, 137, 83, .27); border-radius: 9px; padding: 4px 6px; color: var(--nt-text); background: rgba(0,0,0,.28); outline: none; }
 .nt-courier-remove { width: 28px; height: 28px; border-radius: 8px; padding: 0; border: 1px solid rgba(177,90,83,.42); background: rgba(0,0,0,.24); color: #e0a39c; cursor: pointer; }
 .nt-courier-remove:hover { border-color: rgba(220,120,110,.7); }
 .nt-courier-footer { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
 .nt-courier-cost { color: #c8b793; font-size: 12px; }
-.nt-courier-cost strong { color: #ffd98f; }
+.nt-courier-cost strong { color: var(--nt-gold); }
 .nt-courier-confirm { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 11px; border: 1px solid rgba(221,179,99,.3); background: rgba(0,0,0,.22); }
-.nt-courier-confirm p { margin: 0; color: #d8c7a3; font-size: 11.5px; }
+.nt-courier-confirm p { margin: 0; color: var(--nt-text); font-size: 11.5px; }
 .nt-courier-confirm-actions { display: flex; gap: 8px; }
 .nt-courier-feedback { margin: 10px 0 0; font-size: 11.5px; white-space: pre-line; line-height: 1.45; border-radius: 9px; padding: 9px 11px; }
 .nt-courier-feedback.success { color: #bfe3b0; border: 1px solid rgba(120,190,110,.3); background: rgba(70,120,60,.14); }
 .nt-courier-feedback.error { color: #e8b3ac; border: 1px solid rgba(190,110,100,.3); background: rgba(120,60,55,.14); }
 @media (max-width: 560px) {
   .nt-courier-pick-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* --- Профиль V2: вкладка «Обзор» --------------------------------------- */
+.ntp-mono { font-family: 'Courier New', monospace; opacity: .75; font-size: 12px; }
+.nt-overview { display: grid; gap: 12px; }
+.nt-overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.nt-overview-character { display: flex; gap: 14px; }
+.nt-overview-headinfo { display: grid; gap: 4px; align-content: start; }
+.nt-overview-name { font-size: 20px; color: var(--nt-gold); }
+.nt-overview-sub { opacity: .8; font-size: 13px; }
+.nt-overview-status { margin-top: 4px; }
+.nt-resource-bars { display: grid; gap: 10px; }
+.nt-resource-bar-head { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 3px; }
+.nt-resource-bar-track { height: 12px; border-radius: 7px; background: rgba(0,0,0,.35); overflow: hidden; border: 1px solid rgba(214,172,91,.25); }
+.nt-resource-bar-fill { height: 100%; border-radius: 7px; transition: width .3s ease; }
+.nt-bar-hp { background: linear-gradient(90deg, #8e2b22, #d9534f); }
+.nt-bar-mana { background: linear-gradient(90deg, #234e8e, #4a90d9); }
+.nt-bar-spirit { background: linear-gradient(90deg, #5a2d8e, #9a6cd9); }
+.nt-bar-energy { background: linear-gradient(90deg, #2d7a3f, #6cc777); }
+.nt-warnings { display: grid; gap: 8px; }
+.nt-warning { display: flex; align-items: center; gap: 8px; border-radius: 10px; padding: 8px 12px; font-size: 14px; border: 1px solid rgba(214,172,91,.3); background: rgba(255,255,255,.04); }
+.nt-warning-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: currentColor; }
+.nt-warning-danger { color: #ff8a6a; border-color: rgba(255,120,90,.5); background: rgba(145,35,20,.22); }
+.nt-warning-warning { color: var(--nt-gold); border-color: rgba(255,200,120,.45); background: rgba(120,80,10,.20); }
+.nt-warning-info { color: #bfe3ff; }
+.nt-rating-places { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.nt-rating-place { display: flex; justify-content: space-between; border: 1px solid rgba(214,172,91,.22); border-radius: 9px; padding: 6px 10px; font-size: 13px; }
+@media (max-width: 720px) { .nt-overview-grid { grid-template-columns: 1fr; } }
+
+/* --- Профиль V2: контролы инвентаря ------------------------------------ */
+.nt-inv-controls { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.nt-inv-controls select { flex: 1; min-width: 150px; }
+
+/* --- Профиль V2: опасная зона / усиленное подтверждение ---------------- */
+.nt-danger-zone {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(220, 70, 70, 0.4);
+  border-radius: 8px;
+  background: rgba(220, 70, 70, 0.06);
+}
+.nt-danger-zone-label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #d35454;
+  margin-bottom: 6px;
+}
+.nt-danger-zone-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.nt-confirm-check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 10px 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.nt-confirm-check input { margin-top: 3px; }
+
+/* --- Профиль V2: под-навигация вкладки «Сервисы» ----------------------- */
+.nt-subtabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.nt-subtabs button {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+}
+.nt-subtabs button.active {
+  background: rgba(210, 180, 120, 0.22);
+  border-color: rgba(210, 180, 120, 0.5);
+}
+
+/* --- Профиль V2: требование к оружию навыка ---------------------------- */
+.nt-skill-weapon-req {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: rgba(210, 190, 150, 0.85);
+}
+.nt-skill-weapon-req.blocked {
+  color: #e08a8a;
+}
+
+/* --- Профиль V2: описание расы в поповере ------------------------------ */
+.nt-race-desc {
+  margin: 4px 0 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  opacity: 0.85;
 }

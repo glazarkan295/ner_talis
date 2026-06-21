@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { PlayerProfile } from "./components/player-profile";
 import { AdminPanel } from "./components/admin-panel";
+import { AdminShell } from "./components/admin-shell";
+import { isAdminPanelV2Path } from "./api/adminV2Api.js";
 import "./components/player-profile/PlayerProfile.css";
 import {
   dropItem,
@@ -11,6 +13,7 @@ import {
   getProfileIdentifierFromUrl,
   loadPlayerProfile,
   confirmAttributePoints,
+  redeemPromoCode,
   searchCourierRecipients,
   sendCourierTransfer,
   setActiveProfileSession,
@@ -193,12 +196,14 @@ function ProfileApp() {
         onSendCourierTransfer={(receiver, items, coins, letter) => {
           return runProfileAction(() => sendCourierTransfer(receiver, items, coins, letter));
         }}
+        onRedeemPromo={(code) => runProfileAction(() => redeemPromoCode(profileIdentifier, code))}
       />
     </>
   );
 }
 
 function App() {
+  if (isAdminPanelV2Path()) return <AdminShell />;
   if (isAdminPanelPath()) return <AdminPanel />;
   if (isAdminViewProfilePath()) return <AdminProfileView />;
   return <ProfileApp />;

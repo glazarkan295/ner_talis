@@ -593,6 +593,17 @@ class JsonStorage:
                 return True
             return False
 
+    def list_admin_panel_sessions(self) -> list[dict[str, Any]]:
+        with self._lock:
+            sessions = self._admin_sessions_bucket(self.load())
+            result: list[dict[str, Any]] = []
+            for token, session in sessions.items():
+                if isinstance(session, dict):
+                    item = dict(session)
+                    item["token"] = str(token)
+                    result.append(item)
+            return result
+
     def delete_admin_panel_sessions_for_admin(self, admin_key: str, scope: str) -> int:
         with self._lock:
             data = self.load()

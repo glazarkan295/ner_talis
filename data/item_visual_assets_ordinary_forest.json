@@ -18,7 +18,7 @@
       "source": "Обыкновенный лес / грибы",
       "rarity": "common",
       "note": "Ядовитый ингредиент; не использовать в базовых лагерных блюдах.",
-      "image": "assets/items/ordinary_forest/ingredients/pale_toadstool.png",
+      "image": "/assets/items/ordinary_forest/ingredients/pale_toadstool.png",
       "image_1024": "assets_1024/items/ordinary_forest/ingredients/pale_toadstool.png",
       "image_256": "assets_256/items/ordinary_forest/ingredients/pale_toadstool.png"
     },
@@ -30,7 +30,7 @@
       "source": "Обыкновенный лес / маленькая речка",
       "rarity": "common",
       "note": "Не используется в базовых лагерных блюдах без правила очистки или кипячения.",
-      "image": "assets/items/ordinary_forest/ingredients/muddy_water.png",
+      "image": "/assets/items/ordinary_forest/ingredients/muddy_water.png",
       "image_1024": "assets_1024/items/ordinary_forest/ingredients/muddy_water.png",
       "image_256": "assets_256/items/ordinary_forest/ingredients/muddy_water.png"
     },
@@ -43,7 +43,7 @@
       "rarity": "uncommon",
       "slot": "gloves",
       "note": "Необычные перчатки: +X к ловкости и +X,X% к шансу крита; сила зависит от уровня игрока, нашедшего предмет.",
-      "image": "assets/items/ordinary_forest/equipment/old_gloves.png",
+      "image": "/assets/items/ordinary_forest/equipment/old_gloves.png",
       "image_1024": "assets_1024/items/ordinary_forest/equipment/old_gloves.png",
       "image_256": "assets_256/items/ordinary_forest/equipment/old_gloves.png"
     },
@@ -56,7 +56,7 @@
       "rarity": "uncommon",
       "slot": "belt",
       "note": "Необычный пояс: +2 слота инвентаря, +X к броне и +X к уклонению; сила зависит от уровня игрока, нашедшего предмет.",
-      "image": "assets/items/ordinary_forest/equipment/decent_belt.png",
+      "image": "/assets/items/ordinary_forest/equipment/decent_belt.png",
       "image_1024": "assets_1024/items/ordinary_forest/equipment/decent_belt.png",
       "image_256": "assets_256/items/ordinary_forest/equipment/decent_belt.png"
     },
@@ -68,7 +68,7 @@
       "source": "Обыкновенный лес / сухое дерево",
       "rarity": "common",
       "note": "Ресурс дерева, добывается 1–3 штуки.",
-      "image": "assets/items/ordinary_forest/resources/dry_log.png",
+      "image": "/assets/items/ordinary_forest/resources/dry_log.png",
       "image_1024": "assets_1024/items/ordinary_forest/resources/dry_log.png",
       "image_256": "assets_256/items/ordinary_forest/resources/dry_log.png"
     },
@@ -80,7 +80,7 @@
       "source": "Обыкновенный лес / небольшая нора",
       "rarity": "common",
       "note": "Старые куски ткани, 1–3 штуки.",
-      "image": "assets/items/ordinary_forest/resources/fabric_pieces.png",
+      "image": "/assets/items/ordinary_forest/resources/fabric_pieces.png",
       "image_1024": "assets_1024/items/ordinary_forest/resources/fabric_pieces.png",
       "image_256": "assets_256/items/ordinary_forest/resources/fabric_pieces.png"
     },
@@ -92,7 +92,7 @@
       "source": "Обыкновенный лес / грибы",
       "rarity": "common",
       "note": "Пищевой ингредиент; может использоваться в «Сытной похлёбке».",
-      "image": "assets/items/ordinary_forest/ingredients/edible_forest_mushroom.png",
+      "image": "/assets/items/ordinary_forest/ingredients/edible_forest_mushroom.png",
       "image_1024": "assets_1024/items/ordinary_forest/ingredients/edible_forest_mushroom.png",
       "image_256": "assets_256/items/ordinary_forest/ingredients/edible_forest_mushroom.png"
     },
@@ -104,7 +104,7 @@
       "source": "Обыкновенный лес / грибы",
       "rarity": "common",
       "note": "Алхимический ингредиент.",
-      "image": "assets/items/ordinary_forest/ingredients/bitter_gray_mushroom.png",
+      "image": "/assets/items/ordinary_forest/ingredients/bitter_gray_mushroom.png",
       "image_1024": "assets_1024/items/ordinary_forest/ingredients/bitter_gray_mushroom.png",
       "image_256": "assets_256/items/ordinary_forest/ingredients/bitter_gray_mushroom.png"
     },
@@ -116,7 +116,7 @@
       "source": "Обыкновенный лес / ловушка: укус клеща",
       "rarity": "event",
       "note": "Иконка опасности/ловушки; не предмет обычной добычи.",
-      "image": "assets/items/ordinary_forest/events/forest_tick.png",
+      "image": "/assets/items/ordinary_forest/events/forest_tick.png",
       "image_1024": "assets_1024/items/ordinary_forest/events/forest_tick.png",
       "image_256": "assets_256/items/ordinary_forest/events/forest_tick.png"
     },
@@ -128,7 +128,7 @@
       "source": "Обыкновенный лес / ловушка: старый капкан",
       "rarity": "event",
       "note": "Иконка ловушки; накладывает временный дебаф.",
-      "image": "assets/items/ordinary_forest/events/old_bear_trap.png",
+      "image": "/assets/items/ordinary_forest/events/old_bear_trap.png",
       "image_1024": "assets_1024/items/ordinary_forest/events/old_bear_trap.png",
       "image_256": "assets_256/items/ordinary_forest/events/old_bear_trap.png"
     },
@@ -140,7 +140,7 @@
       "source": "Обыкновенный лес / ловушка: трясина",
       "rarity": "event",
       "note": "Иконка ловушки; не предмет обычной добычи.",
-      "image": "assets/items/ordinary_forest/events/mire_trap.png",
+      "image": "/assets/items/ordinary_forest/events/mire_trap.png",
       "image_1024": "assets_1024/items/ordinary_forest/events/mire_trap.png",
       "image_256": "assets_256/items/ordinary_forest/events/mire_trap.png"
     }

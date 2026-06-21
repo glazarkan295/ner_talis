@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from copy import deepcopy
 from datetime import datetime, timezone, timedelta
+from functools import lru_cache
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -49,6 +50,7 @@ from services.market_service import (
 )
 from services.web_profile import ADMIN_PROFILE_EDIT_SCOPE, PROFILE_SCOPE
 from services.active_skill_service import refresh_unlocked_active_skills, resource_cost_with_modifiers, skill_level, is_skill_weapon_compatible, skill_weapon_requirement_text, can_spend_skill_points_on, player_branch, selected_main_path, selected_secondary_path, path_level, secondary_path_limit
+from services.small_plateau_service import ensure_curse_bearer_effect
 
 FRONT_TO_BACK_STAT = {
     "strength": "strength",
@@ -190,6 +192,49 @@ RACE_MODEL_KEYS = {
     "undead": "undead",
     "lizardfolk": "lizardfolk",
 }
+
+# Подписи базовых характеристик расы для блока «Бонусы расы» (ТЗ §8).
+_RACE_STAT_LABELS = (
+    ("strength", "Сила"),
+    ("dexterity", "Ловкость"),
+    ("endurance", "Выносливость"),
+    ("intelligence", "Интеллект"),
+    ("wisdom", "Мудрость"),
+    ("perception", "Восприятие"),
+)
+
+
+@lru_cache(maxsize=1)
+def _races_catalog() -> dict[str, Any]:
+    """data/races.json, прочитанный один раз (источник истины по расам)."""
+    try:
+        from services.registration_service import load_races
+        catalog = load_races("data/races.json")
+        return catalog if isinstance(catalog, dict) else {}
+    except Exception:
+        return {}
+
+
+def _profile_race_info(race_key: str) -> dict[str, Any] | None:
+    """Описание/статы/бонусы расы для профиля (ТЗ §8).
+
+    Заменяет захардкоженный список рас во фронтенде: данные берутся из
+    единого data/races.json, поэтому правки рас не нужно дублировать в UI.
+    """
+    race = _races_catalog().get(race_key)
+    if not isinstance(race, dict):
+        return None
+    stats = race.get("stats") or {}
+    stats_text = " · ".join(
+        f"{label} {stats.get(key)}" for key, label in _RACE_STAT_LABELS if stats.get(key) is not None
+    )
+    return {
+        "key": race_key,
+        "name": race.get("name", race_key),
+        "description": race.get("description", ""),
+        "statsText": stats_text,
+        "bonuses": list(race.get("bonuses") or []),
+    }
 
 
 class SpendAttributeRequest(BaseModel):
@@ -1118,6 +1163,15 @@ def normalize_skill(
     skill_type = str(skill.get("skill_type") or skill.get("type") or source_section or "active").lower()
     normalized.setdefault("skill_type", skill_type)
     normalized["equippable"] = bool(skill.get("equippable", skill_type not in {"passive", "пассивный"}))
+    # Требование к оружию показываем только для активных навыков с конкретным
+    # ограничением — пассивы и «любое оружие» в подсказке не нуждаются.
+    if skill_type not in {"passive", "пассивный"}:
+        requirements = skill.get("weapon_requirements") or ["any"]
+        if isinstance(requirements, str):
+            requirements = [requirements]
+        if requirements and "any" not in {str(item) for item in requirements}:
+            normalized["weaponRequirementText"] = skill_weapon_requirement_text(skill)
+            normalized["weaponCompatible"] = is_skill_weapon_compatible(player, skill) if player is not None else True
     return normalized
 
 
@@ -1222,8 +1276,98 @@ def normalize_effect_for_frontend(effect: Any) -> dict[str, Any] | None:
     }
 
 
+# Версия структуры профиля — позволяет фронту понимать набор блоков (ТЗ §19).
+PROFILE_SCHEMA_VERSION = 2
+
+_RATING_PLACE_META = (
+    ("globalPlace", "Общий рейтинг"),
+    ("levelPlace", "Уровень"),
+    ("pvePlace", "PVE"),
+    ("pvpPlace", "PVP"),
+    ("craftPlace", "Ремесло"),
+    ("wealthPlace", "Богатство"),
+    ("explorePlace", "Исследование"),
+    ("achievementsPlace", "Достижения"),
+)
+
+
+def _profile_status(player: dict[str, Any]) -> dict[str, Any]:
+    """Текущее состояние персонажа (ТЗ §5) — только статус, без карты/локаций."""
+    in_battle = bool(player.get("in_battle"))
+    has_timer = bool(player.get("active_timer"))
+    try:
+        has_fine = bool(fine_entries_for_profile(player))
+    except Exception:
+        has_fine = False
+    if in_battle:
+        state, label = "in_battle", "В бою"
+    elif has_timer:
+        state, label = "timer", "Занят действием"
+    elif has_fine:
+        state, label = "fine", "Активный штраф"
+    else:
+        state, label = "free", "Свободен"
+    restricted = has_fine and bool(player.get("movement_restricted") or player.get("forced_collection"))
+    return {
+        "state": state,
+        "label": label,
+        "canUseInventory": not in_battle,
+        "canMove": not (in_battle or restricted),
+        "restricted": restricted,
+        "hasActiveTimer": has_timer,
+        "hasActiveFine": has_fine,
+        "inBattle": in_battle,
+    }
+
+
+def _profile_rating_places(player: dict[str, Any]) -> list[dict[str, Any]]:
+    """Только личные места игрока (ТЗ §5, §17) — без полных таблиц."""
+    rating = player.get("rating") if isinstance(player.get("rating"), dict) else {}
+    return [{"key": key, "label": label, "place": rating.get(key, "—")} for key, label in _RATING_PLACE_META]
+
+
+def _profile_services(player: dict[str, Any]) -> list[dict[str, Any]]:
+    """Доступные сервисы (ТЗ §10). Пустой список → вкладка «Сервисы» скрыта."""
+    return [
+        {"id": "transfer", "label": "Передача"},
+        {"id": "promo", "label": "Промокод"},
+    ]
+
+
+def _profile_guild(player: dict[str, Any]) -> dict[str, Any] | None:
+    """Гильдейский блок профиля (ТЗ §14). None → вкладка «Гильдии» скрыта."""
+    guild = player.get("guild")
+    return guild if isinstance(guild, dict) and guild else None
+
+
+def _profile_warnings(player: dict[str, Any], *, overflow: int, free_attr: int, free_skill: int, current_energy: int, max_energy: int) -> list[dict[str, Any]]:
+    """Заметные предупреждения сверху «Обзора» (ТЗ §5)."""
+    warnings: list[dict[str, Any]] = []
+    try:
+        if fine_entries_for_profile(player):
+            warnings.append({"type": "fine", "level": "danger", "text": "У вас есть активный штраф."})
+    except Exception:
+        pass
+    negative = [
+        e for e in (player.get("active_effects") or [])
+        if isinstance(e, dict) and (e.get("kind") == "negative" or e.get("negative") or e.get("is_negative"))
+    ]
+    if negative:
+        warnings.append({"type": "effect", "level": "warning", "text": "На вас действуют отрицательные эффекты."})
+    if overflow > 0:
+        warnings.append({"type": "overflow", "level": "warning", "text": f"Инвентарь перегружен: {overflow} предметов в дополнительных слотах."})
+    if max_energy and current_energy <= max(1, max_energy // 10):
+        warnings.append({"type": "energy", "level": "info", "text": "Мало энергии."})
+    if free_attr > 0:
+        warnings.append({"type": "attr_points", "level": "info", "text": f"Есть свободные очки характеристик: {free_attr}."})
+    if free_skill > 0:
+        warnings.append({"type": "skill_points", "level": "info", "text": f"Есть свободные очки навыков: {free_skill}."})
+    return warnings
+
+
 def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
     prune_expired_effects(player)
+    ensure_curse_bearer_effect(player)
     refresh_unlocked_active_skills(player)
     recalculate_inventory_overflow(player)
     derived = calculate_player_derived_stats(player)
@@ -1324,7 +1468,24 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
 
     race_key = RACE_MODEL_KEYS.get(str(player.get("race_id", "human")), str(player.get("race_id", "human")))
 
+    # Новые data-driven блоки профиля V2 (ТЗ §19) — добавляются поверх старых
+    # ключей, поэтому текущий фронт продолжает работать без изменений.
+    profile_warnings = _profile_warnings(
+        player,
+        overflow=overflow_slot_count(player),
+        free_attr=safe_int(player.get("free_stat_points"), 0),
+        free_skill=safe_int(player.get("free_skill_points"), 0),
+        current_energy=current_energy,
+        max_energy=max_energy,
+    )
+
     return {
+        "profileSchemaVersion": PROFILE_SCHEMA_VERSION,
+        "status": _profile_status(player),
+        "warnings": profile_warnings,
+        "ratingPlaces": _profile_rating_places(player),
+        "services": _profile_services(player),
+        "guild": _profile_guild(player),
         "assets": {
             "background": "/assets/profile/backgrounds/1.png",
             "raceModels": {
@@ -1341,6 +1502,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "nickname": player.get("name", "Безымянный"),
             "raceKey": race_key,
             "raceName": player.get("race_name", "Человек"),
+            "raceInfo": _profile_race_info(race_key),
             "gender": player.get("gender", "not_selected"),
             "genderLabel": gender_label_ru(player.get("gender"), player.get("gender_label")),
             "profileFieldEdits": profile_field_edit_availability(player),

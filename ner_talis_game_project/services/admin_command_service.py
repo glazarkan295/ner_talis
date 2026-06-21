@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from services.admin_audit import write_admin_audit
-from services.admin_panel_service import create_admin_panel_activation_token, build_admin_panel_url
+from services.admin_panel_service import create_admin_panel_activation_token, build_admin_panel_url, build_admin_panel_v2_url
 from services.admin_player_service import (
     add_experience_to_player,
     add_item_to_player,
@@ -41,7 +41,8 @@ def admin_help_text() -> str:
         "Админ-команды Нер-Талис:\n\n"
         "/admin_id — показать ID текущего чата/беседы и пользователя.\n"
         "/admin_help — показать эту справку.\n"
-        "/admin_panel — получить одноразовую ссылку в защищённую админ-панель сайта.\n\n"
+        "/admin_panel — получить одноразовую ссылку в защищённую админ-панель сайта.\n"
+        "/admin_panel_v2 — получить ссылку в новую админ-консоль V2 (роли, аудит, сессии).\n\n"
         "Старые текстовые админ-команды оставлены как аварийный режим; основная работа теперь через админ-панель.\n\n"
         "Промокоды:\n"
         "/admin_promo_add CODE USES REWARD_JSON\n"
@@ -137,6 +138,31 @@ def execute_admin_command(*, text: str, storage: Any, platform: str, admin_user_
             f"Открыть: {url}\n\n"
             "Ссылка одноразовая: после первой активации повторно по ней войти нельзя. "
             "Новая ссылка отключит старую активную админ-сессию этого админа.",
+        )
+
+    if command == "/admin_panel_v2":
+        try:
+            token = create_admin_panel_activation_token(
+                storage,
+                platform=platform,
+                admin_user_id=admin_user_id,
+            )
+            url = build_admin_panel_v2_url(token)
+        except Exception as exc:
+            return AdminCommandResult(True, f"Не удалось создать ссылку админ-консоли V2: {exc}")
+        write_admin_audit(
+            platform=platform,
+            admin_user_id=admin_user_id,
+            command=text,
+            action="admin_panel_token",
+            details={"scope": "admin_panel", "panel": "v2"},
+        )
+        return AdminCommandResult(
+            True,
+            "🛡 Админ-консоль Нер-Талис V2 готова.\n\n"
+            f"Открыть: {url}\n\n"
+            "Доступ зависит от вашей роли (роли/аудит/сессии — для owner/admin). "
+            "Ссылка одноразовая и отключает старую активную сессию этого админа.",
         )
 
     if command == "/admin_promo_add":
