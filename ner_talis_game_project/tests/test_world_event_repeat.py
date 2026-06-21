@@ -44,6 +44,17 @@ class WorldEventRepeatTest(unittest.TestCase):
         ok = _val({"name": "X", "repeat_enabled": False, "repeat_type": "weekly", "repeat_weekday": 99})
         self.assertTrue(ok["ok"], ok["errors"])
 
+    def test_rewards_and_special_loot(self):
+        ok = _val({"name": "X", "rewards": [{"type": "experience", "amount": 100}, {"type": "item", "item_id": "ring"}],
+                   "special_loot": [{"item_id": "relic", "source": "selected_mobs", "chance": 5, "min_count": 1, "max_count": 2}]})
+        self.assertTrue(ok["ok"], ok["errors"])
+        bad = _val({"name": "X", "rewards": [{"type": "teleport_cash", "amount": -5}],
+                    "special_loot": [{"item_id": "x", "source": "from_air", "chance": 150, "min_count": 5, "max_count": 1}]})
+        self.assertFalse(bad["ok"])
+        joined = " ".join(bad["errors"])
+        self.assertIn("Награда 1", joined)
+        self.assertIn("Особая добыча 1", joined)
+
 
 if __name__ == "__main__":
     unittest.main()

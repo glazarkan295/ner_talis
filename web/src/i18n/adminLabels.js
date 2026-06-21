@@ -201,6 +201,16 @@ export const WORLD_EVENT_TYPE = {
 export const EVENT_REPEAT_TYPE = {
   none: "Не повторять", weekly: "Каждую неделю", monthly: "Каждый месяц", yearly: "Каждый год",
 };
+export const EVENT_REWARD_TYPE = {
+  experience: "Опыт", coins: "Монеты", item: "Предмет", resource: "Ресурс", effect: "Эффект",
+  achievement: "Достижение", special_loot: "Особая добыча", temp_buff: "Временный бонус",
+  temp_debuff: "Временный дебаф", event_shop: "Доступ к магазину события", special_location: "Доступ к локации",
+};
+export const SPECIAL_LOOT_SOURCE = {
+  all_mobs: "Из всех мобов", selected_mobs: "Из выбранных мобов", all_events: "Из всех событий",
+  selected_events: "Из выбранных событий", locations: "В выбранных локациях", search: "При поиске",
+  battle: "При победе в бою", chest: "Из сундука", quest: "При завершении задания",
+};
 
 // --- Действия аудита (частые; код доступен в подсказке/тех-блоке) -----------
 export const ACTION_LABEL = {

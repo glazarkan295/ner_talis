@@ -54,6 +54,17 @@ MAX_WORLD_MULTIPLIER = 5.0
 # Типы повтора события (ТЗ §4.2): не только раз в год.
 REPEAT_TYPES = ("none", "weekly", "monthly", "yearly")
 
+# Типы наград мирового события (ТЗ §4.3).
+REWARD_TYPES = (
+    "experience", "coins", "item", "resource", "effect", "achievement",
+    "special_loot", "temp_buff", "temp_debuff", "event_shop", "special_location",
+)
+# Источники особой добычи события (ТЗ §4.4).
+SPECIAL_LOOT_SOURCES = (
+    "all_mobs", "selected_mobs", "all_events", "selected_events", "locations",
+    "search", "battle", "chest", "quest",
+)
+
 _store = EntityStore(
     env_var="WORLD_EVENTS_PATH",
     default_rel="data/world_events.json",
@@ -142,6 +153,38 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             val = _num(data.get(key))
             if val is not None and (val < 0 or val > 23):
                 errors.append(f"Час в «{key}» должен быть 0–23.")
+
+    # Награды события (ТЗ §4.3).
+    rewards = data.get("rewards")
+    if isinstance(rewards, list):
+        for i, row in enumerate(rewards, 1):
+            if not isinstance(row, dict):
+                errors.append(f"Награда {i}: неверный формат.")
+                continue
+            rtype = str(row.get("type") or "").strip()
+            if rtype and rtype not in REWARD_TYPES:
+                errors.append(f"Награда {i}: неизвестный тип «{rtype}».")
+            amt = _num(row.get("amount"))
+            if amt is not None and amt < 0:
+                errors.append(f"Награда {i}: количество не может быть отрицательным.")
+
+    # Особая добыча события (ТЗ §4.4).
+    special_loot = data.get("special_loot")
+    if isinstance(special_loot, list):
+        for i, row in enumerate(special_loot, 1):
+            if not isinstance(row, dict):
+                errors.append(f"Особая добыча {i}: неверный формат.")
+                continue
+            source = str(row.get("source") or "").strip()
+            if source and source not in SPECIAL_LOOT_SOURCES:
+                errors.append(f"Особая добыча {i}: неизвестный источник «{source}».")
+            chance = _num(row.get("chance"))
+            if chance is not None and (chance < 0 or chance > 100):
+                errors.append(f"Особая добыча {i}: шанс должен быть 0–100.")
+            mn = _num(row.get("min_count"))
+            mx = _num(row.get("max_count"))
+            if mn is not None and mx is not None and mn > mx:
+                errors.append(f"Особая добыча {i}: мин. количество больше макс.")
 
     if not str(data.get("start_message") or "").strip():
         warnings.append("Нет сообщения о начале события.")

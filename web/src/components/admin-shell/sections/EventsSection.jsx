@@ -7,7 +7,7 @@ import {
   fetchEvents,
   updateEvent,
 } from "../../../api/adminCommunityApi.js";
-import { tr, EVENT_REPEAT_TYPE, WORLD_EVENT_TYPE } from "../../../i18n/adminLabels.js";
+import { tr, EVENT_REPEAT_TYPE, WORLD_EVENT_TYPE, EVENT_REWARD_TYPE, SPECIAL_LOOT_SOURCE } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 
 const STATUS_TONE = { active: "ntv2-badge-owner", finished: "ntv2-badge-owner", disabled: "ntv2-badge-danger", scheduled: "ntv2-badge-error" };
@@ -20,6 +20,8 @@ const EMPTY_EVENT = {
   repeat_month: "", repeat_start_hour: "", repeat_end_hour: "",
   exp_multiplier: "", drop_multiplier: "", coin_multiplier: "",
   start_message: "", end_message: "",
+  // Награды (§4.3) и особая добыча (§4.4).
+  rewards: [], special_loot: [],
 };
 
 function Field({ label, children }) {
@@ -140,6 +142,46 @@ export function EventsSection({ guarded, hasPerm }) {
           <Field label="Сообщение о начале"><textarea rows={2} value={d.start_message} disabled={disabled} onChange={(e) => set("start_message", e.target.value)} /></Field>
           <Field label="Сообщение о завершении"><textarea rows={2} value={d.end_message} disabled={disabled} onChange={(e) => set("end_message", e.target.value)} /></Field>
           <Field label="Изображение (URL)"><input value={d.image} disabled={disabled} onChange={(e) => set("image", e.target.value)} /></Field>
+
+          {/* Награды (§4.3) */}
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Награды ({(d.rewards || []).length})</h4>
+            <div className="ntv2-list">
+              {(d.rewards || []).map((row, i) => {
+                const upd = (patch) => set("rewards", d.rewards.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+                return (
+                  <div className="ntv2-list-row" key={i}>
+                    <select value={row.type || ""} disabled={disabled} onChange={(e) => upd({ type: e.target.value })}>{(meta.rewardTypes || []).map((x) => <option key={x} value={x}>{tr(EVENT_REWARD_TYPE, x)}</option>)}</select>
+                    <input type="number" style={{ width: 110 }} placeholder="кол-во" value={row.amount || ""} disabled={disabled} onChange={(e) => upd({ amount: e.target.value })} />
+                    <input className="ntv2-mono" placeholder="item_id/цель" value={row.item_id || ""} disabled={disabled} onChange={(e) => upd({ item_id: e.target.value })} />
+                    {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => set("rewards", d.rewards.filter((_, idx) => idx !== i))}>×</button> : null}
+                  </div>
+                );
+              })}
+            </div>
+            {!disabled ? <button type="button" className="ntv2-btn" style={{ marginTop: 8 }} onClick={() => set("rewards", [...(d.rewards || []), { type: (meta.rewardTypes || ["experience"])[0], amount: "", item_id: "" }])}>＋ Награда</button> : null}
+          </div>
+
+          {/* Особая добыча события (§4.4) */}
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Особая добыча ({(d.special_loot || []).length})</h4>
+            <div className="ntv2-list">
+              {(d.special_loot || []).map((row, i) => {
+                const upd = (patch) => set("special_loot", d.special_loot.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+                return (
+                  <div className="ntv2-list-row" key={i}>
+                    <input className="ntv2-mono" placeholder="item_id" value={row.item_id || ""} disabled={disabled} onChange={(e) => upd({ item_id: e.target.value })} />
+                    <select value={row.source || ""} disabled={disabled} onChange={(e) => upd({ source: e.target.value })}><option value="">источник</option>{(meta.specialLootSources || []).map((x) => <option key={x} value={x}>{tr(SPECIAL_LOOT_SOURCE, x)}</option>)}</select>
+                    <input type="number" style={{ width: 80 }} title="шанс %" value={row.chance || ""} disabled={disabled} onChange={(e) => upd({ chance: e.target.value })} />
+                    <input type="number" style={{ width: 70 }} title="мин" value={row.min_count || ""} disabled={disabled} onChange={(e) => upd({ min_count: e.target.value })} />
+                    <input type="number" style={{ width: 70 }} title="макс" value={row.max_count || ""} disabled={disabled} onChange={(e) => upd({ max_count: e.target.value })} />
+                    {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => set("special_loot", d.special_loot.filter((_, idx) => idx !== i))}>×</button> : null}
+                  </div>
+                );
+              })}
+            </div>
+            {!disabled ? <button type="button" className="ntv2-btn" style={{ marginTop: 8 }} onClick={() => set("special_loot", [...(d.special_loot || []), { item_id: "", source: "selected_mobs", chance: "", min_count: 1, max_count: 1 }])}>＋ Особая добыча</button> : null}
+          </div>
         </div>
 
         {v ? (
