@@ -57,6 +57,13 @@ class WorldActionRequest(BaseModel):
     reason: str = ""
 
 
+class WorldImportRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    kinds: list[str] = Field(default_factory=list)
+    overwrite: bool = False
+    reason: str = ""
+
+
 class MobTestBattleRequest(BaseModel):
     token: str | None = Field(default=None, min_length=16)
     player: dict[str, Any] = Field(default_factory=dict)
@@ -151,6 +158,30 @@ def create_admin_world_router(get_storage) -> APIRouter:
             "mobBehaviorTypes": list(registry.MOB_BEHAVIOR_TYPES),
             "mobResistTypes": list(registry.MOB_RESIST_TYPES),
         }
+
+    @router.post("/import")
+    def import_existing(payload: WorldImportRequest, request: Request) -> dict[str, Any]:
+        # Импорт-миграция существующего статического контента в конструкторы
+        # (ТЗ §3). Объявлено ДО /{kind}, иначе POST перехватит create(kind=import).
+        # Публикует контент → опасное, гейт world.publish; аудируется.
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_WORLD_PUBLISH)
+        from services import constructor_import
+
+        result = run_admin_operation(
+            session=session,
+            action="world.import_existing",
+            func=lambda: constructor_import.import_all(
+                payload.kinds or None, overwrite=bool(payload.overwrite), actor=_actor(session)
+            ),
+            target_type="constructor_import",
+            target_id=(",".join(payload.kinds) or "all"),
+            after_func=lambda r: {"reports": r.get("reports")},
+            reason=payload.reason,
+            details={"overwrite": bool(payload.overwrite), "kinds": payload.kinds},
+        )
+        return result
 
     @router.get("/{kind}")
     def list_kind(kind: str, request: Request, token: str | None = Query(default=None, min_length=16), status: str | None = None) -> dict[str, Any]:

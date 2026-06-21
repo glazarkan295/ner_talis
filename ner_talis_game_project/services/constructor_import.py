@@ -1,0 +1,202 @@
+"""Импорт-миграция существующего статического контента в реестры конструкторов.
+
+Цель (ТЗ §3): админ должен видеть в конструкторах уже существующие игровые
+сущности (предметы, мобы, …), а не только новые V2-черновики. Этот слой читает
+живые игровые данные и заводит их как ОПУБЛИКОВАННЫЕ записи в сторах
+конструкторов.
+
+Принципы:
+* идемпотентность — повторный запуск не плодит дубликаты (пропускает уже
+  существующие id);
+* аддитивность — живые data/*.json не трогаются, читаются только на чтение;
+* безопасность — по умолчанию (overwrite=False) НЕ перетираем правки админа;
+  с overwrite=True обновляются только ранее импортированные записи
+  (data.imported is True), рукотворные записи никогда не трогаются;
+* маркировка — у импортированных записей data.imported=True + import_source +
+  source_id, чтобы отличать их и переимпортировать безопасно.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_]{1,63}$")
+
+
+def safe_constructor_id(raw: Any) -> str:
+    """Привести исходный id к формату реестра (латиница/цифры/подчёркивание)."""
+    text = re.sub(r"[^a-z0-9_]+", "_", str(raw or "").strip().lower())
+    text = re.sub(r"_+", "_", text).strip("_")
+    return text if _ID_RE.match(text) else ""
+
+
+def _enum_value(value: Any) -> Any:
+    return getattr(value, "value", value)
+
+
+def _was_imported(existing: dict[str, Any]) -> bool:
+    return bool((existing.get("data") or {}).get("imported"))
+
+
+# --- Предметы --------------------------------------------------------------
+def _map_item(definition: dict[str, Any], source_id: str) -> dict[str, Any]:
+    max_stack = definition.get("max_stack")
+    stackable = definition.get("stackable")
+    if stackable is None:
+        try:
+            stackable = int(max_stack) > 1
+        except (TypeError, ValueError):
+            stackable = False
+    return {
+        "name": definition.get("name") or definition.get("name_ru") or source_id,
+        "short_description": definition.get("short_description") or "",
+        "description": definition.get("description") or definition.get("desc") or "",
+        "category": definition.get("category") or "",
+        "item_type": definition.get("item_type") or definition.get("type") or "",
+        "quality": definition.get("quality") or "",
+        "price_buy": definition.get("price_buy") or definition.get("buy_price"),
+        "price_sell": definition.get("price_sell") or definition.get("sell_price"),
+        "stackable": bool(stackable),
+        "max_stack": max_stack,
+        "equip_slot": definition.get("equip_slot") or definition.get("slot") or "",
+        "icon": definition.get("icon") or definition.get("image") or "",
+        "imported": True,
+        "import_source": "item_registry",
+        "source_id": str(definition.get("id") or definition.get("item_id") or source_id),
+        "source_raw": definition,
+    }
+
+
+def import_items(*, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services.item_registry import load_all_item_definitions
+    from services import item_constructor_service as ics
+
+    store = ics.store()
+    created = updated = skipped = invalid = 0
+    for definition in load_all_item_definitions():
+        if not isinstance(definition, dict):
+            invalid += 1
+            continue
+        sid = safe_constructor_id(definition.get("id") or definition.get("item_id") or definition.get("name"))
+        if not sid:
+            invalid += 1
+            continue
+        data = _map_item(definition, sid)
+        existing = store.get(sid)
+        if existing is not None:
+            if overwrite and _was_imported(existing):
+                store.update(sid, data, actor=actor)
+                updated += 1
+            else:
+                skipped += 1
+            continue
+        store.create(sid, data, actor=actor)
+        try:
+            store.set_status(sid, ics.STATUS_PUBLISHED, actor=actor, force=True)
+        except Exception:
+            pass
+        created += 1
+    return {"kind": "item", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid}
+
+
+# --- Мобы ------------------------------------------------------------------
+def _map_mob_drop(loot: Any) -> list[dict[str, Any]]:
+    if not isinstance(loot, (list, tuple)):
+        return []
+    try:
+        from services.item_registry import get_item_definition_by_name
+    except Exception:
+        get_item_definition_by_name = None  # type: ignore[assignment]
+    rows: list[dict[str, Any]] = []
+    for entry in loot:
+        if not isinstance(entry, (list, tuple)) or len(entry) < 1:
+            continue
+        name = str(entry[0])
+        chance = entry[1] if len(entry) > 1 else 0
+        mn = entry[2] if len(entry) > 2 else 1
+        mx = entry[3] if len(entry) > 3 else mn
+        item_id = ""
+        if get_item_definition_by_name is not None:
+            try:
+                d = get_item_definition_by_name(name)
+                item_id = str((d or {}).get("id") or (d or {}).get("item_id") or "")
+            except Exception:
+                item_id = ""
+        rows.append({"item_id": item_id, "name": name, "chance": chance, "min_count": mn, "max_count": mx})
+    return rows
+
+
+_DAMAGE_TO_ATTACK = {"physical": "physical", "magic": "magical", "mixed": "mixed"}
+
+
+def _map_mob(template: dict[str, Any], source_id: str) -> dict[str, Any]:
+    damage_type = str(_enum_value(template.get("damage_type")) or "physical").lower()
+    hp_base = template.get("hp_base")
+    try:
+        hp = int(hp_base) if hp_base is not None else 30
+    except (TypeError, ValueError):
+        hp = 30
+    return {
+        "name": template.get("name") or source_id,
+        "type": str(template.get("biological_type") or "monster"),
+        "hp": hp,
+        "attack_type": _DAMAGE_TO_ATTACK.get(damage_type, "physical"),
+        "description": template.get("text") or "",
+        "role": str(template.get("role") or ""),
+        "skills": list(template.get("skills") or []),
+        "features": list(template.get("features") or []),
+        "drop": _map_mob_drop(template.get("loot")),
+        "imported": True,
+        "import_source": "battle_catalog",
+        "source_id": source_id,
+    }
+
+
+def import_mobs(*, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services.pve_battle_service import BATTLE_MOB_CATALOGS
+    from services import world_content_registry as wcr
+
+    created = updated = skipped = invalid = 0
+    seen: set[str] = set()
+    for catalog in BATTLE_MOB_CATALOGS.values():
+        if not isinstance(catalog, dict):
+            continue
+        for mob_key, template in catalog.items():
+            sid = safe_constructor_id(mob_key)
+            if not sid or sid in seen:
+                if sid:
+                    seen.add(sid)
+                else:
+                    invalid += 1
+                continue
+            seen.add(sid)
+            if not isinstance(template, dict):
+                invalid += 1
+                continue
+            data = _map_mob(template, sid)
+            existing = wcr.get_content(wcr.KIND_MOB, sid)
+            if existing is not None:
+                if overwrite and _was_imported(existing):
+                    wcr.update_content(wcr.KIND_MOB, sid, data, actor=actor)
+                    updated += 1
+                else:
+                    skipped += 1
+                continue
+            wcr.create_content(wcr.KIND_MOB, sid, data, actor=actor)
+            try:
+                wcr.set_status(wcr.KIND_MOB, sid, wcr.STATUS_PUBLISHED, actor=actor, force=True)
+            except Exception:
+                pass
+            created += 1
+    return {"kind": "mob", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid}
+
+
+# --- Оркестратор -----------------------------------------------------------
+IMPORTERS = {"item": import_items, "mob": import_mobs}
+
+
+def import_all(kinds: list[str] | None = None, *, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    selected = [k for k in (kinds or list(IMPORTERS)) if k in IMPORTERS]
+    reports = [IMPORTERS[k](overwrite=overwrite, actor=actor) for k in selected]
+    return {"ok": True, "reports": reports}

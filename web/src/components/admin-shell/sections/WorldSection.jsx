@@ -5,6 +5,7 @@ import {
   disableWorldItem,
   fetchWorldItems,
   fetchWorldMeta,
+  importExistingContent,
   mobTestBattle,
   previewWorldItem,
   publishWorldItem,
@@ -878,6 +879,19 @@ export function WorldSection({ guarded, hasPerm }) {
           {statuses.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         {can.create ? <button type="button" className="ntv2-btn ntv2-btn-primary" onClick={startCreate}>{KIND_NEW_LABEL[kind]}</button> : null}
+        {can.publish ? (
+          <button type="button" className="ntv2-btn" title="Загрузить существующие предметы и мобов из игры в конструкторы" onClick={() => setConfirm({
+            title: "Импортировать существующий контент?",
+            body: <p>Существующие предметы и мобы из игры будут добавлены в конструкторы как опубликованные записи (повторно — без дублей). Живые данные игры не меняются.</p>,
+            confirmLabel: "Импортировать",
+            run: async (reason) => {
+              const res = await guarded(() => importExistingContent(["item", "mob"], false, reason), "Импорт выполнен.");
+              await loadList();
+              const reports = res?.reports || [];
+              if (reports.length) window.alert(reports.map((r) => `${r.kind}: создано ${r.created}, пропущено ${r.skipped}`).join("\n"));
+            },
+          })}>Импортировать существующее</button>
+        ) : null}
       </div>
       {!items.length ? <p className="ntv2-hint">Пока нет объектов. {can.create ? "Создайте первый черновик." : ""}</p> : null}
       <div className="ntv2-list">
