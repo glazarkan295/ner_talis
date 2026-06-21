@@ -125,6 +125,16 @@ def create_admin_world_router(get_storage) -> APIRouter:
             "npcFunctions": list(registry.NPC_FUNCTIONS),
             "questGoalTypes": list(registry.QUEST_GOAL_TYPES),
             "raidTypes": list(registry.RAID_TYPES),
+            # Справочники расширенного конструктора локаций (для форм UI).
+            "zoneTypes": list(registry.ZONE_TYPES),
+            "resourceCategories": list(registry.RESOURCE_CATEGORIES),
+            "lootSources": list(registry.LOOT_SOURCES),
+            "weeklyLimitTypes": list(registry.WEEKLY_LIMIT_TYPES),
+            "rotationPeriodicity": list(registry.ROTATION_PERIODICITY),
+            "rotationSelectionModes": list(registry.ROTATION_SELECTION_MODES),
+            "redistributionModes": list(registry.REDISTRIBUTION_MODES),
+            "eventGroups": list(registry.EVENT_GROUPS),
+            "depletionTriggers": list(registry.DEPLETION_TRIGGERS),
         }
 
     @router.get("/{kind}")
