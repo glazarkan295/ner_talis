@@ -66,3 +66,11 @@ export function testRunWorldItem(kind, id) {
     body: JSON.stringify({}),
   });
 }
+
+// Тестовый бой моба (ТЗ §28): симуляция против эталонного игрока.
+export function mobTestBattle(id, { player = {}, count = 200 } = {}) {
+  return requestAdminJson(`/api/admin/v2/world/mob/${encodeURIComponent(id)}/test-battle`, {
+    method: "POST",
+    body: JSON.stringify({ player, count }),
+  });
+}

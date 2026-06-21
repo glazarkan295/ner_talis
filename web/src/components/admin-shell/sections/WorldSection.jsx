@@ -5,6 +5,7 @@ import {
   disableWorldItem,
   fetchWorldItems,
   fetchWorldMeta,
+  mobTestBattle,
   previewWorldItem,
   publishWorldItem,
   testRunWorldItem,
@@ -650,6 +651,7 @@ export function WorldSection({ guarded, hasPerm }) {
   const [refOptions, setRefOptions] = useState({ location: [], mob: [], npc: [] });
   const [preview, setPreview] = useState(null);
   const [testReport, setTestReport] = useState(null);
+  const [battleReport, setBattleReport] = useState(null);
 
   const can = useMemo(() => ({
     create: hasPerm("world.create_draft"),
@@ -659,6 +661,7 @@ export function WorldSection({ guarded, hasPerm }) {
     disable: hasPerm("world.disable"),
     archive: hasPerm("world.archive"),
     testRun: hasPerm("world.test_run"),
+    mobTestBattle: hasPerm("mob.test_battle"),
   }), [hasPerm]);
 
   const loadList = useCallback(async () => {
@@ -692,7 +695,12 @@ export function WorldSection({ guarded, hasPerm }) {
   const schema = SUBOBJECT_SCHEMAS[kind];
   const Form = FORM_BY_KIND[kind] || LocationForm;
 
-  function resetPanels() { setPreview(null); setTestReport(null); }
+  function resetPanels() { setPreview(null); setTestReport(null); setBattleReport(null); }
+
+  async function runMobBattle() {
+    const payload = await guarded(() => mobTestBattle(editing.id, { count: 300 }), "Тестовый бой проведён.");
+    if (payload?.report) setBattleReport(payload.report);
+  }
   function switchKind(k) { setKind(k); setEditing(null); setStatusFilter(""); resetPanels(); }
   function startCreate() { resetPanels(); setEditing({ id: "", data: { ...(EMPTY_BY_KIND[kind] || {}) }, status: "draft", validation: null, isNew: true }); }
   function openItem(item) { resetPanels(); setEditing({ id: item.id, data: { ...(EMPTY_BY_KIND[kind] || {}), ...(item.data || {}) }, status: item.status, validation: item.validation, isNew: false }); }
@@ -768,6 +776,7 @@ export function WorldSection({ guarded, hasPerm }) {
           {!editing.isNew && can.validate ? <button type="button" className="ntv2-btn" onClick={runValidate}>Проверить</button> : null}
           {!editing.isNew ? <button type="button" className="ntv2-btn" onClick={runPreview}>Предпросмотр</button> : null}
           {!editing.isNew && can.testRun ? <button type="button" className="ntv2-btn" onClick={runTestRun}>Тестовый проход</button> : null}
+          {!editing.isNew && kind === "mob" && can.mobTestBattle ? <button type="button" className="ntv2-btn" onClick={runMobBattle}>Тестовый бой</button> : null}
           {!editing.isNew && can.publish ? (
             <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({
               title: "Опубликовать в игру?", dangerous: true, confirmLabel: "Опубликовать",
@@ -805,6 +814,22 @@ export function WorldSection({ guarded, hasPerm }) {
                 </div>
               ))}
             </div>
+          </div>
+        ) : null}
+
+        {battleReport ? (
+          <div className={`ntv2-panel ${battleReport.warnings?.length ? "ntv2-danger-zone" : ""}`}>
+            <h4 className="ntv2-subhead">Тестовый бой ({battleReport.simulations} симуляций)</h4>
+            <div className="ntv2-list">
+              <div className="ntv2-list-row"><b>Шанс победы</b><span>{Math.round(battleReport.winRate * 100)}%</span></div>
+              <div className="ntv2-list-row"><b>Шанс смерти</b><span>{Math.round(battleReport.deathRate * 100)}%</span></div>
+              <div className="ntv2-list-row"><b>Средняя длительность</b><span>{battleReport.avgTurns} ходов</span></div>
+              <div className="ntv2-list-row"><b>Урон моба / ход</b><span>{battleReport.avgMobDamagePerTurn}</span></div>
+              <div className="ntv2-list-row"><b>Урон игрока / ход</b><span>{battleReport.avgPlayerDamagePerTurn}</span></div>
+              <div className="ntv2-list-row"><b>Средний опыт / монеты</b><span>{battleReport.avgExp} / {battleReport.avgCoins}</span></div>
+            </div>
+            {(battleReport.warnings || []).map((w, i) => <p className="ntv2-error" key={i}>⚠️ {w}</p>)}
+            <TechnicalData label="Тестовый бой (данные)" value={battleReport} />
           </div>
         ) : null}
 

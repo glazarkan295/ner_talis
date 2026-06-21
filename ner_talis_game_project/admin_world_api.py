@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from services.admin_operation import record_admin_operation, run_admin_operation
 from services.admin_panel_service import require_admin_session
 from services.admin_rbac import (
+    PERM_MOB_TEST_BATTLE,
     PERM_WORLD_ARCHIVE,
     PERM_WORLD_CREATE_DRAFT,
     PERM_WORLD_DISABLE,
@@ -53,6 +54,13 @@ class WorldStatusRequest(BaseModel):
 
 class WorldActionRequest(BaseModel):
     token: str | None = Field(default=None, min_length=16)
+    reason: str = ""
+
+
+class MobTestBattleRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    player: dict[str, Any] = Field(default_factory=dict)
+    count: int = 200
     reason: str = ""
 
 
@@ -350,6 +358,30 @@ def create_admin_world_router(get_storage) -> APIRouter:
         return _lifecycle(get_storage(), request, kind, content_id, payload,
                           perm=PERM_WORLD_ARCHIVE, action="world.archive",
                           target_status=registry.STATUS_ARCHIVED)
+
+    @router.post("/mob/{content_id}/test-battle")
+    def mob_test_battle(content_id: str, payload: MobTestBattleRequest, request: Request) -> dict[str, Any]:
+        # Симуляция боя моба против эталонного игрока (ТЗ §28). Только чтение —
+        # профиль игрока не трогается; результат пишется в аудит (§32).
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_MOB_TEST_BATTLE)
+        obj = registry.get_content(registry.KIND_MOB, content_id)
+        if obj is None:
+            raise HTTPException(status_code=404, detail="Моб не найден.")
+        from services.mob_balance_service import simulate_battle
+
+        report = simulate_battle(obj.get("data") or {}, payload.player, count=payload.count)
+        record_admin_operation(
+            session=session,
+            action="mob.test_battle",
+            target_type=registry.KIND_MOB,
+            target_id=content_id,
+            after={"winRate": report["winRate"], "avgTurns": report["avgTurns"], "warnings": len(report["warnings"])},
+            reason=payload.reason,
+            details={"simulations": report["simulations"]},
+        )
+        return {"ok": True, "report": report}
 
     def _lifecycle(storage, request, kind, content_id, payload, *, perm, action, target_status) -> dict[str, Any]:
         session = _session(storage, request, payload.token)
