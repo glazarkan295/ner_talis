@@ -1339,6 +1339,13 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
     catalog = mob_catalog(reward_location_id)
     xp_total = 0
     loot_lines: list[str] = []
+    # Конструктор локаций §18/§22/§23: при победе списываем недельный запас
+    # мобов и дропа. Активно только при включённом WORLD_CONSTRUCTOR_LIVE и для
+    # конструкторных боёв (враг несёт mob_id) — легаси-враги дают no-op.
+    try:
+        from services import location_runtime as _loc_rt
+    except Exception:
+        _loc_rt = None
     for enemy in enemies:
         rank = enemy_rank(enemy)
         level = max(1, safe_int(enemy.get("level"), 1))
@@ -1360,8 +1367,23 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
                 if add_result.added > 0:
                     note = inventory_add_result_notice(add_result, item_name)
                     loot_lines.append(f"{item_name} ×{add_result.added}{note}")
+                    if _loc_rt is not None and item_id:
+                        try:
+                            _loc_rt.consume_for_item(reward_location_id, item_id, add_result.added)
+                        except Exception:
+                            pass
                 elif add_result.discarded > 0:
                     loot_lines.append(f"{item_name}: не поместилось ×{add_result.discarded}")
+    # Списываем побеждённых мобов из недельного запаса локации (по mob_id врага).
+    if _loc_rt is not None:
+        for enemy in enemies:
+            mob_id = enemy.get("mob_id") or enemy.get("source_mob_id")
+            if mob_id:
+                try:
+                    _loc_rt.consume_for_mob(reward_location_id, str(mob_id), 1)
+                except Exception:
+                    pass
+
     group_count = max(1, len(enemies))
     xp_total = math.ceil(xp_total * max(0.55, 1 - ((group_count - 1) * 0.05)))
     # Global balance change: experience received from killing mobs is reduced by 20%.

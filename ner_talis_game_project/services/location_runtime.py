@@ -378,6 +378,107 @@ def rolled_rotation(location_id: str, rotation: dict[str, Any], *, week: str | N
     return result
 
 
+# --- Подключение к живой игре (флаг + overlay пустой локации) ---------------
+def live_enabled() -> bool:
+    """Включён ли живой слой конструктора (env WORLD_CONSTRUCTOR_LIVE).
+
+    По умолчанию ВЫКЛ — игра работает строго по старой логике, конструктор не
+    влияет на поиск/бой. Включается осознанно после наполнения контента.
+    """
+    return _truthy(os.getenv("WORLD_CONSTRUCTOR_LIVE"))
+
+
+def published_empty_events(location_id: str) -> list[dict[str, Any]]:
+    """Опубликованные «события пустой локации» для локации (ТЗ §31)."""
+    location_id = str(location_id)
+    out = []
+    for env in registry.list_content(registry.KIND_LOCATION_EMPTY_EVENT, status=_PUBLISHED):
+        if str((env.get("data") or {}).get("location") or "") == location_id:
+            out.append(env)
+    return out
+
+
+def location_limit_depletion(location_id: str, *, week: str | None = None) -> list[dict[str, Any]]:
+    """[{id, depleted}] по опубликованным недельным лимитам локации."""
+    week = week or current_week_key()
+    rows = []
+    for limit in published_limits(location_id):
+        total = limit_total(limit)
+        left = remaining(location_id, limit, week=week)
+        rows.append({"id": limit.get("id"), "depleted": is_depleted(limit, left, total)})
+    return rows
+
+
+def pick_empty_text(empty_event: dict[str, Any], rng: random.Random | None = None) -> str:
+    """Текст события пустой локации (несколько вариантов §33)."""
+    data = empty_event.get("data") or empty_event
+    texts = data.get("texts")
+    if isinstance(texts, list):
+        options = [str(t) for t in texts if str(t).strip()]
+        if options:
+            return (rng or random.Random()).choice(options)
+    return str(data.get("player_text") or "Вы ничего не нашли — кажется, за эту неделю здесь уже всё забрали.")
+
+
+def roll_empty_overlay(location_id: str, *, rng: random.Random | None = None, week: str | None = None) -> str | None:
+    """Решение overlay'я «пустой локации» для поиска (ТЗ §31–§34).
+
+    Возвращает текст, если: живой слой включён, у локации есть опубликованное
+    событие пустой локации и недельные лимиты, истощено больше порога событий и
+    сработал шанс события. Иначе None — поиск идёт по обычной логике.
+    """
+    if not live_enabled():
+        return None
+    empties = published_empty_events(location_id)
+    if not empties:
+        return None
+    rows = location_limit_depletion(location_id, week=week)
+    if not rows:
+        return None
+    empty = empties[0]
+    data = empty.get("data") or {}
+    min_pct = _num(data.get("min_percent_depleted"), 50.0) or 50.0
+    if not should_show_empty_event(rows, min_percent=min_pct):
+        return None
+    rng = rng or random.Random()
+    chance = _num(data.get("chance"), 100.0)
+    if chance is not None and rng.uniform(0, 100) > chance:
+        return None
+    return pick_empty_text(empty, rng)
+
+
+def consume_for_item(location_id: str, item_id: str, amount: int, *, week: str | None = None) -> int | None:
+    """Списать выданный предмет из подходящего недельного лимита (ТЗ §23/§24).
+
+    Ищет опубликованный лимит локации с linked_object==item_id (ресурс/предмет/
+    трофей/дроп) и списывает из него. None — подходящего лимита нет.
+    """
+    item_id = str(item_id or "").strip()
+    if not item_id or not live_enabled():
+        return None
+    item_types = {"resource", "item", "trophy", "mob_drop", "event_item", "guild_resource"}
+    for limit in published_limits(location_id):
+        data = limit.get("data") or {}
+        if str(data.get("limit_type") or "") in item_types and str(data.get("linked_object") or "") == item_id:
+            taken, _left = consume(location_id, limit, amount, week=week)
+            return taken
+    return None
+
+
+def consume_for_mob(location_id: str, mob_id: str, amount: int, *, week: str | None = None) -> int | None:
+    """Списать побеждённых мобов из недельного запаса локации (ТЗ §18/§22)."""
+    mob_id = str(mob_id or "").strip()
+    if not mob_id or not live_enabled():
+        return None
+    mob_types = {"mob", "mob_group", "rare_mob", "boss"}
+    for limit in published_limits(location_id):
+        data = limit.get("data") or {}
+        if str(data.get("limit_type") or "") in mob_types and str(data.get("linked_object") or "") == mob_id:
+            taken, _left = consume(location_id, limit, amount, week=week)
+            return taken
+    return None
+
+
 # --- Выбор события (взвешенный) --------------------------------------------
 def weighted_choice(options: list[dict[str, Any]], rng: random.Random | None = None) -> dict[str, Any] | None:
     """Выбрать один вариант по полю ``chance`` (вес). rng инъектируется."""

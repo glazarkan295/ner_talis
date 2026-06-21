@@ -1445,6 +1445,25 @@ def complete_active_timer(storage: Any, player: dict[str, Any], timer_id: str | 
         storage.update_player(player)
         return LocationResponse("\n".join(lines), small_plateau_buttons(), "small_plateau")
 
+    # Overlay «пустой локации» (Конструктор локаций §31–§34): если живой слой
+    # включён и конструктор сообщает, что локация истощена за эту неделю —
+    # вместо обычной находки игрок получает атмосферное «ничего не нашли».
+    # Бой/ловушка/малое плато выше уже обработаны и сюда не доходят.
+    try:
+        from services import location_runtime
+
+        empty_text = location_runtime.roll_empty_overlay(location_id, rng=rng)
+    except Exception:
+        empty_text = None
+    if empty_text:
+        player["active_event"] = None
+        storage.update_player(player)
+        return LocationResponse(
+            f"✅ Поиск завершён.\n📍 Локация: {location_name(location_id)}\n\n{empty_text}",
+            location_buttons(location_id),
+            location_id,
+        )
+
     if isinstance(event, dict):
         ensure_event_id(event, fallback=f"{timer.get('id')}_event")
     player["active_event"] = event
