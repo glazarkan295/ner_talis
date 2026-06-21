@@ -13,6 +13,7 @@ import {
   unstuckPlayer,
 } from "../../../api/adminV2Api.js";
 import { loadCatalog } from "../../../api/adminApi.js";
+import { tr, FINE_STATUS } from "../../../i18n/adminLabels.js";
 import {
   fetchPlayerAchievements,
   grantAchievementToPlayer,
@@ -270,7 +271,7 @@ export function PlayerCard({ gameId, guarded, hasPerm, onBack, onDeleted }) {
                 <div className="ntv2-list-row" key={f.id}>
                   <span>{f.source || "штраф"}</span>
                   <span className="ntv2-badge">{f.amount} меди</span>
-                  <span className="ntv2-hint">день {f.day} · {f.status}</span>
+                  <span className="ntv2-hint">день {f.day} · {tr(FINE_STATUS, f.status)}</span>
                 </div>
               ))}
             </div>

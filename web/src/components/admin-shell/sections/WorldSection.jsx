@@ -14,6 +14,7 @@ import {
   validateWorldItem,
 } from "../../../api/adminWorldApi.js";
 import { loadCatalog } from "../../../api/adminApi.js";
+import { trOption } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { TechnicalData } from "../TechnicalData.jsx";
 
@@ -143,7 +144,7 @@ function LocationForm({ value, onChange, meta, disabled }) {
     <div className="ntv2-world-form">
       <Field label="Название"><input value={value.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
       <div className="ntv2-form-row">
-        <Field label="Тип"><select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.locationTypes || []).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+        <Field label="Тип"><select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.locationTypes || []).map((t) => <option key={t} value={t}>{trOption("locationTypes", t)}</option>)}</select></Field>
         <Field label="Опасность"><input value={value.danger} disabled={disabled} onChange={(e) => set("danger", e.target.value)} /></Field>
         <Field label="Мин. уровень"><input type="number" value={value.min_level} disabled={disabled} onChange={(e) => set("min_level", e.target.value)} /></Field>
       </div>
@@ -222,7 +223,7 @@ function MobForm({ value, onChange, meta, disabled }) {
     <div className="ntv2-world-form">
       <div className="ntv2-form-row">
         <Field label="Название"><input value={value.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
-        <Field label="Тип"><select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.mobTypes || []).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+        <Field label="Тип"><select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.mobTypes || []).map((t) => <option key={t} value={t}>{trOption("mobTypes", t)}</option>)}</select></Field>
       </div>
       <div className="ntv2-form-row">{num("min_level", "Ур. от")}{num("max_level", "Ур. до")}{num("hp", "HP")}{num("spawn_chance", "Шанс появления %")}</div>
       <div className="ntv2-form-row">{num("phys_damage", "Физ. урон")}{num("mag_damage", "Маг. урон")}{num("accuracy", "Точность")}{num("evasion", "Уклонение")}</div>
@@ -250,7 +251,7 @@ function ButtonForm({ value, onChange, meta, disabled, locationOptions }) {
       <Field label="Текст кнопки"><input value={value.text} disabled={disabled} onChange={(e) => set("text", e.target.value)} /></Field>
       <div className="ntv2-form-row">
         <Field label="Локация-владелец"><LocationSelect value={value.owner_location} onChange={(v) => set("owner_location", v)} options={locationOptions} disabled={disabled} /></Field>
-        <Field label="Действие"><select value={value.action} disabled={disabled} onChange={(e) => set("action", e.target.value)}>{(meta.buttonActions || []).map((a) => <option key={a} value={a}>{a}</option>)}</select></Field>
+        <Field label="Действие"><select value={value.action} disabled={disabled} onChange={(e) => set("action", e.target.value)}>{(meta.buttonActions || []).map((a) => <option key={a} value={a}>{trOption("buttonActions", a)}</option>)}</select></Field>
         <Field label="Порядок"><input type="number" value={value.order} disabled={disabled} onChange={(e) => set("order", e.target.value)} /></Field>
       </div>
       {value.action === "goto_location" ? (
@@ -280,7 +281,7 @@ function TransitionForm({ value, onChange, meta, disabled, locationOptions }) {
         <Field label="В локацию"><LocationSelect value={value.to_location} onChange={(v) => set("to_location", v)} options={locationOptions} disabled={disabled} /></Field>
       </div>
       <div className="ntv2-form-row">
-        <Field label="Условие доступа"><select value={value.access_condition} disabled={disabled} onChange={(e) => set("access_condition", e.target.value)}>{(meta.accessConditions || []).map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
+        <Field label="Условие доступа"><select value={value.access_condition} disabled={disabled} onChange={(e) => set("access_condition", e.target.value)}>{(meta.accessConditions || []).map((c) => <option key={c} value={c}>{trOption("accessConditions", c)}</option>)}</select></Field>
         <Field label="Стоимость"><input type="number" value={value.cost} disabled={disabled} onChange={(e) => set("cost", e.target.value)} /></Field>
       </div>
       <div className="ntv2-form-row">
@@ -309,7 +310,7 @@ function EventForm({ value, onChange, meta, disabled, refOptions }) {
     <div className="ntv2-world-form">
       <div className="ntv2-form-row">
         <Field label="Название"><input value={value.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
-        <Field label="Тип"><select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.eventTypes || []).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+        <Field label="Тип"><select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.eventTypes || []).map((t) => <option key={t} value={t}>{trOption("eventTypes", t)}</option>)}</select></Field>
       </div>
       <Field label="Локация"><RefSelect value={value.location} onChange={(v) => set("location", v)} options={refOptions.location} disabled={disabled} /></Field>
       <Field label="Текст игроку"><textarea rows={3} value={value.text} disabled={disabled} onChange={(e) => set("text", e.target.value)} /></Field>
@@ -319,7 +320,7 @@ function EventForm({ value, onChange, meta, disabled, refOptions }) {
         <Field label="Ур. от"><input type="number" value={value.min_level} disabled={disabled} onChange={(e) => set("min_level", e.target.value)} /></Field>
         <Field label="Ур. до"><input type="number" value={value.max_level} disabled={disabled} onChange={(e) => set("max_level", e.target.value)} /></Field>
       </div>
-      <Field label="Результат"><select value={value.result} disabled={disabled} onChange={(e) => set("result", e.target.value)}>{(meta.eventResultTypes || []).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+      <Field label="Результат"><select value={value.result} disabled={disabled} onChange={(e) => set("result", e.target.value)}>{(meta.eventResultTypes || []).map((t) => <option key={t} value={t}>{trOption("eventResultTypes", t)}</option>)}</select></Field>
       <div className="ntv2-form-row">
         <Field label="Выдаваемый предмет (item_id)"><input className="ntv2-mono" value={value.given_item} disabled={disabled} onChange={(e) => set("given_item", e.target.value)} /></Field>
         <Field label="Требуемый предмет"><input className="ntv2-mono" value={value.required_item} disabled={disabled} onChange={(e) => set("required_item", e.target.value)} /></Field>
@@ -352,7 +353,7 @@ function NpcForm({ value, onChange, meta, disabled, refOptions }) {
         <h4 className="ntv2-subhead">Функции</h4>
         <div className="ntv2-form-row" style={{ gap: 12 }}>
           {(meta.npcFunctions || []).map((fn) => (
-            <label className="ntv2-check" key={fn}><input type="checkbox" checked={fns.includes(fn)} disabled={disabled} onChange={() => toggleFn(fn)} /> {fn}</label>
+            <label className="ntv2-check" key={fn}><input type="checkbox" checked={fns.includes(fn)} disabled={disabled} onChange={() => toggleFn(fn)} /> {trOption("npcFunctions", fn)}</label>
           ))}
         </div>
       </div>
@@ -376,7 +377,7 @@ function QuestForm({ value, onChange, meta, disabled, refOptions }) {
         <Field label="Локация"><RefSelect value={value.location} onChange={(v) => set("location", v)} options={refOptions.location} disabled={disabled} /></Field>
       </div>
       <div className="ntv2-form-row">
-        <Field label="Цель"><select value={value.goal_type} disabled={disabled} onChange={(e) => set("goal_type", e.target.value)}>{(meta.questGoalTypes || []).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+        <Field label="Цель"><select value={value.goal_type} disabled={disabled} onChange={(e) => set("goal_type", e.target.value)}>{(meta.questGoalTypes || []).map((t) => <option key={t} value={t}>{trOption("questGoalTypes", t)}</option>)}</select></Field>
         <Field label="Объект цели">{targetControl}</Field>
       </div>
       <Field label="Награда (описание / JSON)"><textarea rows={2} value={value.reward} disabled={disabled} onChange={(e) => set("reward", e.target.value)} /></Field>
@@ -394,7 +395,7 @@ function RaidForm({ value, onChange, meta, disabled, refOptions }) {
     <div className="ntv2-world-form">
       <div className="ntv2-form-row">
         <Field label="Название"><input value={value.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
-        <Field label="Тип рейда"><select value={value.raid_type} disabled={disabled} onChange={(e) => set("raid_type", e.target.value)}>{(meta.raidTypes || []).map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+        <Field label="Тип рейда"><select value={value.raid_type} disabled={disabled} onChange={(e) => set("raid_type", e.target.value)}>{(meta.raidTypes || []).map((t) => <option key={t} value={t}>{trOption("raidTypes", t)}</option>)}</select></Field>
       </div>
       <div className="ntv2-form-row">
         <Field label="Локация входа"><RefSelect value={value.entry_location} onChange={(v) => set("entry_location", v)} options={refOptions.location} disabled={disabled} /></Field>
@@ -620,7 +621,7 @@ function GenericForm({ value, onChange, meta, refOptions, disabled, schema }) {
           control = (
             <select value={value[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)}>
               <option value="">— не выбрано —</option>
-              {(meta[f.metaKey] || []).map((o) => <option key={o} value={o}>{o}</option>)}
+              {(meta[f.metaKey] || []).map((o) => <option key={o} value={o}>{trOption(f.metaKey, o)}</option>)}
             </select>
           );
         } else if (f.type === "ref") {
