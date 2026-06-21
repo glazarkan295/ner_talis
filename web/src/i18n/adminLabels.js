@@ -292,6 +292,18 @@ export const OPTION_LABELS = {
   raidTypes: {
     world_boss: "Мировой босс", dungeon: "Подземелье", expedition: "Экспедиция", event_raid: "Событийный рейд",
   },
+  npcKinds: {
+    regular: "Обычный", quest_giver: "Квестодатель", questioner: "С вопросами",
+    trader: "Торговец", special: "Особый",
+  },
+  eventOutcomeTypes: {
+    battle: "Бой", trap: "Ловушка", resource: "Ресурс", item: "Предмет", nothing: "Ничего",
+    battle_or_nothing: "Бой или ничего", resource_or_battle: "Ресурс или бой",
+    trap_or_resource: "Ловушка или ресурс", special: "Особое событие", dialog: "Диалог с NPC",
+    question: "Вопрос с ответами", open_access: "Открытие доступа", effect: "Эффект",
+    curse: "Проклятие", state: "Состояние", lose_resource: "Потеря ресурса", fine: "Штраф",
+    teleport: "Перенос в локацию", hidden_button: "Скрытая кнопка", chain: "Цепочка событий",
+  },
   mobTypes: {
     beast: "Зверь", undead: "Нежить", bandit: "Разбойник", monster: "Чудовище", magic: "Магическое создание",
     human: "Человек", boss: "Босс", world_boss: "Мировой босс", event: "Событийный", raid: "Рейдовый",

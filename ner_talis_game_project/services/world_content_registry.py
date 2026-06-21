@@ -149,6 +149,15 @@ NPC_FUNCTIONS = (
     "shop", "dialog", "give_quest", "accept_quest", "repair", "pay_fines",
     "raids", "board", "craft", "teleport", "trade", "training", "informant",
 )
+# Виды NPC (доп.ТЗ §3): у разных видов свои поля в карточке.
+NPC_KINDS = ("regular", "quest_giver", "questioner", "trader", "special")
+# Типы исходов событий (доп.ТЗ §5): не только бой.
+EVENT_OUTCOME_TYPES = (
+    "battle", "trap", "resource", "item", "nothing", "battle_or_nothing",
+    "resource_or_battle", "trap_or_resource", "special", "dialog", "question",
+    "open_access", "effect", "curse", "state", "lose_resource", "fine",
+    "teleport", "hidden_button", "chain",
+)
 QUEST_GOAL_TYPES = (
     "bring_item", "kill_mob", "find_resource", "visit_location",
     "talk_npc", "deliver_item", "activate_object",
@@ -797,6 +806,9 @@ def _validate_event(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
     result = _str_field(data, "result")
     if result and result not in EVENT_RESULT_TYPES:
         errors.append(f"Неизвестный результат события: {result}.")
+    outcome = _str_field(data, "outcome_type")
+    if outcome and outcome not in EVENT_OUTCOME_TYPES:
+        errors.append(f"Неизвестный тип исхода события: {outcome}.")
 
     chance = _num(data.get("chance"))
     if chance is not None and (chance < 0 or chance > 100):
@@ -848,6 +860,17 @@ def _validate_npc(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
             for fn in functions:
                 if fn not in NPC_FUNCTIONS:
                     errors.append(f"Неизвестная функция NPC: {fn}.")
+
+    # Вид NPC (доп.ТЗ §3) и привязка к событиям (доп.ТЗ §4).
+    npc_kind = _str_field(data, "npc_kind")
+    if npc_kind and npc_kind not in NPC_KINDS:
+        errors.append(f"Неизвестный вид NPC: {npc_kind}.")
+    event_ids = data.get("event_ids")
+    if isinstance(event_ids, list):
+        for ev in event_ids:
+            ev = str(ev or "").strip()
+            if ev and get_content(KIND_EVENT, ev) is None and get_content(KIND_LOCATION_HIDDEN_EVENT, ev) is None:
+                warnings.append(f"Событие «{ev}» не найдено среди событий/скрытых событий.")
 
     for key in ("name", "description", "first_message"):
         value = _str_field(data, key)

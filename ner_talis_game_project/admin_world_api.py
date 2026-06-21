@@ -138,6 +138,8 @@ def create_admin_world_router(get_storage) -> APIRouter:
             "eventTypes": list(registry.EVENT_TYPES),
             "eventResultTypes": list(registry.EVENT_RESULT_TYPES),
             "npcFunctions": list(registry.NPC_FUNCTIONS),
+            "npcKinds": list(registry.NPC_KINDS),
+            "eventOutcomeTypes": list(registry.EVENT_OUTCOME_TYPES),
             "questGoalTypes": list(registry.QUEST_GOAL_TYPES),
             "raidTypes": list(registry.RAID_TYPES),
             # Справочники расширенного конструктора локаций (для форм UI).

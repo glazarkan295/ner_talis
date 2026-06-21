@@ -85,7 +85,7 @@ const EMPTY_TRANSITION = {
 
 const EMPTY_EVENT = {
   name: "", text: "", location: "", type: "found_item", result: "give_item",
-  chance: 25, cooldown: 0, min_level: "", max_level: "",
+  outcome_type: "", chance: 25, cooldown: 0, min_level: "", max_level: "",
   required_item: "", consumed_item: "", given_item: "", battle_mob: "",
   effect: "", repeatable: true,
 };
@@ -93,6 +93,8 @@ const EMPTY_EVENT = {
 const EMPTY_NPC = {
   name: "", role: "", location: "", description: "", image: "",
   first_message: "", functions: [],
+  // Вид NPC (доп.§3) + привязка к событиям (доп.§4).
+  npc_kind: "regular", event_ids: [], quest_ids: [], asks_questions: false, special_type: "",
 };
 
 const EMPTY_QUEST = {
@@ -320,7 +322,10 @@ function EventForm({ value, onChange, meta, disabled, refOptions }) {
         <Field label="Ур. от"><input type="number" value={value.min_level} disabled={disabled} onChange={(e) => set("min_level", e.target.value)} /></Field>
         <Field label="Ур. до"><input type="number" value={value.max_level} disabled={disabled} onChange={(e) => set("max_level", e.target.value)} /></Field>
       </div>
-      <Field label="Результат"><select value={value.result} disabled={disabled} onChange={(e) => set("result", e.target.value)}>{(meta.eventResultTypes || []).map((t) => <option key={t} value={t}>{trOption("eventResultTypes", t)}</option>)}</select></Field>
+      <div className="ntv2-form-row">
+        <Field label="Результат"><select value={value.result} disabled={disabled} onChange={(e) => set("result", e.target.value)}>{(meta.eventResultTypes || []).map((t) => <option key={t} value={t}>{trOption("eventResultTypes", t)}</option>)}</select></Field>
+        <Field label="Тип исхода"><select value={value.outcome_type || ""} disabled={disabled} onChange={(e) => set("outcome_type", e.target.value)}><option value="">— не выбрано —</option>{(meta.eventOutcomeTypes || []).map((t) => <option key={t} value={t}>{trOption("eventOutcomeTypes", t)}</option>)}</select></Field>
+      </div>
       <div className="ntv2-form-row">
         <Field label="Выдаваемый предмет (item_id)"><input className="ntv2-mono" value={value.given_item} disabled={disabled} onChange={(e) => set("given_item", e.target.value)} /></Field>
         <Field label="Требуемый предмет"><input className="ntv2-mono" value={value.required_item} disabled={disabled} onChange={(e) => set("required_item", e.target.value)} /></Field>
@@ -344,11 +349,23 @@ function NpcForm({ value, onChange, meta, disabled, refOptions }) {
       <div className="ntv2-form-row">
         <Field label="Имя"><input value={value.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
         <Field label="Роль"><input value={value.role} disabled={disabled} onChange={(e) => set("role", e.target.value)} /></Field>
+        <Field label="Вид NPC"><select value={value.npc_kind || "regular"} disabled={disabled} onChange={(e) => set("npc_kind", e.target.value)}>{(meta.npcKinds || []).map((k) => <option key={k} value={k}>{trOption("npcKinds", k)}</option>)}</select></Field>
         <Field label="Локация"><RefSelect value={value.location} onChange={(v) => set("location", v)} options={refOptions.location} disabled={disabled} /></Field>
       </div>
       <Field label="Первое сообщение"><textarea rows={2} value={value.first_message} disabled={disabled} onChange={(e) => set("first_message", e.target.value)} /></Field>
       <Field label="Описание"><textarea rows={3} value={value.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
       <Field label="Изображение (URL)"><input value={value.image} disabled={disabled} onChange={(e) => set("image", e.target.value)} /></Field>
+      {/* Привязка к событиям (доп.§4) + поля по виду NPC (доп.§3). */}
+      <Field label="Привязан к событиям (event_id через запятую)"><input className="ntv2-mono" value={(value.event_ids || []).join(", ")} disabled={disabled} onChange={(e) => set("event_ids", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))} /></Field>
+      {value.npc_kind === "quest_giver" ? (
+        <Field label="Задания (quest_id через запятую)"><input className="ntv2-mono" value={(value.quest_ids || []).join(", ")} disabled={disabled} onChange={(e) => set("quest_ids", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))} /></Field>
+      ) : null}
+      {value.npc_kind === "questioner" ? (
+        <label className="ntv2-check"><input type="checkbox" checked={Boolean(value.asks_questions)} disabled={disabled} onChange={(e) => set("asks_questions", e.target.checked)} /> Задаёт вопросы (вопросы/ответы настраиваются в событиях-диалогах)</label>
+      ) : null}
+      {value.npc_kind === "special" ? (
+        <Field label="Тип особого NPC"><input value={value.special_type || ""} disabled={disabled} onChange={(e) => set("special_type", e.target.value)} /></Field>
+      ) : null}
       <div className="ntv2-panel">
         <h4 className="ntv2-subhead">Функции</h4>
         <div className="ntv2-form-row" style={{ gap: 12 }}>

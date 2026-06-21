@@ -169,6 +169,28 @@ class LocationConstructorRegistryTest(unittest.TestCase):
         self.assertFalse(bad["ok"])
         self.assertIn("условия открытия", self._errors_text(bad))
 
+    def test_event_outcome_type_and_npc_kind(self):
+        # Тип исхода события и вид NPC валидируются по справочникам (доп.§3/§5).
+        ok = self._check(self.wcr.KIND_EVENT, "ev_out", {
+            "name": "Развилка", "text": "Выбор", "location": "loc_forest",
+            "type": "story", "outcome_type": "battle_or_nothing",
+        })
+        self.assertTrue(ok["ok"], ok["errors"])
+        bad = self._check(self.wcr.KIND_EVENT, "ev_bad", {
+            "name": "X", "text": "Y", "location": "loc_forest", "outcome_type": "teleport_tax",
+        })
+        self.assertFalse(bad["ok"])
+        self.assertIn("тип исхода", self._errors_text(bad).lower())
+        npc_ok = self._check(self.wcr.KIND_NPC, "npc_q", {
+            "name": "Загадочник", "location": "loc_forest", "npc_kind": "questioner",
+        })
+        self.assertTrue(npc_ok["ok"], npc_ok["errors"])
+        npc_bad = self._check(self.wcr.KIND_NPC, "npc_bad", {
+            "name": "X", "location": "loc_forest", "npc_kind": "wizardish",
+        })
+        self.assertFalse(npc_bad["ok"])
+        self.assertIn("вид npc", self._errors_text(npc_bad).lower())
+
     def test_location_external_image_rejected(self):
         bad = self._check(self.wcr.KIND_LOCATION, "loc_ext", {
             "name": "Локация", "short_description": "тест", "type": "wild",
