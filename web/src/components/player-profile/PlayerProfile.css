@@ -672,3 +672,31 @@ button { cursor: pointer; }
 @media (max-width: 560px) {
   .nt-courier-pick-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* --- Профиль V2: вкладка «Обзор» --------------------------------------- */
+.ntp-mono { font-family: 'Courier New', monospace; opacity: .75; font-size: 12px; }
+.nt-overview { display: grid; gap: 12px; }
+.nt-overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.nt-overview-character { display: flex; gap: 14px; }
+.nt-overview-model { width: 96px; height: 96px; object-fit: contain; border-radius: 12px; background: rgba(0,0,0,.25); }
+.nt-overview-headinfo { display: grid; gap: 4px; align-content: start; }
+.nt-overview-name { font-size: 20px; color: #ffd98f; }
+.nt-overview-sub { opacity: .8; font-size: 13px; }
+.nt-overview-status { margin-top: 4px; }
+.nt-resource-bars { display: grid; gap: 10px; }
+.nt-resource-bar-head { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 3px; }
+.nt-resource-bar-track { height: 12px; border-radius: 7px; background: rgba(0,0,0,.35); overflow: hidden; border: 1px solid rgba(214,172,91,.25); }
+.nt-resource-bar-fill { height: 100%; border-radius: 7px; transition: width .3s ease; }
+.nt-bar-hp { background: linear-gradient(90deg, #8e2b22, #d9534f); }
+.nt-bar-mana { background: linear-gradient(90deg, #234e8e, #4a90d9); }
+.nt-bar-spirit { background: linear-gradient(90deg, #5a2d8e, #9a6cd9); }
+.nt-bar-energy { background: linear-gradient(90deg, #2d7a3f, #6cc777); }
+.nt-warnings { display: grid; gap: 8px; }
+.nt-warning { display: flex; align-items: center; gap: 8px; border-radius: 10px; padding: 8px 12px; font-size: 14px; border: 1px solid rgba(214,172,91,.3); background: rgba(255,255,255,.04); }
+.nt-warning-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: currentColor; }
+.nt-warning-danger { color: #ff8a6a; border-color: rgba(255,120,90,.5); background: rgba(145,35,20,.22); }
+.nt-warning-warning { color: #ffd98f; border-color: rgba(255,200,120,.45); background: rgba(120,80,10,.20); }
+.nt-warning-info { color: #bfe3ff; }
+.nt-rating-places { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.nt-rating-place { display: flex; justify-content: space-between; border: 1px solid rgba(214,172,91,.22); border-radius: 9px; padding: 6px 10px; font-size: 13px; }
+@media (max-width: 720px) { .nt-overview-grid { grid-template-columns: 1fr; } }

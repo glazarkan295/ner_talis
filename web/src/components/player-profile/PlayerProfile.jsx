@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { profileMockData } from "./profileMockData.js";
 
 const TABS = [
+  { id: "overview", label: "Обзор", icon: "head" },
   { id: "character", label: "Персонаж", icon: "head" },
   { id: "inventory", label: "Инвентарь", icon: "bag" },
   { id: "skills", label: "Навыки", icon: "star" },
@@ -1298,9 +1299,96 @@ function CourierTab({ profile, onSearchRecipients, onSendTransfer }) {
   );
 }
 
+// --- Профиль V2: вкладка «Обзор» (ТЗ §5) ----------------------------------
+const RESOURCE_BAR_META = [
+  { label: "HP", cls: "nt-bar-hp" },
+  { label: "Мана", cls: "nt-bar-mana" },
+  { label: "Дух", cls: "nt-bar-spirit" },
+  { label: "Энергия", cls: "nt-bar-energy" },
+];
+
+function parseResourceValue(value) {
+  // "156 / 156" -> { current: 156, max: 156 }
+  const parts = String(value || "").split("/");
+  const current = Number(String(parts[0] || "").replace(/[^\d.-]/g, "")) || 0;
+  const max = Number(String(parts[1] || "").replace(/[^\d.-]/g, "")) || 0;
+  return { current, max };
+}
+
+function ResourceBars({ parameters = [] }) {
+  const byLabel = new Map(parameters.map((p) => [p.label, p.value]));
+  return (
+    <div className="nt-resource-bars">
+      {RESOURCE_BAR_META.map(({ label, cls }) => {
+        if (!byLabel.has(label)) return null;
+        const { current, max } = parseResourceValue(byLabel.get(label));
+        const pct = max > 0 ? Math.max(0, Math.min(100, Math.round((current / max) * 100))) : 0;
+        return (
+          <div className="nt-resource-bar" key={label}>
+            <div className="nt-resource-bar-head"><span>{label}</span><span>{current} / {max}</span></div>
+            <div className="nt-resource-bar-track"><div className={`nt-resource-bar-fill ${cls}`} style={{ width: `${pct}%` }} /></div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProfileWarnings({ warnings = [] }) {
+  if (!warnings.length) return null;
+  return (
+    <div className="nt-warnings">
+      {warnings.map((w, i) => (
+        <div className={`nt-warning nt-warning-${w.level || "info"}`} key={(w.type || "") + i}>
+          <span className="nt-warning-dot" />{w.text}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OverviewTab({ profile }) {
+  const player = profile.player || {};
+  const status = profile.status || null;
+  const places = (profile.ratingPlaces || []).filter((p) => p.place !== "—" && p.place != null);
+  const model = profile.assets?.raceModels?.[player.raceKey] || profile.assets?.raceModels?.human;
+  const expCurrent = player.experienceCurrent ?? 0;
+  const expNext = player.experienceToNext ?? 0;
+
+  return (
+    <div className="nt-overview">
+      <ProfileWarnings warnings={profile.warnings} />
+      <div className="nt-overview-grid">
+        <Panel title="Персонаж" className="nt-overview-character">
+          {model ? <img className="nt-overview-model" src={model} alt="" /> : null}
+          <div className="nt-overview-headinfo">
+            <div className="nt-overview-name">{player.nickname || "Безымянный"}</div>
+            <div className="nt-overview-sub">{player.raceName} · {player.genderLabel || "—"} · ур. {player.level}</div>
+            <div className="nt-overview-id ntp-mono">{player.userGlobalId || player.publicId || "—"}</div>
+            {status ? <div className="nt-overview-status">Статус: <b>{status.label}</b></div> : null}
+            <Row label="Опыт" value={`${expCurrent} / ${expNext}`} />
+            <Row label="Деньги" value={player.balanceText || "—"} />
+          </div>
+        </Panel>
+        <Panel title="Ресурсы" className="nt-overview-resources">
+          <ResourceBars parameters={profile.parameters} />
+        </Panel>
+      </div>
+      {places.length ? (
+        <Panel title="Мои места в рейтингах">
+          <div className="nt-rating-places">
+            {places.map((p) => <div className="nt-rating-place" key={p.key}><span>{p.label}</span><b>{p.place} место</b></div>)}
+          </div>
+        </Panel>
+      ) : null}
+    </div>
+  );
+}
+
+
 export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField, onSearchCourierRecipients, onSendCourierTransfer, onAdminRemoveItem }) {
   const data = profileOrMock(profile);
-  const [tab, setTab] = useState("character");
+  const [tab, setTab] = useState("overview");
   const [modal, setModal] = useState(null);
   const [slotModal, setSlotModal] = useState(null);
   const [dropModal, setDropModal] = useState(null);
@@ -1394,6 +1482,7 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
           {visibleTabs.map(({ id, label, icon }) => <button key={id} className={tab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon"><TabIcon type={icon} /></span><span className="nt-tab-text">{label}</span></button>)}
         </nav>
         <section className="nt-content">
+          {tab === "overview" ? <OverviewTab profile={data} /> : null}
           {tab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} readOnly={effectiveReadOnly} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} onEditProfileField={onEditProfileField} /> : null}
           {tab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
           {tab === "skills" ? <SkillsTab profile={data} readOnly={effectiveReadOnly} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
