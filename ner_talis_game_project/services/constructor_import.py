@@ -192,8 +192,86 @@ def import_mobs(*, overwrite: bool = False, actor: str = "import") -> dict[str, 
     return {"kind": "mob", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid}
 
 
+# --- Эффекты / состояния / проклятия (сид существующих, ТЗ §6/§7) ----------
+# Игровые эффекты разбросаны по коду (стимулятор/проклятья/сопротивления), без
+# единого JSON-реестра. Сид-таблица заводит известные состояния и проклятия как
+# опубликованные записи конструктора, чтобы их можно было править/копировать.
+# (effect_id, Название, effect_type, отрицательный?, источник)
+_EFFECT_SEED = [
+    # Состояния (§6)
+    ("poison", "Отравление", "periodic_damage", True, "mob"),
+    ("bleed", "Кровотечение", "periodic_damage", True, "mob"),
+    ("stun", "Оглушение", "control_effect", True, "mob"),
+    ("burn", "Поджог", "periodic_damage", True, "mob"),
+    ("freeze", "Заморозка", "control_effect", True, "mob"),
+    ("slow", "Замедление", "stat_modifier", True, "mob"),
+    ("blind", "Слепота", "accuracy_modifier", True, "mob"),
+    ("weakness", "Слабость", "stat_modifier", True, "mob"),
+    ("exhaustion", "Истощение", "stat_modifier", True, "zone"),
+    ("regeneration", "Регенерация", "resource_regeneration", False, "item"),
+    ("defense_up", "Защита", "physical_defense_modifier", False, "skill"),
+    ("empower", "Усиление", "stat_modifier", False, "skill"),
+    ("rage", "Ярость", "stat_modifier", False, "skill"),
+    ("fear", "Испуг", "control_effect", True, "mob"),
+    ("silence", "Молчание", "control_effect", True, "mob"),
+    ("disarm", "Обезоруживание", "control_effect", True, "mob"),
+    ("sleep", "Сон", "control_effect", True, "mob"),
+    ("paralysis", "Паралич", "control_effect", True, "mob"),
+    ("cursed_mark", "Проклятая метка", "curse_effect", True, "curse"),
+    ("debtor_mark", "Метка должника", "curse_effect", True, "trap"),
+    ("battle_stimulant", "Боевой стимулятор", "stat_modifier", False, "item"),
+    ("cleanse", "Очищение", "stat_modifier", False, "item"),
+    ("effect_immunity", "Иммунитет к эффекту", "damage_response", False, "item"),
+    ("effect_resistance", "Сопротивление эффекту", "damage_response", False, "item"),
+    # Проклятия (§7)
+    ("ancient_curse", "Древнее проклятье", "curse_effect", True, "curse"),
+    ("pvp_death_curse", "Проклятье погибшего игрока", "curse_effect", True, "curse"),
+    ("zone_curse", "Проклятье зоны", "curse_effect", True, "zone"),
+    ("item_curse", "Проклятье предмета", "curse_effect", True, "item"),
+    ("event_curse", "Проклятье события", "curse_effect", True, "event"),
+    ("trap_curse", "Проклятье ловушки", "curse_effect", True, "trap"),
+    ("mob_curse", "Проклятье моба", "curse_effect", True, "mob"),
+    ("wrong_choice_curse", "Проклятье после неправильного выбора", "curse_effect", True, "event"),
+    ("blood_curse", "Проклятье крови", "curse_effect", True, "curse"),
+    ("spirit_curse", "Проклятье духа", "curse_effect", True, "curse"),
+    ("mana_curse", "Проклятье маны", "curse_effect", True, "curse"),
+    ("luck_curse", "Проклятье удачи", "curse_effect", True, "curse"),
+    ("loot_curse", "Проклятье добычи", "curse_effect", True, "curse"),
+    ("path_curse", "Проклятье пути", "curse_effect", True, "curse"),
+]
+
+
+def import_effects(*, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import effect_constructor_service as ecs
+
+    store = ecs.store()
+    created = updated = skipped = 0
+    for effect_id, name, effect_type, negative, source in _EFFECT_SEED:
+        data = {
+            "effect_name": name, "effect_type": effect_type, "source_type": source,
+            "target": "self", "active_when": "always", "stack_rule": "strongest_only",
+            "negative": bool(negative), "show_to_player": True,
+            "imported": True, "import_source": "effect_seed", "source_id": effect_id,
+        }
+        existing = store.get(effect_id)
+        if existing is not None:
+            if overwrite and _was_imported(existing):
+                store.update(effect_id, data, actor=actor)
+                updated += 1
+            else:
+                skipped += 1
+            continue
+        store.create(effect_id, data, actor=actor)
+        try:
+            store.set_status(effect_id, ecs.STATUS_PUBLISHED, actor=actor, force=True)
+        except Exception:
+            pass
+        created += 1
+    return {"kind": "effect", "created": created, "updated": updated, "skipped": skipped, "invalid": 0}
+
+
 # --- Оркестратор -----------------------------------------------------------
-IMPORTERS = {"item": import_items, "mob": import_mobs}
+IMPORTERS = {"item": import_items, "mob": import_mobs, "effect": import_effects}
 
 
 def import_all(kinds: list[str] | None = None, *, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:

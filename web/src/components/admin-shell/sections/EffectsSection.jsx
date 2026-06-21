@@ -6,6 +6,8 @@ import {
   fetchEffect,
   fetchEffectMeta,
   fetchEffects,
+  fetchEffectUsage,
+  importExistingEffects,
   updateEffect,
   validateEffect,
 } from "../../../api/adminEffectApi.js";
@@ -36,6 +38,7 @@ export function EffectsSection({ guarded, hasPerm }) {
   const [statusFilter, setStatusFilter] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [usage, setUsage] = useState(null);
 
   const can = useMemo(() => ({
     create: hasPerm("effect.create"), edit: hasPerm("effect.edit"), validate: hasPerm("effect.validate"),
@@ -53,8 +56,10 @@ export function EffectsSection({ guarded, hasPerm }) {
   async function openItem(id) {
     const p = await guarded(() => fetchEffect(id));
     if (p?.item) setEditing({ id, data: { ...EMPTY, ...(p.item.data || {}) }, status: p.item.status, validation: p.validation, isNew: false });
+    const u = await guarded(() => fetchEffectUsage(id));
+    setUsage(u?.usage || []);
   }
-  function startCreate() { setEditing({ id: "", data: { ...EMPTY }, status: "draft", validation: null, isNew: true }); }
+  function startCreate() { setUsage(null); setEditing({ id: "", data: { ...EMPTY }, status: "draft", validation: null, isNew: true }); }
 
   async function save() {
     const e = editing;
@@ -131,6 +136,15 @@ export function EffectsSection({ guarded, hasPerm }) {
           </div>
         ) : null}
 
+        {!editing.isNew ? (
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Где используется</h4>
+            {usage === null ? <p className="ntv2-hint">Загрузка…</p>
+              : !usage.length ? <p className="ntv2-hint">Нигде не используется (можно безопасно отключить/удалить).</p>
+              : <div className="ntv2-list">{usage.map((u, i) => <div className="ntv2-list-row" key={i}><span className="ntv2-badge">{u.kind}</span><b>{u.name}</b><span className="ntv2-mono">{u.id}</span></div>)}</div>}
+          </div>
+        ) : null}
+
         <div className="ntv2-form-row" style={{ marginTop: 14 }}>
           {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={editing.isNew && !editing.id.trim()} onClick={save}>{editing.isNew ? "Создать" : "Сохранить"}</button> : null}
           {!editing.isNew && can.validate ? <button type="button" className="ntv2-btn" onClick={runValidate}>Проверить</button> : null}
@@ -155,6 +169,18 @@ export function EffectsSection({ guarded, hasPerm }) {
           {statuses.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         {can.create ? <button type="button" className="ntv2-btn ntv2-btn-primary" onClick={startCreate}>＋ Новый эффект</button> : null}
+        {can.publish ? (
+          <button type="button" className="ntv2-btn" title="Добавить известные состояния и проклятия в конструктор" onClick={() => setConfirm({
+            title: "Импортировать существующие эффекты?",
+            body: <p>Известные состояния и проклятия будут добавлены в конструктор как опубликованные записи (повторно — без дублей).</p>,
+            confirmLabel: "Импортировать",
+            run: async (r) => {
+              const res = await guarded(() => importExistingEffects(false, r), "Импорт выполнен.");
+              await load();
+              if (res) window.alert(`Создано: ${res.created ?? 0}, пропущено: ${res.skipped ?? 0}`);
+            },
+          })}>Импортировать существующие</button>
+        ) : null}
       </div>
       {!list.length ? <p className="ntv2-hint">Эффектов нет.</p> : null}
       <div className="ntv2-list">

@@ -21,13 +21,16 @@ class ConstructorImportTest(unittest.TestCase):
     def setUp(self):
         self._items = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._world = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._effects = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         os.environ["ITEM_CONSTRUCTOR_PATH"] = self._items
         os.environ["WORLD_CONTENT_PATH"] = self._world
+        os.environ["EFFECT_CONSTRUCTOR_PATH"] = self._effects
 
     def tearDown(self):
         os.environ.pop("ITEM_CONSTRUCTOR_PATH", None)
         os.environ.pop("WORLD_CONTENT_PATH", None)
-        for base in (self._items, self._world):
+        os.environ.pop("EFFECT_CONSTRUCTOR_PATH", None)
+        for base in (self._items, self._world, self._effects):
             for suffix in ("", ".lock", ".tmp"):
                 try:
                     os.unlink(base + suffix)
@@ -89,6 +92,31 @@ class ConstructorImportTest(unittest.TestCase):
         result = ci.import_all(["mob"])
         kinds = [r["kind"] for r in result["reports"]]
         self.assertEqual(kinds, ["mob"])
+
+    def test_import_effects_published_idempotent(self):
+        from services import effect_constructor_service as ecs
+
+        r1 = ci.import_effects()
+        self.assertGreater(r1["created"], 0)
+        items = ecs.store().list()
+        self.assertTrue(any(i["status"] == "published" for i in items))
+        self.assertTrue(any((i.get("data") or {}).get("imported") for i in items))
+        # Известные проклятия в сиде.
+        self.assertIsNotNone(ecs.store().get("ancient_curse"))
+        r2 = ci.import_effects()
+        self.assertEqual(r2["created"], 0)
+
+    def test_effect_where_used(self):
+        from services import effect_constructor_service as ecs
+        from services import world_content_registry as wcr
+
+        wcr.create_content(wcr.KIND_MOB, "mob_x", {"name": "X", "type": "beast", "hp": 10})
+        wcr.create_content(wcr.KIND_MOB_EFFECT, "me_poison", {
+            "name": "Яд волка", "mob_id": "mob_x", "effect_id": "poison", "chance": 20,
+        })
+        used = ecs.where_used("poison")
+        self.assertTrue(any(u["id"] == "me_poison" for u in used))
+        self.assertEqual(ecs.where_used("nonexistent_effect"), [])
 
 
 if __name__ == "__main__":

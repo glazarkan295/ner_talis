@@ -55,6 +55,12 @@ class DeleteRequest(BaseModel):
     reason: str = ""
 
 
+class ImportRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    overwrite: bool = False
+    reason: str = ""
+
+
 def _bearer_token(request: Request | None) -> str:
     if request is None:
         return ""
@@ -114,6 +120,22 @@ def create_admin_effect_router(get_storage) -> APIRouter:
         _require(_session(get_storage(), request, token), PERM_EFFECT_VIEW)
         return {"ok": True, "items": effects.store().list(status=status)}
 
+    @router.post("/import")
+    def import_existing(payload: ImportRequest, request: Request) -> dict[str, Any]:
+        # Импорт существующих эффектов/состояний/проклятий в конструктор (ТЗ §2).
+        # Объявлено до /{effect_id}, публикует → гейт publish, аудит.
+        session = _session(get_storage(), request, payload.token)
+        _require(session, PERM_EFFECT_PUBLISH)
+        from services import constructor_import
+
+        return run_admin_operation(
+            session=session, action="effect.import_existing",
+            func=lambda: constructor_import.import_effects(overwrite=bool(payload.overwrite), actor=_actor(session)),
+            target_type="constructor_import", target_id="effect",
+            after_func=lambda r: {"created": r.get("created"), "skipped": r.get("skipped")},
+            reason=payload.reason, details={"overwrite": bool(payload.overwrite)},
+        )
+
     @router.get("/{effect_id}")
     def get_effect(effect_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
         _require(_session(get_storage(), request, token), PERM_EFFECT_VIEW)
@@ -121,6 +143,11 @@ def create_admin_effect_router(get_storage) -> APIRouter:
         if item is None:
             raise HTTPException(status_code=404, detail="Эффект не найден.")
         return {"ok": True, "item": item, "validation": effects.validate(item)}
+
+    @router.get("/{effect_id}/usage")
+    def effect_usage(effect_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        _require(_session(get_storage(), request, token), PERM_EFFECT_VIEW)
+        return {"ok": True, "usage": effects.where_used(effect_id)}
 
     @router.post("")
     def create_effect(payload: IdDataRequest, request: Request) -> dict[str, Any]:

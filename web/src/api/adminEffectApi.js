@@ -13,3 +13,5 @@ export const updateEffect = (id, data, reason) => requestAdminJson(`${base}/${en
 export const validateEffect = (id, reason) => post(`${base}/${encodeURIComponent(id)}/validate`, { reason });
 export const effectLifecycle = (id, verb, reason) => post(`${base}/${encodeURIComponent(id)}/${verb}`, { reason });
 export const deleteEffect = (id, confirm, reason) => requestAdminJson(`${base}/${encodeURIComponent(id)}`, { method: "DELETE", body: JSON.stringify({ confirm, reason }) });
+export const fetchEffectUsage = (id) => requestAdminJson(`${base}/${encodeURIComponent(id)}/usage?_=${t()}`);
+export const importExistingEffects = (overwrite, reason) => post(`${base}/import`, { overwrite, reason });
