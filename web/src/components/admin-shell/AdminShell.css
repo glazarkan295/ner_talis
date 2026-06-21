@@ -44,8 +44,8 @@
   background: transparent; color: var(--parch);
   padding: 10px 12px; font-size: 15px; font-family: inherit;
 }
-.ntv2-nav-item:hover { background: rgba(255, 255, 255, .05); }
-.ntv2-nav-item.active { color: #1c1208; background: var(--gold); }
+.ntv2-nav-item:hover { background: var(--nt-hover, rgba(255, 255, 255, .05)); }
+.ntv2-nav-item.active { color: var(--nt-gold-ink); background: var(--gold); }
 .ntv2-nav-icon { font-size: 16px; }
 .ntv2-sidebar-foot { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 8px; }
 .ntv2-role-pill { text-align: center; border: 1px solid var(--line-strong); border-radius: 999px; padding: 4px 10px; font-size: 13px; color: var(--gold); }
@@ -70,11 +70,11 @@
 }
 .ntv2-btn {
   cursor: pointer; border: 1px solid var(--line); border-radius: 10px;
-  background: linear-gradient(145deg, #47351f, #1b1410); color: var(--parch);
+  background: var(--nt-btn, linear-gradient(145deg, #47351f, #1b1410)); color: var(--parch);
   padding: 9px 14px; font-family: inherit; font-size: 14px;
 }
 .ntv2-btn:disabled { opacity: .45; cursor: not-allowed; }
-.ntv2-btn-primary { background: var(--gold); color: #1c1208; border-color: var(--gold); }
+.ntv2-btn-primary { background: var(--gold); color: var(--nt-gold-ink); border-color: var(--gold); }
 .ntv2-btn-danger { background: linear-gradient(145deg, #6e2418, #38120c); border-color: rgba(255, 120, 90, .5); color: #ffd9cf; }
 
 /* Cards / panels */
@@ -86,9 +86,9 @@
 
 /* Badges / chips */
 .ntv2-badge { display: inline-block; border: 1px solid var(--line-strong); border-radius: 999px; padding: 2px 9px; font-size: 12px; }
-.ntv2-badge-owner { background: var(--gold); color: #1c1208; border-color: var(--gold); }
+.ntv2-badge-owner { background: var(--gold); color: var(--nt-gold-ink); border-color: var(--gold); }
 .ntv2-badge-danger { background: rgba(145, 35, 20, .4); border-color: rgba(255, 120, 90, .5); color: #ffd9cf; }
-.ntv2-badge-error { background: rgba(120, 80, 10, .4); border-color: rgba(255, 200, 90, .5); color: #ffe9bf; }
+.ntv2-badge-error { background: rgba(120, 80, 10, .4); border-color: rgba(255, 200, 90, .5); color: var(--nt-warning, #ffe9bf); }
 .ntv2-perm-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 .ntv2-perm-chip { font-family: 'Courier New', monospace; font-size: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 3px 7px; background: rgba(0, 0, 0, .25); }
 
@@ -129,7 +129,7 @@
 /* World constructor */
 .ntv2-subnav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 .ntv2-subnav-item { border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; font-size: 14px; opacity: .7; }
-.ntv2-subnav-item.active { color: #1c1208; background: var(--gold); border-color: var(--gold); opacity: 1; }
+.ntv2-subnav-item.active { color: var(--nt-gold-ink); background: var(--gold); border-color: var(--gold); opacity: 1; }
 .ntv2-world-form { display: grid; gap: 12px; }
 .ntv2-world-form .ntv2-field { display: grid; gap: 4px; font-size: 13px; }
 .ntv2-world-form .ntv2-field input, .ntv2-world-form .ntv2-field select, .ntv2-world-form .ntv2-field textarea { width: 100%; box-sizing: border-box; }
@@ -148,7 +148,7 @@
 
 /* Modal */
 .ntv2-modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .72); display: grid; place-items: center; padding: 18px; z-index: 50; }
-.ntv2-modal { max-width: 520px; width: 100%; border: 1px solid var(--line-strong); border-radius: 16px; background: #15100d; padding: 18px 20px; }
+.ntv2-modal { max-width: 520px; width: 100%; border: 1px solid var(--line-strong); border-radius: 16px; background: var(--nt-card, #15100d); padding: 18px 20px; }
 .ntv2-modal-danger { border-color: rgba(255, 120, 90, .6); }
 .ntv2-modal h3 { color: var(--gold); margin: 0 0 8px; }
 .ntv2-modal-danger-tag { color: var(--danger); font-size: 13px; margin: 0 0 8px; }
