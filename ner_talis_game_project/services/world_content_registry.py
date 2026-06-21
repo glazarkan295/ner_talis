@@ -78,9 +78,26 @@ KIND_EVENT = "event"
 KIND_NPC = "npc"
 KIND_QUEST = "quest"
 KIND_RAID = "raid"
+# Расширенный конструктор локаций (ТЗ «Конструктор локаций»): под-объекты
+# локации живут в том же генерик-движке (один envelope/жизненный цикл).
+KIND_LOCATION_ZONE = "location_zone"
+KIND_LOCATION_RESOURCE = "location_resource"
+KIND_LOCATION_LOOT = "location_loot"
+KIND_LOCATION_MOB_SPAWN = "location_mob_spawn"
+KIND_LOCATION_WEEKLY_LIMIT = "location_weekly_limit"
+KIND_LOCATION_WEEKLY_ROTATION = "location_weekly_rotation"
+KIND_LOCATION_DEPLETION_RULE = "location_depletion_rule"
+KIND_LOCATION_EMPTY_EVENT = "location_empty_event"
+KIND_LOCATION_HIDDEN_EVENT = "location_hidden_event"
+KIND_LOCATION_EVENT_ANSWER = "location_event_answer"
 KINDS = (
     KIND_LOCATION, KIND_MOB, KIND_BUTTON, KIND_TRANSITION,
     KIND_EVENT, KIND_NPC, KIND_QUEST, KIND_RAID,
+    KIND_LOCATION_ZONE, KIND_LOCATION_RESOURCE, KIND_LOCATION_LOOT,
+    KIND_LOCATION_MOB_SPAWN, KIND_LOCATION_WEEKLY_LIMIT,
+    KIND_LOCATION_WEEKLY_ROTATION, KIND_LOCATION_DEPLETION_RULE,
+    KIND_LOCATION_EMPTY_EVENT, KIND_LOCATION_HIDDEN_EVENT,
+    KIND_LOCATION_EVENT_ANSWER,
 )
 
 LOCATION_TYPES = (
@@ -128,6 +145,41 @@ RAID_TYPES = ("world_boss", "dungeon", "expedition", "event_raid")
 MOB_TYPES = (
     "beast", "undead", "bandit", "monster", "magic",
     "human", "boss", "world_boss", "event", "raid",
+)
+
+# --- Справочники расширенного конструктора локаций -------------------------
+ZONE_TYPES = (  # ТЗ §43.1
+    "fire", "water", "frost", "earth", "wind", "spirit", "cursed",
+    "poison", "dark", "light", "magic_anomaly", "raid_zone",
+    "high_loot", "high_danger",
+)
+RESOURCE_CATEGORIES = (  # ТЗ §13.2
+    "herb", "berry", "alchemy", "wood", "stone", "ore", "leather",
+    "bone", "fish", "shellfish", "pearl", "trophy", "event", "guild", "rare",
+)
+LOOT_SOURCES = (  # ТЗ §14.2 / §21
+    "search", "gather", "fishing", "chest", "event", "hidden_event",
+    "battle", "mob_drop", "npc", "quest", "raid", "world_event", "guild_event",
+)
+WEEKLY_LIMIT_TYPES = (  # ТЗ §20
+    "resource", "item", "trophy", "mob", "mob_group", "rare_mob", "boss",
+    "event", "hidden_event", "mob_drop", "event_currency", "event_item",
+    "guild_resource", "world_progress",
+)
+ROTATION_PERIODICITY = ("weekly", "biweekly", "monthly", "event", "manual")  # §36.2
+ROTATION_SELECTION_MODES = (  # ТЗ §37
+    "random", "weighted_random", "fixed_calendar", "seasonal",
+    "manual", "by_world_event", "by_holiday", "by_economy",
+)
+REDISTRIBUTION_MODES = (  # ТЗ §29
+    "even", "by_weight", "same_group", "normal_only", "same_category", "none",
+)
+EVENT_GROUPS = (  # ТЗ §7 (группы событий для перераспределения §30)
+    "common", "resource", "loot", "mob", "trap", "rare", "hidden",
+    "story", "holiday", "world", "guild", "empty",
+)
+DEPLETION_TRIGGERS = (  # ТЗ §26.1
+    "zero", "below_10pct", "below_count", "manual", "world_event", "zone_state",
 )
 
 # Экономические «потолки» награды за одного моба — превышение даёт warning
@@ -782,6 +834,363 @@ def _validate_raid(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
+# --- Валидаторы расширенного конструктора локаций --------------------------
+def _effect_exists(effect_id: Any) -> bool:
+    eid = str(effect_id or "").strip()
+    if not eid:
+        return False
+    try:  # ленивый импорт; реестр недоступен — не валим проверку
+        from services.effect_constructor_service import store as effect_store
+
+        return effect_store().get(eid) is not None
+    except Exception:
+        return True
+
+
+def _check_chance(data: dict[str, Any], key: str, errors: list[str], label: str) -> float | None:
+    """Шанс 0–100 (или None, если поле пустое)."""
+    if data.get(key) in (None, ""):
+        return None
+    value = _num(data.get(key))
+    if value is None:
+        errors.append(f"{label}: шанс не число.")
+    elif value < 0 or value > 100:
+        errors.append(f"{label}: шанс должен быть 0–100.")
+    return value
+
+
+def _check_chance_window(data: dict[str, Any], errors: list[str], *, base_key: str = "base_chance", min_key: str = "min_chance") -> None:
+    """Минимальный шанс не должен превышать базовый (ТЗ §56)."""
+    base = _check_chance(data, base_key, errors, "Базовый шанс")
+    minimum = _check_chance(data, min_key, errors, "Минимальный шанс")
+    if base is not None and minimum is not None and minimum > base:
+        errors.append("Минимальный шанс не может быть выше базового.")
+
+
+def _check_counts(data: dict[str, Any], errors: list[str], *, min_key: str = "min_count", max_key: str = "max_count") -> None:
+    cmin = _num(data.get(min_key)) if data.get(min_key) not in (None, "") else None
+    cmax = _num(data.get(max_key)) if data.get(max_key) not in (None, "") else None
+    if cmin is not None and cmin < 0:
+        errors.append("Минимальное количество не может быть отрицательным.")
+    if cmin is not None and cmax is not None and cmin > cmax:
+        errors.append("Минимальное количество больше максимального.")
+
+
+def _check_location_ref(data: dict[str, Any], errors: list[str], *, key: str = "location", required: bool = True) -> None:
+    loc = _str_field(data, key)
+    if not loc:
+        if required:
+            errors.append("Не указана локация.")
+        return
+    if not _location_exists(loc):
+        errors.append(f"Локация «{loc}» не существует.")
+
+
+def _validate_location_zone(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Зона локации и защита от неё (ТЗ §43–44)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "name"):
+        errors.append("Не заполнено название зоны.")
+    ztype = _str_field(data, "type")
+    if not ztype:
+        errors.append("Не выбран тип зоны.")
+    elif ztype not in ZONE_TYPES:
+        errors.append(f"Неизвестный тип зоны: {ztype}.")
+    _check_location_ref(data, errors)
+    _check_chance(data, "trigger_chance", errors, "Срабатывание зоны")
+
+    # Защита от зоны: ссылается на существующие предметы/эффекты (ТЗ §44).
+    protections = data.get("protections")
+    if protections not in (None, ""):
+        if not isinstance(protections, list):
+            errors.append("Защита от зоны должна быть списком.")
+        else:
+            for index, row in enumerate(protections, start=1):
+                if not isinstance(row, dict):
+                    errors.append(f"Защита {index}: неверный формат.")
+                    continue
+                item_id = _str_field(row, "item_id")
+                effect_id = _str_field(row, "effect_id")
+                if not item_id and not effect_id:
+                    errors.append(f"Защита {index}: нужен предмет или эффект защиты.")
+                if item_id and not _item_exists(item_id):
+                    errors.append(f"Защита {index}: предмет «{item_id}» не существует.")
+                if effect_id and not _effect_exists(effect_id):
+                    errors.append(f"Защита {index}: эффект «{effect_id}» не существует.")
+                pct = _num(row.get("percent"))
+                if pct is not None and (pct < 0 or pct > 100):
+                    errors.append(f"Защита {index}: процент должен быть 0–100.")
+
+    for key in ("name", "player_text", "description"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    return errors, warnings
+
+
+def _validate_location_resource(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Ресурс локации (ТЗ §13)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    _check_location_ref(data, errors)
+    item_id = _str_field(data, "item_id")
+    if not item_id:
+        errors.append("Не указан предмет-ресурс.")
+    elif not _item_exists(item_id):
+        errors.append(f"Предмет-ресурс «{item_id}» не существует.")
+
+    category = _str_field(data, "category")
+    if category and category not in RESOURCE_CATEGORIES:
+        errors.append(f"Неизвестная категория ресурса: {category}.")
+
+    _check_chance_window(data, errors)
+    _check_counts(data, errors)
+
+    weekly = data.get("weekly_limit")
+    if weekly not in (None, "") and (_num(weekly) is None or _num(weekly) < 0):
+        errors.append("Недельный лимит не может быть отрицательным.")
+    return errors, warnings
+
+
+def _validate_location_loot(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Добыча локации (ТЗ §14)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    _check_location_ref(data, errors)
+    item_id = _str_field(data, "item_id")
+    if not item_id:
+        errors.append("Не указан предмет добычи.")
+    elif not _item_exists(item_id):
+        errors.append(f"Предмет добычи «{item_id}» не существует.")
+
+    source = _str_field(data, "source")
+    if not source:
+        errors.append("Не указан источник добычи.")
+    elif source not in LOOT_SOURCES:
+        errors.append(f"Неизвестный источник добычи: {source}.")
+
+    _check_chance_window(data, errors, base_key="chance")
+    _check_counts(data, errors)
+    weekly = data.get("weekly_limit")
+    if weekly not in (None, "") and (_num(weekly) is None or _num(weekly) < 0):
+        errors.append("Недельный лимит не может быть отрицательным.")
+    return errors, warnings
+
+
+def _validate_location_mob_spawn(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Появление моба на локации (ТЗ §15)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    _check_location_ref(data, errors)
+    mob_id = _str_field(data, "mob_id")
+    if not mob_id:
+        errors.append("Не указан моб.")
+    elif not _mob_exists(mob_id):
+        errors.append(f"Моб «{mob_id}» не существует.")
+
+    _check_chance_window(data, errors, base_key="spawn_chance")
+
+    lvl_min = _num(data.get("mob_level_min"))
+    lvl_max = _num(data.get("mob_level_max"))
+    if lvl_min is not None and lvl_max is not None and lvl_min > lvl_max:
+        errors.append("Минимальный уровень моба больше максимального.")
+
+    bmin = _num(data.get("min_in_battle"))
+    bmax = _num(data.get("max_in_battle"))
+    if bmin is not None and bmin < 1:
+        errors.append("Минимум мобов в бою должен быть ≥ 1.")
+    if bmin is not None and bmax is not None and bmin > bmax:
+        errors.append("Минимум мобов в бою больше максимума.")
+
+    stock = data.get("weekly_stock")
+    if stock not in (None, "") and (_num(stock) is None or _num(stock) < 0):
+        errors.append("Недельный запас существ не может быть отрицательным.")
+    return errors, warnings
+
+
+def _validate_location_weekly_limit(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Недельный лимит ресурса/моба/дропа/события (ТЗ §16–§26)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    _check_location_ref(data, errors)
+    ltype = _str_field(data, "limit_type")
+    if not ltype:
+        errors.append("Не выбран тип лимита.")
+    elif ltype not in WEEKLY_LIMIT_TYPES:
+        errors.append(f"Неизвестный тип лимита: {ltype}.")
+
+    # Связанный объект существует — в зависимости от типа лимита.
+    linked = _str_field(data, "linked_object")
+    if not linked:
+        errors.append("Не указан связанный объект лимита.")
+    elif ltype in ("resource", "item", "trophy", "mob_drop", "event_item", "guild_resource", "event_currency"):
+        if not _item_exists(linked):
+            errors.append(f"Связанный предмет «{linked}» не существует.")
+    elif ltype in ("mob", "mob_group", "rare_mob", "boss"):
+        if not _mob_exists(linked):
+            errors.append(f"Связанный моб «{linked}» не существует.")
+
+    source = _str_field(data, "source")
+    if source and source not in LOOT_SOURCES:
+        errors.append(f"Неизвестный источник получения: {source}.")
+
+    total = data.get("total_stock")
+    if total not in (None, "") and (_num(total) is None or _num(total) < 0):
+        errors.append("Общий недельный запас не может быть отрицательным.")
+    _check_counts(data, errors, min_key="min_per_event", max_key="max_per_event")
+    _check_chance_window(data, errors)
+
+    for key in ("depletion_text", "admin_text"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    return errors, warnings
+
+
+def _validate_location_weekly_rotation(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Недельная ротация ресурсов/мобов/событий (ТЗ §35–§38)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    _check_location_ref(data, errors)
+    if not _str_field(data, "name"):
+        warnings.append("Не указано название ротации.")
+
+    period = _str_field(data, "periodicity")
+    if period and period not in ROTATION_PERIODICITY:
+        errors.append(f"Неизвестная периодичность: {period}.")
+    mode = _str_field(data, "selection_mode")
+    if mode and mode not in ROTATION_SELECTION_MODES:
+        errors.append(f"Неизвестный режим выбора: {mode}.")
+
+    for key in ("active_resources", "active_mobs", "active_events"):
+        if data.get(key) in (None, ""):
+            continue
+        value = _num(data.get(key))
+        if value is None or value < 0:
+            errors.append(f"Поле «{key}» — некорректное число.")
+    return errors, warnings
+
+
+def _validate_location_depletion_rule(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Правило минимального шанса/перераспределения при истощении (ТЗ §26–§30)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    _check_location_ref(data, errors, required=False)
+    _check_chance_window(data, errors)
+
+    trigger = _str_field(data, "trigger")
+    if trigger and trigger not in DEPLETION_TRIGGERS:
+        errors.append(f"Неизвестное условие включения минимального шанса: {trigger}.")
+    mode = _str_field(data, "redistribution_mode")
+    if mode and mode not in REDISTRIBUTION_MODES:
+        errors.append(f"Неизвестный режим перераспределения: {mode}.")
+    group = _str_field(data, "event_group")
+    if group and group not in EVENT_GROUPS:
+        errors.append(f"Неизвестная группа событий: {group}.")
+    return errors, warnings
+
+
+def _validate_location_empty_event(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Особое событие пустой локации (ТЗ §31–§34)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    _check_location_ref(data, errors)
+    # Хотя бы один вариант текста для игрока (§33 допускает несколько).
+    texts = data.get("texts")
+    text = _str_field(data, "player_text")
+    if not text and not (isinstance(texts, list) and any(str(t).strip() for t in texts)):
+        errors.append("Не заполнен текст события пустой локации.")
+    if isinstance(texts, list):
+        for t in texts:
+            if isinstance(t, str) and t and _has_markup(t):
+                errors.append("В тексте пустой локации недопустимая разметка/HTML.")
+    if text and _has_markup(text):
+        errors.append("В тексте пустой локации недопустимая разметка/HTML.")
+
+    pct = _num(data.get("min_percent_depleted"))
+    if pct is not None and (pct < 0 or pct > 100):
+        errors.append("Минимальный процент истощённых событий должен быть 0–100.")
+    _check_chance(data, "chance", errors, "Событие пустой локации")
+    return errors, warnings
+
+
+def _validate_location_hidden_event(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Скрытое событие локации (ТЗ §10)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "admin_name"):
+        errors.append("Не заполнено название скрытого события для админки.")
+    if not _str_field(data, "player_text"):
+        errors.append("Не заполнен текст скрытого события для игрока.")
+    _check_location_ref(data, errors)
+    # Скрытое событие обязано иметь условия открытия (§10).
+    conditions = data.get("conditions")
+    if not conditions:
+        errors.append("У скрытого события должны быть условия открытия.")
+    _check_chance(data, "open_chance", errors, "Открытие скрытого события")
+
+    _check_item_ref(data, "given_item", "Выдаваемый предмет", errors)
+    battle_mob = _str_field(data, "battle_mob")
+    if battle_mob and not _mob_exists(battle_mob):
+        errors.append(f"Запускаемый моб «{battle_mob}» не существует.")
+
+    for key in ("admin_name", "player_text", "player_name"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    return errors, warnings
+
+
+def _validate_location_event_answer(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Вариант ответа в событии, в т.ч. скрытый (ТЗ §11)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "button_text"):
+        errors.append("Не заполнен текст кнопки варианта ответа.")
+    if not _str_field(data, "result_text") and not _str_field(data, "result"):
+        errors.append("У варианта ответа должен быть результат.")
+
+    result = _str_field(data, "result")
+    if result and result not in EVENT_RESULT_TYPES:
+        errors.append(f"Неизвестный результат варианта: {result}.")
+
+    # Скрытый вариант обязан иметь условия показа (§11.3).
+    if data.get("hidden") and not data.get("conditions"):
+        errors.append("У скрытого варианта ответа должны быть условия показа.")
+
+    _check_item_ref(data, "required_item", "Требуемый предмет", errors)
+    _check_item_ref(data, "reward_item", "Награда-предмет", errors)
+    _check_chance(data, "success_chance", errors, "Шанс успеха")
+    _check_chance(data, "fail_chance", errors, "Шанс провала")
+
+    for key in ("button_text", "result_text"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    return errors, warnings
+
+
 VALIDATORS: dict[str, Callable[[dict[str, Any]], tuple[list[str], list[str]]]] = {
     KIND_LOCATION: _validate_location,
     KIND_MOB: _validate_mob,
@@ -791,6 +1200,16 @@ VALIDATORS: dict[str, Callable[[dict[str, Any]], tuple[list[str], list[str]]]] =
     KIND_NPC: _validate_npc,
     KIND_QUEST: _validate_quest,
     KIND_RAID: _validate_raid,
+    KIND_LOCATION_ZONE: _validate_location_zone,
+    KIND_LOCATION_RESOURCE: _validate_location_resource,
+    KIND_LOCATION_LOOT: _validate_location_loot,
+    KIND_LOCATION_MOB_SPAWN: _validate_location_mob_spawn,
+    KIND_LOCATION_WEEKLY_LIMIT: _validate_location_weekly_limit,
+    KIND_LOCATION_WEEKLY_ROTATION: _validate_location_weekly_rotation,
+    KIND_LOCATION_DEPLETION_RULE: _validate_location_depletion_rule,
+    KIND_LOCATION_EMPTY_EVENT: _validate_location_empty_event,
+    KIND_LOCATION_HIDDEN_EVENT: _validate_location_hidden_event,
+    KIND_LOCATION_EVENT_ANSWER: _validate_location_event_answer,
 }
 
 
