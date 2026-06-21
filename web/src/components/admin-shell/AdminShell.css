@@ -173,3 +173,12 @@ html { scrollbar-gutter: stable; }
 
 /* Дата истечения сессии не должна разрываться на мобильном */
 .ntv2-nowrap { white-space: nowrap; }
+
+/* Поле загрузки изображения файлом (ImageUploadField) */
+.ntv2-image-field { display: flex; gap: 10px; align-items: flex-start; }
+.ntv2-image-preview {
+  flex: 0 0 64px; width: 64px; height: 64px; border: 1px solid var(--line);
+  border-radius: 10px; background: rgba(0,0,0,.25); display: grid; place-items: center; overflow: hidden;
+}
+.ntv2-image-preview img { width: 100%; height: 100%; object-fit: contain; }
+.ntv2-image-controls { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }

@@ -12,6 +12,7 @@ import {
 } from "../../../api/adminItemApi.js";
 import { tr, ITEM_TYPE, ITEM_QUALITY, EQUIP_SLOT, ITEM_PROPERTY, ITEM_EFFECT_TYPE } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { ImageUploadField } from "../ImageUploadField.jsx";
 import { TechnicalData } from "../TechnicalData.jsx";
 
 const STATUS_TONE = {
@@ -27,6 +28,12 @@ const EMPTY = {
   usable: false, equippable: false, equip_slot: "", two_handed: false,
   stackable: false, max_stack: 1, inventory_slot: "", tags: [],
   properties: [], effects: [],
+  // Изображения (ТЗ §6): иконка (списки/инвентарь) + модель (карточка/витрина).
+  icon: "", model_image: "", model_caption: "",
+  // Доступ к локации (ТЗ доп.§1).
+  opens_access: false, access_target: "", access_mode: "on_use",
+  access_consumed_on_use: false, access_temporary: false, access_duration: "",
+  access_text_ok: "", access_text_wrong_place: "", access_text_missing: "",
 };
 
 function Field({ label, children }) {
@@ -139,6 +146,41 @@ export function ItemsSection({ guarded, hasPerm }) {
             {flag("equippable", "Экипируется")}
             {d.equippable ? <Field label="Слот"><select value={d.equip_slot} disabled={disabled} onChange={(e) => set("equip_slot", e.target.value)}><option value="">—</option>{meta.equipSlots.map((s) => <option key={s} value={s}>{tr(EQUIP_SLOT, s)}</option>)}</select></Field> : null}
             {d.equippable ? flag("two_handed", "Двуручный") : null}
+          </div>
+
+          {/* Изображения (ТЗ §6): иконка + модель — загрузка файлом. */}
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Изображения</h4>
+            <div className="ntv2-form-row">
+              <ImageUploadField label="Иконка (списки/инвентарь)" value={d.icon} onChange={(p) => set("icon", p)} category="items" uploadKey={editing.id} disabled={disabled} />
+              <ImageUploadField label="Модель предмета (карточка/витрина)" value={d.model_image} onChange={(p) => set("model_image", p)} category="items_models" uploadKey={editing.id} disabled={disabled} />
+            </div>
+            <Field label="Подпись к модели"><input value={d.model_caption} disabled={disabled} onChange={(e) => set("model_caption", e.target.value)} /></Field>
+          </div>
+
+          {/* Доступ к локации (ТЗ доп.§1). */}
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Доступ к локации</h4>
+            {flag("opens_access", "Открывает доступ")}
+            {d.opens_access ? (<>
+              <div className="ntv2-form-row">
+                <Field label="Куда открывает (id локации/зоны/события)"><input className="ntv2-mono" value={d.access_target} disabled={disabled} onChange={(e) => set("access_target", e.target.value)} /></Field>
+                <Field label="Как открывает"><select value={d.access_mode} disabled={disabled} onChange={(e) => set("access_mode", e.target.value)}>
+                  <option value="on_use">При использовании</option>
+                  <option value="has_item">При наличии в инвентаре</option>
+                  <option value="equipped">При экипировке</option>
+                  <option value="in_place">В определённом месте</option>
+                  <option value="after_event">После события</option>
+                </select></Field>
+              </div>
+              <div className="ntv2-form-row" style={{ gap: 14 }}>
+                {flag("access_consumed_on_use", "Расходуется")}{flag("access_temporary", "Временный доступ")}
+                {d.access_temporary ? <Field label="Длительность (мин)"><input type="number" value={d.access_duration} disabled={disabled} onChange={(e) => set("access_duration", e.target.value)} /></Field> : null}
+              </div>
+              <Field label="Текст при открытии"><input value={d.access_text_ok} disabled={disabled} onChange={(e) => set("access_text_ok", e.target.value)} /></Field>
+              <Field label="Текст при неправильном месте"><input value={d.access_text_wrong_place} disabled={disabled} onChange={(e) => set("access_text_wrong_place", e.target.value)} /></Field>
+              <Field label="Текст если предмета нет"><input value={d.access_text_missing} disabled={disabled} onChange={(e) => set("access_text_missing", e.target.value)} /></Field>
+            </>) : null}
           </div>
         </div>
 

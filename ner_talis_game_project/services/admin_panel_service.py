@@ -1011,12 +1011,46 @@ def _normalize_uploaded_image(blob: bytes) -> tuple[bytes, str, str]:
         raise ValueError("Не удалось нормализовать изображение перед сохранением.") from exc
 
 
+def _uploads_base_dir() -> str:
+    # Читаем ENV в рантайме, а не только на импорте: путь может быть задан после
+    # импорта (деплой/тесты), и тогда загрузки должны идти в актуальный том.
+    return os.getenv("PUBLIC_UPLOADS_ASSETS_DIR", PUBLIC_UPLOADS_ASSETS_DIR)
+
+
 def _runtime_upload_target(relative_public_path: str) -> Path:
     cleaned = relative_public_path.lstrip("/")
     if not cleaned.startswith("assets/admin_uploads/"):
         raise ValueError("Runtime upload path must be inside assets/admin_uploads.")
     relative_under_assets = cleaned.removeprefix("assets/")
-    return resolve_project_path(PUBLIC_UPLOADS_ASSETS_DIR) / relative_under_assets
+    return resolve_project_path(_uploads_base_dir()) / relative_under_assets
+
+
+def save_uploaded_image(*, category: str, key: str, content_base64: str) -> dict[str, Any]:
+    """Сохранить загруженное изображение как файл проекта и вернуть путь.
+
+    Генерик-загрузчик для конструкторов V2 (ТЗ доп.§2): админ грузит файл, а не
+    внешнюю ссылку. Картинка нормализуется (PNG/JPG/WebP, ≤4096², ≤8 МБ) и кладётся
+    в постоянный том assets/admin_uploads/<category>/<key>.<ext>. Возвращает
+    {"path": "/assets/admin_uploads/…", "content_type": …}."""
+    safe_category = re.sub(r"[^a-z0-9_\-]", "_", str(category or "misc").strip().lower())[:40] or "misc"
+    safe_key = re.sub(r"[^a-zA-Z0-9_\-]", "_", str(key or "").strip())[:80]
+    if not safe_key:
+        raise ValueError("Не указан ключ изображения (id объекта).")
+    raw = str(content_base64 or "")
+    if "," in raw and raw.strip().startswith("data:"):
+        raw = raw.split(",", 1)[1]
+    try:
+        blob = base64.b64decode(raw, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("Файл должен быть передан в base64.") from exc
+    if not blob or len(blob) > 8 * 1024 * 1024:
+        raise ValueError("Файл пустой или больше 8 МБ.")
+    normalized_blob, suffix, content_type = _normalize_uploaded_image(blob)
+    rel_public = f"/assets/admin_uploads/{safe_category}/{safe_key}{suffix}"
+    target_path = _runtime_upload_target(rel_public)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_bytes(normalized_blob)
+    return {"path": rel_public, "content_type": content_type}
 
 
 def update_item_image_from_base64(storage: Any, *, item_id: str, filename: str, content_base64: str, content_type: str | None, admin_session: dict[str, Any]) -> dict[str, Any]:
