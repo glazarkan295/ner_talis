@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { profileMockData } from "./profileMockData.js";
 
 const TABS = [
-  { id: "overview", label: "Обзор", icon: "head" },
+  // Вкладка «Обзор» убрана (ТЗ §1): её данные перенесены — параметры/эффекты в
+  // «Персонаж», предупреждения/статус/рейтинги в «Журнал».
   { id: "character", label: "Персонаж", icon: "head" },
   { id: "inventory", label: "Инвентарь", icon: "bag" },
   { id: "skills", label: "Навыки", icon: "star" },
@@ -1151,10 +1152,21 @@ function InfoTab({ profile }) {
   const activity = info.activity || {};
   const crafts = activity.craftingLevels || [];
   const fineList = activity.fineList || [];
+  const status = profile.status || null;
+  const places = (profile.ratingPlaces || []).filter((p) => p.place !== "—" && p.place != null);
   const [finesModal, setFinesModal] = useState(null);
   return (
     <div className="nt-stack">
-      <Panel title="Активность"><div className="nt-lines"><Row label="Дата регистрации" value={profile.player?.registrationDate || "—"} /><Row label="PVE убийства" value={activity.pveKills || 0} /><Row label="PVP убийства" value={activity.pvpKills || 0} /><Row label="Частицы душ" value={activity.soulParticlesAbsorbed || 0} /><div className="nt-row"><span>Штрафы</span>{fineList.length ? <button type="button" className="nt-fines-button" onClick={(event) => setFinesModal({ position: getFloatingPosition(event, 390, 360) })}>{`${fineList.length} активн. — подробнее`}</button> : <strong>нет активных штрафов</strong>}</div></div></Panel>
+      {/* Предупреждения/статус/рейтинги перенесены из убранной вкладки «Обзор» (ТЗ §1). */}
+      <ProfileWarnings warnings={profile.warnings} />
+      <Panel title="Активность"><div className="nt-lines">{status ? <Row label="Статус" value={status.label} /> : null}<Row label="Дата регистрации" value={profile.player?.registrationDate || "—"} /><Row label="PVE убийства" value={activity.pveKills || 0} /><Row label="PVP убийства" value={activity.pvpKills || 0} /><Row label="Частицы душ" value={activity.soulParticlesAbsorbed || 0} /><div className="nt-row"><span>Штрафы</span>{fineList.length ? <button type="button" className="nt-fines-button" onClick={(event) => setFinesModal({ position: getFloatingPosition(event, 390, 360) })}>{`${fineList.length} активн. — подробнее`}</button> : <strong>нет активных штрафов</strong>}</div></div></Panel>
+      {places.length ? (
+        <Panel title="Мои места в рейтингах">
+          <div className="nt-rating-places">
+            {places.map((p) => <div className="nt-rating-place" key={p.key}><span>{p.label}</span><b>{p.place} место</b></div>)}
+          </div>
+        </Panel>
+      ) : null}
       {finesModal ? <FinesModal fines={fineList} position={finesModal.position} onClose={() => setFinesModal(null)} /> : null}
       <CollapsiblePanel title="Ремёсла"><div className="nt-card-list nt-column-list">{crafts.length ? crafts.map((craft) => <div key={craft.name} className="nt-mini-card"><CardRow label={craft.name} value={`ур. ${craft.level}`} /><p>{craft.exp}</p></div>) : <p className="nt-empty-text">Ремёсла пока не развиты.</p>}</div></CollapsiblePanel>
       <CollapsiblePanel title="Достижения"><div className="nt-card-list nt-column-list">{(info.achievements || []).length ? info.achievements.map((achievement) => <div key={achievement.name || achievement} className="nt-mini-card"><CardRow label={achievement.name || achievement} value="Получено" /><p>{achievement.description || "—"}</p></div>) : <p className="nt-empty-text">Достижений пока нет.</p>}</div></CollapsiblePanel>
@@ -1560,48 +1572,10 @@ function ProfileWarnings({ warnings = [] }) {
   );
 }
 
-function OverviewTab({ profile }) {
-  const player = profile.player || {};
-  const status = profile.status || null;
-  const places = (profile.ratingPlaces || []).filter((p) => p.place !== "—" && p.place != null);
-  const expCurrent = player.experienceCurrent ?? 0;
-  const expNext = player.experienceToNext ?? 0;
-
-  // Модель персонажа в профиле не используется (дополнение к ТЗ §2): сверху —
-  // компактная карточка с основными данными в стилистике старого профиля.
-  return (
-    <div className="nt-overview">
-      <ProfileWarnings warnings={profile.warnings} />
-      <div className="nt-overview-grid">
-        <Panel title="Персонаж" className="nt-overview-character">
-          <div className="nt-overview-headinfo">
-            <div className="nt-overview-name">{player.nickname || "Безымянный"}</div>
-            <div className="nt-overview-sub">{player.raceName} · {player.genderLabel || "—"} · ур. {player.level}</div>
-            <div className="nt-overview-id ntp-mono">{player.userGlobalId || player.publicId || "—"}</div>
-            {status ? <div className="nt-overview-status">Статус: <b>{status.label}</b></div> : null}
-            <Row label="Опыт" value={`${expCurrent} / ${expNext}`} />
-            <Row label="Деньги" value={player.balanceText || "—"} />
-          </div>
-        </Panel>
-        <Panel title="Ресурсы" className="nt-overview-resources">
-          <ResourceBars parameters={profile.parameters} />
-        </Panel>
-      </div>
-      {places.length ? (
-        <Panel title="Мои места в рейтингах">
-          <div className="nt-rating-places">
-            {places.map((p) => <div className="nt-rating-place" key={p.key}><span>{p.label}</span><b>{p.place} место</b></div>)}
-          </div>
-        </Panel>
-      ) : null}
-    </div>
-  );
-}
-
 
 export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField, onSearchCourierRecipients, onSendCourierTransfer, onRedeemPromo, onAdminRemoveItem }) {
   const data = profileOrMock(profile);
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState("character");
   const [modal, setModal] = useState(null);
   const [slotModal, setSlotModal] = useState(null);
   const [dropModal, setDropModal] = useState(null);
@@ -1616,6 +1590,9 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
     ...(data.guild ? [GUILD_TAB] : []),
     ...((effectiveReadOnly || adminEdit) ? [] : [SERVICES_TAB]),
   ];
+  // Защита: если текущая вкладка недоступна (напр. старое состояние «overview»),
+  // показываем первую доступную, чтобы профиль не оставался пустым (ТЗ §1).
+  const activeTab = visibleTabs.some((t) => t.id === tab) ? tab : (visibleTabs[0]?.id || "character");
   const background = data.assets?.background || "/assets/profile/backgrounds/1.png";
 
   const equipmentBySlot = data.equipment || {};
@@ -1698,16 +1675,15 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
           <div className="nt-id">{data.player?.userGlobalId || data.player?.publicId || "NT-UNKNOWN"}</div>
         </header>
         <nav className="nt-tabs" aria-label="Разделы профиля">
-          {visibleTabs.map(({ id, label, icon }) => <button key={id} className={tab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon"><TabIcon type={icon} /></span><span className="nt-tab-text">{label}</span></button>)}
+          {visibleTabs.map(({ id, label, icon }) => <button key={id} className={activeTab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon"><TabIcon type={icon} /></span><span className="nt-tab-text">{label}</span></button>)}
         </nav>
         <section className="nt-content">
-          {tab === "overview" ? <OverviewTab profile={data} /> : null}
-          {tab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} readOnly={effectiveReadOnly} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} onEditProfileField={onEditProfileField} /> : null}
-          {tab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
-          {tab === "skills" ? <SkillsTab profile={data} readOnly={effectiveReadOnly} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
-          {tab === "info" ? <InfoTab profile={data} /> : null}
-          {tab === "guild" ? <GuildTab guild={data.guild} /> : null}
-          {tab === "services" ? <ServicesTab profile={data} onSearchRecipients={onSearchCourierRecipients} onSendTransfer={onSendCourierTransfer} onRedeemPromo={onRedeemPromo} /> : null}
+          {activeTab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} readOnly={effectiveReadOnly} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} onEditProfileField={onEditProfileField} /> : null}
+          {activeTab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
+          {activeTab === "skills" ? <SkillsTab profile={data} readOnly={effectiveReadOnly} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
+          {activeTab === "info" ? <InfoTab profile={data} /> : null}
+          {activeTab === "guild" ? <GuildTab guild={data.guild} /> : null}
+          {activeTab === "services" ? <ServicesTab profile={data} onSearchRecipients={onSearchCourierRecipients} onSendTransfer={onSendCourierTransfer} onRedeemPromo={onRedeemPromo} /> : null}
         </section>
       </div>
       <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} readOnly={effectiveReadOnly} adminEdit={adminEdit} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRequestDrop={requestDrop} onRequestSell={requestSell} onAdminRemoveItem={adminRemoveAndClose} />
