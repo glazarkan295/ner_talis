@@ -507,16 +507,20 @@ def create_admin_panel_v2_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=404, detail="Игрок не найден.")
         before_fines = card.get("fines") or []
 
-        def _forgive() -> int:
+        def _forgive() -> dict[str, Any]:
+            from services.fine_service import forgive_all_fines, repair_player_fines
+
             player = storage.get_player_by_game_id(game_id)
             if not player:
                 raise ValueError("Игрок не найден.")
-            player["active_fines"] = []
-            player.pop("active_fine", None)
+            actor = identity_key(session.get("platform"), session.get("admin_user_id"))
+            result = forgive_all_fines(player, by=actor, reason=payload.reason)
+            # §7: после снятия убеждаемся, что зависших ограничений не осталось.
+            repair_player_fines(player)
             storage.update_player(player)
-            return len(before_fines)
+            return result
 
-        run_admin_operation(
+        result = run_admin_operation(
             session=session,
             action="fines.forgive",
             func=_forgive,
@@ -524,10 +528,44 @@ def create_admin_panel_v2_router(get_storage) -> APIRouter:
             target_id=game_id,
             target_name=card.get("name"),
             before={"fines": before_fines},
-            after_func=lambda _r: {"fines": []},
+            after_func=lambda r: {"fines": [], "removed": r.get("removed"), "wasForced": r.get("was_forced")},
             reason=payload.reason,
         )
-        return {"ok": True, "forgiven": len(before_fines)}
+        return {"ok": True, "forgiven": int((result or {}).get("removed") or 0)}
+
+    @router.post("/players/{game_id}/repair-fines")
+    def repair_fines(game_id: str, payload: PlayerActionRequest, request: Request) -> dict[str, Any]:
+        # §6: «Проверить штрафы игрока» — найти и починить зависшие/несогласованные
+        # штрафы (терминальные, что висят как активные; устаревший legacy-алиас).
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_FINES_MANAGE)
+        card = _load_card(storage, game_id)
+        if card is None:
+            raise HTTPException(status_code=404, detail="Игрок не найден.")
+
+        def _repair() -> dict[str, Any]:
+            from services.fine_service import repair_player_fines
+
+            player = storage.get_player_by_game_id(game_id)
+            if not player:
+                raise ValueError("Игрок не найден.")
+            report = repair_player_fines(player)
+            if report.get("fixed"):
+                storage.update_player(player)
+            return report
+
+        report = run_admin_operation(
+            session=session,
+            action="fines.repair",
+            func=_repair,
+            target_type="player",
+            target_id=game_id,
+            target_name=card.get("name"),
+            after_func=lambda r: {"state": r.get("state"), "issues": r.get("issues"), "fixed": r.get("fixed")},
+            reason=payload.reason,
+        )
+        return {"ok": True, "report": report}
 
     @router.post("/players/{game_id}/reset")
     def reset_player(game_id: str, payload: PlayerActionRequest, request: Request) -> dict[str, Any]:

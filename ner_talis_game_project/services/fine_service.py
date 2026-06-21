@@ -20,6 +20,27 @@ FINE_STATUS_VOLUNTARY = "voluntary"
 FINE_STATUS_OVERDUE = "overdue"
 FINE_STATUS_FORCED = "forced_collection"
 FINE_STATUS_PAID = "paid"
+FINE_STATUS_REMOVED = "removed_by_admin"
+FINE_STATUS_EXPIRED = "expired"
+FINE_STATUS_CANCELLED = "cancelled"
+
+# Терминальные статусы: штраф с любым из них больше НЕ активен (не отображается,
+# не ограничивает, не начисляет проценты). Раньше активность проверялась только
+# как «status != paid», поэтому штраф с любым иным терминальным/повреждённым
+# статусом «висел» навсегда — это и есть корень бага неснимаемого штрафа (ТЗ §1).
+INACTIVE_FINE_STATUSES = frozenset({
+    FINE_STATUS_PAID, FINE_STATUS_REMOVED, FINE_STATUS_EXPIRED, FINE_STATUS_CANCELLED,
+})
+
+
+def is_fine_active(fine: Any) -> bool:
+    """Штраф активен, если это словарь и его статус не терминальный.
+
+    Неизвестный/пустой статус трактуем как активный (безопасно: лучше показать
+    штраф и дать его снять, чем тихо скрыть)."""
+    if not isinstance(fine, dict):
+        return False
+    return str(fine.get("status") or FINE_STATUS_VOLUNTARY) not in INACTIVE_FINE_STATUSES
 
 CITY_FINE_SOURCE_LABELS = {
     "black_market": "Чёрный рынок",
@@ -471,10 +492,10 @@ def active_fines(player: dict[str, Any]) -> list[dict[str, Any]]:
     raw = player.get("active_fines")
     if isinstance(raw, list):
         for fine in raw:
-            if isinstance(fine, dict) and fine.get("status") != FINE_STATUS_PAID:
+            if is_fine_active(fine):
                 fines.append(fine)
     legacy = player.get("active_fine")
-    if isinstance(legacy, dict) and legacy.get("status") != FINE_STATUS_PAID:
+    if is_fine_active(legacy):
         legacy_id = str(legacy.get("id") or "")
         if not legacy_id or all(str(f.get("id") or "") != legacy_id for f in fines):
             fines.append(legacy)
@@ -484,7 +505,7 @@ def active_fines(player: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _sync_active_fine_alias(player: dict[str, Any]) -> None:
-    fines = [fine for fine in player.get("active_fines", []) if isinstance(fine, dict) and fine.get("status") != FINE_STATUS_PAID]
+    fines = [fine for fine in player.get("active_fines", []) if is_fine_active(fine)]
     player["active_fines"] = fines
     if fines:
         player["active_fine"] = fines[0]
@@ -788,6 +809,74 @@ def fine_entries_for_profile(player: dict[str, Any], now: float | int | None = N
             "day": day,
         })
     return entries
+
+
+def forgive_all_fines(player: dict[str, Any], *, by: str = "admin", reason: str = "", now: float | int | None = None) -> dict[str, Any]:
+    """Снять ВСЕ активные штрафы игрока и все связанные ограничения (ТЗ §4/§5).
+
+    Единый авторитетный путь снятия штрафов админом: помечает каждый активный
+    штраф статусом removed_by_admin, переносит его в историю, чистит active_fines
+    и legacy-алиас. Ограничения (forced-взыскание/запрет передвижения) выводятся
+    из active_fines, поэтому их очистка автоматически снимает запрет — отдельных
+    скрытых флагов нет. Возвращает отчёт {removed, was_forced}."""
+    active = list(active_fines(player))
+    was_forced = any(str(f.get("status") or "") == FINE_STATUS_FORCED for f in active)
+    removed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(_now_ts(now)))
+    removed_bucket = player.setdefault("removed_fines", [])
+    history = player.setdefault("fine_history", [])
+    for fine in active:
+        record = dict(fine)
+        record["status"] = FINE_STATUS_REMOVED
+        record["removed_at"] = removed_at
+        record["removed_by"] = str(by or "admin")
+        record["removed_reason"] = str(reason or "")
+        record["movement_restricted"] = False
+        removed_bucket.append(record)
+        history.append({
+            "fine_id": fine.get("id"),
+            "event": FINE_STATUS_REMOVED,
+            "by": str(by or "admin"),
+            "reason": str(reason or ""),
+            "at": removed_at,
+            "amount": safe_int(fine.get("current_amount"), 0),
+        })
+    player["active_fines"] = []
+    player.pop("active_fine", None)
+    return {"removed": len(active), "was_forced": was_forced}
+
+
+def repair_player_fines(player: dict[str, Any], now: float | int | None = None) -> dict[str, Any]:
+    """Привести штрафы игрока в консистентное состояние (ТЗ §6/§7).
+
+    Чинит «зависшие» данные: убирает из active_fines терминальные (оплаченные/
+    снятые/истёкшие/отменённые) и битые записи, сбрасывает устаревший legacy-
+    алиас, синхронизирует active_fine. Возвращает отчёт с диагнозом и списком
+    исправлений (не двигает игрока — это чистая реконсиляция данных)."""
+    issues: list[str] = []
+    raw = player.get("active_fines")
+    if isinstance(raw, list):
+        cleaned = [f for f in raw if is_fine_active(f)]
+        if len(cleaned) != len(raw):
+            issues.append("dropped_inactive_or_invalid_fines")
+        player["active_fines"] = cleaned
+    elif raw is not None:
+        player["active_fines"] = []
+        issues.append("reset_malformed_active_fines")
+
+    legacy = player.get("active_fine")
+    if legacy is not None and not is_fine_active(legacy):
+        player.pop("active_fine", None)
+        issues.append("dropped_inactive_legacy_alias")
+
+    _sync_active_fine_alias(player)
+    fines = active_fines(player)
+    if not fines:
+        state = "no_active_fines"
+    elif is_forced_collection(player):
+        state = "forced_active"
+    else:
+        state = "active_ok"
+    return {"state": state, "issues": issues, "active_count": len(fines), "fixed": bool(issues)}
 
 
 def fine_summary_for_profile(player: dict[str, Any], now: float | int | None = None) -> str:
