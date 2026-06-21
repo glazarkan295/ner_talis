@@ -230,6 +230,11 @@ DEPLETION_TRIGGERS = (  # ТЗ §26.1
 # (не блок), чтобы конструктор не плодил инфляцию незаметно.
 MAX_MOB_EXPERIENCE = 1_000_000
 MAX_MOB_COINS = 1_000_000
+# Балансные пороги для warning'ов (ТЗ §30/§57): слишком большая группа в бою и
+# потенциальная фарм-петля (частый дроп большими пачками).
+MAX_MOB_BATTLE_GROUP = 10
+FARM_LOOP_DROP_CHANCE = 50.0
+FARM_LOOP_DROP_COUNT = 10
 # Валюта-синтетика из админ-наград допустима и в дропе.
 _CURRENCY_ITEM_IDS = {"money_copper", "money_silver", "money_gold"}
 
@@ -533,6 +538,23 @@ def _validate_drop_rows(rows: Any, errors: list[str], warnings: list[str]) -> No
             errors.append(f"Дроп строка {index}: мин. количество больше макс.")
 
 
+def _warn_farm_loop(rows: Any, warnings: list[str]) -> None:
+    """Предупредить о возможной фарм-петле: частый дроп большими пачками (§30)."""
+    if not isinstance(rows, list):
+        return
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        chance = _num(row.get("chance"))
+        cmax = _num(row.get("max_count"))
+        if (chance is not None and chance >= FARM_LOOP_DROP_CHANCE
+                and cmax is not None and cmax >= FARM_LOOP_DROP_COUNT):
+            warnings.append(
+                f"Предмет «{row.get('item_id')}» выпадает часто и большими "
+                "пачками — возможна фарм-петля, проверьте лимит/экономику."
+            )
+
+
 def _validate_mob(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
     """Проверка моба и его дропа (ТЗ §6–7)."""
     data = envelope.get("data") or {}
@@ -596,6 +618,11 @@ def _validate_mob(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
         errors.append("Минимум мобов в бою должен быть ≥ 1.")
     if bmin is not None and bmax is not None and bmin > bmax:
         errors.append("Минимум мобов в бою больше максимума.")
+    # Балансное предупреждение: слишком большая группа в бою (ТЗ §30/§57).
+    if bmax is not None and bmax > MAX_MOB_BATTLE_GROUP:
+        warnings.append(
+            f"Очень большая группа в бою (до {int(bmax)}) — проверьте баланс."
+        )
 
     for key in ("name", "description"):
         value = _str_field(data, key)
@@ -603,6 +630,7 @@ def _validate_mob(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
             errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
 
     _validate_drop_rows(data.get("drop"), errors, warnings)
+    _warn_farm_loop(data.get("drop"), warnings)
 
     if not mob_type:
         warnings.append("Не указан тип моба.")

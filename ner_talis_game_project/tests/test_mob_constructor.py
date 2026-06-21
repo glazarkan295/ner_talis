@@ -67,6 +67,19 @@ class MobConstructorRegistryTest(unittest.TestCase):
         self.assertIn("тип атаки", self._errors(bad))
         self.assertIn("больше максимума", self._errors(bad))
 
+    def test_balance_warnings(self):
+        # §30: большая группа в бою + частый дроп большими пачками → warning,
+        # но не блокирует публикацию (это предупреждения, не ошибки).
+        res = self._check(self.wcr.KIND_MOB, "mob_swarm", {
+            "name": "Рой", "type": "beast", "hp": 30,
+            "max_in_battle": 25, "min_in_battle": 1,
+            "drop": [{"item_id": "money_copper", "chance": 80, "max_count": 50}],
+        })
+        self.assertTrue(res["ok"], res["errors"])
+        joined = " ".join(res["warnings"])
+        self.assertIn("Очень большая группа", joined)
+        self.assertIn("фарм-петля", joined)
+
     def test_variant_multipliers(self):
         ok = self._check(self.wcr.KIND_MOB_VARIANT, "var_elite", {
             "name": "Элитный волк", "mob_id": "mob_wolf", "variant_type": "elite",
