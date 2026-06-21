@@ -18,10 +18,28 @@ import { TechnicalData } from "../TechnicalData.jsx";
 const KIND_LABELS = {
   location: "🗺️ Локации", mob: "⚔️ Мобы", button: "🔘 Кнопки", transition: "🔀 Переходы",
   event: "✨ События", npc: "🧙 NPC", quest: "📜 Квесты", raid: "🐉 Рейды",
+  // Под-объекты локаций (расширенный конструктор).
+  location_zone: "🌫️ Зоны", location_resource: "🌿 Ресурсы", location_loot: "🎁 Добыча",
+  location_mob_spawn: "🐾 Мобы локации", location_weekly_limit: "📊 Недельные лимиты",
+  location_weekly_rotation: "🔄 Ротации", location_depletion_rule: "📉 Истощение",
+  location_empty_event: "🏜️ Пустая локация", location_hidden_event: "🕵️ Скрытые события",
+  location_event_answer: "💬 Варианты ответа",
+  // Под-объекты мобов.
+  mob_variant: "🎭 Варианты мобов", mob_skill: "🌀 Навыки мобов", mob_passive: "🛡️ Пассивы мобов",
+  mob_resistance: "🔥 Сопр./слабости", mob_effect: "☠️ Эффекты мобов",
+  mob_event_link: "🔗 Моб↔событие", mob_zone_link: "🔗 Моб↔зона", mob_phase: "👑 Фазы босса",
 };
 const KIND_NEW_LABEL = {
   location: "＋ Новая локация", mob: "＋ Новый моб", button: "＋ Новая кнопка", transition: "＋ Новый переход",
   event: "＋ Новое событие", npc: "＋ Новый NPC", quest: "＋ Новый квест", raid: "＋ Новый рейд",
+  location_zone: "＋ Новая зона", location_resource: "＋ Новый ресурс", location_loot: "＋ Новая добыча",
+  location_mob_spawn: "＋ Новый моб локации", location_weekly_limit: "＋ Новый лимит",
+  location_weekly_rotation: "＋ Новая ротация", location_depletion_rule: "＋ Новое правило",
+  location_empty_event: "＋ Новое пустое событие", location_hidden_event: "＋ Новое скрытое событие",
+  location_event_answer: "＋ Новый вариант ответа",
+  mob_variant: "＋ Новый вариант", mob_skill: "＋ Новый навык", mob_passive: "＋ Новый пассив",
+  mob_resistance: "＋ Новое сопр./слабость", mob_effect: "＋ Новый эффект",
+  mob_event_link: "＋ Новая привязка", mob_zone_link: "＋ Новая привязка", mob_phase: "＋ Новая фаза",
 };
 
 const STATUS_TONE = {
@@ -88,6 +106,8 @@ const EMPTY_RAID = {
 const EMPTY_BY_KIND = {
   location: EMPTY_LOCATION, mob: EMPTY_MOB, button: EMPTY_BUTTON, transition: EMPTY_TRANSITION,
   event: EMPTY_EVENT, npc: EMPTY_NPC, quest: EMPTY_QUEST, raid: EMPTY_RAID,
+  // Под-объекты (расширенные конструкторы) — пустышки выводятся из схем ниже
+  // (см. mergeSchemaEmpties после объявления SUBOBJECT_SCHEMAS).
 };
 
 function itemTitle(kind, item) {
@@ -390,6 +410,231 @@ function RaidForm({ value, onChange, meta, disabled, refOptions }) {
   );
 }
 
+// --- Схемы под-объектов локаций и мобов (расширенные конструкторы) ---------
+// Вместо 18 рукописных форм — одна форма, управляемая схемой полей. Тип поля:
+// text/textarea/number/checkbox/mono(item_id) + select(metaKey) + ref(kind) +
+// list(построчно → массив строк). ref-kind «location_zone» — зоны, «event» —
+// события, «mob»/«location»/«npc» — соответствующие объекты.
+const SUBOBJECT_SCHEMAS = {
+  location_zone: [
+    { key: "name", label: "Название", type: "text" },
+    { key: "type", label: "Тип зоны", type: "select", metaKey: "zoneTypes" },
+    { key: "location", label: "Локация", type: "ref", ref: "location" },
+    { key: "trigger_chance", label: "Срабатывание %", type: "number" },
+    { key: "player_text", label: "Текст игроку", type: "textarea" },
+    { key: "description", label: "Тех. описание", type: "textarea" },
+  ],
+  location_resource: [
+    { key: "location", label: "Локация", type: "ref", ref: "location" },
+    { key: "item_id", label: "Предмет-ресурс (item_id)", type: "mono" },
+    { key: "category", label: "Категория", type: "select", metaKey: "resourceCategories" },
+    { key: "base_chance", label: "Базовый шанс %", type: "number" },
+    { key: "min_chance", label: "Мин. шанс %", type: "number" },
+    { key: "min_count", label: "Кол-во: от", type: "number" },
+    { key: "max_count", label: "до", type: "number" },
+    { key: "weekly_limit", label: "Недельный лимит", type: "number" },
+  ],
+  location_loot: [
+    { key: "location", label: "Локация", type: "ref", ref: "location" },
+    { key: "item_id", label: "Предмет (item_id)", type: "mono" },
+    { key: "source", label: "Источник", type: "select", metaKey: "lootSources" },
+    { key: "chance", label: "Шанс %", type: "number" },
+    { key: "min_chance", label: "Мин. шанс %", type: "number" },
+    { key: "min_count", label: "Кол-во: от", type: "number" },
+    { key: "max_count", label: "до", type: "number" },
+    { key: "weekly_limit", label: "Недельный лимит", type: "number" },
+  ],
+  location_mob_spawn: [
+    { key: "location", label: "Локация", type: "ref", ref: "location" },
+    { key: "mob_id", label: "Моб", type: "ref", ref: "mob" },
+    { key: "spawn_chance", label: "Шанс встречи %", type: "number" },
+    { key: "min_chance", label: "Мин. шанс %", type: "number" },
+    { key: "mob_level_min", label: "Ур. моба: от", type: "number" },
+    { key: "mob_level_max", label: "до", type: "number" },
+    { key: "min_in_battle", label: "В бою: от", type: "number" },
+    { key: "max_in_battle", label: "до", type: "number" },
+    { key: "weekly_stock", label: "Недельный запас", type: "number" },
+  ],
+  location_weekly_limit: [
+    { key: "location", label: "Локация", type: "ref", ref: "location" },
+    { key: "limit_type", label: "Тип лимита", type: "select", metaKey: "weeklyLimitTypes" },
+    { key: "linked_object", label: "Связанный объект (item_id/mob_id)", type: "mono" },
+    { key: "total_stock", label: "Запас на неделю", type: "number" },
+    { key: "min_per_event", label: "За событие: от", type: "number" },
+    { key: "max_per_event", label: "до", type: "number" },
+    { key: "base_chance", label: "Базовый шанс %", type: "number" },
+    { key: "min_chance", label: "Мин. шанс %", type: "number" },
+    { key: "source", label: "Источник", type: "select", metaKey: "lootSources" },
+    { key: "depletion_text", label: "Текст при истощении", type: "textarea" },
+  ],
+  location_weekly_rotation: [
+    { key: "name", label: "Название ротации", type: "text" },
+    { key: "location", label: "Локация", type: "ref", ref: "location" },
+    { key: "periodicity", label: "Периодичность", type: "select", metaKey: "rotationPeriodicity" },
+    { key: "selection_mode", label: "Режим выбора", type: "select", metaKey: "rotationSelectionModes" },
+    { key: "active_resources", label: "Активных ресурсов", type: "number" },
+    { key: "active_mobs", label: "Активных мобов", type: "number" },
+    { key: "active_events", label: "Активных событий", type: "number" },
+  ],
+  location_depletion_rule: [
+    { key: "location", label: "Локация (необязательно)", type: "ref", ref: "location" },
+    { key: "base_chance", label: "Базовый шанс %", type: "number" },
+    { key: "min_chance", label: "Мин. шанс %", type: "number" },
+    { key: "trigger", label: "Когда включать", type: "select", metaKey: "depletionTriggers" },
+    { key: "redistribution_mode", label: "Перераспределение", type: "select", metaKey: "redistributionModes" },
+    { key: "event_group", label: "Группа событий", type: "select", metaKey: "eventGroups" },
+  ],
+  location_empty_event: [
+    { key: "location", label: "Локация", type: "ref", ref: "location" },
+    { key: "player_text", label: "Текст игроку", type: "textarea" },
+    { key: "min_percent_depleted", label: "Мин. % истощённых", type: "number" },
+    { key: "chance", label: "Шанс %", type: "number" },
+  ],
+  location_hidden_event: [
+    { key: "admin_name", label: "Название (админка)", type: "text" },
+    { key: "player_name", label: "Название (игроку, после открытия)", type: "text" },
+    { key: "player_text", label: "Текст игроку", type: "textarea" },
+    { key: "location", label: "Локация", type: "ref", ref: "location" },
+    { key: "conditions", label: "Условия открытия (по строке)", type: "list" },
+    { key: "open_chance", label: "Шанс открытия %", type: "number" },
+    { key: "given_item", label: "Выдаваемый предмет (item_id)", type: "mono" },
+    { key: "battle_mob", label: "Запускаемый бой (моб)", type: "ref", ref: "mob" },
+  ],
+  location_event_answer: [
+    { key: "button_text", label: "Текст кнопки", type: "text" },
+    { key: "result", label: "Результат", type: "select", metaKey: "eventResultTypes" },
+    { key: "result_text", label: "Текст результата", type: "textarea" },
+    { key: "hidden", label: "Скрытый вариант", type: "checkbox" },
+    { key: "conditions", label: "Условия показа (по строке)", type: "list" },
+    { key: "required_item", label: "Требуемый предмет (item_id)", type: "mono" },
+    { key: "reward_item", label: "Награда-предмет (item_id)", type: "mono" },
+    { key: "success_chance", label: "Шанс успеха %", type: "number" },
+    { key: "fail_chance", label: "Шанс провала %", type: "number" },
+  ],
+  mob_variant: [
+    { key: "name", label: "Название варианта", type: "text" },
+    { key: "mob_id", label: "Моб", type: "ref", ref: "mob" },
+    { key: "variant_type", label: "Тип варианта", type: "select", metaKey: "mobVariantTypes" },
+    { key: "hp_mult", label: "×HP", type: "number" },
+    { key: "damage_mult", label: "×Урон", type: "number" },
+    { key: "defense_mult", label: "×Защита", type: "number" },
+    { key: "exp_mult", label: "×Опыт", type: "number" },
+    { key: "coins_mult", label: "×Монеты", type: "number" },
+    { key: "drop_mult", label: "×Дроп", type: "number" },
+    { key: "spawn_chance", label: "Шанс варианта %", type: "number" },
+    { key: "description", label: "Описание", type: "textarea" },
+  ],
+  mob_skill: [
+    { key: "name", label: "Название навыка", type: "text" },
+    { key: "mob_id", label: "Моб", type: "ref", ref: "mob" },
+    { key: "skill_type", label: "Тип навыка", type: "select", metaKey: "mobSkillTypes" },
+    { key: "use_condition", label: "Условие", type: "select", metaKey: "mobSkillConditions" },
+    { key: "use_chance", label: "Шанс использования %", type: "number" },
+    { key: "cooldown", label: "Кулдаун (ходов)", type: "number" },
+    { key: "player_text", label: "Текст игроку", type: "textarea" },
+  ],
+  mob_passive: [
+    { key: "name", label: "Название", type: "text" },
+    { key: "mob_id", label: "Моб", type: "ref", ref: "mob" },
+    { key: "player_description", label: "Описание игроку", type: "textarea" },
+  ],
+  mob_resistance: [
+    { key: "mob_id", label: "Моб", type: "ref", ref: "mob" },
+    { key: "resist_type", label: "Тип", type: "select", metaKey: "mobResistTypes" },
+    { key: "value", label: "Значение", type: "number" },
+    { key: "is_weakness", label: "Это слабость", type: "checkbox" },
+  ],
+  mob_effect: [
+    { key: "name", label: "Название эффекта", type: "text" },
+    { key: "mob_id", label: "Моб", type: "ref", ref: "mob" },
+    { key: "effect_id", label: "Эффект из конструктора (id)", type: "mono" },
+    { key: "chance", label: "Шанс наложения %", type: "number" },
+    { key: "duration", label: "Длительность (ходов)", type: "number" },
+    { key: "player_text", label: "Текст игроку", type: "textarea" },
+  ],
+  mob_event_link: [
+    { key: "mob_id", label: "Моб", type: "ref", ref: "mob" },
+    { key: "event_id", label: "Событие", type: "ref", ref: "event" },
+    { key: "spawn_chance", label: "Шанс появления %", type: "number" },
+    { key: "count", label: "Количество мобов", type: "number" },
+    { key: "variant_type", label: "Вариант", type: "select", metaKey: "mobVariantTypes" },
+  ],
+  mob_zone_link: [
+    { key: "mob_id", label: "Моб", type: "ref", ref: "mob" },
+    { key: "zone_id", label: "Зона", type: "ref", ref: "location_zone" },
+    { key: "spawn_chance_delta", label: "Δ шанса встречи", type: "number" },
+    { key: "variant_type", label: "Вариант", type: "select", metaKey: "mobVariantTypes" },
+  ],
+  mob_phase: [
+    { key: "name", label: "Название фазы", type: "text" },
+    { key: "mob_id", label: "Моб (босс)", type: "ref", ref: "mob" },
+    { key: "start_condition", label: "Условие начала", type: "text" },
+    { key: "player_text", label: "Описание игроку", type: "textarea" },
+    { key: "transition_message", label: "Сообщение при переходе", type: "textarea" },
+  ],
+};
+
+function emptyFromSchema(schema) {
+  const out = {};
+  for (const f of schema) {
+    if (f.type === "checkbox") out[f.key] = false;
+    else if (f.type === "list") out[f.key] = [];
+    else if (f.type === "number") out[f.key] = "";
+    else out[f.key] = "";
+  }
+  return out;
+}
+
+// Пустышки под-объектов выводятся из их схем (без рукописных EMPTY_*).
+for (const [schemaKind, schema] of Object.entries(SUBOBJECT_SCHEMAS)) {
+  EMPTY_BY_KIND[schemaKind] = emptyFromSchema(schema);
+}
+
+// Какие справочники-ссылки нужны схеме (для пикеров ref).
+function refKindsForSchema(schema) {
+  return [...new Set((schema || []).filter((f) => f.type === "ref").map((f) => f.ref))];
+}
+
+function GenericForm({ value, onChange, meta, refOptions, disabled, schema }) {
+  const set = (k, v) => onChange({ ...value, [k]: v });
+  return (
+    <div className="ntv2-world-form">
+      {schema.map((f) => {
+        if (f.type === "checkbox") {
+          return (
+            <label className="ntv2-check" key={f.key}>
+              <input type="checkbox" checked={Boolean(value[f.key])} disabled={disabled} onChange={(e) => set(f.key, e.target.checked)} /> {f.label}
+            </label>
+          );
+        }
+        let control;
+        if (f.type === "textarea") {
+          control = <textarea rows={3} value={value[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} />;
+        } else if (f.type === "number") {
+          control = <input type="number" value={value[f.key] ?? ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} />;
+        } else if (f.type === "mono") {
+          control = <input className="ntv2-mono" value={value[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} />;
+        } else if (f.type === "select") {
+          control = (
+            <select value={value[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)}>
+              <option value="">— не выбрано —</option>
+              {(meta[f.metaKey] || []).map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          );
+        } else if (f.type === "ref") {
+          control = <RefSelect value={value[f.key]} onChange={(v) => set(f.key, v)} options={refOptions[f.ref]} disabled={disabled} />;
+        } else if (f.type === "list") {
+          const text = Array.isArray(value[f.key]) ? value[f.key].join("\n") : (value[f.key] || "");
+          control = <textarea rows={3} value={text} disabled={disabled} onChange={(e) => set(f.key, e.target.value.split("\n").map((s) => s.trim()).filter(Boolean))} />;
+        } else {
+          control = <input value={value[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} />;
+        }
+        return <Field label={f.label} key={f.key}>{control}</Field>;
+      })}
+    </div>
+  );
+}
+
 const FORM_BY_KIND = {
   location: LocationForm, mob: MobForm, button: ButtonForm, transition: TransitionForm,
   event: EventForm, npc: NpcForm, quest: QuestForm, raid: RaidForm,
@@ -422,11 +667,14 @@ export function WorldSection({ guarded, hasPerm }) {
   }, [guarded, kind, statusFilter]);
 
   // Какие справочники объектов нужны форме текущего типа (для пикеров-ссылок).
-  const neededRefs = useMemo(() => ({
-    button: ["location"], transition: ["location"],
-    event: ["location", "mob"], npc: ["location"],
-    quest: ["location", "mob", "npc"], raid: ["location", "mob"],
-  }[kind] || []), [kind]);
+  const neededRefs = useMemo(() => {
+    if (SUBOBJECT_SCHEMAS[kind]) return refKindsForSchema(SUBOBJECT_SCHEMAS[kind]);
+    return ({
+      button: ["location"], transition: ["location"],
+      event: ["location", "mob"], npc: ["location"],
+      quest: ["location", "mob", "npc"], raid: ["location", "mob"],
+    }[kind] || []);
+  }, [kind]);
 
   const loadRefs = useCallback(async (kinds) => {
     const entries = await Promise.all(kinds.map(async (k) => {
@@ -441,6 +689,7 @@ export function WorldSection({ guarded, hasPerm }) {
   useEffect(() => { if (neededRefs.length) loadRefs(neededRefs); }, [neededRefs, loadRefs]);
 
   const statuses = meta?.statuses || [];
+  const schema = SUBOBJECT_SCHEMAS[kind];
   const Form = FORM_BY_KIND[kind] || LocationForm;
 
   function resetPanels() { setPreview(null); setTestReport(null); }
@@ -498,7 +747,11 @@ export function WorldSection({ guarded, hasPerm }) {
           <Field label="ID (латиница, напр. small_plateau)"><input value={editing.id} onChange={(e) => setEditing({ ...editing, id: e.target.value })} /></Field>
         ) : <p className="ntv2-hint ntv2-mono">{editing.id}</p>}
 
-        <Form value={editing.data} onChange={(data) => setEditing({ ...editing, data })} meta={meta} locationOptions={refOptions.location} refOptions={refOptions} disabled={!(editing.isNew ? can.create : can.edit)} />
+        {schema ? (
+          <GenericForm schema={schema} value={editing.data} onChange={(data) => setEditing({ ...editing, data })} meta={meta} refOptions={refOptions} disabled={!(editing.isNew ? can.create : can.edit)} />
+        ) : (
+          <Form value={editing.data} onChange={(data) => setEditing({ ...editing, data })} meta={meta} locationOptions={refOptions.location} refOptions={refOptions} disabled={!(editing.isNew ? can.create : can.edit)} />
+        )}
 
         {v ? (
           <div className={`ntv2-panel ${v.ok ? "" : "ntv2-danger-zone"}`}>
