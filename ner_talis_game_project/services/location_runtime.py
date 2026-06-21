@@ -465,6 +465,64 @@ def consume_for_item(location_id: str, item_id: str, amount: int, *, week: str |
     return None
 
 
+def published_mob_spawns(location_id: str) -> list[dict[str, Any]]:
+    """Опубликованные записи появления мобов на локации (ТЗ §15)."""
+    location_id = str(location_id)
+    out = []
+    for env in registry.list_content(registry.KIND_LOCATION_MOB_SPAWN, status=_PUBLISHED):
+        if str((env.get("data") or {}).get("location") or "") == location_id:
+            out.append(env)
+    return out
+
+
+def _mob_limit(location_id: str, mob_id: str) -> dict[str, Any] | None:
+    """Опубликованный недельный лимит-моб для (локация, mob_id)."""
+    mob_types = {"mob", "mob_group", "rare_mob", "boss"}
+    for limit in published_limits(location_id):
+        data = limit.get("data") or {}
+        if str(data.get("limit_type") or "") in mob_types and str(data.get("linked_object") or "") == str(mob_id):
+            return limit
+    return None
+
+
+def mob_weekly_remaining(location_id: str, mob_id: str, *, week: str | None = None) -> int | None:
+    """Остаток недельного запаса моба (None → лимита нет, не ограничено §18)."""
+    limit = _mob_limit(location_id, mob_id)
+    if limit is None:
+        return None
+    return remaining(location_id, limit, week=week)
+
+
+def pick_mob_spawn(location_id: str, player_level: int, *, rng: random.Random | None = None, week: str | None = None) -> dict[str, Any] | None:
+    """Выбрать запись появления моба для боя (ТЗ §15/§17/§22).
+
+    Учитывает уровень игрока (диапазон спауна), исключает истощённые по
+    недельному запасу мобы и выбирает по шансу встречи. None — нет подходящего
+    спауна (бой строится по старой логике).
+    """
+    rng = rng or random.Random()
+    candidates: list[dict[str, Any]] = []
+    for env in published_mob_spawns(location_id):
+        data = env.get("data") or {}
+        mob_id = str(data.get("mob_id") or "")
+        if not mob_id:
+            continue
+        lvl_min = data.get("player_level_min")
+        lvl_max = data.get("player_level_max")
+        if lvl_min not in (None, "") and player_level < _num(lvl_min, 1):
+            continue
+        if lvl_max not in (None, "") and player_level > _num(lvl_max, 9999):
+            continue
+        left = mob_weekly_remaining(location_id, mob_id, week=week)
+        if left is not None and left <= 0:
+            continue  # популяция выбита за неделю
+        chance = _num(data.get("spawn_chance"), 0) or 0
+        if chance <= 0:
+            continue
+        candidates.append({"id": env.get("id"), "mob_id": mob_id, "data": data, "chance": chance, "remaining": left})
+    return weighted_choice(candidates, rng)
+
+
 def consume_for_mob(location_id: str, mob_id: str, amount: int, *, week: str | None = None) -> int | None:
     """Списать побеждённых мобов из недельного запаса локации (ТЗ §18/§22)."""
     mob_id = str(mob_id or "").strip()
