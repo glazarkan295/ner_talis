@@ -8,6 +8,7 @@ import {
   updateSiteItem,
   validateSiteItem,
 } from "../../../api/adminSiteApi.js";
+import { tr, BANNER_TYPE, GUIDE_DIFFICULTY } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 
 const KIND_LABELS = { news: "📰 Новости", guide: "📚 Гайды", faq: "❓ FAQ", banner: "🎌 Баннеры", announcement: "📢 Объявления" };
@@ -49,7 +50,7 @@ function SiteForm({ kind, value, onChange, meta, disabled }) {
       <div className="ntv2-world-form">
         <div className="ntv2-form-row">
           <Field label="Заголовок"><input value={value.title} disabled={disabled} onChange={(e) => set("title", e.target.value)} /></Field>
-          <Field label="Тип"><select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.bannerTypes || []).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+          <Field label="Тип"><select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.bannerTypes || []).map((x) => <option key={x} value={x}>{tr(BANNER_TYPE, x)}</option>)}</select></Field>
         </div>
         <Field label="Текст"><textarea rows={3} value={value.text} disabled={disabled} onChange={(e) => set("text", e.target.value)} /></Field>
         <div className="ntv2-form-row">
@@ -67,7 +68,7 @@ function SiteForm({ kind, value, onChange, meta, disabled }) {
         <Field label="Заголовок"><input value={value.title} disabled={disabled} onChange={(e) => set("title", e.target.value)} /></Field>
         {kind === "news"
           ? <Field label="Категория"><select value={value.category} disabled={disabled} onChange={(e) => set("category", e.target.value)}><option value="">—</option>{(meta.newsCategories || []).map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
-          : <Field label="Сложность"><select value={value.difficulty} disabled={disabled} onChange={(e) => set("difficulty", e.target.value)}>{(meta.guideDifficulties || []).map((d) => <option key={d} value={d}>{d}</option>)}</select></Field>}
+          : <Field label="Сложность"><select value={value.difficulty} disabled={disabled} onChange={(e) => set("difficulty", e.target.value)}>{(meta.guideDifficulties || []).map((d) => <option key={d} value={d}>{tr(GUIDE_DIFFICULTY, d)}</option>)}</select></Field>}
       </div>
       <Field label="Краткое описание"><textarea rows={2} value={value.short_description} disabled={disabled} onChange={(e) => set("short_description", e.target.value)} /></Field>
       <Field label="Полный текст"><textarea rows={5} value={value.body} disabled={disabled} onChange={(e) => set("body", e.target.value)} /></Field>

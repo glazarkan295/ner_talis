@@ -10,6 +10,7 @@ import {
   updateItem,
   validateItem,
 } from "../../../api/adminItemApi.js";
+import { tr, ITEM_TYPE, ITEM_QUALITY, EQUIP_SLOT, ITEM_PROPERTY, ITEM_EFFECT_TYPE } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { TechnicalData } from "../TechnicalData.jsx";
 
@@ -114,8 +115,8 @@ export function ItemsSection({ guarded, hasPerm }) {
             <Field label="Категория"><select value={d.category} disabled={disabled} onChange={(e) => set("category", e.target.value)}><option value="">— выбрать —</option>{meta.categories.map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
           </div>
           <div className="ntv2-form-row">
-            <Field label="Тип"><select value={d.item_type} disabled={disabled} onChange={(e) => set("item_type", e.target.value)}>{meta.types.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
-            <Field label="Качество"><select value={d.quality} disabled={disabled} onChange={(e) => set("quality", e.target.value)}>{meta.qualities.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+            <Field label="Тип"><select value={d.item_type} disabled={disabled} onChange={(e) => set("item_type", e.target.value)}>{meta.types.map((x) => <option key={x} value={x}>{tr(ITEM_TYPE, x)}</option>)}</select></Field>
+            <Field label="Качество"><select value={d.quality} disabled={disabled} onChange={(e) => set("quality", e.target.value)}>{meta.qualities.map((x) => <option key={x} value={x}>{tr(ITEM_QUALITY, x)}</option>)}</select></Field>
             {flag("unique", "Уникальный")}
             <Field label="Ур. предмета"><input type="number" value={d.item_level} disabled={disabled} onChange={(e) => set("item_level", e.target.value)} /></Field>
             <Field label="Мин. ур. игрока"><input type="number" value={d.min_player_level} disabled={disabled} onChange={(e) => set("min_player_level", e.target.value)} /></Field>
@@ -136,21 +137,21 @@ export function ItemsSection({ guarded, hasPerm }) {
           </div>
           <div className="ntv2-form-row">
             {flag("equippable", "Экипируется")}
-            {d.equippable ? <Field label="Слот"><select value={d.equip_slot} disabled={disabled} onChange={(e) => set("equip_slot", e.target.value)}><option value="">—</option>{meta.equipSlots.map((s) => <option key={s} value={s}>{s}</option>)}</select></Field> : null}
+            {d.equippable ? <Field label="Слот"><select value={d.equip_slot} disabled={disabled} onChange={(e) => set("equip_slot", e.target.value)}><option value="">—</option>{meta.equipSlots.map((s) => <option key={s} value={s}>{tr(EQUIP_SLOT, s)}</option>)}</select></Field> : null}
             {d.equippable ? flag("two_handed", "Двуручный") : null}
           </div>
         </div>
 
         <RowEditor title="Свойства" rows={d.properties} disabled={disabled} onChange={(rows) => set("properties", rows)} blank={{ type: meta.propertyTypes[0], value: 0, percent: false }}
           render={(row, setRow) => (<>
-            <select value={row.type} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{meta.propertyTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select>
+            <select value={row.type} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{meta.propertyTypes.map((x) => <option key={x} value={x}>{tr(ITEM_PROPERTY, x)}</option>)}</select>
             <input type="number" style={{ width: 100 }} value={row.value} disabled={disabled} onChange={(e) => setRow({ value: e.target.value })} />
             <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.percent)} disabled={disabled} onChange={(e) => setRow({ percent: e.target.checked })} /> %</label>
           </>)} />
 
         <RowEditor title="Эффекты" rows={d.effects} disabled={disabled} onChange={(rows) => set("effects", rows)} blank={{ type: meta.effectTypes[0], value: "" }}
           render={(row, setRow) => (<>
-            <select value={row.type} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{meta.effectTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select>
+            <select value={row.type} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{meta.effectTypes.map((x) => <option key={x} value={x}>{tr(ITEM_EFFECT_TYPE, x)}</option>)}</select>
             <input placeholder="параметр" value={row.value || ""} disabled={disabled} onChange={(e) => setRow({ value: e.target.value })} />
           </>)} />
 

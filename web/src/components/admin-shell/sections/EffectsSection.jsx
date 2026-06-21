@@ -9,6 +9,7 @@ import {
   updateEffect,
   validateEffect,
 } from "../../../api/adminEffectApi.js";
+import { tr, EFFECT_TYPE, EFFECT_SOURCE, EFFECT_TARGET, EFFECT_ACTIVE_WHEN, EFFECT_STACK_RULE, STAT, RESOURCE, CONTROL_KIND, ZONE_ELEMENT } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
@@ -86,21 +87,21 @@ export function EffectsSection({ guarded, hasPerm }) {
         <div className="ntv2-world-form">
           <div className="ntv2-form-row">
             <Field label="Название (админ)"><input value={d.effect_name} disabled={disabled} onChange={(e) => set("effect_name", e.target.value)} /></Field>
-            <Field label="Тип эффекта"><select value={d.effect_type} disabled={disabled} onChange={(e) => set("effect_type", e.target.value)}>{meta.effectTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+            <Field label="Тип эффекта"><select value={d.effect_type} disabled={disabled} onChange={(e) => set("effect_type", e.target.value)}>{meta.effectTypes.map((x) => <option key={x} value={x}>{tr(EFFECT_TYPE, x)}</option>)}</select></Field>
           </div>
           <div className="ntv2-form-row">
-            <Field label="Источник"><select value={d.source_type} disabled={disabled} onChange={(e) => set("source_type", e.target.value)}>{meta.sourceTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
-            <Field label="Цель"><select value={d.target} disabled={disabled} onChange={(e) => set("target", e.target.value)}>{meta.targets.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
-            <Field label="Когда работает"><select value={d.active_when} disabled={disabled} onChange={(e) => set("active_when", e.target.value)}>{meta.activeWhen.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
-            <Field label="Стак"><select value={d.stack_rule} disabled={disabled} onChange={(e) => set("stack_rule", e.target.value)}>{meta.stackRules.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+            <Field label="Источник"><select value={d.source_type} disabled={disabled} onChange={(e) => set("source_type", e.target.value)}>{meta.sourceTypes.map((x) => <option key={x} value={x}>{tr(EFFECT_SOURCE, x)}</option>)}</select></Field>
+            <Field label="Цель"><select value={d.target} disabled={disabled} onChange={(e) => set("target", e.target.value)}>{meta.targets.map((x) => <option key={x} value={x}>{tr(EFFECT_TARGET, x)}</option>)}</select></Field>
+            <Field label="Когда работает"><select value={d.active_when} disabled={disabled} onChange={(e) => set("active_when", e.target.value)}>{meta.activeWhen.map((x) => <option key={x} value={x}>{tr(EFFECT_ACTIVE_WHEN, x)}</option>)}</select></Field>
+            <Field label="Стак"><select value={d.stack_rule} disabled={disabled} onChange={(e) => set("stack_rule", e.target.value)}>{meta.stackRules.map((x) => <option key={x} value={x}>{tr(EFFECT_STACK_RULE, x)}</option>)}</select></Field>
           </div>
 
           {/* Type-specific selectors */}
           <div className="ntv2-form-row">
-            {et === "stat_modifier" ? <Field label="Характеристика"><select value={d.stat} disabled={disabled} onChange={(e) => set("stat", e.target.value)}>{meta.stats.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field> : null}
-            {["max_resource_modifier", "resource_regeneration", "absorb_effect"].includes(et) ? <Field label="Ресурс"><select value={d.resource} disabled={disabled} onChange={(e) => set("resource", e.target.value)}>{meta.resources.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field> : null}
-            {et === "control_effect" ? <Field label="Тип контроля"><select value={d.control_kind} disabled={disabled} onChange={(e) => set("control_kind", e.target.value)}>{meta.controlKinds.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field> : null}
-            {et === "zone_effect" ? <Field label="Стихия зоны"><select value={d.zone_element} disabled={disabled} onChange={(e) => set("zone_element", e.target.value)}>{meta.zoneElements.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field> : null}
+            {et === "stat_modifier" ? <Field label="Характеристика"><select value={d.stat} disabled={disabled} onChange={(e) => set("stat", e.target.value)}>{meta.stats.map((x) => <option key={x} value={x}>{tr(STAT, x)}</option>)}</select></Field> : null}
+            {["max_resource_modifier", "resource_regeneration", "absorb_effect"].includes(et) ? <Field label="Ресурс"><select value={d.resource} disabled={disabled} onChange={(e) => set("resource", e.target.value)}>{meta.resources.map((x) => <option key={x} value={x}>{tr(RESOURCE, x)}</option>)}</select></Field> : null}
+            {et === "control_effect" ? <Field label="Тип контроля"><select value={d.control_kind} disabled={disabled} onChange={(e) => set("control_kind", e.target.value)}>{meta.controlKinds.map((x) => <option key={x} value={x}>{tr(CONTROL_KIND, x)}</option>)}</select></Field> : null}
+            {et === "zone_effect" ? <Field label="Стихия зоны"><select value={d.zone_element} disabled={disabled} onChange={(e) => set("zone_element", e.target.value)}>{meta.zoneElements.map((x) => <option key={x} value={x}>{tr(ZONE_ELEMENT, x)}</option>)}</select></Field> : null}
           </div>
 
           <Field label="Текст для игрока (без формул)"><textarea rows={2} value={d.player_text} disabled={disabled} onChange={(e) => set("player_text", e.target.value)} /></Field>

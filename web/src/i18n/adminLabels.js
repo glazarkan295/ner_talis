@@ -34,6 +34,168 @@ export const ITEM_QUALITY = {
   unique: "Уникальный",
 };
 
+// --- Конструктор предметов -------------------------------------------------
+export const ITEM_TYPE = {
+  normal: "Обычный", equippable: "Экипируемый", consumable: "Расходник", resource: "Ресурс",
+  ingredient: "Ингредиент", recipe: "Рецепт", quest: "Квестовый", unique: "Уникальный",
+  artifact: "Артефакт", one_time_artifact: "Одноразовый артефакт", special_slot: "Особый слот",
+  craft: "Ремесленный", sale: "Торговый", event: "Событийный", guild: "Гильдейский",
+  raid: "Рейдовый", achievement: "За достижение",
+};
+export const EQUIP_SLOT = {
+  head: "Голова", chest: "Нагрудник", legs: "Штаны", gloves: "Перчатки", boots: "Ботинки",
+  belt: "Пояс", main_hand: "Основная рука", off_hand: "Вторая рука", two_hands: "Две руки",
+  staff: "Посох", spellbook: "Магическая книга", shield: "Щит", ring: "Кольцо",
+  necklace: "Ожерелье", special: "Особый слот", bag: "Подсумок",
+};
+export const ITEM_PROPERTY = {
+  strength: "Сила", stamina: "Выносливость", agility: "Ловкость", perception: "Восприятие",
+  intelligence: "Интеллект", wisdom: "Мудрость", hp: "HP", mana: "Мана", spirit: "Дух",
+  energy: "Энергия", phys_defense: "Физ. защита", mag_defense: "Маг. защита", accuracy: "Точность",
+  evasion: "Уклонение", crit_chance: "Шанс крита", crit_damage: "Урон крита", armor: "Броня",
+  hp_regen: "Реген. HP", mana_regen: "Реген. маны", exp_bonus: "Бонус опыта", coin_bonus: "Бонус монет",
+  loot_bonus: "Бонус добычи", fishing_bonus: "Бонус рыбалки", alchemy_bonus: "Бонус алхимии",
+};
+export const ITEM_EFFECT_TYPE = {
+  one_time: "Одноразовый", passive_on_equip: "Пассивный при экипировке",
+  temp_on_use: "Временный при использовании", stacking: "Накопительный", combat: "Боевой",
+  loot: "Добыча", fishing: "Рыбалка", alchemy: "Алхимия", craft: "Крафт",
+  zone_protection: "Защита от зоны", revive: "Воскрешение", reflect: "Отражение", thorns: "Шипы",
+  vampirism: "Вампиризм", burn: "Поджог", poison: "Яд", stun: "Оглушение", bleed: "Кровотечение",
+  cleanse: "Очищение", regen: "Регенерация",
+};
+
+// --- Конструктор эффектов --------------------------------------------------
+export const EFFECT_TYPE = {
+  stat_modifier: "Модификатор характеристики", resource_regeneration: "Регенерация ресурса",
+  max_resource_modifier: "Модификатор макс. ресурса", periodic_damage: "Периодический урон",
+  control_effect: "Контроль", damage_response: "Ответ на урон", absorb_effect: "Поглощение",
+  aura_effect: "Аура", summon_effect: "Призыв", curse_effect: "Проклятье", zone_effect: "Эффект зоны",
+  zone_protection: "Защита от зоны", item_lifecycle: "Жизненный цикл предмета",
+  crit_damage_modifier: "Модификатор урона крита", crit_chance_modifier: "Модификатор шанса крита",
+  accuracy_modifier: "Модификатор точности", dodge_modifier: "Модификатор уклонения",
+  physical_defense_modifier: "Модификатор физ. защиты", magic_defense_modifier: "Модификатор маг. защиты",
+  inventory_slot_bonus: "Бонус слотов инвентаря", bonus_action_modifier: "Модификатор доп. действия",
+  encounter_chance_modifier: "Модификатор шанса встречи",
+};
+export const EFFECT_SOURCE = {
+  item: "Предмет", skill: "Навык", mob: "Моб", trap: "Ловушка", event: "Событие",
+  zone: "Зона", curse: "Проклятье", admin: "Администратор",
+};
+export const EFFECT_TARGET = {
+  self: "На себя", wearer: "Носитель", enemy: "Враг", ally: "Союзник", party: "Группа",
+  raid: "Рейд", all_battle: "Все в бою", random: "Случайная цель",
+};
+export const EFFECT_ACTIVE_WHEN = {
+  equipped: "Когда надет", in_inventory: "В инвентаре", in_battle: "В бою",
+  on_enter_location: "При входе в локацию", on_death: "При смерти", on_attack: "При атаке",
+  on_receive_damage: "При получении урона", on_deal_damage: "При нанесении урона", always: "Всегда",
+};
+export const EFFECT_STACK_RULE = {
+  refresh: "Обновлять длительность", strongest_only: "Только сильнейший",
+  stack_limited: "Стак с лимитом", unique_only: "Только уникальный",
+};
+export const STAT = {
+  strength: "Сила", wisdom: "Мудрость", endurance: "Выносливость", agility: "Ловкость",
+  perception: "Восприятие", intelligence: "Интеллект",
+};
+export const RESOURCE = { hp: "HP", mana: "Мана", spirit: "Дух" };
+export const CONTROL_KIND = {
+  stun: "Оглушение", confusion: "Замешательство", panic: "Паника", freeze: "Заморозка", root: "Обездвиживание",
+};
+export const ZONE_ELEMENT = {
+  fire: "Огонь", water: "Вода", frost: "Мороз", earth: "Земля", wind: "Ветер", spirit: "Духи",
+  curse: "Проклятье", holy: "Свет", shadow: "Тьма", chaos: "Хаос", ancient_magic: "Древняя магия",
+};
+
+// --- Конструктор достижений ------------------------------------------------
+export const ACH_TYPE = {
+  normal: "Обычное", hidden: "Скрытое", story: "Сюжетное", combat: "Боевое", craft: "Ремесло",
+  exploration: "Исследование", economy: "Экономика", fishing: "Рыбалка", alchemy: "Алхимия",
+  forge: "Кузница", social: "Социальное", guild: "Гильдейское", raid: "Рейдовое", world: "Мировое",
+  festive: "Праздничное", seasonal: "Сезонное", unique: "Уникальное", one_time: "Одноразовое",
+  repeatable: "Повторяемое", multi_stage: "Многоступенчатое",
+};
+export const ACH_VISIBILITY = {
+  open: "Открытое", hidden_until_earned: "Скрыто до получения", fully_hidden: "Полностью скрыто",
+  story: "Сюжетное", seasonal: "Сезонное", guild: "Гильдейское", admin: "Админское",
+};
+export const ACH_CONDITION_LOGIC = {
+  any: "Любое из", all: "Все", ordered: "По порядку", n_of: "N из",
+};
+export const ACH_CONDITION_TYPE = {
+  reach_level: "Достичь уровня", kill_mob: "Убить моба", kill_boss: "Убить босса",
+  kill_world_boss: "Убить мирового босса", damage_world_boss: "Урон мировому боссу",
+  join_raid: "Вступить в рейд", finish_raid: "Завершить рейд", find_item: "Найти предмет",
+  craft_item: "Создать предмет", sell_item: "Продать предмет", buy_item: "Купить предмет",
+  catch_fish: "Поймать рыбу", open_clam: "Вскрыть моллюска", find_pearl: "Найти жемчуг",
+  visit_location: "Посетить локацию", discover_location: "Открыть локацию", finish_event: "Завершить событие",
+  use_promo: "Использовать промокод", get_fine: "Получить штраф", pay_fine: "Оплатить штраф",
+  survive_raid_event: "Выжить в облаве", get_warning: "Получить предупреждение",
+  no_warnings_days: "Дни без предупреждений", join_guild: "Вступить в гильдию",
+  create_guild: "Создать гильдию", contribute_guild: "Вклад в гильдию",
+  finish_guild_quest: "Гильдейское задание", join_world_event: "Участие в мировом событии",
+  contribute_global_progress: "Вклад в мировой прогресс", get_unique_item: "Получить уникальный предмет",
+  use_artifact: "Использовать артефакт", revive_by_artifact: "Воскрешение артефактом",
+};
+export const ACH_PROGRESS_TYPE = {
+  numeric: "Числовой", percent: "Проценты", list: "Список", stages: "Ступени",
+  contribution: "Вклад", guild: "Гильдейский", world: "Мировой",
+};
+export const ACH_REWARD_TYPE = {
+  experience: "Опыт", coins: "Монеты", item: "Предмет", unique_item: "Уникальный предмет",
+  exp_grains: "Крупицы опыта", stat_points: "Очки характеристик", skill_points: "Очки навыков",
+  temp_buff: "Временный баф", passive_bonus: "Пассивный бонус", title: "Титул", emblem: "Эмблема",
+  profile_icon: "Иконка профиля", unlock_location: "Открыть локацию", unlock_npc: "Открыть NPC",
+  unlock_recipe: "Открыть рецепт", unlock_event: "Открыть событие", guild_points: "Гильдейские очки",
+  event_currency: "Событийная валюта",
+};
+export const ACH_REPEAT_PERIOD = {
+  day: "День", week: "Неделя", month: "Месяц", season: "Сезон", festive: "Праздник",
+};
+
+// --- Действия аудита (частые; код доступен в подсказке/тех-блоке) -----------
+export const ACTION_LABEL = {
+  "rewards.grant": "Выдача награды", "players.message": "Сообщение игроку",
+  "players.unstuck": "Разблокировка (unstuck)", "fines.forgive": "Снятие штрафов",
+  "fines.repair": "Проверка/починка штрафов", "players.reset": "Сброс игрока",
+  "player.delete": "Удаление игрока", "players.delete": "Удаление игрока",
+  "roles.change": "Смена роли", "promo.delete": "Удаление промокода",
+  "promo.create": "Создание промокода", "broadcast.send": "Рассылка",
+  "asset.image_change": "Смена изображения",
+  "world.create_draft": "Мир: создан черновик", "world.edit_draft": "Мир: правка черновика",
+  "world.set_status": "Мир: смена статуса", "world.validate": "Мир: проверка",
+  "world.publish": "Мир: публикация", "world.disable": "Мир: отключение",
+  "world.archive": "Мир: архив", "world.test_run": "Мир: тестовый проход",
+  "world.import_existing": "Мир: импорт существующего",
+  "item.publish": "Предмет: публикация", "item.disable": "Предмет: отключение",
+  "item.archive": "Предмет: архив", "item.delete_soft": "Предмет: мягкое удаление",
+  "item.delete_hard": "Предмет: полное удаление", "item.restore": "Предмет: восстановление",
+  "effect.publish": "Эффект: публикация", "effect.disable": "Эффект: отключение",
+  "effect.archive": "Эффект: архив", "effect.delete": "Эффект: удаление",
+  "achievement.publish": "Достижение: публикация", "achievement.disable": "Достижение: отключение",
+  "achievement.archive": "Достижение: архив", "achievement.grant_manual": "Достижение: ручная выдача",
+  "achievement.revoke_manual": "Достижение: ручной откат",
+  "guild.disable": "Гильдия: отключение", "world_event.start": "Событие: запуск",
+  "world_event.stop": "Событие: остановка", "world_event.reward": "Событие: награды",
+  "world_event.archive": "Событие: архив",
+  "news.publish": "Новость: публикация", "guides.publish": "Гайд: публикация",
+  "faq.publish": "FAQ: публикация", "site.settings_edit": "Сайт: настройки",
+  "system.maintenance_on": "Режим обслуживания", "system.feature_flag": "Фичефлаг",
+};
+
+// --- Конструктор сайта -----------------------------------------------------
+export const SITE_KIND = {
+  news: "Новость", guide: "Гайд", faq: "FAQ", banner: "Баннер", announcement: "Объявление",
+};
+export const GUIDE_DIFFICULTY = {
+  novice: "Новичок", normal: "Обычный", advanced: "Продвинутый", admin: "Админский", service: "Служебный",
+};
+export const BANNER_TYPE = {
+  info: "Информация", warning: "Предупреждение", maintenance: "Тех. работы", event: "Событие",
+  festive: "Праздник", promo: "Промо", danger: "Опасность", update: "Обновление",
+};
+
 // --- Справочники конструктора мира/локаций/мобов (ключи = metaKey из /kinds) ---
 export const OPTION_LABELS = {
   locationTypes: {
