@@ -322,7 +322,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/camp_food/dried_meat.png",
+        "icon": "/assets/items/hilly_meadows/camp_food/dried_meat.png",
         "source_location": "camp_cooking",
         "integration_tags": [
           "inventory_item",
@@ -342,7 +342,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/camp_food/herbal_tea.png",
+        "icon": "/assets/items/hilly_meadows/camp_food/herbal_tea.png",
         "source_location": "camp_cooking",
         "integration_tags": [
           "inventory_item",
@@ -362,7 +362,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/camp_food/meat_flatbread.png",
+        "icon": "/assets/items/hilly_meadows/camp_food/meat_flatbread.png",
         "source_location": "camp_cooking",
         "integration_tags": [
           "inventory_item",
@@ -382,7 +382,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/camp_food/hearty_stew.png",
+        "icon": "/assets/items/hilly_meadows/camp_food/hearty_stew.png",
         "source_location": "camp_cooking",
         "integration_tags": [
           "inventory_item",
@@ -402,7 +402,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/ingredients/clean_water.png",
+        "icon": "/assets/items/hilly_meadows/ingredients/clean_water.png",
         "source_location": "common_vendor_or_location",
         "integration_tags": [
           "inventory_item",
@@ -421,7 +421,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/ingredients/coarse_flour.png",
+        "icon": "/assets/items/hilly_meadows/ingredients/coarse_flour.png",
         "source_location": "common_vendor",
         "integration_tags": [
           "inventory_item",
@@ -440,7 +440,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/ingredients/edible_mushroom.png",
+        "icon": "/assets/items/hilly_meadows/ingredients/edible_mushroom.png",
         "source_location": "common_locations",
         "integration_tags": [
           "inventory_item",
@@ -459,7 +459,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/ingredients/edible_root.png",
+        "icon": "/assets/items/hilly_meadows/ingredients/edible_root.png",
         "source_location": "common_locations",
         "integration_tags": [
           "inventory_item",
@@ -478,7 +478,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/ingredients/raw_meat.png",
+        "icon": "/assets/items/hilly_meadows/ingredients/raw_meat.png",
         "source_location": "mob_drop",
         "integration_tags": [
           "inventory_item",
@@ -505,7 +505,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/ingredients/meadow_mint.png",
+        "icon": "/assets/items/hilly_meadows/ingredients/meadow_mint.png",
         "source_location": "hilly_meadows",
         "integration_tags": [
           "inventory_item",
@@ -525,7 +525,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/ingredients/meadow_root.png",
+        "icon": "/assets/items/hilly_meadows/ingredients/meadow_root.png",
         "source_location": "hilly_meadows",
         "integration_tags": [
           "inventory_item",
@@ -545,7 +545,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/ingredients/mountain_wormwood.png",
+        "icon": "/assets/items/hilly_meadows/ingredients/mountain_wormwood.png",
         "source_location": "hilly_meadows",
         "integration_tags": [
           "inventory_item",
@@ -565,7 +565,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/ingredients/silver_chamomile.png",
+        "icon": "/assets/items/hilly_meadows/ingredients/silver_chamomile.png",
         "source_location": "hilly_meadows",
         "integration_tags": [
           "inventory_item",
@@ -585,7 +585,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/ingredients/sweet_meadow_berry.png",
+        "icon": "/assets/items/hilly_meadows/ingredients/sweet_meadow_berry.png",
         "source_location": "hilly_meadows",
         "integration_tags": [
           "inventory_item",
@@ -603,7 +603,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/ingredients/tart_blue_berry.png",
+        "icon": "/assets/items/hilly_meadows/ingredients/tart_blue_berry.png",
         "source_location": "hilly_meadows",
         "integration_tags": [
           "inventory_item",
@@ -621,7 +621,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/ingredients/yellow_clover.png",
+        "icon": "/assets/items/hilly_meadows/ingredients/yellow_clover.png",
         "source_location": "hilly_meadows",
         "integration_tags": [
           "inventory_item",
@@ -641,7 +641,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 50,
-        "icon": "assets/items/hilly_meadows/resources/common_stone.png",
+        "icon": "/assets/items/hilly_meadows/resources/common_stone.png",
         "source_location": "hilly_meadows",
         "integration_tags": [
           "inventory_item",
@@ -660,7 +660,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 50,
-        "icon": "assets/items/hilly_meadows/resources/copper_ore_chunk.png",
+        "icon": "/assets/items/hilly_meadows/resources/copper_ore_chunk.png",
         "source_location": "hilly_meadows",
         "integration_tags": [
           "inventory_item",
@@ -679,7 +679,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 50,
-        "icon": "assets/items/hilly_meadows/resources/iron_ore_chunk.png",
+        "icon": "/assets/items/hilly_meadows/resources/iron_ore_chunk.png",
         "source_location": "hilly_meadows",
         "integration_tags": [
           "inventory_item",
@@ -698,7 +698,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 50,
-        "icon": "assets/items/hilly_meadows/resources/iron_scrap.png",
+        "icon": "/assets/items/hilly_meadows/resources/iron_scrap.png",
         "source_location": "hilly_meadows_blik",
         "integration_tags": [
           "inventory_item",
@@ -717,7 +717,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 999999,
-        "icon": "assets/items/hilly_meadows/currency/copper_coin.png",
+        "icon": "/assets/items/hilly_meadows/currency/copper_coin.png",
         "source_location": "hilly_meadows_blik",
         "integration_tags": [
           "currency"
@@ -733,7 +733,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 999999,
-        "icon": "assets/items/hilly_meadows/currency/silver_coin.png",
+        "icon": "/assets/items/hilly_meadows/currency/silver_coin.png",
         "source_location": "hilly_meadows_blik",
         "integration_tags": [
           "currency"
@@ -749,7 +749,7 @@
         "quality": "common",
         "stackable": false,
         "stack_size": 1,
-        "icon": "assets/items/hilly_meadows/items/old_knife.png",
+        "icon": "/assets/items/hilly_meadows/items/old_knife.png",
         "source_location": "hilly_meadows_blik",
         "integration_tags": [],
         "can_dismantle": true,
@@ -765,7 +765,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 20,
-        "icon": "assets/items/hilly_meadows/trophies/bull_horn.png",
+        "icon": "/assets/items/hilly_meadows/trophies/bull_horn.png",
         "source_location": "bull",
         "integration_tags": [
           "inventory_item",
@@ -784,7 +784,7 @@
         "quality": "common",
         "stackable": true,
         "stack_size": 30,
-        "icon": "assets/items/hilly_meadows/trophies/meat_piece.png",
+        "icon": "/assets/items/hilly_meadows/trophies/meat_piece.png",
         "source_location": "mob_drop",
         "integration_tags": [
           "inventory_item",
@@ -933,7 +933,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/camp_food/dried_meat.png",
+          "icon": "/assets/items/hilly_meadows/camp_food/dried_meat.png",
           "source_location": "camp_cooking",
           "integration_tags": [
             "inventory_item",
@@ -953,7 +953,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/camp_food/herbal_tea.png",
+          "icon": "/assets/items/hilly_meadows/camp_food/herbal_tea.png",
           "source_location": "camp_cooking",
           "integration_tags": [
             "inventory_item",
@@ -973,7 +973,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/camp_food/meat_flatbread.png",
+          "icon": "/assets/items/hilly_meadows/camp_food/meat_flatbread.png",
           "source_location": "camp_cooking",
           "integration_tags": [
             "inventory_item",
@@ -993,7 +993,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/camp_food/hearty_stew.png",
+          "icon": "/assets/items/hilly_meadows/camp_food/hearty_stew.png",
           "source_location": "camp_cooking",
           "integration_tags": [
             "inventory_item",
@@ -1013,7 +1013,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/ingredients/clean_water.png",
+          "icon": "/assets/items/hilly_meadows/ingredients/clean_water.png",
           "source_location": "common_vendor_or_location",
           "integration_tags": [
             "inventory_item",
@@ -1032,7 +1032,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/ingredients/coarse_flour.png",
+          "icon": "/assets/items/hilly_meadows/ingredients/coarse_flour.png",
           "source_location": "common_vendor",
           "integration_tags": [
             "inventory_item",
@@ -1051,7 +1051,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/ingredients/edible_mushroom.png",
+          "icon": "/assets/items/hilly_meadows/ingredients/edible_mushroom.png",
           "source_location": "common_locations",
           "integration_tags": [
             "inventory_item",
@@ -1070,7 +1070,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/ingredients/edible_root.png",
+          "icon": "/assets/items/hilly_meadows/ingredients/edible_root.png",
           "source_location": "common_locations",
           "integration_tags": [
             "inventory_item",
@@ -1089,7 +1089,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/ingredients/raw_meat.png",
+          "icon": "/assets/items/hilly_meadows/ingredients/raw_meat.png",
           "source_location": "mob_drop",
           "integration_tags": [
             "inventory_item",
@@ -1116,7 +1116,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/ingredients/meadow_mint.png",
+          "icon": "/assets/items/hilly_meadows/ingredients/meadow_mint.png",
           "source_location": "hilly_meadows",
           "integration_tags": [
             "inventory_item",
@@ -1136,7 +1136,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/ingredients/meadow_root.png",
+          "icon": "/assets/items/hilly_meadows/ingredients/meadow_root.png",
           "source_location": "hilly_meadows",
           "integration_tags": [
             "inventory_item",
@@ -1156,7 +1156,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/ingredients/mountain_wormwood.png",
+          "icon": "/assets/items/hilly_meadows/ingredients/mountain_wormwood.png",
           "source_location": "hilly_meadows",
           "integration_tags": [
             "inventory_item",
@@ -1176,7 +1176,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/ingredients/silver_chamomile.png",
+          "icon": "/assets/items/hilly_meadows/ingredients/silver_chamomile.png",
           "source_location": "hilly_meadows",
           "integration_tags": [
             "inventory_item",
@@ -1196,7 +1196,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/ingredients/sweet_meadow_berry.png",
+          "icon": "/assets/items/hilly_meadows/ingredients/sweet_meadow_berry.png",
           "source_location": "hilly_meadows",
           "integration_tags": [
             "inventory_item",
@@ -1214,7 +1214,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/ingredients/tart_blue_berry.png",
+          "icon": "/assets/items/hilly_meadows/ingredients/tart_blue_berry.png",
           "source_location": "hilly_meadows",
           "integration_tags": [
             "inventory_item",
@@ -1232,7 +1232,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/ingredients/yellow_clover.png",
+          "icon": "/assets/items/hilly_meadows/ingredients/yellow_clover.png",
           "source_location": "hilly_meadows",
           "integration_tags": [
             "inventory_item",
@@ -1252,7 +1252,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 50,
-          "icon": "assets/items/hilly_meadows/resources/common_stone.png",
+          "icon": "/assets/items/hilly_meadows/resources/common_stone.png",
           "source_location": "hilly_meadows",
           "integration_tags": [
             "inventory_item",
@@ -1271,7 +1271,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 50,
-          "icon": "assets/items/hilly_meadows/resources/copper_ore_chunk.png",
+          "icon": "/assets/items/hilly_meadows/resources/copper_ore_chunk.png",
           "source_location": "hilly_meadows",
           "integration_tags": [
             "inventory_item",
@@ -1290,7 +1290,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 50,
-          "icon": "assets/items/hilly_meadows/resources/iron_ore_chunk.png",
+          "icon": "/assets/items/hilly_meadows/resources/iron_ore_chunk.png",
           "source_location": "hilly_meadows",
           "integration_tags": [
             "inventory_item",
@@ -1309,7 +1309,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 50,
-          "icon": "assets/items/hilly_meadows/resources/iron_scrap.png",
+          "icon": "/assets/items/hilly_meadows/resources/iron_scrap.png",
           "source_location": "hilly_meadows_blik",
           "integration_tags": [
             "inventory_item",
@@ -1328,7 +1328,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 999999,
-          "icon": "assets/items/hilly_meadows/currency/copper_coin.png",
+          "icon": "/assets/items/hilly_meadows/currency/copper_coin.png",
           "source_location": "hilly_meadows_blik",
           "integration_tags": [
             "currency"
@@ -1344,7 +1344,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 999999,
-          "icon": "assets/items/hilly_meadows/currency/silver_coin.png",
+          "icon": "/assets/items/hilly_meadows/currency/silver_coin.png",
           "source_location": "hilly_meadows_blik",
           "integration_tags": [
             "currency"
@@ -1360,7 +1360,7 @@
           "quality": "common",
           "stackable": false,
           "stack_size": 1,
-          "icon": "assets/items/hilly_meadows/items/old_knife.png",
+          "icon": "/assets/items/hilly_meadows/items/old_knife.png",
           "source_location": "hilly_meadows_blik",
           "integration_tags": [],
           "can_dismantle": true,
@@ -1376,7 +1376,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 20,
-          "icon": "assets/items/hilly_meadows/trophies/bull_horn.png",
+          "icon": "/assets/items/hilly_meadows/trophies/bull_horn.png",
           "source_location": "bull",
           "integration_tags": [
             "inventory_item",
@@ -1395,7 +1395,7 @@
           "quality": "common",
           "stackable": true,
           "stack_size": 30,
-          "icon": "assets/items/hilly_meadows/trophies/meat_piece.png",
+          "icon": "/assets/items/hilly_meadows/trophies/meat_piece.png",
           "source_location": "mob_drop",
           "integration_tags": [
             "inventory_item",

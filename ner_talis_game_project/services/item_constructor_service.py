@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -109,6 +110,16 @@ def _has_markup(value: str) -> bool:
     return "<script" in low or ("<" in value and ">" in value)
 
 
+# Внешние URL картинок блокирует CSP (img-src 'self' data:) — в полях картинок
+# допустимы только локальные ассеты (/assets/…) и data:-URI.
+_EXTERNAL_IMG_RE = re.compile(r"^(?:[a-z][a-z0-9+.-]*:)?//", re.IGNORECASE)
+
+
+def _is_external_image(value: str) -> bool:
+    v = str(value or "").strip()
+    return bool(v) and bool(_EXTERNAL_IMG_RE.match(v))
+
+
 def _num(value: Any) -> float | None:
     try:
         return float(value)
@@ -191,6 +202,14 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         value = str(data.get(key) or "").strip()
         if value and _has_markup(value):
             errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+
+    for key in ("image", "icon", "image_url"):
+        value = str(data.get(key) or "").strip()
+        if value and _is_external_image(value):
+            errors.append(
+                f"Поле «{key}»: внешние URL картинок запрещены (их блокирует CSP). "
+                "Загрузите ассет и укажите локальный путь вида /assets/…"
+            )
 
     return {"ok": not errors, "errors": errors, "warnings": warnings}
 

@@ -32,6 +32,10 @@ class MessageQueueTest(unittest.TestCase):
         self._saved = os.environ.get("MESSAGE_QUEUE_PATH")
         os.environ["MESSAGE_QUEUE_PATH"] = str(Path(self._tmp.name) / "queue.json")
         self.addCleanup(self._restore)
+        # Тест опирается на JSON-файловый backend (через MESSAGE_QUEUE_PATH);
+        # сбрасываем глобальный backend, если предыдущий тест переключил его на БД.
+        mq.use_json_file_backend()
+        self.addCleanup(mq.use_json_file_backend)
         mq.set_sender(None)
         self.addCleanup(lambda: mq.set_sender(None))
 

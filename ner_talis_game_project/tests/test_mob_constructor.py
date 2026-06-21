@@ -80,6 +80,20 @@ class MobConstructorRegistryTest(unittest.TestCase):
         self.assertIn("Очень большая группа", joined)
         self.assertIn("фарм-петля", joined)
 
+    def test_external_image_rejected(self):
+        # Внешний URL картинки моба запрещён (CSP), локальный — допустим.
+        bad = self._check(self.wcr.KIND_MOB, "mob_ext", {
+            "name": "Внешний", "type": "beast", "hp": 10,
+            "image": "https://example.com/wolf.png",
+        })
+        self.assertFalse(bad["ok"])
+        self.assertIn("внешние url", self._errors(bad).lower())
+        ok = self._check(self.wcr.KIND_MOB, "mob_loc", {
+            "name": "Локальный", "type": "beast", "hp": 10,
+            "image": "/assets/items/hilly_meadows/wolf.png",
+        })
+        self.assertTrue(ok["ok"], ok["errors"])
+
     def test_variant_multipliers(self):
         ok = self._check(self.wcr.KIND_MOB_VARIANT, "var_elite", {
             "name": "Элитный волк", "mob_id": "mob_wolf", "variant_type": "elite",

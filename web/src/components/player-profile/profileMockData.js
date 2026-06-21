@@ -1,13 +1,7 @@
 export const profileMockData = {
   assets: {
+    // Модель персонажа в профиле не используется (дополнение к ТЗ §2).
     background: "/assets/profile/backgrounds/1.png",
-    raceModels: {
-      human: "/assets/profile/models/human.png",
-      elf: "/assets/profile/models/elf.png",
-      dwarf: "/assets/profile/models/dwarf.png",
-      undead: "/assets/profile/models/undead.png",
-      lizardfolk: "/assets/profile/models/lizardfolk.png",
-    },
   },
   player: {
     userGlobalId: "NT-DEMO",

@@ -62,6 +62,29 @@ SITE_PROFILE_BASE_URL=https://your-domain.ru/profile
 SITE_PAVILION_URL=https://your-domain.ru/pavilion
 ```
 
+### Production-переменные безопасности и хранилища
+
+Эти переменные есть в `.env.timeweb.postgresql.example` и важны для боевого запуска (без них сайт работает, но менее защищён/корректен):
+
+```env
+# Хранилище: запретить тихий откат на JSON в проде (требуем Postgres)
+ALLOW_JSON_STORAGE_IN_PRODUCTION=false
+# Защита хостов и заголовки/HTTPS
+ALLOWED_HOSTS=ner-talis-game.ru,www.ner-talis-game.ru,localhost,127.0.0.1
+ENABLE_HSTS=true
+FORCE_HTTPS=true
+# Доверять X-Forwarded-For только за известным proxy (иначе rate-limit обходится подменой IP)
+TRUST_PROXY_HEADERS=false
+TRUSTED_PROXY_IPS=127.0.0.1,::1
+# Постоянный диск под загрузки админки (иконки переживают пересборку контейнера)
+PUBLIC_UPLOADS_ASSETS_DIR=data/public_uploads/assets
+# OpenAPI/Swagger по умолчанию ВЫКЛЮЧЕНЫ в проде (раскрывают список ручек/схемы).
+# Включать только для разработки.
+ENABLE_API_DOCS=false
+```
+
+Если за Timeweb стоит балансировщик/прокси с фиксированным IP — поставьте `TRUST_PROXY_HEADERS=true` и укажите его IP в `TRUSTED_PROXY_IPS`, иначе rate-limit и логи будут видеть IP прокси, а не клиента.
+
 Раздельных режимов запуска больше нет: `main.py` всегда запускает Telegram и VK вместе, поэтому нужны все три переменные `TELEGRAM_BOT_TOKEN`, `VK_GROUP_TOKEN`, `VK_GROUP_ID`.
 
 Если Timeweb нестабильно достучаться до Telegram API, можно оставить стандартные значения таймаутов из `.env.example`: `TELEGRAM_GET_UPDATES_READ_TIMEOUT=60`, `TELEGRAM_POLL_TIMEOUT=30`, `TELEGRAM_BOOTSTRAP_RETRIES=-1`.

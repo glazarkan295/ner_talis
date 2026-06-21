@@ -166,3 +166,6 @@
   .ntv2-sidebar-foot { border: none; padding: 0; flex-direction: row; }
   .ntv2-main { padding: 16px; }
 }
+
+/* Дата истечения сессии не должна разрываться на мобильном */
+.ntv2-nowrap { white-space: nowrap; }

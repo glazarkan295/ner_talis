@@ -169,6 +169,28 @@ class LocationConstructorRegistryTest(unittest.TestCase):
         self.assertFalse(bad["ok"])
         self.assertIn("условия открытия", self._errors_text(bad))
 
+    def test_location_external_image_rejected(self):
+        bad = self._check(self.wcr.KIND_LOCATION, "loc_ext", {
+            "name": "Локация", "short_description": "тест", "type": "wild",
+            "image": "http://evil.example/bg.png",
+        })
+        self.assertFalse(bad["ok"])
+        self.assertIn("внешние url", self._errors_text(bad).lower())
+
+    def test_item_constructor_external_image_rejected(self):
+        from services import item_constructor_service as ics
+        bad = ics.validate({"data": {
+            "name": "Меч", "description": "острый", "category": "Оружие",
+            "image": "https://cdn.example/sword.png",
+        }})
+        self.assertFalse(bad["ok"])
+        self.assertTrue(any("внешние url" in e.lower() for e in bad["errors"]))
+        ok_img = ics.validate({"data": {
+            "name": "Меч", "description": "острый", "category": "Оружие",
+            "image": "/assets/items/equipment/sword.png",
+        }})
+        self.assertFalse(any("внешние url" in e.lower() for e in ok_img["errors"]))
+
     def test_event_answer_hidden_requires_conditions(self):
         ok = self._check(self.wcr.KIND_LOCATION_EVENT_ANSWER, "ans_ok", {
             "button_text": "Осмотреть сундук", "result": "show_text",

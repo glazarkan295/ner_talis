@@ -432,6 +432,25 @@ def _has_markup(value: str) -> bool:
     return "<script" in low or bool(_HTML_TAG_RE.search(value))
 
 
+# Внешние URL картинок блокирует CSP (img-src 'self' data:), поэтому в полях
+# изображений разрешены только локальные ассеты (/assets/…) и data:-URI.
+_EXTERNAL_URL_RE = re.compile(r"^(?:[a-z][a-z0-9+.-]*:)?//", re.IGNORECASE)
+
+
+def _is_external_image(value: str) -> bool:
+    v = str(value or "").strip()
+    return bool(v) and bool(_EXTERNAL_URL_RE.match(v))
+
+
+def _check_local_image(data: dict[str, Any], key: str, errors: list[str]) -> None:
+    value = _str_field(data, key)
+    if value and _is_external_image(value):
+        errors.append(
+            f"Поле «{key}»: внешние URL картинок запрещены (их блокирует CSP). "
+            "Загрузите ассет и укажите локальный путь вида /assets/…"
+        )
+
+
 def _validate_location(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
     """Проверка локации (ТЗ §14, применимая часть). Возвращает (errors, warnings)."""
     data = envelope.get("data") or {}
@@ -472,6 +491,7 @@ def _validate_location(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
         value = _str_field(data, key)
         if value and _has_markup(value):
             errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    _check_local_image(data, "image", errors)
 
     if not loc_type:
         warnings.append("Не указан тип локации.")
@@ -628,6 +648,7 @@ def _validate_mob(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
         value = _str_field(data, key)
         if value and _has_markup(value):
             errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    _check_local_image(data, "image", errors)
 
     _validate_drop_rows(data.get("drop"), errors, warnings)
     _warn_farm_loop(data.get("drop"), warnings)
@@ -832,6 +853,7 @@ def _validate_npc(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
         value = _str_field(data, key)
         if value and _has_markup(value):
             errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    _check_local_image(data, "image", errors)
     return errors, warnings
 
 

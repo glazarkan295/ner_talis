@@ -36,7 +36,7 @@ export function SessionsSection({ guarded, canRevoke }) {
           <div className={`ntv2-list-row${s.isCurrent ? " ntv2-list-row-current" : ""}`} key={s.id}>
             <span className="ntv2-mono">{s.platform}:{s.adminUserId}</span>
             <span className="ntv2-badge">{s.role}</span>
-            <span className="ntv2-hint">{s.scope || "—"} · до {s.expiresAt || "—"}</span>
+            <span className="ntv2-hint">{s.scope || "—"} · до <span className="ntv2-nowrap">{s.expiresAt || "—"}</span></span>
             {s.isCurrent ? <span className="ntv2-badge ntv2-badge-owner">текущая</span> : null}
             {canRevoke && !s.isCurrent ? (
               <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm(s)}>Отозвать</button>

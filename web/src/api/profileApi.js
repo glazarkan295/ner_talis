@@ -53,6 +53,14 @@ export function setActiveProfileSession(token) {
   rememberActiveProfileSession(token);
 }
 
+function removePathTokenFromAddressBar() {
+  try {
+    window.history.replaceState({}, document.title, "/profile");
+  } catch {
+    // History can be restricted in embedded browsers.
+  }
+}
+
 export function getProfileIdentifierFromUrl() {
   clearLegacyPersistentToken();
   const params = new URLSearchParams(window.location.search);
@@ -60,6 +68,15 @@ export function getProfileIdentifierFromUrl() {
   if (activationToken) {
     removeSensitiveTokenFromAddressBar();
     return activationToken;
+  }
+
+  // Path-форма ссылки: /profile/<token>. Сервер принимает её как активацию
+  // (как и ?token=), поэтому фронт тоже должен её распознавать.
+  const pathMatch = window.location.pathname.match(/^\/profile\/([^/]+)\/?$/);
+  if (pathMatch && pathMatch[1] && pathMatch[1].length >= 8) {
+    const pathToken = decodeURIComponent(pathMatch[1]);
+    removePathTokenFromAddressBar();
+    return pathToken;
   }
 
   const rememberedToken = getRememberedActiveProfileSession();
