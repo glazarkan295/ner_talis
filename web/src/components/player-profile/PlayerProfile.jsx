@@ -1035,14 +1035,21 @@ function SkillCard({ skill, freePoints, mode = "available", readOnly = false, on
     skillCostText(skill),
     skillCooldownText(skill),
   ].filter(Boolean);
-  const actionLabel = mode === "equipped" ? "Снять" : "Использовать";
+  const actionLabel = mode === "equipped" ? "Снять" : "В слот";
   const actionHandler = mode === "equipped" ? onUnequipSkill : onEquipSkill;
-  const showAction = !readOnly && (mode === "equipped" || canEquipSkill(skill));
+  // Несовместимое с текущим оружием — только в списке доступных (в слоте уже стоит).
+  const weaponBlocked = mode !== "equipped" && skill.weaponRequirementText && skill.weaponCompatible === false;
+  const showAction = !readOnly && (mode === "equipped" || (canEquipSkill(skill) && !weaponBlocked));
   return (
     <article className="nt-skill-card">
       <div className="nt-skill-main">
         <h3>{skill.name}</h3>
         <p>{skill.description || "Описание навыка пока не добавлено."}</p>
+        {skill.weaponRequirementText ? (
+          <p className={`nt-skill-weapon-req${weaponBlocked ? " blocked" : ""}`}>
+            {weaponBlocked ? "⚠ " : ""}Нужно оружие: {skill.weaponRequirementText}
+          </p>
+        ) : null}
         {details.length ? <div className="nt-skill-details">{details.map((detail) => <span key={detail}>{detail}</span>)}</div> : null}
         {modifiers.length ? <div className="nt-modifiers">{modifiers.map((modifier) => <button key={modifier.id || modifier.name} type="button" onClick={(event) => onShowModifier(modifier, event)}>{modifier.name || modifier.label} <b>{modifier.level || modifier.points || 0}</b></button>)}</div> : null}
       </div>

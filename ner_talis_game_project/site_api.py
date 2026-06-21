@@ -1119,6 +1119,15 @@ def normalize_skill(
     skill_type = str(skill.get("skill_type") or skill.get("type") or source_section or "active").lower()
     normalized.setdefault("skill_type", skill_type)
     normalized["equippable"] = bool(skill.get("equippable", skill_type not in {"passive", "пассивный"}))
+    # Требование к оружию показываем только для активных навыков с конкретным
+    # ограничением — пассивы и «любое оружие» в подсказке не нуждаются.
+    if skill_type not in {"passive", "пассивный"}:
+        requirements = skill.get("weapon_requirements") or ["any"]
+        if isinstance(requirements, str):
+            requirements = [requirements]
+        if requirements and "any" not in {str(item) for item in requirements}:
+            normalized["weaponRequirementText"] = skill_weapon_requirement_text(skill)
+            normalized["weaponCompatible"] = is_skill_weapon_compatible(player, skill) if player is not None else True
     return normalized
 
 

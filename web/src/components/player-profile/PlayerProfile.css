@@ -752,3 +752,13 @@ button { cursor: pointer; }
   background: rgba(210, 180, 120, 0.22);
   border-color: rgba(210, 180, 120, 0.5);
 }
+
+/* --- Профиль V2: требование к оружию навыка ---------------------------- */
+.nt-skill-weapon-req {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: rgba(210, 190, 150, 0.85);
+}
+.nt-skill-weapon-req.blocked {
+  color: #e08a8a;
+}
