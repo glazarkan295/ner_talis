@@ -173,6 +173,41 @@ PERM_EFFECT_DISABLE = "effect.disable"
 PERM_EFFECT_ARCHIVE = "effect.archive"
 PERM_EFFECT_DELETE = "effect.delete"
 PERM_EFFECT_AUDIT = "effect.audit"
+# Конструктор сайта (профиль/павильон/новости/гайды/FAQ/рейтинги/настройки)
+PERM_SITE_VIEW = "site.view"
+PERM_SITE_SETTINGS_EDIT = "site.settings_edit"
+PERM_SITE_MENU_EDIT = "site.menu_edit"
+PERM_SITE_HOMEPAGE_EDIT = "site.homepage_edit"
+PERM_PROFILE_LAYOUT_VIEW = "profile_layout.view"
+PERM_PROFILE_LAYOUT_EDIT = "profile_layout.edit"
+PERM_PROFILE_LAYOUT_PUBLISH = "profile_layout.publish"
+PERM_PAVILION_VIEW = "pavilion.view"
+PERM_PAVILION_MANAGE = "pavilion.manage"
+PERM_PAVILION_MODERATE = "pavilion.moderate"
+PERM_PAVILION_BLOCK = "pavilion.block"
+PERM_PAVILION_AUDIT = "pavilion.audit"
+PERM_NEWS_VIEW = "news.view"
+PERM_NEWS_CREATE = "news.create"
+PERM_NEWS_EDIT = "news.edit"
+PERM_NEWS_PUBLISH = "news.publish"
+PERM_NEWS_ARCHIVE = "news.archive"
+PERM_GUIDES_VIEW = "guides.view"
+PERM_GUIDES_CREATE = "guides.create"
+PERM_GUIDES_EDIT = "guides.edit"
+PERM_GUIDES_PUBLISH = "guides.publish"
+PERM_GUIDES_ARCHIVE = "guides.archive"
+PERM_FAQ_VIEW = "faq.view"
+PERM_FAQ_CREATE = "faq.create"
+PERM_FAQ_EDIT = "faq.edit"
+PERM_FAQ_PUBLISH = "faq.publish"
+PERM_RATINGS_VIEW = "ratings.view"
+PERM_RATINGS_CREATE = "ratings.create"
+PERM_RATINGS_EDIT = "ratings.edit"
+PERM_RATINGS_PUBLISH = "ratings.publish"
+PERM_RATINGS_REWARD = "ratings.reward"
+PERM_SITE_ASSETS_UPLOAD = "site_assets.upload"
+PERM_SITE_ASSETS_EDIT = "site_assets.edit"
+PERM_SITE_AUDIT_VIEW = "site_audit.view"
 
 ALL_PERMISSIONS = (
     PERM_PLAYERS_VIEW, PERM_CATALOG_VIEW, PERM_ECONOMY_VIEW, PERM_PROMOS_VIEW,
@@ -213,6 +248,16 @@ ALL_PERMISSIONS = (
     PERM_EFFECT_VIEW, PERM_EFFECT_CREATE, PERM_EFFECT_EDIT, PERM_EFFECT_VALIDATE,
     PERM_EFFECT_PUBLISH, PERM_EFFECT_DISABLE, PERM_EFFECT_ARCHIVE,
     PERM_EFFECT_DELETE, PERM_EFFECT_AUDIT,
+    PERM_SITE_VIEW, PERM_SITE_SETTINGS_EDIT, PERM_SITE_MENU_EDIT,
+    PERM_SITE_HOMEPAGE_EDIT, PERM_PROFILE_LAYOUT_VIEW, PERM_PROFILE_LAYOUT_EDIT,
+    PERM_PROFILE_LAYOUT_PUBLISH, PERM_PAVILION_VIEW, PERM_PAVILION_MANAGE,
+    PERM_PAVILION_MODERATE, PERM_PAVILION_BLOCK, PERM_PAVILION_AUDIT,
+    PERM_NEWS_VIEW, PERM_NEWS_CREATE, PERM_NEWS_EDIT, PERM_NEWS_PUBLISH,
+    PERM_NEWS_ARCHIVE, PERM_GUIDES_VIEW, PERM_GUIDES_CREATE, PERM_GUIDES_EDIT,
+    PERM_GUIDES_PUBLISH, PERM_GUIDES_ARCHIVE, PERM_FAQ_VIEW, PERM_FAQ_CREATE,
+    PERM_FAQ_EDIT, PERM_FAQ_PUBLISH, PERM_RATINGS_VIEW, PERM_RATINGS_CREATE,
+    PERM_RATINGS_EDIT, PERM_RATINGS_PUBLISH, PERM_RATINGS_REWARD,
+    PERM_SITE_ASSETS_UPLOAD, PERM_SITE_ASSETS_EDIT, PERM_SITE_AUDIT_VIEW,
 )
 
 # Опасные действия — требуют двойного подтверждения на фронте и помечаются в
@@ -255,6 +300,16 @@ DANGEROUS_ACTIONS = frozenset({
     "effect.disable",
     "effect.archive",
     "effect.delete",
+    "news.publish",
+    "news.archive",
+    "guides.publish",
+    "guides.archive",
+    "faq.publish",
+    "ratings.publish",
+    "ratings.reward",
+    "profile_layout.publish",
+    "pavilion.block",
+    "site.settings_edit",
 })
 
 # owner → все права (sentinel). Остальные роли — явные множества.
@@ -269,6 +324,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_MESSAGES_VIEW_QUEUE, PERM_MESSAGES_VIEW_PLAYER,
         PERM_MESSAGES_SEND_DIRECT, PERM_MESSAGES_RETRY,
         PERM_ITEM_VIEW, PERM_EFFECT_VIEW,
+        PERM_SITE_VIEW, PERM_NEWS_VIEW, PERM_GUIDES_VIEW, PERM_FAQ_VIEW,
+        PERM_RATINGS_VIEW, PERM_PAVILION_VIEW, PERM_PAVILION_MODERATE,
     },
     MODERATOR: {
         PERM_PLAYERS_VIEW, PERM_MODERATION_VIEW,
@@ -294,6 +351,13 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_ITEM_CHANGE_IMAGE, PERM_ITEM_CHANGE_PRICE, PERM_ITEM_CHANGE_EFFECTS,
         PERM_ITEM_VIEW_TECHNICAL, PERM_ITEM_VIEW_USAGE,
         PERM_EFFECT_VIEW, PERM_EFFECT_CREATE, PERM_EFFECT_EDIT, PERM_EFFECT_VALIDATE,
+        # Конструктор сайта: content ведёт новости/гайды/FAQ и черновики (без публикации).
+        PERM_SITE_VIEW, PERM_NEWS_VIEW, PERM_NEWS_CREATE, PERM_NEWS_EDIT,
+        PERM_GUIDES_VIEW, PERM_GUIDES_CREATE, PERM_GUIDES_EDIT,
+        PERM_FAQ_VIEW, PERM_FAQ_CREATE, PERM_FAQ_EDIT,
+        PERM_RATINGS_VIEW, PERM_RATINGS_CREATE, PERM_RATINGS_EDIT,
+        PERM_PROFILE_LAYOUT_VIEW, PERM_PROFILE_LAYOUT_EDIT,
+        PERM_SITE_ASSETS_UPLOAD,
     },
     # economy подтверждает события с крупными наградами/множителями экономики.
     ECONOMY: {
@@ -303,6 +367,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_ACHIEVEMENT_VIEW,
         PERM_ITEM_VIEW, PERM_ITEM_CHANGE_PRICE, PERM_ITEM_VIEW_USAGE,
         PERM_EFFECT_VIEW,
+        PERM_SITE_VIEW, PERM_RATINGS_VIEW, PERM_RATINGS_REWARD, PERM_NEWS_VIEW,
     },
     READ_ONLY: {
         PERM_PLAYERS_VIEW, PERM_CATALOG_VIEW, PERM_ECONOMY_VIEW,
@@ -311,6 +376,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_WORLD_VIEW, PERM_GUILD_VIEW, PERM_WORLD_EVENT_VIEW,
         PERM_ACHIEVEMENT_VIEW, PERM_MESSAGES_VIEW_QUEUE,
         PERM_ITEM_VIEW, PERM_ITEM_VIEW_USAGE, PERM_EFFECT_VIEW,
+        PERM_SITE_VIEW, PERM_NEWS_VIEW, PERM_GUIDES_VIEW, PERM_FAQ_VIEW,
+        PERM_RATINGS_VIEW, PERM_PROFILE_LAYOUT_VIEW, PERM_PAVILION_VIEW,
+        PERM_SITE_AUDIT_VIEW,
     },
 }
 

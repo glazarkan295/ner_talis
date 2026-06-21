@@ -80,3 +80,8 @@ data/item_constructor.json.tmp
 data/effect_constructor.json
 data/effect_constructor.json.lock
 data/effect_constructor.json.tmp
+
+# Runtime site content store
+data/site_content.json
+data/site_content.json.lock
+data/site_content.json.tmp
