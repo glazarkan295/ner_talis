@@ -1564,16 +1564,16 @@ function OverviewTab({ profile }) {
   const player = profile.player || {};
   const status = profile.status || null;
   const places = (profile.ratingPlaces || []).filter((p) => p.place !== "—" && p.place != null);
-  const model = profile.assets?.raceModels?.[player.raceKey] || profile.assets?.raceModels?.human;
   const expCurrent = player.experienceCurrent ?? 0;
   const expNext = player.experienceToNext ?? 0;
 
+  // Модель персонажа в профиле не используется (дополнение к ТЗ §2): сверху —
+  // компактная карточка с основными данными в стилистике старого профиля.
   return (
     <div className="nt-overview">
       <ProfileWarnings warnings={profile.warnings} />
       <div className="nt-overview-grid">
         <Panel title="Персонаж" className="nt-overview-character">
-          {model ? <img className="nt-overview-model" src={model} alt="" /> : null}
           <div className="nt-overview-headinfo">
             <div className="nt-overview-name">{player.nickname || "Безымянный"}</div>
             <div className="nt-overview-sub">{player.raceName} · {player.genderLabel || "—"} · ур. {player.level}</div>

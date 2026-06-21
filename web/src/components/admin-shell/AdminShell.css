@@ -1,17 +1,19 @@
 /* Admin Panel V2 — operational console. Warm dark palette matching the V1
    panel, but built as a sidebar shell instead of top tabs so it scales to many
-   sections. Token names kept local (ntv2-*) so it never collides with V1. */
+   sections. Локальные алиасы ссылаются на ЕДИНЫЕ дизайн-токены проекта
+   (--nt-* из :root профиля), чтобы админка и сайт делили одну палитру
+   (дополнение к ТЗ §5/§6); фолбэки сохраняют вид при отдельной загрузке. */
 .ntv2 {
-  --gold: #ffd98f;
-  --parch: #f1dfbd;
-  --line: rgba(214, 172, 91, .28);
-  --line-strong: rgba(214, 172, 91, .55);
-  --panel: rgba(255, 255, 255, .04);
-  --danger: #ff7a5a;
+  --gold: var(--nt-gold, #ffd98f);
+  --parch: var(--nt-parch, #f1dfbd);
+  --line: var(--nt-line, rgba(214, 172, 91, .28));
+  --line-strong: var(--nt-line-strong, rgba(214, 172, 91, .55));
+  --panel: var(--nt-panel, rgba(255, 255, 255, .04));
+  --danger: var(--nt-danger, #ff7a5a);
   display: flex;
   min-height: 100vh;
   color: var(--parch);
-  background: radial-gradient(circle at top, #241c16 0, #080706 56%, #030303 100%);
+  background: var(--nt-bg-gradient, radial-gradient(circle at top, #241c16 0, #080706 56%, #030303 100%));
   font-family: Georgia, 'Times New Roman', serif;
 }
 

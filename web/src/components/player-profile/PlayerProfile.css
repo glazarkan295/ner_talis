@@ -3,6 +3,26 @@
   font-size: 12px;
   color: #d8c7a3;
   background: #050606;
+
+  /* --- Единые дизайн-токены Нер-Талис (дополнение к ТЗ §5) ---------------
+     Канонический источник палитры для профиля И админ-панели: атмосфера,
+     цвета и стиль общие для всего сайта. Меняем здесь — меняется везде. */
+  --nt-bg: #050606;
+  --nt-bg-gradient: radial-gradient(circle at top, #241c16 0, #080706 56%, #030303 100%);
+  --nt-gold: #ffd98f;            /* акцент/активные элементы */
+  --nt-gold-ink: #1c1208;        /* текст на золоте */
+  --nt-parch: #f1dfbd;           /* основной светлый текст (админка) */
+  --nt-text: #d8c7a3;            /* основной текст профиля */
+  --nt-text-dim: rgba(216, 199, 163, .75);  /* вторичный текст */
+  --nt-card: #15100d;            /* тёмные карточки/модалки */
+  --nt-panel: rgba(255, 255, 255, .04);     /* мягкая панель */
+  --nt-line: rgba(214, 172, 91, .28);       /* рамки */
+  --nt-line-strong: rgba(214, 172, 91, .55);
+  --nt-hover: rgba(255, 255, 255, .05);
+  --nt-btn: linear-gradient(145deg, #47351f, #1b1410);  /* обычная кнопка */
+  --nt-danger: #ff7a5a;          /* ошибка/опасное */
+  --nt-success: #87dc96;         /* успех */
+  --nt-warning: #ffe9bf;         /* предупреждение */
 }
 
 * { box-sizing: border-box; }
@@ -678,7 +698,6 @@ button { cursor: pointer; }
 .nt-overview { display: grid; gap: 12px; }
 .nt-overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .nt-overview-character { display: flex; gap: 14px; }
-.nt-overview-model { width: 96px; height: 96px; object-fit: contain; border-radius: 12px; background: rgba(0,0,0,.25); }
 .nt-overview-headinfo { display: grid; gap: 4px; align-content: start; }
 .nt-overview-name { font-size: 20px; color: #ffd98f; }
 .nt-overview-sub { opacity: .8; font-size: 13px; }
