@@ -154,6 +154,42 @@ export const ACH_REPEAT_PERIOD = {
   day: "День", week: "Неделя", month: "Месяц", season: "Сезон", festive: "Праздник",
 };
 
+// --- Конструктор штрафов ---------------------------------------------------
+export const FINE_TYPE = {
+  city: "Городской штраф", raid: "Штраф после облавы", chat_rules: "За нарушение правил чата",
+  mechanic_abuse: "За злоупотребление механиками", criminal: "За криминальное действие",
+  obligation: "За невыполнение обязательства", overdue: "За просрочку", assault: "За нападение",
+  illegal_trade: "За запрещённую торговлю", forbidden_service: "За запрещённый сервис",
+  manual: "Ручной штраф от администратора", system: "Системный штраф", story: "Сюжетный штраф",
+};
+export const FINE_SOURCE = {
+  black_market_raid: "Облава на Чёрном рынке", informer_raid: "Облава у информатора Крота",
+  casino_raid: "Облава в подпольном казино", guard_decision: "Решение стражи",
+  manager_decision: "Решение Управляющего", admin_decision: "Решение администратора",
+  auto_moderation: "Автоматическая модерация", player_moderator: "Игрок-модератор",
+  player_report: "Жалоба игрока", chat_violation: "Нарушение в общем чате",
+  trade_violation: "Нарушение в торговле", location_event: "Событие локации",
+  story_event: "Сюжетное событие", quest_fail: "Провал задания",
+  contract_violation: "Нарушение условий договора", system_check: "Системная проверка",
+};
+export const FINE_ISSUER_ROLE = {
+  system: "Система", admin: "Администратор", senior_admin: "Старший администратор",
+  moderator: "Модератор", player_moderator: "Игрок-модератор", guard: "Страж порядка",
+  manager: "Управляющий", npc: "NPC", event: "Событие", location_script: "Скрипт локации",
+};
+export const CURRENCY = {
+  copper: "Медные монеты", silver: "Серебряные монеты", gold: "Золотые монеты",
+  magic_gold: "Магическое золото", ancient: "Древние монеты",
+};
+export const FINE_RESTRICTION = {
+  block_city: "Запрет входа в город", block_starting: "Запрет стартовых локаций",
+  block_market: "Запрет рынка", block_black_market: "Запрет Чёрного рынка",
+  block_casino: "Запрет казино", block_transfer: "Запрет передачи предметов",
+  block_chat: "Запрет общего чата", block_raids: "Запрет рейдов", block_quests: "Запрет заданий",
+  force_fortress: "Перенос в Крепость в ущелье", raise_guard_check: "Повышенный шанс проверки стражей",
+  raise_raid_chance: "Повышенный шанс облавы", debuff: "Дебаф на персонажа", debtor_mark: "Метка должника",
+};
+
 // --- Действия аудита (частые; код доступен в подсказке/тех-блоке) -----------
 export const ACTION_LABEL = {
   "rewards.grant": "Выдача награды", "players.message": "Сообщение игроку",

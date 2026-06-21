@@ -34,6 +34,7 @@ from admin_achievement_api import create_admin_achievement_router
 from admin_messages_api import create_admin_messages_router
 from admin_item_api import create_admin_item_router
 from admin_effect_api import create_admin_effect_router
+from admin_fines_api import create_admin_fines_router
 from admin_site_api import create_admin_site_router
 from site_api import (
     create_profile_api_router,
@@ -330,6 +331,7 @@ def create_app() -> FastAPI:
     app.include_router(create_admin_messages_router(storage))
     app.include_router(create_admin_item_router(storage))
     app.include_router(create_admin_effect_router(storage))
+    app.include_router(create_admin_fines_router(storage))
     app.include_router(create_admin_site_router(storage))
 
     # Очередь сообщений читает/пишет ту же БД, что и боты (SQLite/Postgres),

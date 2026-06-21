@@ -141,6 +141,16 @@ PERM_MOB_CHANGE_WEEKLY_LIMITS = "mob.change_weekly_limits"
 PERM_MOB_TEST_BATTLE = "mob.test_battle"
 PERM_MOB_VIEW_BALANCE = "mob.view_balance"
 PERM_MOB_AUDIT = "mob.audit"
+# Конструктор штрафов (ТЗ «Конструктор штрафов») — авторинг ТИПОВ штрафов.
+# Снятие/выдача штрафов игрокам остаётся на fines.manage (рантайм-система).
+PERM_FINE_DEF_VIEW = "fine_def.view"
+PERM_FINE_DEF_CREATE = "fine_def.create"
+PERM_FINE_DEF_EDIT = "fine_def.edit"
+PERM_FINE_DEF_VALIDATE = "fine_def.validate"
+PERM_FINE_DEF_PUBLISH = "fine_def.publish"
+PERM_FINE_DEF_DISABLE = "fine_def.disable"
+PERM_FINE_DEF_ARCHIVE = "fine_def.archive"
+PERM_FINE_DEF_DELETE = "fine_def.delete"
 # Гильдии
 PERM_GUILD_VIEW = "guild.view"
 PERM_GUILD_CREATE = "guild.create"
@@ -279,6 +289,9 @@ ALL_PERMISSIONS = (
     PERM_MOB_CHANGE_LOOT, PERM_MOB_CHANGE_LOCATIONS, PERM_MOB_CHANGE_EVENTS,
     PERM_MOB_CHANGE_SPAWN_CHANCE, PERM_MOB_CHANGE_WEEKLY_LIMITS,
     PERM_MOB_TEST_BATTLE, PERM_MOB_VIEW_BALANCE, PERM_MOB_AUDIT,
+    PERM_FINE_DEF_VIEW, PERM_FINE_DEF_CREATE, PERM_FINE_DEF_EDIT,
+    PERM_FINE_DEF_VALIDATE, PERM_FINE_DEF_PUBLISH, PERM_FINE_DEF_DISABLE,
+    PERM_FINE_DEF_ARCHIVE, PERM_FINE_DEF_DELETE,
     PERM_GUILD_VIEW, PERM_GUILD_CREATE, PERM_GUILD_EDIT, PERM_GUILD_DISABLE,
     PERM_GUILD_MANAGE_MEMBERS, PERM_GUILD_MANAGE_STORAGE,
     PERM_GUILD_MANAGE_TREASURY, PERM_GUILD_AUDIT,
@@ -345,6 +358,11 @@ DANGEROUS_ACTIONS = frozenset({
     "mob.delete_soft",
     "mob.restore",
     "mob.change_loot",
+    # Конструктор штрафов — публикация/отключение/архив/удаление типов штрафов.
+    "fine_def.publish",
+    "fine_def.disable",
+    "fine_def.archive",
+    "fine_def.delete",
     "guild.disable",
     "world_event.start",
     "world_event.stop",
@@ -421,6 +439,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_MOB_CHANGE_STATS, PERM_MOB_CHANGE_SKILLS, PERM_MOB_CHANGE_LOCATIONS,
         PERM_MOB_CHANGE_EVENTS, PERM_MOB_CHANGE_SPAWN_CHANCE,
         PERM_MOB_TEST_BATTLE, PERM_MOB_VIEW_BALANCE,
+        # Конструктор штрафов: content ведёт черновики (без публикации).
+        PERM_FINE_DEF_VIEW, PERM_FINE_DEF_CREATE, PERM_FINE_DEF_EDIT, PERM_FINE_DEF_VALIDATE,
         PERM_GUILD_VIEW, PERM_GUILD_CREATE, PERM_GUILD_EDIT,
         PERM_WORLD_EVENT_VIEW, PERM_WORLD_EVENT_CREATE,
         PERM_WORLD_EVENT_EDIT, PERM_WORLD_EVENT_SCHEDULE,
@@ -456,6 +476,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         # Баланс мобов: economy крутит дроп/недельный запас/шанс/опыт-монеты.
         PERM_MOB_VIEW, PERM_MOB_CHANGE_LOOT, PERM_MOB_CHANGE_WEEKLY_LIMITS,
         PERM_MOB_CHANGE_SPAWN_CHANCE, PERM_MOB_VIEW_BALANCE,
+        PERM_FINE_DEF_VIEW,
         PERM_ITEM_VIEW, PERM_ITEM_CHANGE_PRICE, PERM_ITEM_VIEW_USAGE,
         PERM_EFFECT_VIEW,
         PERM_SITE_VIEW, PERM_RATINGS_VIEW, PERM_RATINGS_REWARD, PERM_NEWS_VIEW,
@@ -468,7 +489,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_LOCATION_RESOURCES_VIEW, PERM_LOCATION_LOOT_VIEW,
         PERM_LOCATION_MOBS_VIEW, PERM_LOCATION_ZONES_VIEW,
         PERM_LOCATION_ROTATION_VIEW, PERM_LOCATION_LIMITS_VIEW,
-        PERM_MOB_VIEW, PERM_MOB_VIEW_BALANCE,
+        PERM_MOB_VIEW, PERM_MOB_VIEW_BALANCE, PERM_FINE_DEF_VIEW,
         PERM_ACHIEVEMENT_VIEW, PERM_MESSAGES_VIEW_QUEUE,
         PERM_ITEM_VIEW, PERM_ITEM_VIEW_USAGE, PERM_EFFECT_VIEW,
         PERM_SITE_VIEW, PERM_NEWS_VIEW, PERM_GUIDES_VIEW, PERM_FAQ_VIEW,
