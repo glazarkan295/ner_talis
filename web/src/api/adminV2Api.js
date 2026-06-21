@@ -105,6 +105,13 @@ export function forgiveFine(gameId, reason) {
   });
 }
 
+export function repairFines(gameId, reason) {
+  return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/repair-fines`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
 export function resetPlayer(gameId, reason) {
   return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/reset`, {
     method: "POST",

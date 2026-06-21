@@ -8,6 +8,7 @@ import {
   grantRewards,
   messagePlayer,
   openPlayerView,
+  repairFines,
   resetPlayer,
   unstuckPlayer,
 } from "../../../api/adminV2Api.js";
@@ -274,15 +275,24 @@ export function PlayerCard({ gameId, guarded, hasPerm, onBack, onDeleted }) {
               ))}
             </div>
           )}
-          {fines.length ? (
-            <button type="button" className="ntv2-btn ntv2-btn-danger" style={{ marginTop: 10 }} onClick={() => setConfirm({
-              title: "Простить все штрафы?",
-              body: <p>С игрока будут сняты все активные штрафы ({fines.length}) и снят запрет на перемещение.</p>,
-              confirmLabel: "Простить",
-              dangerous: true,
-              run: async (reason) => { await guarded(() => forgiveFine(gameId, reason), "Штрафы прощены."); await load(); },
-            })}>Простить штрафы</button>
-          ) : null}
+          <div className="ntv2-form-row" style={{ marginTop: 10 }}>
+            {fines.length ? (
+              <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({
+                title: "Простить все штрафы?",
+                body: <p>С игрока будут сняты все активные штрафы ({fines.length}) и снят запрет на перемещение.</p>,
+                confirmLabel: "Простить",
+                dangerous: true,
+                run: async (reason) => { await guarded(() => forgiveFine(gameId, reason), "Штрафы прощены."); await load(); },
+              })}>Простить штрафы</button>
+            ) : null}
+            {/* §6: найти и починить зависшие штрафы (терминальные, что висят как активные). */}
+            <button type="button" className="ntv2-btn" onClick={async () => {
+              const res = await guarded(() => repairFines(gameId, "проверка штрафов из панели"), "Проверка штрафов выполнена.");
+              await load();
+              const rep = res?.report;
+              if (rep) window.alert(rep.fixed ? `Исправлено. Состояние: ${rep.state}. Изменения: ${(rep.issues || []).join(", ") || "—"}` : `Штрафы в порядке. Состояние: ${rep.state}.`);
+            }}>Проверить штрафы</button>
+          </div>
         </div>
       ) : null}
 
