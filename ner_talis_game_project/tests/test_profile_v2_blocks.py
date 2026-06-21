@@ -60,6 +60,14 @@ class ProfileV2BlocksTest(unittest.TestCase):
         self.assertIsInstance(prof["guild"], dict)
         self.assertEqual(prof["guild"]["name"], "Волки")
 
+    def test_race_info_served_from_catalog(self):
+        # Раса берётся из data/races.json — фронту больше не нужен свой список.
+        info = frontend_profile(self._player())["player"]["raceInfo"]
+        self.assertEqual(info["name"], "Человек")
+        self.assertTrue(info["description"])
+        self.assertIn("Сила", info["statsText"])
+        self.assertTrue(len(info["bonuses"]) >= 1)
+
 
 if __name__ == "__main__":
     unittest.main()

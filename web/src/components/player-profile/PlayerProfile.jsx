@@ -526,12 +526,22 @@ function ItemArt({ item, fallback = "◇", className = "nt-item-art" }) {
 
 function RaceInfoPopover({ profile, onClose }) {
   if (!profile) return null;
-  const race = RACE_INFO[raceKey(profile.player)] || RACE_INFO.human;
+  // Источник истины — бэкенд (raceInfo из data/races.json). Захардкоженный
+  // RACE_INFO остаётся лишь запасным вариантом для старого ответа API.
+  const backend = profile.player?.raceInfo;
+  const fallback = RACE_INFO[raceKey(profile.player)] || RACE_INFO.human;
+  const race = {
+    name: backend?.name || fallback.name,
+    stats: backend?.statsText || fallback.stats,
+    description: backend?.description || "",
+    bonuses: (backend?.bonuses && backend.bonuses.length) ? backend.bonuses : fallback.bonuses,
+  };
   return (
     <aside className="nt-race-popover" role="dialog" aria-label="Бонусы расы">
       <button className="nt-popover-close" type="button" onClick={onClose} aria-label="Закрыть">×</button>
       <div className="nt-modal-kicker">Бонусы расы</div>
       <h3>{race.name}</h3>
+      {race.description ? <p className="nt-race-desc">{race.description}</p> : null}
       <div className="nt-modal-block">
         <h4>Стартовые характеристики</h4>
         <p className="nt-race-stats">{race.stats}</p>

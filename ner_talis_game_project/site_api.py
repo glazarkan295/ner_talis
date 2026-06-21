@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from copy import deepcopy
 from datetime import datetime, timezone, timedelta
+from functools import lru_cache
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -191,6 +192,49 @@ RACE_MODEL_KEYS = {
     "undead": "undead",
     "lizardfolk": "lizardfolk",
 }
+
+# Подписи базовых характеристик расы для блока «Бонусы расы» (ТЗ §8).
+_RACE_STAT_LABELS = (
+    ("strength", "Сила"),
+    ("dexterity", "Ловкость"),
+    ("endurance", "Выносливость"),
+    ("intelligence", "Интеллект"),
+    ("wisdom", "Мудрость"),
+    ("perception", "Восприятие"),
+)
+
+
+@lru_cache(maxsize=1)
+def _races_catalog() -> dict[str, Any]:
+    """data/races.json, прочитанный один раз (источник истины по расам)."""
+    try:
+        from services.registration_service import load_races
+        catalog = load_races("data/races.json")
+        return catalog if isinstance(catalog, dict) else {}
+    except Exception:
+        return {}
+
+
+def _profile_race_info(race_key: str) -> dict[str, Any] | None:
+    """Описание/статы/бонусы расы для профиля (ТЗ §8).
+
+    Заменяет захардкоженный список рас во фронтенде: данные берутся из
+    единого data/races.json, поэтому правки рас не нужно дублировать в UI.
+    """
+    race = _races_catalog().get(race_key)
+    if not isinstance(race, dict):
+        return None
+    stats = race.get("stats") or {}
+    stats_text = " · ".join(
+        f"{label} {stats.get(key)}" for key, label in _RACE_STAT_LABELS if stats.get(key) is not None
+    )
+    return {
+        "key": race_key,
+        "name": race.get("name", race_key),
+        "description": race.get("description", ""),
+        "statsText": stats_text,
+        "bonuses": list(race.get("bonuses") or []),
+    }
 
 
 class SpendAttributeRequest(BaseModel):
@@ -1458,6 +1502,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "nickname": player.get("name", "Безымянный"),
             "raceKey": race_key,
             "raceName": player.get("race_name", "Человек"),
+            "raceInfo": _profile_race_info(race_key),
             "gender": player.get("gender", "not_selected"),
             "genderLabel": gender_label_ru(player.get("gender"), player.get("gender_label")),
             "profileFieldEdits": profile_field_edit_availability(player),

@@ -762,3 +762,11 @@ button { cursor: pointer; }
 .nt-skill-weapon-req.blocked {
   color: #e08a8a;
 }
+
+/* --- Профиль V2: описание расы в поповере ------------------------------ */
+.nt-race-desc {
+  margin: 4px 0 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  opacity: 0.85;
+}
