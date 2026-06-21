@@ -296,6 +296,88 @@ def should_show_empty_event(rows: list[dict[str, Any]], *, min_percent: float = 
     return (depleted / len(rows)) * 100.0 >= float(min_percent)
 
 
+# --- Недельная ротация активного набора (ТЗ §35–§38) -----------------------
+def _week_seed(location_id: str, week: str) -> int:
+    """Детерминированное зерно недели — выбор стабилен в течение недели."""
+    return abs(hash((str(location_id), str(week)))) % (2**31)
+
+
+def _weighted_sample(pool: list[dict[str, Any]], count: int, rng: random.Random) -> list[Any]:
+    """Выбор без повторов по весам (поле weight, по умолч. 1)."""
+    remaining = list(pool)
+    chosen: list[Any] = []
+    while remaining and len(chosen) < count:
+        weights = [max(0.0, _num(o.get("weight"), 1.0) or 1.0) for o in remaining]
+        total = sum(weights)
+        if total <= 0:
+            chosen.extend(o.get("id") for o in remaining[:count - len(chosen)])
+            break
+        point = rng.uniform(0, total)
+        upto = 0.0
+        for index, weight in enumerate(weights):
+            upto += weight
+            if point <= upto:
+                chosen.append(remaining.pop(index).get("id"))
+                break
+    return chosen
+
+
+def select_active(pool: list[dict[str, Any]], count: int, *, mode: str = "random", week_index: int = 0, rng: random.Random | None = None) -> list[Any]:
+    """Выбрать активный набор недели из пула кандидатов (ТЗ §37).
+
+    ``pool``: [{id, weight?, forced?}]. Режимы: random / weighted_random /
+    fixed_calendar (окно по номеру недели) / manual (только forced=True).
+    seasonal/by_world_event/by_holiday/by_economy в чистом слое сводятся к
+    weighted_random — внешний контекст подключается выше.
+    """
+    count = max(0, int(count))
+    ids = [o.get("id") for o in pool]
+    if count <= 0 or not pool:
+        return []
+    if mode == "manual":
+        return [o.get("id") for o in pool if _truthy(o.get("forced"))][:count]
+    if mode == "fixed_calendar":
+        n = len(ids)
+        start = int(week_index) % n
+        return [ids[(start + i) % n] for i in range(min(count, n))]
+    rng = rng or random.Random()
+    if mode == "random":
+        return rng.sample(ids, min(count, len(ids)))
+    # weighted_random и все контекстные режимы (fallback).
+    return _weighted_sample(pool, count, rng)
+
+
+def rolled_rotation(location_id: str, rotation: dict[str, Any], *, week: str | None = None) -> dict[str, list[Any]]:
+    """Активный набор недели для локации (стабилен в течение недели, ТЗ §39).
+
+    Раскатанный выбор кэшируется в состоянии (ключ week/location/__rotation__),
+    чтобы в течение недели набор не «прыгал» между запросами.
+    """
+    week = week or current_week_key()
+    data = rotation.get("data") or rotation
+    rot_id = str(rotation.get("id") or data.get("id") or "rotation")
+    cache_key = f"__rotation__:{rot_id}"
+    with _STATE_LOCK, _state_file_lock():
+        state = _load_state()
+        cached = (((state.get(week) or {}).get(location_id) or {}).get(cache_key))
+        if isinstance(cached, dict):
+            return {k: list(v) for k, v in cached.items()}
+        mode = str(data.get("selection_mode") or "random")
+        try:
+            week_index = int(str(week).split("-W")[-1])
+        except (ValueError, IndexError):
+            week_index = 0
+        rng = random.Random(_week_seed(location_id, week))
+        result = {
+            "resources": select_active(data.get("resource_pool") or [], _int(data.get("active_resources"), 0), mode=mode, week_index=week_index, rng=rng),
+            "mobs": select_active(data.get("mob_pool") or [], _int(data.get("active_mobs"), 0), mode=mode, week_index=week_index, rng=rng),
+            "events": select_active(data.get("event_pool") or [], _int(data.get("active_events"), 0), mode=mode, week_index=week_index, rng=rng),
+        }
+        state.setdefault(week, {}).setdefault(location_id, {})[cache_key] = result
+        _save_state(state)
+    return result
+
+
 # --- Выбор события (взвешенный) --------------------------------------------
 def weighted_choice(options: list[dict[str, Any]], rng: random.Random | None = None) -> dict[str, Any] | None:
     """Выбрать один вариант по полю ``chance`` (вес). rng инъектируется."""

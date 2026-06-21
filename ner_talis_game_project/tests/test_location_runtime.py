@@ -140,6 +140,61 @@ class LocationRuntimeLogicTest(unittest.TestCase):
         # Пустой/нулевой пул → None.
         self.assertIsNone(self.lr.weighted_choice([{"id": "x", "chance": 0}]))
 
+    def test_select_active_modes(self):
+        lr = self.lr
+        pool = [{"id": "a"}, {"id": "b"}, {"id": "c"}, {"id": "d"}]
+        # random: ровно count уникальных из пула.
+        picked = lr.select_active(pool, 2, mode="random", rng=random.Random(3))
+        self.assertEqual(len(picked), 2)
+        self.assertTrue(set(picked) <= {"a", "b", "c", "d"})
+        # fixed_calendar: детерминированное окно по номеру недели.
+        self.assertEqual(lr.select_active(pool, 2, mode="fixed_calendar", week_index=1), ["b", "c"])
+        self.assertEqual(lr.select_active(pool, 2, mode="fixed_calendar", week_index=3), ["d", "a"])
+        # manual: только forced.
+        manual_pool = [{"id": "a", "forced": True}, {"id": "b"}, {"id": "c", "forced": True}]
+        self.assertEqual(set(lr.select_active(manual_pool, 5, mode="manual")), {"a", "c"})
+        # count 0 → пусто.
+        self.assertEqual(lr.select_active(pool, 0), [])
+
+    def test_select_active_weighted_respects_weights(self):
+        lr = self.lr
+        # Вес b огромен — при count=1 почти всегда выбирается b (детерминир. seed).
+        pool = [{"id": "a", "weight": 1}, {"id": "b", "weight": 1000}]
+        picks = [lr.select_active(pool, 1, mode="weighted_random", rng=random.Random(s))[0] for s in range(20)]
+        self.assertGreater(picks.count("b"), picks.count("a"))
+
+
+class LocationRuntimeRotationStateTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+        tmp.close()
+        self._tmp = tmp.name
+        os.environ["LOCATION_RUNTIME_STATE_PATH"] = self._tmp
+        import services.location_runtime as lr
+        self.lr = lr
+
+    def tearDown(self):
+        os.environ.pop("LOCATION_RUNTIME_STATE_PATH", None)
+        for suffix in ("", ".lock", ".tmp"):
+            try:
+                os.unlink(self._tmp + suffix)
+            except OSError:
+                pass
+
+    def test_rolled_rotation_is_stable_within_week(self):
+        rotation = {"id": "rot1", "data": {
+            "selection_mode": "random", "active_resources": 2, "active_mobs": 1,
+            "active_events": 1,
+            "resource_pool": [{"id": "herb"}, {"id": "berry"}, {"id": "root"}],
+            "mob_pool": [{"id": "wolf"}, {"id": "bear"}],
+            "event_pool": [{"id": "chest"}, {"id": "trap"}],
+        }}
+        first = self.lr.rolled_rotation("loc_forest", rotation, week="2026-W25")
+        second = self.lr.rolled_rotation("loc_forest", rotation, week="2026-W25")
+        self.assertEqual(first, second)  # кэш недели → стабильно
+        self.assertEqual(len(first["resources"]), 2)
+        self.assertEqual(len(first["mobs"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
