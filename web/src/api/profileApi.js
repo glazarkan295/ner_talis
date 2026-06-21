@@ -218,6 +218,13 @@ export function dropItem(identifier, itemId, amount, inventoryIndex = null) {
   });
 }
 
+export function redeemPromoCode(identifier, code) {
+  return requestJson(profileEndpoint("/promo/redeem"), {
+    method: "POST",
+    body: JSON.stringify({ code: String(code || "") }),
+  });
+}
+
 export function searchCourierRecipients(query) {
   const params = new URLSearchParams({ q: String(query || ""), _: Date.now() });
   return requestJson(profileEndpoint(`/courier/search?${params.toString()}`));

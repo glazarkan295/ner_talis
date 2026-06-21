@@ -6,10 +6,13 @@ const TABS = [
   { id: "character", label: "Персонаж", icon: "head" },
   { id: "inventory", label: "Инвентарь", icon: "bag" },
   { id: "skills", label: "Навыки", icon: "star" },
-  { id: "info", label: "Информация", icon: "scroll" },
+  { id: "info", label: "Журнал", icon: "scroll" },
 ];
 
-const COURIER_TAB = { id: "courier", label: "Передача", icon: "courier" };
+// Вкладка «Сервисы» объединяет Передачу (гонец) и Промокод. Список доступных
+// сервисов приходит с бэкенда (profile.services), но даже без него показываем
+// курьерскую передачу для совместимости со старым ответом API.
+const SERVICES_TAB = { id: "services", label: "Сервисы", icon: "courier" };
 
 const INVENTORY_CATEGORIES = ["Всё", "Снаряжение", "Оружие", "Бижутерия", "Расходники", "Ресурсы", "Материалы", "Добыча", "Прочее", "Особое"];
 
@@ -1374,6 +1377,87 @@ function CourierTab({ profile, onSearchRecipients, onSendTransfer }) {
   );
 }
 
+// --- Профиль V2: Промокод (ТЗ §22, сервис «promo») ------------------------
+function PromoForm({ onRedeemPromo }) {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function submit() {
+    const value = code.trim();
+    if (!value || busy) return;
+    setBusy(true);
+    setMessage("");
+    setError("");
+    try {
+      const payload = await onRedeemPromo?.(value);
+      setMessage(payload?.message || "Промокод успешно применён.");
+      setCode("");
+    } catch (requestError) {
+      setError(requestError.message || "Не удалось применить промокод.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="nt-stack">
+      <Panel title="Промокод">
+        <p className="nt-courier-hint">Введите промокод, чтобы получить награду. Каждый код можно применить ограниченное число раз.</p>
+        <div className="nt-toolbar">
+          <input
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); submit(); } }}
+            placeholder="Например, START100"
+            autoComplete="off"
+          />
+          <button type="button" className="nt-courier-btn primary" onClick={submit} disabled={!code.trim() || busy}>
+            {busy ? "Применяем…" : "Применить"}
+          </button>
+        </div>
+        {message ? <p className="nt-courier-feedback success">{message}</p> : null}
+        {error ? <p className="nt-courier-feedback error">{error}</p> : null}
+      </Panel>
+    </div>
+  );
+}
+
+// --- Профиль V2: вкладка «Сервисы» (ТЗ §22, Передача + Промокод) ----------
+function ServicesTab({ profile, onSearchRecipients, onSendTransfer, onRedeemPromo }) {
+  // Бэкенд диктует список и порядок сервисов; запасной вариант — только Передача.
+  const services = (profile.services && profile.services.length)
+    ? profile.services
+    : [{ id: "transfer", label: "Передача" }];
+  const [active, setActive] = useState(services[0]?.id || "transfer");
+  // Если набор сервисов изменился и текущий пропал — откатываемся на первый.
+  useEffect(() => {
+    if (!services.some((s) => s.id === active)) setActive(services[0]?.id || "transfer");
+  }, [services, active]);
+
+  return (
+    <div className="nt-stack">
+      {services.length > 1 ? (
+        <nav className="nt-subtabs" aria-label="Сервисы">
+          {services.map((service) => (
+            <button
+              key={service.id}
+              type="button"
+              className={active === service.id ? "active" : ""}
+              onClick={() => setActive(service.id)}
+            >
+              {service.label}
+            </button>
+          ))}
+        </nav>
+      ) : null}
+      {active === "transfer" ? <CourierTab profile={profile} onSearchRecipients={onSearchRecipients} onSendTransfer={onSendTransfer} /> : null}
+      {active === "promo" ? <PromoForm onRedeemPromo={onRedeemPromo} /> : null}
+    </div>
+  );
+}
+
 // --- Профиль V2: вкладка «Обзор» (ТЗ §5) ----------------------------------
 const RESOURCE_BAR_META = [
   { label: "HP", cls: "nt-bar-hp" },
@@ -1461,7 +1545,7 @@ function OverviewTab({ profile }) {
 }
 
 
-export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField, onSearchCourierRecipients, onSendCourierTransfer, onAdminRemoveItem }) {
+export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField, onSearchCourierRecipients, onSendCourierTransfer, onRedeemPromo, onAdminRemoveItem }) {
   const data = profileOrMock(profile);
   const [tab, setTab] = useState("overview");
   const [modal, setModal] = useState(null);
@@ -1470,8 +1554,9 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
   const [sellModal, setSellModal] = useState(null);
   const adminEdit = Boolean(data.adminEdit);
   const effectiveReadOnly = Boolean(readOnly || data.readOnly || (data.adminView && !adminEdit));
-  // Курьер недоступен в админ-просмотре/редактировании чужого профиля.
-  const visibleTabs = (effectiveReadOnly || adminEdit) ? TABS : [...TABS, COURIER_TAB];
+  // Сервисы (Передача/Промокод) недоступны в админ-просмотре/редактировании
+  // чужого профиля — это личные действия игрока от своего лица.
+  const visibleTabs = (effectiveReadOnly || adminEdit) ? TABS : [...TABS, SERVICES_TAB];
   const background = data.assets?.background || "/assets/profile/backgrounds/1.png";
 
   const equipmentBySlot = data.equipment || {};
@@ -1562,7 +1647,7 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
           {tab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
           {tab === "skills" ? <SkillsTab profile={data} readOnly={effectiveReadOnly} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
           {tab === "info" ? <InfoTab profile={data} /> : null}
-          {tab === "courier" ? <CourierTab profile={data} onSearchRecipients={onSearchCourierRecipients} onSendTransfer={onSendCourierTransfer} /> : null}
+          {tab === "services" ? <ServicesTab profile={data} onSearchRecipients={onSearchCourierRecipients} onSendTransfer={onSendCourierTransfer} onRedeemPromo={onRedeemPromo} /> : null}
         </section>
       </div>
       <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} readOnly={effectiveReadOnly} adminEdit={adminEdit} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRequestDrop={requestDrop} onRequestSell={requestSell} onAdminRemoveItem={adminRemoveAndClose} />

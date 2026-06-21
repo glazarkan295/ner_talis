@@ -13,6 +13,7 @@ import {
   getProfileIdentifierFromUrl,
   loadPlayerProfile,
   confirmAttributePoints,
+  redeemPromoCode,
   searchCourierRecipients,
   sendCourierTransfer,
   setActiveProfileSession,
@@ -195,6 +196,7 @@ function ProfileApp() {
         onSendCourierTransfer={(receiver, items, coins, letter) => {
           return runProfileAction(() => sendCourierTransfer(receiver, items, coins, letter));
         }}
+        onRedeemPromo={(code) => runProfileAction(() => redeemPromoCode(profileIdentifier, code))}
       />
     </>
   );
