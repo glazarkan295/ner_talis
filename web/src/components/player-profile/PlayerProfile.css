@@ -755,6 +755,27 @@ button { cursor: pointer; }
 }
 .nt-confirm-check input { margin-top: 3px; }
 
+/* Опасные кнопки во всём профиле — высокий контраст (ТЗ §3.4): раньше
+   .nt-danger подсвечивался только в модалках, а в «Опасной зоне» кнопки
+   сливались с фоном и текст был нечитаем. Заливаем красным, светлый жирный
+   текст с тенью. Специфичность ≥ .nt-modal-actions .nt-danger и правило ниже —
+   поэтому применяется и там, и в danger-zone. */
+.nt-profile .nt-danger,
+.nt-profile .nt-modal-actions .nt-danger {
+  border: 1px solid #c0392b;
+  color: #fff4ee;
+  background: linear-gradient(180deg, #8e2b1c, #5e1a11);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .55);
+  font-weight: 600;
+}
+.nt-profile .nt-danger:hover,
+.nt-profile .nt-modal-actions .nt-danger:hover {
+  background: linear-gradient(180deg, #a8341f, #6e1f14);
+  border-color: #e0573f;
+}
+/* Сам блок «Опасной зоны» — заметная рамка/фон (надпись больше не нужна). */
+.nt-danger-zone { border-color: rgba(192, 57, 43, .55); background: rgba(192, 57, 43, .08); }
+
 /* --- Профиль V2: под-навигация вкладки «Сервисы» ----------------------- */
 .nt-subtabs {
   display: flex;
