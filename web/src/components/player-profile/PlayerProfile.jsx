@@ -14,6 +14,11 @@ const TABS = [
 // курьерскую передачу для совместимости со старым ответом API.
 const SERVICES_TAB = { id: "services", label: "Сервисы", icon: "courier" };
 
+// Вкладка «Гильдии» появляется только когда бэкенд вернул блок guild
+// (profile.guild != null). Гильдейская система пока в разработке — без блока
+// вкладка скрыта (ТЗ §14).
+const GUILD_TAB = { id: "guild", label: "Гильдия", icon: "star" };
+
 const INVENTORY_CATEGORIES = ["Всё", "Снаряжение", "Оружие", "Бижутерия", "Расходники", "Ресурсы", "Материалы", "Добыча", "Прочее", "Особое"];
 
 const DEFAULT_SLOTS = [
@@ -1465,6 +1470,38 @@ function ServicesTab({ profile, onSearchRecipients, onSendTransfer, onRedeemProm
   );
 }
 
+// --- Профиль V2: вкладка «Гильдия» (ТЗ §14) ------------------------------
+function GuildTab({ guild }) {
+  if (!guild) return <div className="nt-stack"><p className="nt-empty-text">Вы не состоите в гильдии.</p></div>;
+  const members = Array.isArray(guild.members) ? guild.members : [];
+  const rows = [
+    ["Название", guild.name],
+    ["Ранг", guild.rankLabel || guild.rank],
+    ["Уровень", guild.level],
+    ["Участники", guild.memberCount ?? (members.length || undefined)],
+  ].filter(([, value]) => value !== undefined && value !== null && value !== "");
+  return (
+    <div className="nt-stack">
+      <Panel title={guild.name || "Гильдия"}>
+        {rows.length ? <div className="nt-lines">{rows.map(([label, value]) => <Row key={label} label={label} value={value} />)}</div> : null}
+        {guild.description ? <p>{guild.description}</p> : null}
+      </Panel>
+      {members.length ? (
+        <CollapsiblePanel title="Состав гильдии">
+          <div className="nt-card-list nt-column-list">
+            {members.map((member) => (
+              <div className="nt-mini-card" key={member.gameId || member.id || member.name}>
+                <CardRow label={member.name || member.gameId || "—"} value={member.rankLabel || member.rank || ""} />
+                {member.level ? <p>ур. {member.level}</p> : null}
+              </div>
+            ))}
+          </div>
+        </CollapsiblePanel>
+      ) : null}
+    </div>
+  );
+}
+
 // --- Профиль V2: вкладка «Обзор» (ТЗ §5) ----------------------------------
 const RESOURCE_BAR_META = [
   { label: "HP", cls: "nt-bar-hp" },
@@ -1563,7 +1600,12 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
   const effectiveReadOnly = Boolean(readOnly || data.readOnly || (data.adminView && !adminEdit));
   // Сервисы (Передача/Промокод) недоступны в админ-просмотре/редактировании
   // чужого профиля — это личные действия игрока от своего лица.
-  const visibleTabs = (effectiveReadOnly || adminEdit) ? TABS : [...TABS, SERVICES_TAB];
+  // Вкладка «Гильдия» появляется только при наличии блока guild.
+  const visibleTabs = [
+    ...TABS,
+    ...(data.guild ? [GUILD_TAB] : []),
+    ...((effectiveReadOnly || adminEdit) ? [] : [SERVICES_TAB]),
+  ];
   const background = data.assets?.background || "/assets/profile/backgrounds/1.png";
 
   const equipmentBySlot = data.equipment || {};
@@ -1654,6 +1696,7 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
           {tab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
           {tab === "skills" ? <SkillsTab profile={data} readOnly={effectiveReadOnly} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
           {tab === "info" ? <InfoTab profile={data} /> : null}
+          {tab === "guild" ? <GuildTab guild={data.guild} /> : null}
           {tab === "services" ? <ServicesTab profile={data} onSearchRecipients={onSearchCourierRecipients} onSendTransfer={onSendCourierTransfer} onRedeemPromo={onRedeemPromo} /> : null}
         </section>
       </div>
