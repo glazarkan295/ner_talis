@@ -17,6 +17,7 @@ import { loadCatalog } from "../../../api/adminApi.js";
 import { trOption, tr, CURRENCY } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { TechnicalData } from "../TechnicalData.jsx";
+import { MessageComposer } from "../MessageComposer.jsx";
 
 const KIND_LABELS = {
   location: "🗺️ Локации", mob: "⚔️ Мобы", button: "🔘 Кнопки", transition: "🔀 Переходы",
@@ -308,7 +309,7 @@ function RefSelect({ value, onChange, options, disabled, placeholder = "— не
   );
 }
 
-function EventForm({ value, onChange, meta, disabled, refOptions }) {
+function EventForm({ value, onChange, meta, disabled, refOptions, uploadKey }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
   return (
     <div className="ntv2-world-form">
@@ -338,6 +339,7 @@ function EventForm({ value, onChange, meta, disabled, refOptions }) {
         <Field label="Накладываемый эффект"><input value={value.effect} disabled={disabled} onChange={(e) => set("effect", e.target.value)} /></Field>
         <label className="ntv2-check"><input type="checkbox" checked={Boolean(value.repeatable)} disabled={disabled} onChange={(e) => set("repeatable", e.target.checked)} /> Повторяемое</label>
       </div>
+      <MessageComposer label="Сообщение игроку (изображение/формат/предпросмотр)" value={value.player_message} category="events" uploadKey={`${uploadKey || "event"}_msg`} disabled={disabled} onChange={(v) => set("player_message", v)} />
     </div>
   );
 }
@@ -382,7 +384,7 @@ function TradePanel({ value, set, disabled }) {
   );
 }
 
-function NpcForm({ value, onChange, meta, disabled, refOptions }) {
+function NpcForm({ value, onChange, meta, disabled, refOptions, uploadKey }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
   const fns = Array.isArray(value.functions) ? value.functions : [];
   const toggleFn = (fn) => set("functions", fns.includes(fn) ? fns.filter((f) => f !== fn) : [...fns, fn]);
@@ -417,6 +419,7 @@ function NpcForm({ value, onChange, meta, disabled, refOptions }) {
           ))}
         </div>
       </div>
+      <MessageComposer label="Диалог игроку (изображение/формат/предпросмотр)" value={value.dialog_message} category="npc" uploadKey={`${uploadKey || "npc"}_msg`} disabled={disabled} onChange={(v) => set("dialog_message", v)} />
     </div>
   );
 }
@@ -820,7 +823,7 @@ export function WorldSection({ guarded, hasPerm }) {
         {schema ? (
           <GenericForm schema={schema} value={editing.data} onChange={(data) => setEditing({ ...editing, data })} meta={meta} refOptions={refOptions} disabled={!(editing.isNew ? can.create : can.edit)} />
         ) : (
-          <Form value={editing.data} onChange={(data) => setEditing({ ...editing, data })} meta={meta} locationOptions={refOptions.location} refOptions={refOptions} disabled={!(editing.isNew ? can.create : can.edit)} />
+          <Form value={editing.data} onChange={(data) => setEditing({ ...editing, data })} meta={meta} locationOptions={refOptions.location} refOptions={refOptions} disabled={!(editing.isNew ? can.create : can.edit)} uploadKey={editing.id || "new"} />
         )}
 
         {v ? (

@@ -81,5 +81,37 @@ class CityNodeEntryMessageTest(unittest.TestCase):
         self.assertTrue(any("Сообщение при входе" in e for e in res["errors"]))
 
 
+class WorldEventNpcMessageTest(unittest.TestCase):
+    def test_event_player_message_validated(self):
+        from services import world_content_registry as wcr
+        bad = {"kind": wcr.KIND_EVENT, "data": {
+            "name": "Находка", "text": "Вы что-то нашли",
+            "player_message": {"format": "single", "text": "T", "image": "https://x/y.png"},
+        }}
+        res = wcr.validate_envelope(bad)
+        self.assertFalse(res["ok"])
+        self.assertTrue(any("Сообщение игроку" in e for e in res["errors"]))
+
+    def test_npc_dialog_message_validated(self):
+        from services import world_content_registry as wcr
+        # NPC без локации → только предупреждение; сообщение корректное → ошибок нет.
+        ok = {"kind": wcr.KIND_NPC, "data": {
+            "name": "Торговец",
+            "dialog_message": {"format": "multiple", "blocks": [{"order": 1, "text": "Привет!"}]},
+        }}
+        res = wcr.validate_envelope(ok)
+        self.assertTrue(res["ok"], res["errors"])
+
+    def test_npc_dialog_message_bad_image(self):
+        from services import world_content_registry as wcr
+        bad = {"kind": wcr.KIND_NPC, "data": {
+            "name": "Торговец",
+            "dialog_message": {"format": "single", "text": "Hi", "image": "http://x/y.png"},
+        }}
+        res = wcr.validate_envelope(bad)
+        self.assertFalse(res["ok"])
+        self.assertTrue(any("Диалог игроку" in e for e in res["errors"]))
+
+
 if __name__ == "__main__":
     unittest.main()

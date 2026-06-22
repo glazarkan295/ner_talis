@@ -834,6 +834,9 @@ def _validate_event(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
         value = _str_field(data, key)
         if value and _has_markup(value):
             errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+
+    # Вывод сообщения игроку (дополнение к ТЗ): изображение/формат/блоки.
+    _validate_player_message(data.get("player_message"), "Сообщение игроку", errors, warnings)
     return errors, warnings
 
 
@@ -900,7 +903,20 @@ def _validate_npc(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
         if value and _has_markup(value):
             errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
     _check_local_image(data, "image", errors)
+    # Диалог игроку (дополнение к ТЗ): изображение/формат/блоки.
+    _validate_player_message(data.get("dialog_message"), "Диалог игроку", errors, warnings)
     return errors, warnings
+
+
+def _validate_player_message(payload: Any, label: str, errors: list[str], warnings: list[str]) -> None:
+    """Подмешать ошибки/предупреждения вывода сообщения игроку (доп. к ТЗ)."""
+    if not payload:
+        return
+    from services.message_output_service import validate_message_output
+
+    result = validate_message_output(payload)
+    errors.extend(f"{label} — {e}" for e in result["errors"])
+    warnings.extend(f"{label} — {w}" for w in result["warnings"])
 
 
 def _validate_quest(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
