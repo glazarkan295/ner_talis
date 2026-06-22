@@ -10,6 +10,7 @@ import {
 } from "../../../api/adminSiteApi.js";
 import { tr, BANNER_TYPE, GUIDE_DIFFICULTY } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 
 const KIND_LABELS = { news: "📰 Новости", guide: "📚 Гайды", faq: "❓ FAQ", banner: "🎌 Баннеры", announcement: "📢 Объявления" };
 const KIND_NEW = { news: "＋ Новость", guide: "＋ Гайд", faq: "＋ Вопрос", banner: "＋ Баннер", announcement: "＋ Объявление" };
@@ -38,9 +39,9 @@ function SiteForm({ kind, value, onChange, meta, disabled }) {
   if (kind === "faq") {
     return (
       <div className="ntv2-world-form">
-        <Field label="Вопрос"><input value={value.question} disabled={disabled} onChange={(e) => set("question", e.target.value)} /></Field>
-        <Field label="Краткий ответ"><textarea rows={2} value={value.short_description} disabled={disabled} onChange={(e) => set("short_description", e.target.value)} /></Field>
-        <Field label="Подробный ответ"><textarea rows={4} value={value.answer} disabled={disabled} onChange={(e) => set("answer", e.target.value)} /></Field>
+        <Field label="Вопрос"><EmojiInput value={value.question} disabled={disabled} onChange={(v) => set("question", v)} /></Field>
+        <Field label="Краткий ответ"><EmojiTextarea rows={2} value={value.short_description} disabled={disabled} onChange={(v) => set("short_description", v)} /></Field>
+        <Field label="Подробный ответ"><EmojiTextarea rows={4} value={value.answer} disabled={disabled} onChange={(v) => set("answer", v)} /></Field>
         <Field label="Категория"><input value={value.category} disabled={disabled} onChange={(e) => set("category", e.target.value)} /></Field>
       </div>
     );
@@ -49,10 +50,10 @@ function SiteForm({ kind, value, onChange, meta, disabled }) {
     return (
       <div className="ntv2-world-form">
         <div className="ntv2-form-row">
-          <Field label="Заголовок"><input value={value.title} disabled={disabled} onChange={(e) => set("title", e.target.value)} /></Field>
+          <Field label="Заголовок"><EmojiInput value={value.title} disabled={disabled} onChange={(v) => set("title", v)} /></Field>
           <Field label="Тип"><select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.bannerTypes || []).map((x) => <option key={x} value={x}>{tr(BANNER_TYPE, x)}</option>)}</select></Field>
         </div>
-        <Field label="Текст"><textarea rows={3} value={value.text} disabled={disabled} onChange={(e) => set("text", e.target.value)} /></Field>
+        <Field label="Текст"><EmojiTextarea rows={3} value={value.text} disabled={disabled} onChange={(v) => set("text", v)} /></Field>
         <div className="ntv2-form-row">
           <Field label="Иконка"><input value={value.icon} disabled={disabled} onChange={(e) => set("icon", e.target.value)} /></Field>
           <Field label="Дата начала (ISO)"><input value={value.start_date} disabled={disabled} onChange={(e) => set("start_date", e.target.value)} /></Field>
@@ -65,13 +66,13 @@ function SiteForm({ kind, value, onChange, meta, disabled }) {
   return (
     <div className="ntv2-world-form">
       <div className="ntv2-form-row">
-        <Field label="Заголовок"><input value={value.title} disabled={disabled} onChange={(e) => set("title", e.target.value)} /></Field>
+        <Field label="Заголовок"><EmojiInput value={value.title} disabled={disabled} onChange={(v) => set("title", v)} /></Field>
         {kind === "news"
           ? <Field label="Категория"><select value={value.category} disabled={disabled} onChange={(e) => set("category", e.target.value)}><option value="">—</option>{(meta.newsCategories || []).map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
           : <Field label="Сложность"><select value={value.difficulty} disabled={disabled} onChange={(e) => set("difficulty", e.target.value)}>{(meta.guideDifficulties || []).map((d) => <option key={d} value={d}>{tr(GUIDE_DIFFICULTY, d)}</option>)}</select></Field>}
       </div>
-      <Field label="Краткое описание"><textarea rows={2} value={value.short_description} disabled={disabled} onChange={(e) => set("short_description", e.target.value)} /></Field>
-      <Field label="Полный текст"><textarea rows={5} value={value.body} disabled={disabled} onChange={(e) => set("body", e.target.value)} /></Field>
+      <Field label="Краткое описание"><EmojiTextarea rows={2} value={value.short_description} disabled={disabled} onChange={(v) => set("short_description", v)} /></Field>
+      <Field label="Полный текст"><EmojiTextarea rows={5} value={value.body} disabled={disabled} onChange={(v) => set("body", v)} /></Field>
       <div className="ntv2-form-row">
         <Field label={kind === "news" ? "Обложка (URL)" : "Изображение (URL)"}><input value={kind === "news" ? value.cover : value.image} disabled={disabled} onChange={(e) => set(kind === "news" ? "cover" : "image", e.target.value)} /></Field>
         {kind === "news" ? <Field label="Дата публикации (ISO)"><input value={value.publish_at} disabled={disabled} onChange={(e) => set("publish_at", e.target.value)} /></Field> : null}

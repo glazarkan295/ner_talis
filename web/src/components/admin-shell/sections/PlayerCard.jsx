@@ -21,6 +21,7 @@ import {
 } from "../../../api/adminAchievementApi.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { TechnicalData } from "../TechnicalData.jsx";
+import { EmojiTextarea } from "../EmojiField.jsx";
 
 // Admin achievements panel for a player: progress + manual grant/revoke.
 function AchievementsPanel({ gameId, guarded, hasPerm }) {
@@ -242,7 +243,7 @@ export function PlayerCard({ gameId, guarded, hasPerm, onBack, onDeleted }) {
       {hasPerm("players.message") ? (
         <div className="ntv2-panel">
           <h3>Сообщение игроку</h3>
-          <textarea rows={3} placeholder="Текст сообщения — придёт в чат бота" value={message} onChange={(e) => setMessage(e.target.value)} style={{ width: "100%", boxSizing: "border-box" }} />
+          <EmojiTextarea rows={3} placeholder="Текст сообщения — придёт в чат бота" value={message} onChange={setMessage} style={{ width: "100%", boxSizing: "border-box" }} />
           <div className="ntv2-form-row" style={{ marginTop: 8 }}>
             <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={!message.trim()} onClick={() => sendMessage("")}>Отправить</button>
           </div>

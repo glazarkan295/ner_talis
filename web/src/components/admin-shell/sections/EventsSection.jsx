@@ -9,6 +9,7 @@ import {
 } from "../../../api/adminCommunityApi.js";
 import { tr, EVENT_REPEAT_TYPE, WORLD_EVENT_TYPE, EVENT_REWARD_TYPE, SPECIAL_LOOT_SOURCE } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 
 const STATUS_TONE = { active: "ntv2-badge-owner", finished: "ntv2-badge-owner", disabled: "ntv2-badge-danger", scheduled: "ntv2-badge-error" };
 
@@ -137,10 +138,10 @@ export function EventsSection({ guarded, hasPerm }) {
             <Field label="×Дроп"><input type="number" value={d.drop_multiplier} disabled={disabled} onChange={(e) => set("drop_multiplier", e.target.value)} /></Field>
             <Field label="×Монеты"><input type="number" value={d.coin_multiplier} disabled={disabled} onChange={(e) => set("coin_multiplier", e.target.value)} /></Field>
           </div>
-          <Field label="Краткое описание"><textarea rows={2} value={d.short_description} disabled={disabled} onChange={(e) => set("short_description", e.target.value)} /></Field>
-          <Field label="Полное описание"><textarea rows={3} value={d.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
-          <Field label="Сообщение о начале"><textarea rows={2} value={d.start_message} disabled={disabled} onChange={(e) => set("start_message", e.target.value)} /></Field>
-          <Field label="Сообщение о завершении"><textarea rows={2} value={d.end_message} disabled={disabled} onChange={(e) => set("end_message", e.target.value)} /></Field>
+          <Field label="Краткое описание"><EmojiTextarea rows={2} value={d.short_description} disabled={disabled} onChange={(v) => set("short_description", v)} /></Field>
+          <Field label="Полное описание"><EmojiTextarea rows={3} value={d.description} disabled={disabled} onChange={(v) => set("description", v)} /></Field>
+          <Field label="Сообщение о начале"><EmojiTextarea rows={2} value={d.start_message} disabled={disabled} onChange={(v) => set("start_message", v)} /></Field>
+          <Field label="Сообщение о завершении"><EmojiTextarea rows={2} value={d.end_message} disabled={disabled} onChange={(v) => set("end_message", v)} /></Field>
           <Field label="Изображение (URL)"><input value={d.image} disabled={disabled} onChange={(e) => set("image", e.target.value)} /></Field>
 
           {/* Награды (§4.3) */}

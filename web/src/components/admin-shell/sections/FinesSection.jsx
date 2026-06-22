@@ -11,6 +11,7 @@ import {
 } from "../../../api/adminFinesApi.js";
 import { tr, FINE_TYPE, FINE_SOURCE, FINE_ISSUER_ROLE, CURRENCY, FINE_RESTRICTION } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 
@@ -89,15 +90,15 @@ export function FinesSection({ guarded, hasPerm }) {
 
         <div className="ntv2-world-form">
           <div className="ntv2-form-row">
-            <Field label="Название"><input value={d.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
+            <Field label="Название"><EmojiInput value={d.name} disabled={disabled} onChange={(v) => set("name", v)} /></Field>
             <Field label="Тип"><select value={d.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{meta.fineTypes.map((x) => <option key={x} value={x}>{tr(FINE_TYPE, x)}</option>)}</select></Field>
           </div>
           <div className="ntv2-form-row">
             <Field label="Источник"><select value={d.source} disabled={disabled} onChange={(e) => set("source", e.target.value)}>{meta.sources.map((x) => <option key={x} value={x}>{tr(FINE_SOURCE, x)}</option>)}</select></Field>
             <Field label="Валюта"><select value={d.currency} disabled={disabled} onChange={(e) => set("currency", e.target.value)}>{meta.currencies.map((x) => <option key={x} value={x}>{tr(CURRENCY, x)}</option>)}</select></Field>
           </div>
-          <Field label="Краткое описание"><input value={d.short_description} disabled={disabled} onChange={(e) => set("short_description", e.target.value)} /></Field>
-          <Field label="Полное описание"><textarea rows={2} value={d.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
+          <Field label="Краткое описание"><EmojiInput value={d.short_description} disabled={disabled} onChange={(v) => set("short_description", v)} /></Field>
+          <Field label="Полное описание"><EmojiTextarea rows={2} value={d.description} disabled={disabled} onChange={(v) => set("description", v)} /></Field>
 
           <h4 className="ntv2-subhead">Сумма</h4>
           <div className="ntv2-form-row">{num("base_amount", "Базовая сумма")}{num("min_amount", "Мин. сумма")}{num("max_amount", "Макс. сумма")}</div>
@@ -129,9 +130,9 @@ export function FinesSection({ guarded, hasPerm }) {
 
           <div className="ntv2-panel">
             <h4 className="ntv2-subhead">Сообщения игроку</h4>
-            <Field label="При получении штрафа"><textarea rows={2} value={d.messages?.on_issue || ""} disabled={disabled} onChange={(e) => setMsg("on_issue", e.target.value)} /></Field>
-            <Field label="При оплате"><textarea rows={2} value={d.messages?.on_pay || ""} disabled={disabled} onChange={(e) => setMsg("on_pay", e.target.value)} /></Field>
-            <Field label="При запрете входа"><textarea rows={2} value={d.messages?.on_block || ""} disabled={disabled} onChange={(e) => setMsg("on_block", e.target.value)} /></Field>
+            <Field label="При получении штрафа"><EmojiTextarea rows={2} value={d.messages?.on_issue || ""} disabled={disabled} onChange={(v) => setMsg("on_issue", v)} /></Field>
+            <Field label="При оплате"><EmojiTextarea rows={2} value={d.messages?.on_pay || ""} disabled={disabled} onChange={(v) => setMsg("on_pay", v)} /></Field>
+            <Field label="При запрете входа"><EmojiTextarea rows={2} value={d.messages?.on_block || ""} disabled={disabled} onChange={(v) => setMsg("on_block", v)} /></Field>
           </div>
         </div>
 

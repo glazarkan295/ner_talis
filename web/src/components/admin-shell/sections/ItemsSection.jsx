@@ -13,6 +13,7 @@ import {
 import { tr, ITEM_TYPE, ITEM_QUALITY, EQUIP_SLOT, ITEM_PROPERTY, ITEM_EFFECT_TYPE } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { ImageUploadField } from "../ImageUploadField.jsx";
+import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { TechnicalData } from "../TechnicalData.jsx";
 
 const STATUS_TONE = {
@@ -118,7 +119,7 @@ export function ItemsSection({ guarded, hasPerm }) {
 
         <div className="ntv2-world-form">
           <div className="ntv2-form-row">
-            <Field label="Название"><input value={d.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
+            <Field label="Название"><EmojiInput value={d.name} disabled={disabled} onChange={(v) => set("name", v)} /></Field>
             <Field label="Категория"><select value={d.category} disabled={disabled} onChange={(e) => set("category", e.target.value)}><option value="">— выбрать —</option>{meta.categories.map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
           </div>
           <div className="ntv2-form-row">
@@ -128,8 +129,8 @@ export function ItemsSection({ guarded, hasPerm }) {
             <Field label="Ур. предмета"><input type="number" value={d.item_level} disabled={disabled} onChange={(e) => set("item_level", e.target.value)} /></Field>
             <Field label="Мин. ур. игрока"><input type="number" value={d.min_player_level} disabled={disabled} onChange={(e) => set("min_player_level", e.target.value)} /></Field>
           </div>
-          <Field label="Краткое описание"><textarea rows={2} value={d.short_description} disabled={disabled} onChange={(e) => set("short_description", e.target.value)} /></Field>
-          <Field label="Полное описание (игроку)"><textarea rows={3} value={d.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
+          <Field label="Краткое описание"><EmojiTextarea rows={2} value={d.short_description} disabled={disabled} onChange={(v) => set("short_description", v)} /></Field>
+          <Field label="Полное описание (игроку)"><EmojiTextarea rows={3} value={d.description} disabled={disabled} onChange={(v) => set("description", v)} /></Field>
           <Field label="Техническое описание (админ)"><textarea rows={2} value={d.technical_description} disabled={disabled} onChange={(e) => set("technical_description", e.target.value)} /></Field>
 
           <div className="ntv2-form-row">

@@ -21,6 +21,7 @@ import {
   SKILL_WEAPON_REQUIREMENT,
 } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 
@@ -108,7 +109,7 @@ export function SkillsSection({ guarded, hasPerm }) {
 
         <div className="ntv2-world-form">
           <div className="ntv2-form-row">
-            <Field label="Название"><input value={d.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
+            <Field label="Название"><EmojiInput value={d.name} disabled={disabled} onChange={(v) => set("name", v)} /></Field>
             {sel("skill_type", "Тип навыка", SKILL_TYPE, meta.skillTypes)}
           </div>
           <div className="ntv2-form-row">
@@ -144,8 +145,8 @@ export function SkillsSection({ guarded, hasPerm }) {
           <h4 className="ntv2-subhead">Открытие пути</h4>
           <div className="ntv2-form-row">{num("unlock_path_level", "Порог открытия (уровень пути)")}{num("choice_index", "Индекс выбора")}</div>
 
-          <Field label="Краткое описание"><input value={d.short_description} disabled={disabled} onChange={(e) => set("short_description", e.target.value)} /></Field>
-          <Field label="Описание эффекта"><textarea rows={2} value={d.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
+          <Field label="Краткое описание"><EmojiInput value={d.short_description} disabled={disabled} onChange={(v) => set("short_description", v)} /></Field>
+          <Field label="Описание эффекта"><EmojiTextarea rows={2} value={d.description} disabled={disabled} onChange={(v) => set("description", v)} /></Field>
 
           <div className="ntv2-panel">
             <h4 className="ntv2-subhead">Модификаторы навыка</h4>
