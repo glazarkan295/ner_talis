@@ -22,15 +22,18 @@ class ConstructorImportTest(unittest.TestCase):
         self._items = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._world = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._effects = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._city = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         os.environ["ITEM_CONSTRUCTOR_PATH"] = self._items
         os.environ["WORLD_CONTENT_PATH"] = self._world
         os.environ["EFFECT_CONSTRUCTOR_PATH"] = self._effects
+        os.environ["CITY_CONSTRUCTOR_PATH"] = self._city
 
     def tearDown(self):
         os.environ.pop("ITEM_CONSTRUCTOR_PATH", None)
         os.environ.pop("WORLD_CONTENT_PATH", None)
         os.environ.pop("EFFECT_CONSTRUCTOR_PATH", None)
-        for base in (self._items, self._world, self._effects):
+        os.environ.pop("CITY_CONSTRUCTOR_PATH", None)
+        for base in (self._items, self._world, self._effects, self._city):
             for suffix in ("", ".lock", ".tmp"):
                 try:
                     os.unlink(base + suffix)
@@ -117,6 +120,79 @@ class ConstructorImportTest(unittest.TestCase):
         used = ecs.where_used("poison")
         self.assertTrue(any(u["id"] == "me_poison" for u in used))
         self.assertEqual(ecs.where_used("nonexistent_effect"), [])
+
+
+    def test_import_locations_published(self):
+        from services import world_content_registry as wcr
+
+        report = ci.import_locations()
+        self.assertGreaterEqual(report["found"], 4)
+        self.assertGreater(report["created"], 0)
+        locs = wcr.list_content(wcr.KIND_LOCATION)
+        self.assertTrue(any(loc["status"] == "published" for loc in locs))
+        self.assertTrue(any((loc.get("data") or {}).get("imported") for loc in locs))
+        # Идемпотентность: повтор в режиме «new» ничего не создаёт.
+        r2 = ci.import_locations(mode="new")
+        self.assertEqual(r2["created"], 0)
+        self.assertEqual(r2["skipped"], r2["found"])
+
+    def test_import_events_link_location(self):
+        from services import world_content_registry as wcr
+
+        ci.import_locations()
+        report = ci.import_events()
+        self.assertGreater(report["created"], 0)
+        evs = wcr.list_content(wcr.KIND_EVENT)
+        self.assertTrue(all((e.get("data") or {}).get("location") for e in evs))
+        self.assertTrue(report["needs_check"])  # текст-заглушка помечен на проверку
+
+    def test_import_city_nodes(self):
+        from services import city_constructor_service as ccs
+
+        report = ci.import_city_nodes()
+        self.assertGreater(report["created"], 0)
+        nodes = [i for i in ccs.store().list() if (i.get("data") or {}).get("_kind") == "city_node"]
+        self.assertTrue(any(n["id"] == "seldar" for n in nodes))
+        self.assertTrue(any((n.get("data") or {}).get("parent_id") == "seldar" for n in nodes))
+
+    def test_mode_copy(self):
+        from services import world_content_registry as wcr
+
+        ci.import_locations()
+        rc = ci.import_locations(mode="copy")
+        self.assertGreater(rc["created"], 0)
+        self.assertTrue(wcr.get_content(wcr.KIND_LOCATION, "hilly_meadows_copy") is not None)
+
+    def test_manual_protection(self):
+        from services import world_content_registry as wcr
+
+        # Рукотворная запись по id, который импортёр тоже создаёт (без imported).
+        wcr.create_content(wcr.KIND_LOCATION, "hilly_meadows", {"name": "Правка админа", "type": "wild", "description": "x"})
+        report = ci.import_locations(mode="update")
+        # Ручная запись не перезаписана — помечена на проверку (ТЗ §9).
+        self.assertTrue(any(n.get("id") == "hilly_meadows" for n in report["needs_check"]))
+        # Содержимое не затёрто импортом.
+        kept = wcr.get_content(wcr.KIND_LOCATION, "hilly_meadows")
+        self.assertEqual((kept.get("data") or {}).get("name"), "Правка админа")
+
+    def test_check_import_finds_orphans(self):
+        from services import world_content_registry as wcr
+
+        ci.import_locations()
+        ci.import_events()
+        clean = ci.check_import()
+        self.assertTrue(clean["ok"], clean["issues"])
+        # Событие на несуществующую локацию → проблема.
+        wcr.create_content(wcr.KIND_EVENT, "orphan_ev", {"name": "Сирота", "type": "trap", "text": "t", "location": "ghost_loc"})
+        bad = ci.check_import()
+        self.assertFalse(bad["ok"])
+        self.assertTrue(any(i["id"] == "orphan_ev" for i in bad["issues"]))
+
+    def test_import_all_summary(self):
+        result = ci.import_all(["location", "event"])
+        self.assertIn("summary", result)
+        self.assertEqual({r["kind"] for r in result["reports"]}, {"location", "event"})
+        self.assertGreaterEqual(result["summary"]["created"], 1)
 
 
 if __name__ == "__main__":

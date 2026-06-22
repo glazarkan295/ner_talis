@@ -398,6 +398,8 @@ DANGEROUS_ACTIONS = frozenset({
     "city.disable",
     "city.archive",
     "city.delete",
+    # Импорт-миграция — массовая публикация существующего контента в конструкторы.
+    "import.run",
     "guild.disable",
     "world_event.start",
     "world_event.stop",
