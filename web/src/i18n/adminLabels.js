@@ -232,6 +232,38 @@ export const PROFILE_TAB_PRESET = {
   achievements: "Достижения", raids: "Рейды",
 };
 
+// --- Конструктор города и крепости -----------------------------------------
+export const CITY_KIND = {
+  city_node: "Узел", city_button: "Кнопка", city_shop_item: "Товар",
+  city_service: "Сервис", criminal_zone: "Криминальная зона",
+};
+export const CITY_NODE_TYPE = {
+  city: "Город", fortress: "Крепость", quarter: "Квартал", district: "Район",
+  square: "Площадь", street: "Улица", alley: "Переулок", building: "Здание",
+  townhall: "Ратуша", market: "Рынок", workshop: "Мастерская", tavern: "Таверна",
+  pier: "Причал", outpost: "Застава", stand: "Стенд", board: "Доска объявлений",
+  criminal_zone: "Криминальная зона", residential: "Жилой район", service: "Сервис",
+  transition: "Переход",
+};
+export const CITY_BUTTON_ACTION = {
+  goto_node: "Перейти в узел", open_market: "Открыть рынок", open_npc: "Открыть NPC",
+  open_quests: "Открыть задания", open_craft: "Открыть ремесло", open_alchemy: "Открыть алхимию",
+  start_fishing: "Начать рыбалку", open_fines: "Открыть штрафы", open_board: "Открыть доску",
+  start_event: "Запустить событие", go_back: "Назад", show_message: "Показать сообщение",
+};
+export const CITY_SHOP_KIND = {
+  city_market: "Городской рынок", port_market: "Портовый рынок", trade_quarter: "Торговый квартал",
+  black_market: "Чёрный рынок", resource_buyer: "Скупщик ресурсов", npc_trader: "NPC-торговец",
+  temp_trader: "Временный торговец", event_trader: "Событийный торговец", fortress_supplier: "Крепостной снабженец",
+};
+export const CITY_SERVICE_KIND = {
+  smelter: "Плавильня", forge: "Кузница", leatherworks: "Кожевенная мастерская",
+  alchemy: "Алхимическая мастерская", jewelry: "Ювелирная мастерская", enchanting: "Чародейская мастерская",
+};
+export const CITY_STOCK_TYPE = {
+  always: "Доступен всегда", conditional: "По условию", event_only: "Во время события",
+};
+
 // --- Мировые события -------------------------------------------------------
 export const WORLD_EVENT_TYPE = {
   festive: "Праздничное", seasonal: "Сезонное", permanent: "Постоянное", threat: "Угроза",

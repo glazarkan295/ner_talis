@@ -162,6 +162,15 @@ PERM_SKILL_DEF_PUBLISH = "skill_def.publish"
 PERM_SKILL_DEF_DISABLE = "skill_def.disable"
 PERM_SKILL_DEF_ARCHIVE = "skill_def.archive"
 PERM_SKILL_DEF_DELETE = "skill_def.delete"
+# Конструктор города и крепости (ТЗ §4) — узлы/кнопки/товары/сервисы/криминал.
+# Город и крепость редактируются как система узлов (узел = точка структуры).
+PERM_CITY_VIEW = "city.view"
+PERM_CITY_CREATE = "city.create"
+PERM_CITY_EDIT = "city.edit"
+PERM_CITY_PUBLISH = "city.publish"
+PERM_CITY_DISABLE = "city.disable"
+PERM_CITY_ARCHIVE = "city.archive"
+PERM_CITY_DELETE = "city.delete"
 # Гильдии
 PERM_GUILD_VIEW = "guild.view"
 PERM_GUILD_CREATE = "guild.create"
@@ -306,6 +315,8 @@ ALL_PERMISSIONS = (
     PERM_SKILL_DEF_VIEW, PERM_SKILL_DEF_CREATE, PERM_SKILL_DEF_EDIT,
     PERM_SKILL_DEF_VALIDATE, PERM_SKILL_DEF_PUBLISH, PERM_SKILL_DEF_DISABLE,
     PERM_SKILL_DEF_ARCHIVE, PERM_SKILL_DEF_DELETE,
+    PERM_CITY_VIEW, PERM_CITY_CREATE, PERM_CITY_EDIT, PERM_CITY_PUBLISH,
+    PERM_CITY_DISABLE, PERM_CITY_ARCHIVE, PERM_CITY_DELETE,
     PERM_GUILD_VIEW, PERM_GUILD_CREATE, PERM_GUILD_EDIT, PERM_GUILD_DISABLE,
     PERM_GUILD_MANAGE_MEMBERS, PERM_GUILD_MANAGE_STORAGE,
     PERM_GUILD_MANAGE_TREASURY, PERM_GUILD_AUDIT,
@@ -382,6 +393,11 @@ DANGEROUS_ACTIONS = frozenset({
     "skill_def.disable",
     "skill_def.archive",
     "skill_def.delete",
+    # Конструктор города/крепости — действия, меняющие живые узлы.
+    "city.publish",
+    "city.disable",
+    "city.archive",
+    "city.delete",
     "guild.disable",
     "world_event.start",
     "world_event.stop",
@@ -465,6 +481,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_FINE_DEF_VIEW, PERM_FINE_DEF_CREATE, PERM_FINE_DEF_EDIT, PERM_FINE_DEF_VALIDATE,
         # Конструктор навыков: content ведёт черновики (без публикации).
         PERM_SKILL_DEF_VIEW, PERM_SKILL_DEF_CREATE, PERM_SKILL_DEF_EDIT, PERM_SKILL_DEF_VALIDATE,
+        # Конструктор города/крепости: content ведёт черновики узлов (без публикации).
+        PERM_CITY_VIEW, PERM_CITY_CREATE, PERM_CITY_EDIT,
         PERM_GUILD_VIEW, PERM_GUILD_CREATE, PERM_GUILD_EDIT,
         PERM_WORLD_EVENT_VIEW, PERM_WORLD_EVENT_CREATE,
         PERM_WORLD_EVENT_EDIT, PERM_WORLD_EVENT_SCHEDULE,
@@ -500,6 +518,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         # Баланс мобов: economy крутит дроп/недельный запас/шанс/опыт-монеты.
         PERM_MOB_VIEW, PERM_MOB_CHANGE_LOOT, PERM_MOB_CHANGE_WEEKLY_LIMITS,
         PERM_MOB_CHANGE_SPAWN_CHANCE, PERM_MOB_VIEW_BALANCE,
+        # Баланс города: economy правит товары/цены/сервисы (узлы — без публикации).
+        PERM_CITY_VIEW, PERM_CITY_EDIT,
         PERM_FINE_DEF_VIEW,
         PERM_ITEM_VIEW, PERM_ITEM_CHANGE_PRICE, PERM_ITEM_VIEW_USAGE,
         PERM_EFFECT_VIEW,
@@ -514,7 +534,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_LOCATION_MOBS_VIEW, PERM_LOCATION_ZONES_VIEW,
         PERM_LOCATION_ROTATION_VIEW, PERM_LOCATION_LIMITS_VIEW,
         PERM_MOB_VIEW, PERM_MOB_VIEW_BALANCE, PERM_FINE_DEF_VIEW,
-        PERM_SKILL_DEF_VIEW,
+        PERM_SKILL_DEF_VIEW, PERM_CITY_VIEW,
         PERM_ACHIEVEMENT_VIEW, PERM_MESSAGES_VIEW_QUEUE,
         PERM_ITEM_VIEW, PERM_ITEM_VIEW_USAGE, PERM_EFFECT_VIEW,
         PERM_SITE_VIEW, PERM_NEWS_VIEW, PERM_GUIDES_VIEW, PERM_FAQ_VIEW,
