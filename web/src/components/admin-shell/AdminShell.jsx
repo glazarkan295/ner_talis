@@ -8,6 +8,7 @@ import { GuildsSection } from "./sections/GuildsSection.jsx";
 import { EventsSection } from "./sections/EventsSection.jsx";
 import { AchievementsSection } from "./sections/AchievementsSection.jsx";
 import { MessagesSection } from "./sections/MessagesSection.jsx";
+import { PromosSection } from "./sections/PromosSection.jsx";
 import { ItemsSection } from "./sections/ItemsSection.jsx";
 import { EffectsSection } from "./sections/EffectsSection.jsx";
 import { FinesSection } from "./sections/FinesSection.jsx";
@@ -33,6 +34,7 @@ const NAV = [
   { id: "events", label: "Мировые события", icon: "🌌", perm: "world_event.view" },
   { id: "achievements", label: "Достижения", icon: "🏆", perm: "achievement.view" },
   { id: "messages", label: "Очередь сообщений", icon: "📨", perm: "messages.view_queue" },
+  { id: "promos", label: "Промокоды и рассылки", icon: "🎟️", perm: "promos.view" },
   { id: "reference", label: "Справочник", icon: "📖", perm: null },
   { id: "audit", label: "Аудит", icon: "📜", perm: "audit.view" },
   { id: "sessions", label: "Сессии", icon: "🔑", perm: "system.view" },
@@ -136,6 +138,7 @@ export function AdminShell() {
         {active === "events" && hasPerm("world_event.view") && <EventsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "achievements" && hasPerm("achievement.view") && <AchievementsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "messages" && hasPerm("messages.view_queue") && <MessagesSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "promos" && hasPerm("promos.view") && <PromosSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "reference" && <ReferenceSection />}
         {active === "audit" && hasPerm("audit.view") && <AuditSection guarded={guarded} />}
         {active === "sessions" && hasPerm("system.view") && (
