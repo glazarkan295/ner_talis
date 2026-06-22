@@ -41,6 +41,7 @@ from admin_profile_layout_api import create_admin_profile_layout_router
 from admin_city_api import create_admin_city_router
 from admin_uploads_api import create_admin_uploads_router
 from admin_site_api import create_admin_site_router
+from public_site_api import create_public_site_router
 from site_api import (
     create_profile_api_router,
     frontend_profile,
@@ -343,6 +344,7 @@ def create_app() -> FastAPI:
     app.include_router(create_admin_city_router(storage))
     app.include_router(create_admin_uploads_router(storage))
     app.include_router(create_admin_site_router(storage))
+    app.include_router(create_public_site_router())
 
     # Очередь сообщений читает/пишет ту же БД, что и боты (SQLite/Postgres),
     # чтобы админка видела реальный статус доставки. На json-хранилище остаётся

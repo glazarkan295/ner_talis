@@ -319,6 +319,72 @@ def validate(kind: str, envelope: dict[str, Any]) -> dict[str, Any]:
     return {"ok": not errors, "errors": errors, "warnings": warnings}
 
 
+# --- Публичное чтение опубликованного контента (рантайм сайта, ТЗ §2) -------
+def _public_view(env: dict[str, Any]) -> dict[str, Any]:
+    """Безопасное публичное представление записи: только данные контента."""
+    data = dict(env.get("data") or {})
+    data.pop("_kind", None)
+    return {"id": env.get("id"), "updated_at": env.get("updated_at"), **data}
+
+
+def _order(env: dict[str, Any]) -> tuple[float, str]:
+    data = env.get("data") or {}
+    raw = data.get("menu_order", data.get("order"))
+    try:
+        num = float(raw)
+    except (TypeError, ValueError):
+        num = 0.0
+    return (num, str(data.get("title") or data.get("label") or env.get("id") or ""))
+
+
+def published(kind: str) -> list[dict[str, Any]]:
+    """Опубликованные записи указанного типа (для публичного сайта), по порядку."""
+    items = [
+        i for i in _store.list(status=STATUS_PUBLISHED)
+        if (i.get("data") or {}).get("_kind") == kind
+    ]
+    items.sort(key=_order)
+    return [_public_view(i) for i in items]
+
+
+def published_menu() -> list[dict[str, Any]]:
+    """Меню навигации деревом по parent_id (только опубликованные пункты)."""
+    flat = published(KIND_MENU_ITEM)
+    by_id = {item["id"]: {**item, "children": []} for item in flat}
+    roots: list[dict[str, Any]] = []
+    for item in flat:
+        parent = str(item.get("parent_id") or "")
+        if parent and parent in by_id:
+            by_id[parent]["children"].append(by_id[item["id"]])
+        else:
+            roots.append(by_id[item["id"]])
+    return roots
+
+
+def published_page(slug_or_id: str) -> dict[str, Any] | None:
+    """Опубликованная страница по адресу (slug) или id + её опубликованные блоки."""
+    key = str(slug_or_id or "").strip()
+    if not key:
+        return None
+    page_env = None
+    for env in _store.list(status=STATUS_PUBLISHED):
+        data = env.get("data") or {}
+        if data.get("_kind") != KIND_PAGE:
+            continue
+        if env.get("id") == key or str(data.get("slug") or "") == key:
+            page_env = env
+            break
+    if page_env is None:
+        return None
+    page = _public_view(page_env)
+    blocks = [
+        b for b in published(KIND_PAGE_BLOCK)
+        if str(b.get("page_id") or "") == page["id"]
+    ]
+    page["blocks"] = blocks
+    return page
+
+
 def where_used(object_id: str) -> list[dict[str, Any]]:
     """Где используется материал сайта (ТЗ §6): блоки страницы/пункты меню,
     ссылающиеся на страницу, и дочерние пункты меню."""
