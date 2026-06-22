@@ -80,6 +80,7 @@ def _import_telegram_runtime():
     try:
         from telegram.ext import (
             Application,
+            ApplicationHandlerStop,
             CommandHandler,
             ConversationHandler,
             MessageHandler,
@@ -125,6 +126,7 @@ def _import_telegram_runtime():
 
     return {
         "Application": Application,
+        "ApplicationHandlerStop": ApplicationHandlerStop,
         "CommandHandler": CommandHandler,
         "ConversationHandler": ConversationHandler,
         "MessageHandler": MessageHandler,
@@ -202,6 +204,32 @@ async def _register_message_dispatcher(application) -> None:
     start_message_dispatcher()
 
 
+def _register_group_chat_gate(application, MessageHandler, filters, ApplicationHandlerStop):
+    """Перехват сообщений из общих чатов: игра — только в ЛС (ТЗ «бот в чатах»)."""
+    from services.chat_scope_service import (
+        ACTION_ALLOWED, ACTION_GAME, GROUP_GAME_NOTICE, classify_group_message,
+    )
+
+    async def group_chat_gate(update, context):
+        message = update.effective_message
+        text = ""
+        if message is not None:
+            text = message.text or message.caption or ""
+        action = classify_group_message(text)
+        if action == ACTION_ALLOWED:
+            return  # пропустить к админ/мод-хендлерам (они сами проверяют права)
+        if action == ACTION_GAME and message is not None:
+            try:
+                await message.reply_text(GROUP_GAME_NOTICE)  # один раз, без клавиатуры
+            except Exception:  # noqa: BLE001 - в группе бот может не иметь права писать
+                pass
+        # ACTION_GAME и ACTION_IGNORE: остановить обработку, чтобы игровые
+        # хендлеры не сработали и бот не отвечал на обычные сообщения.
+        raise ApplicationHandlerStop
+
+    application.add_handler(MessageHandler(filters.ChatType.GROUPS, group_chat_gate), group=-1)
+
+
 def build_application():
     runtime = _import_telegram_runtime()
     Application = runtime["Application"]
@@ -234,6 +262,12 @@ def build_application():
         resolve_project_path(os.getenv("PLAYERS_STORAGE_PATH", "data/players.json"))
     )
     application.add_error_handler(log_telegram_error)
+
+    # Шлюз общих чатов (ТЗ «поведение бота в чатах»): игра — только в ЛС. В
+    # группах/беседах игровые хендлеры не должны срабатывать; реагируем только
+    # на разрешённые команды (admin_*/справка), остальное — молчим. Регистрируем
+    # ПЕРВЫМ (group=-1), чтобы перехватывать до игровых хендлеров.
+    _register_group_chat_gate(application, MessageHandler, filters, runtime["ApplicationHandlerStop"])
 
     runtime["register_telegram_admin_handlers"](application, CommandHandler, MessageHandler, filters)
 

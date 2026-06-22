@@ -19,6 +19,12 @@ from keyboards.vk_keyboards import (
 )
 from services.city_service import CITY_BUTTONS, process_world_action, unstuck_player
 from services.chat_log_service import append_player_chat_log, normalize_bot_messages, pop_pending_bot_messages
+from services.chat_scope_service import (
+    ACTION_GAME,
+    GROUP_GAME_NOTICE,
+    classify_group_message,
+    vk_peer_is_group,
+)
 from services.promo_service import redeem_promo_code
 from services.external_location_service import complete_active_timer
 from services.runtime_timer_scheduler import attach_timer_notification, schedule_timer_delivery
@@ -101,6 +107,18 @@ class VkRegistrationBot:
             text = (message.get("text") or "").strip()
 
             if not peer_id or not from_id or not text:
+                continue
+
+            # Игра — только в личном чате с ботом (ТЗ «поведение бота в чатах»).
+            # В беседах (peer_id ≥ 2e9) игровой роутер не запускаем: на игровую
+            # команду один раз отвечаем коротким уведомлением без кнопок, на любой
+            # другой текст молчим. Админ/модерация VK — отдельный рантайм.
+            if vk_peer_is_group(peer_id):
+                if classify_group_message(text) == ACTION_GAME:
+                    try:
+                        self.send(peer_id, GROUP_GAME_NOTICE)
+                    except Exception:
+                        logger.exception("Failed to send VK group notice: peer_id=%s", peer_id)
                 continue
 
             try:
