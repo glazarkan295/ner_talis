@@ -1,0 +1,58 @@
+/* Публичный сайт Нер-Талис (рантайм конструктора сайта). Тёмный фэнтези-стиль;
+   цвета/фон переопределяются опубликованным оформлением через --ps-* переменные. */
+.ps-root {
+  --ps-panel: #1c1a17;
+  --ps-card: #23201b;
+  --ps-button: #b58a4b;
+  --ps-text: #e9e1d2;
+  --ps-link: #d8b070;
+  --ps-warning: #e0b057;
+  min-height: 100vh;
+  background: #14120f var(--ps-bg-image, none) center / cover fixed no-repeat;
+  color: var(--ps-text);
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.ps-header {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 14px 22px; background: var(--ps-panel); border-bottom: 1px solid rgba(255,255,255,.08);
+  position: sticky; top: 0; z-index: 10;
+}
+.ps-brand { font-size: 20px; font-weight: 700; color: var(--ps-link); cursor: pointer; }
+.ps-nav { display: flex; gap: 14px; flex-wrap: wrap; }
+.ps-nav-item { position: relative; }
+.ps-nav-item > a { color: var(--ps-text); text-decoration: none; font-size: 15px; }
+.ps-nav-item > a:hover { color: var(--ps-link); }
+.ps-nav-children {
+  display: none; position: absolute; top: 100%; left: 0; background: var(--ps-panel);
+  border: 1px solid rgba(255,255,255,.1); border-radius: 8px; padding: 8px; min-width: 160px; z-index: 11;
+}
+.ps-nav-item:hover .ps-nav-children { display: flex; flex-direction: column; gap: 6px; }
+.ps-main { flex: 1; width: 100%; max-width: 900px; margin: 0 auto; padding: 24px 18px; box-sizing: border-box; }
+.ps-page > h1 { color: var(--ps-link); margin-top: 0; }
+.ps-lead { opacity: .85; font-size: 16px; }
+.ps-hint { opacity: .7; }
+.ps-error { color: var(--ps-warning); }
+.ps-block-heading { color: var(--ps-link); border-bottom: 1px solid rgba(255,255,255,.1); padding-bottom: 4px; }
+.ps-block-text p { white-space: pre-wrap; line-height: 1.5; }
+.ps-block-quote { border-left: 3px solid var(--ps-button); padding: 6px 14px; opacity: .9; font-style: italic; }
+.ps-block-warning { background: rgba(224,176,87,.12); border: 1px solid var(--ps-warning); border-radius: 8px; padding: 10px 14px; }
+.ps-block-image { max-width: 100%; border-radius: 10px; display: block; margin: 10px 0; }
+.ps-block-banner { display: grid; gap: 8px; background: var(--ps-card); border-radius: 12px; padding: 14px; }
+.ps-block-banner img { max-width: 100%; border-radius: 8px; }
+.ps-block-button {
+  display: inline-block; background: var(--ps-button); color: #1a1712; text-decoration: none;
+  padding: 8px 16px; border-radius: 8px; font-weight: 600; margin: 8px 0;
+}
+.ps-block-card, .ps-card {
+  background: var(--ps-card); border: 1px solid rgba(255,255,255,.08); border-radius: 12px; padding: 14px;
+}
+.ps-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 10px; }
+.ps-card p { opacity: .82; font-size: 14px; white-space: pre-wrap; }
+.ps-card-link { cursor: pointer; }
+.ps-card-link:hover { border-color: var(--ps-link); }
+.ps-dynamic { margin: 16px 0; }
+.ps-dynamic > h3 { color: var(--ps-link); }
+.ps-footer { padding: 16px 22px; text-align: center; opacity: .6; border-top: 1px solid rgba(255,255,255,.08); }
+@media (max-width: 560px) { .ps-header { gap: 10px; padding: 10px 14px; } .ps-main { padding: 16px 12px; } }

@@ -512,6 +512,16 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="В ссылке нет token просмотра профиля.")
         return HTMLResponse("<h1>Просмотр профиля игрока</h1><p>Соберите web/dist, чтобы открыть профиль в стиле сайта.</p>")
 
+    # Публичный сайт проекта (рантайм конструктора сайта, ТЗ §2): React-страница
+    # читает /api/public/site/*. Открыт всем; данные — только опубликованные.
+    @app.get("/site", response_class=HTMLResponse, response_model=None)
+    @app.get("/site/{slug}", response_class=HTMLResponse, response_model=None)
+    def public_site_page(slug: str | None = None):
+        react = _react_index_or_none()
+        if react:
+            return react
+        return HTMLResponse("<h1>Нер-Талис</h1><p>Соберите web/dist, чтобы открыть публичный сайт.</p>")
+
     @app.get("/api/player/profile", response_model=None)
     def profile_api(token: str = Query(..., min_length=16)):
         player, session = get_session_and_player(token, PROFILE_SCOPE)
