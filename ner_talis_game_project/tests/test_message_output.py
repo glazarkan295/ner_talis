@@ -113,5 +113,36 @@ class WorldEventNpcMessageTest(unittest.TestCase):
         self.assertTrue(any("Диалог игроку" in e for e in res["errors"]))
 
 
+class ConstructorMessageHooksTest(unittest.TestCase):
+    """Опциональный вывод сообщения валидируется в штрафах/событиях/достижениях/квестах."""
+
+    def test_fine_issue_message(self):
+        from services import fine_constructor_service as fc
+        ok = fc.validate({"data": {"name": "Штраф", "base_amount": 100, "issue_message": {"format": "single", "text": "Вам выписан штраф."}}})
+        self.assertTrue(ok["ok"], ok["errors"])
+        bad = fc.validate({"data": {"name": "Штраф", "base_amount": 100, "issue_message": {"format": "single", "text": "T", "image": "http://x/y.png"}}})
+        self.assertFalse(bad["ok"])
+        self.assertTrue(any("Уведомление о штрафе" in e for e in bad["errors"]))
+
+    def test_world_event_announce_message(self):
+        from services import world_event_service as we
+        bad = we.validate({"data": {"name": "Праздник", "announce_message": {"format": "multiple", "blocks": []}}})
+        self.assertFalse(bad["ok"])
+        self.assertTrue(any("Объявление" in e for e in bad["errors"]))
+
+    def test_achievement_notify_message(self):
+        from services import achievement_service as ach
+        bad = ach.validate({"data": {"name": "Герой", "short_description": "За подвиги", "category": "", "notify_message": {"format": "single", "text": "T", "image": "https://x/y.png"}}})
+        self.assertFalse(bad["ok"])
+        self.assertTrue(any("Уведомление о достижении" in e for e in bad["errors"]))
+
+    def test_quest_player_message(self):
+        from services import world_content_registry as wcr
+        bad = {"kind": wcr.KIND_QUEST, "data": {"name": "Задание", "player_message": {"format": "single", "text": "T", "image": "http://x/y.png"}}}
+        res = wcr.validate_envelope(bad)
+        self.assertFalse(res["ok"])
+        self.assertTrue(any("Сообщение игроку" in e for e in res["errors"]))
+
+
 if __name__ == "__main__":
     unittest.main()

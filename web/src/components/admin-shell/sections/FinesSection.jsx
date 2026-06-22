@@ -12,6 +12,7 @@ import {
 import { tr, FINE_TYPE, FINE_SOURCE, FINE_ISSUER_ROLE, CURRENCY, FINE_RESTRICTION } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
+import { MessageComposer } from "../MessageComposer.jsx";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 
@@ -134,6 +135,8 @@ export function FinesSection({ guarded, hasPerm }) {
             <Field label="При оплате"><EmojiTextarea rows={2} value={d.messages?.on_pay || ""} disabled={disabled} onChange={(v) => setMsg("on_pay", v)} /></Field>
             <Field label="При запрете входа"><EmojiTextarea rows={2} value={d.messages?.on_block || ""} disabled={disabled} onChange={(v) => setMsg("on_block", v)} /></Field>
           </div>
+
+          <MessageComposer label="Уведомление о штрафе (изображение/формат/предпросмотр)" value={d.issue_message} category="fines" uploadKey={`${editing.id || "fine"}_msg`} disabled={disabled} onChange={(v) => set("issue_message", v)} />
         </div>
 
         {v ? (

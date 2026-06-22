@@ -10,6 +10,7 @@ import {
 import { tr, EVENT_REPEAT_TYPE, WORLD_EVENT_TYPE, EVENT_REWARD_TYPE, SPECIAL_LOOT_SOURCE } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
+import { MessageComposer } from "../MessageComposer.jsx";
 
 const STATUS_TONE = { active: "ntv2-badge-owner", finished: "ntv2-badge-owner", disabled: "ntv2-badge-danger", scheduled: "ntv2-badge-error" };
 
@@ -143,6 +144,7 @@ export function EventsSection({ guarded, hasPerm }) {
           <Field label="Сообщение о начале"><EmojiTextarea rows={2} value={d.start_message} disabled={disabled} onChange={(v) => set("start_message", v)} /></Field>
           <Field label="Сообщение о завершении"><EmojiTextarea rows={2} value={d.end_message} disabled={disabled} onChange={(v) => set("end_message", v)} /></Field>
           <Field label="Изображение (URL)"><input value={d.image} disabled={disabled} onChange={(e) => set("image", e.target.value)} /></Field>
+          <MessageComposer label="Объявление игрокам (изображение/формат/предпросмотр)" value={d.announce_message} category="world_events" uploadKey={`${editing.id || "event"}_msg`} disabled={disabled} onChange={(v) => set("announce_message", v)} />
 
           {/* Награды (§4.3) */}
           <div className="ntv2-panel">

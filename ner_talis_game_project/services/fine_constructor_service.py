@@ -168,4 +168,12 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             errors.append("В текстах штрафа недопустима разметка/HTML.")
             break
 
+    # Вывод уведомления игроку (дополнение к ТЗ): изображение/формат/блоки.
+    issue_message = data.get("issue_message")
+    if issue_message:
+        from services.message_output_service import validate_message_output
+        result = validate_message_output(issue_message)
+        errors.extend(f"Уведомление о штрафе — {e}" for e in result["errors"])
+        warnings.extend(f"Уведомление о штрафе — {w}" for w in result["warnings"])
+
     return {"ok": not errors, "errors": errors, "warnings": warnings}

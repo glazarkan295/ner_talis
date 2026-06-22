@@ -959,6 +959,7 @@ def _validate_quest(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
         value = _str_field(data, key)
         if value and _has_markup(value):
             errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    _validate_player_message(data.get("player_message"), "Сообщение игроку", errors, warnings)
     return errors, warnings
 
 

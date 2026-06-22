@@ -10,6 +10,7 @@ import {
 } from "../../../api/adminAchievementApi.js";
 import { tr, ITEM_QUALITY, ACH_TYPE, ACH_VISIBILITY, ACH_CONDITION_LOGIC, ACH_CONDITION_TYPE, ACH_PROGRESS_TYPE, ACH_REWARD_TYPE, ACH_REPEAT_PERIOD } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { MessageComposer } from "../MessageComposer.jsx";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 
@@ -131,6 +132,7 @@ export function AchievementsSection({ guarded, hasPerm }) {
           <Field label="Краткое описание"><textarea rows={2} value={d.short_description} disabled={disabled} onChange={(e) => set("short_description", e.target.value)} /></Field>
           <Field label="Полное описание"><textarea rows={3} value={d.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
           <Field label="Иконка (URL)"><input value={d.icon} disabled={disabled} onChange={(e) => set("icon", e.target.value)} /></Field>
+          <MessageComposer label="Уведомление о получении (изображение/формат/предпросмотр)" value={d.notify_message} category="achievements" uploadKey={`${editing.id || "ach"}_msg`} disabled={disabled} onChange={(v) => set("notify_message", v)} />
 
           <div className="ntv2-form-row">
             <Field label="Логика условий"><select value={d.condition_logic} disabled={disabled} onChange={(e) => set("condition_logic", e.target.value)}>{meta.conditionLogic.map((x) => <option key={x} value={x}>{tr(ACH_CONDITION_LOGIC, x)}</option>)}</select></Field>

@@ -424,7 +424,7 @@ function NpcForm({ value, onChange, meta, disabled, refOptions, uploadKey }) {
   );
 }
 
-function QuestForm({ value, onChange, meta, disabled, refOptions }) {
+function QuestForm({ value, onChange, meta, disabled, refOptions, uploadKey }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
   let targetControl;
   if (value.goal_type === "kill_mob") targetControl = <RefSelect value={value.goal_target} onChange={(v) => set("goal_target", v)} options={refOptions.mob} disabled={disabled} />;
@@ -448,6 +448,7 @@ function QuestForm({ value, onChange, meta, disabled, refOptions }) {
         <label className="ntv2-check"><input type="checkbox" checked={Boolean(value.repeatable)} disabled={disabled} onChange={(e) => set("repeatable", e.target.checked)} /> Повторяемое</label>
         <Field label="Кулдаун (сек)"><input type="number" value={value.cooldown} disabled={disabled} onChange={(e) => set("cooldown", e.target.value)} /></Field>
       </div>
+      <MessageComposer label="Сообщение игроку (изображение/формат/предпросмотр)" value={value.player_message} category="quests" uploadKey={`${uploadKey || "quest"}_msg`} disabled={disabled} onChange={(v) => set("player_message", v)} />
     </div>
   );
 }
