@@ -7,6 +7,7 @@ import {
   fetchCityItems,
   fetchCityMeta,
   fetchCityTree,
+  fetchCityWhereUsed,
   updateCityItem,
   validateCityItem,
 } from "../../../api/adminCityApi.js";
@@ -154,6 +155,7 @@ export function CitySection({ guarded, hasPerm }) {
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [showTree, setShowTree] = useState(false);
+  const [usedBy, setUsedBy] = useState(null);
 
   const can = useMemo(() => ({
     create: hasPerm("city.create"), edit: hasPerm("city.edit"), publish: hasPerm("city.publish"),
@@ -171,9 +173,11 @@ export function CitySection({ guarded, hasPerm }) {
   function switchKind(k) { setKind(k); setEditing(null); setStatusFilter(""); }
   function startCreate() { setEditing({ id: "", data: { ...(EMPTY_BY_KIND[kind] || {}) }, status: "draft", validation: null, isNew: true }); }
   async function openItem(id) {
+    setUsedBy(null);
     const p = await guarded(() => fetchCityItem(kind, id));
     if (p?.item) setEditing({ id, data: { ...(EMPTY_BY_KIND[kind] || {}), ...(p.item.data || {}) }, status: p.item.status, validation: p.validation, isNew: false });
   }
+  async function loadWhereUsed() { const p = await guarded(() => fetchCityWhereUsed(kind, editing.id)); if (p) setUsedBy(p.usedBy || []); }
   async function save() {
     const e = editing;
     if (e.isNew) { const p = await guarded(() => createCityItem(kind, e.id.trim(), e.data, ""), "Создано."); if (p?.item) await openItem(e.id.trim()); }
@@ -204,6 +208,28 @@ export function CitySection({ guarded, hasPerm }) {
             <h4 className="ntv2-subhead">{v.ok ? "✅ Готово к публикации" : "❌ Проверка не пройдена"}</h4>
             {(v.errors || []).map((e, i) => <div className="ntv2-error" key={"e" + i}>{e}</div>)}
             {(v.warnings || []).map((w, i) => <p className="ntv2-hint" key={"w" + i}>⚠️ {w}</p>)}
+          </div>
+        ) : null}
+
+        {!editing.isNew ? (
+          <div className="ntv2-panel">
+            <div className="ntv2-card-head" style={{ marginBottom: 6 }}>
+              <h4 className="ntv2-subhead" style={{ margin: 0 }}>Где используется</h4>
+              <button type="button" className="ntv2-btn" onClick={loadWhereUsed}>Проверить связи</button>
+            </div>
+            {usedBy === null ? <p className="ntv2-hint">Нажмите «Проверить связи», чтобы увидеть, что ссылается на этот объект.</p> : null}
+            {usedBy !== null && !usedBy.length ? <p className="ntv2-hint">Ничего не ссылается — объект можно безопасно изменить/отключить.</p> : null}
+            {usedBy && usedBy.length ? (
+              <div className="ntv2-list">
+                {usedBy.map((u) => (
+                  <div className="ntv2-list-row" key={u.id}>
+                    <b>{u.name}</b>
+                    <span className="ntv2-mono">{u.id}</span>
+                    <span className="ntv2-hint">{tr(CITY_KIND, u.kind)} · {(u.fields || []).join(", ")}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
 

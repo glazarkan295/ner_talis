@@ -9,6 +9,7 @@ export const fetchCityMeta = () => requestAdminJson(`${base}/meta?_=${t()}`);
 export const fetchCityTree = () => requestAdminJson(`${base}/tree?_=${t()}`);
 export const fetchCityItems = (kind, status = "") => requestAdminJson(`${base}/${kind}?${new URLSearchParams(status ? { status } : {}).toString()}&_=${t()}`);
 export const fetchCityItem = (kind, id) => requestAdminJson(`${base}/${kind}/${encodeURIComponent(id)}?_=${t()}`);
+export const fetchCityWhereUsed = (kind, id) => requestAdminJson(`${base}/${kind}/${encodeURIComponent(id)}/where-used?_=${t()}`);
 export const createCityItem = (kind, id, data, reason) => post(`${base}/${kind}`, { id, data, reason });
 export const updateCityItem = (kind, id, data, reason) => requestAdminJson(`${base}/${kind}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ data, reason }) });
 export const validateCityItem = (kind, id, reason) => post(`${base}/${kind}/${encodeURIComponent(id)}/validate`, { reason });

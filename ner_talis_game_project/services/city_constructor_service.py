@@ -272,6 +272,38 @@ def validate(kind: str, envelope: dict[str, Any]) -> dict[str, Any]:
     return {"ok": not errors, "errors": errors, "warnings": warnings}
 
 
+def _display_name(env: dict[str, Any]) -> str:
+    data = env.get("data") or {}
+    return str(data.get("name") or data.get("label") or data.get("item_id") or env.get("id") or "")
+
+
+def where_used(object_id: str) -> list[dict[str, Any]]:
+    """Где используется объект (ТЗ §6): что ссылается на него и что сломается при
+    изменении/удалении. Возвращает список {id, kind, name, fields[]}."""
+    oid = str(object_id or "").strip()
+    if not oid:
+        return []
+    refs: list[dict[str, Any]] = []
+    for env in _store.list():
+        data = env.get("data") or {}
+        kind = str(data.get("_kind") or "")
+        fields: list[str] = []
+        if kind == KIND_NODE and str(data.get("parent_id") or "") == oid:
+            fields.append("дочерний узел")
+        if kind == KIND_BUTTON:
+            if str(data.get("node_id") or "") == oid:
+                fields.append("кнопка на узле")
+            if str(data.get("target_node_id") or "") == oid:
+                fields.append("переход ведёт сюда")
+        if kind in (KIND_SHOP_ITEM, KIND_SERVICE, KIND_CRIMINAL) and str(data.get("node_id") or "") == oid:
+            fields.append("привязан к узлу")
+        if kind == KIND_CRIMINAL and str(data.get("move_to_node") or "") == oid:
+            fields.append("перенос игрока сюда")
+        if fields:
+            refs.append({"id": env.get("id"), "kind": kind, "name": _display_name(env), "fields": fields})
+    return refs
+
+
 def build_tree() -> list[dict[str, Any]]:
     """Дерево узлов по parent_id (визуализация §5). Корни — city/fortress/без родителя."""
     nodes = [i for i in _store.list() if (i.get("data") or {}).get("_kind") == KIND_NODE]

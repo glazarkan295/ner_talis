@@ -69,6 +69,19 @@ class CityServiceTest(unittest.TestCase):
         crim_bad = city.store().create("bm_bad", {"_kind": "criminal_zone", "name": "X", "raid_chance": 150})
         self.assertFalse(city.validate("criminal_zone", crim_bad)["ok"])
 
+    def test_where_used(self):
+        city.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city"})
+        city.store().create("market", {"_kind": "city_node", "name": "Рынок", "node_type": "market", "parent_id": "seldar"})
+        city.store().create("to_market", {"_kind": "city_button", "name": "В рынок", "label": "Рынок", "action": "goto_node", "node_id": "seldar", "target_node_id": "market"})
+        city.store().create("sword", {"_kind": "city_shop_item", "item_id": "iron_sword", "node_id": "market"})
+        used = city.where_used("market")
+        ids = {u["id"] for u in used}
+        self.assertIn("to_market", ids)   # переход ведёт сюда
+        self.assertIn("sword", ids)       # товар привязан к узлу
+        # «market» сам — дочерний у seldar: where_used(seldar) включает market.
+        self.assertIn("market", {u["id"] for u in city.where_used("seldar")})
+        self.assertEqual(city.where_used("nonexistent"), [])
+
     def test_build_tree_nesting(self):
         city.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city"})
         city.store().create("port", {"_kind": "city_node", "name": "Портовый квартал", "node_type": "quarter", "parent_id": "seldar", "order": 2})
