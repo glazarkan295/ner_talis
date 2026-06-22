@@ -865,6 +865,29 @@ def _validate_npc(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
     npc_kind = _str_field(data, "npc_kind")
     if npc_kind and npc_kind not in NPC_KINDS:
         errors.append(f"Неизвестный вид NPC: {npc_kind}.")
+
+    # Торговля NPC (доп.ТЗ §12): ассортимент продажи/покупки.
+    trade = data.get("trade")
+    if isinstance(trade, dict):
+        for side in ("sells", "buys"):
+            rows = trade.get(side)
+            if rows in (None, ""):
+                continue
+            if not isinstance(rows, list):
+                errors.append(f"Торговля ({side}) должна быть списком.")
+                continue
+            for index, row in enumerate(rows, start=1):
+                if not isinstance(row, dict):
+                    errors.append(f"Торговля {side} строка {index}: неверный формат.")
+                    continue
+                item_id = _str_field(row, "item_id")
+                if not item_id:
+                    errors.append(f"Торговля {side} строка {index}: не указан предмет.")
+                elif not _item_exists(item_id):
+                    errors.append(f"Торговля {side} строка {index}: предмет «{item_id}» не существует.")
+                price = _num(row.get("price"))
+                if price is not None and price < 0:
+                    errors.append(f"Торговля {side} строка {index}: цена не может быть отрицательной.")
     event_ids = data.get("event_ids")
     if isinstance(event_ids, list):
         for ev in event_ids:

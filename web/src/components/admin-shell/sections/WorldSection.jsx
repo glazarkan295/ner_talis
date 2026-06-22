@@ -14,7 +14,7 @@ import {
   validateWorldItem,
 } from "../../../api/adminWorldApi.js";
 import { loadCatalog } from "../../../api/adminApi.js";
-import { trOption } from "../../../i18n/adminLabels.js";
+import { trOption, tr, CURRENCY } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { TechnicalData } from "../TechnicalData.jsx";
 
@@ -95,6 +95,8 @@ const EMPTY_NPC = {
   first_message: "", functions: [],
   // Вид NPC (доп.§3) + привязка к событиям (доп.§4).
   npc_kind: "regular", event_ids: [], quest_ids: [], asks_questions: false, special_type: "",
+  // Торговля (доп.§12).
+  trade: { sells: [], buys: [], stock_type: "shared", can_buy_from_player: true, can_sell_to_player: true },
 };
 
 const EMPTY_QUEST = {
@@ -340,6 +342,46 @@ function EventForm({ value, onChange, meta, disabled, refOptions }) {
   );
 }
 
+const TRADE_CURRENCIES = ["copper", "silver", "gold", "magic_gold", "ancient"];
+
+function TradePanel({ value, set, disabled }) {
+  const trade = value.trade || {};
+  const setTrade = (patch) => set("trade", { ...trade, ...patch });
+  const sideRows = (side) => (Array.isArray(trade[side]) ? trade[side] : []);
+  const updRow = (side, i, patch) => setTrade({ [side]: sideRows(side).map((r, idx) => (idx === i ? { ...r, ...patch } : r)) });
+  const addRow = (side) => setTrade({ [side]: [...sideRows(side), { item_id: "", price: "", currency: "copper", quantity: "", limit: "" }] });
+  const delRow = (side, i) => setTrade({ [side]: sideRows(side).filter((_, idx) => idx !== i) });
+  const sideTitle = { sells: "Продаёт игроку", buys: "Покупает у игрока" };
+  return (
+    <div className="ntv2-panel">
+      <h4 className="ntv2-subhead">Торговля</h4>
+      <div className="ntv2-form-row" style={{ gap: 14 }}>
+        <Field label="Склад"><select value={trade.stock_type || "shared"} disabled={disabled} onChange={(e) => setTrade({ stock_type: e.target.value })}><option value="shared">Общий</option><option value="personal">Личный</option></select></Field>
+        <label className="ntv2-check"><input type="checkbox" checked={trade.can_buy_from_player !== false} disabled={disabled} onChange={(e) => setTrade({ can_buy_from_player: e.target.checked })} /> Покупает у игрока</label>
+        <label className="ntv2-check"><input type="checkbox" checked={trade.can_sell_to_player !== false} disabled={disabled} onChange={(e) => setTrade({ can_sell_to_player: e.target.checked })} /> Продаёт игроку</label>
+      </div>
+      {["sells", "buys"].map((side) => (
+        <div key={side} style={{ marginTop: 8 }}>
+          <div className="ntv2-hint">{sideTitle[side]} ({sideRows(side).length})</div>
+          <div className="ntv2-list">
+            {sideRows(side).map((row, i) => (
+              <div className="ntv2-list-row" key={i}>
+                <input className="ntv2-mono" placeholder="item_id" value={row.item_id || ""} disabled={disabled} onChange={(e) => updRow(side, i, { item_id: e.target.value })} />
+                <input type="number" style={{ width: 100 }} placeholder="цена" value={row.price || ""} disabled={disabled} onChange={(e) => updRow(side, i, { price: e.target.value })} />
+                <select value={row.currency || "copper"} disabled={disabled} onChange={(e) => updRow(side, i, { currency: e.target.value })}>{TRADE_CURRENCIES.map((c) => <option key={c} value={c}>{tr(CURRENCY, c)}</option>)}</select>
+                {side === "sells" ? <input type="number" style={{ width: 80 }} title="кол-во" placeholder="кол-во" value={row.quantity || ""} disabled={disabled} onChange={(e) => updRow(side, i, { quantity: e.target.value })} /> : null}
+                <input type="number" style={{ width: 80 }} title="лимит на игрока" placeholder="лимит" value={row.limit || ""} disabled={disabled} onChange={(e) => updRow(side, i, { limit: e.target.value })} />
+                {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => delRow(side, i)}>×</button> : null}
+              </div>
+            ))}
+          </div>
+          {!disabled ? <button type="button" className="ntv2-btn" style={{ marginTop: 6 }} onClick={() => addRow(side)}>＋ {sideTitle[side]}</button> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function NpcForm({ value, onChange, meta, disabled, refOptions }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
   const fns = Array.isArray(value.functions) ? value.functions : [];
@@ -366,6 +408,7 @@ function NpcForm({ value, onChange, meta, disabled, refOptions }) {
       {value.npc_kind === "special" ? (
         <Field label="Тип особого NPC"><input value={value.special_type || ""} disabled={disabled} onChange={(e) => set("special_type", e.target.value)} /></Field>
       ) : null}
+      {value.npc_kind === "trader" ? <TradePanel value={value} set={set} disabled={disabled} /> : null}
       <div className="ntv2-panel">
         <h4 className="ntv2-subhead">Функции</h4>
         <div className="ntv2-form-row" style={{ gap: 12 }}>

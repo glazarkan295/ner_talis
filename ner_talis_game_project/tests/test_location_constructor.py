@@ -191,6 +191,22 @@ class LocationConstructorRegistryTest(unittest.TestCase):
         self.assertFalse(npc_bad["ok"])
         self.assertIn("вид npc", self._errors_text(npc_bad).lower())
 
+    def test_npc_trade_validation(self):
+        # NPC-торговец: ассортимент ссылается на существующие предметы (§12).
+        ok = self._check(self.wcr.KIND_NPC, "npc_trader", {
+            "name": "Купец", "location": "loc_forest", "npc_kind": "trader",
+            "trade": {"sells": [{"item_id": "money_copper", "price": 10, "currency": "copper"}], "buys": []},
+        })
+        self.assertTrue(ok["ok"], ok["errors"])
+        bad = self._check(self.wcr.KIND_NPC, "npc_trader_bad", {
+            "name": "X", "location": "loc_forest", "npc_kind": "trader",
+            "trade": {"sells": [{"item_id": "ghost_item", "price": -5}]},
+        })
+        self.assertFalse(bad["ok"])
+        joined = self._errors_text(bad)
+        self.assertIn("не существует", joined)
+        self.assertIn("отрицательной", joined)
+
     def test_location_external_image_rejected(self):
         bad = self._check(self.wcr.KIND_LOCATION, "loc_ext", {
             "name": "Локация", "short_description": "тест", "type": "wild",
