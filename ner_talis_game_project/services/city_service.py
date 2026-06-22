@@ -1065,6 +1065,19 @@ def process_world_action(
             fine_advance.messages,
         )
 
+    # «Живой» город из конструктора (ТЗ §4) — только при включённом флаге
+    # CITY_CONSTRUCTOR_LIVE. Перехватываем навигацию по ОПУБЛИКОВАННЫМ узлам;
+    # если узел/кнопка не найдены — None → обычная (легаси) городская логика.
+    # При выключенном флаге ветка не входит и поведение 1:1 как раньше.
+    from services import city_runtime
+    if city_runtime.live_enabled():
+        node_response = city_runtime.try_handle(action)
+        if node_response is not None:
+            return _with_extra_messages(
+                WorldActionResult(text=node_response["text"], buttons=node_response["buttons"]),
+                fine_advance.messages,
+            )
+
     if action == PROFILE_BUTTON:
         try:
             profile_url = create_profile_site_link(storage, player, platform)

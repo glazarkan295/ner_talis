@@ -98,6 +98,37 @@ class CityServiceTest(unittest.TestCase):
         from services import city_runtime
         self.assertFalse(city_runtime.live_enabled())
 
+    def test_try_handle_respects_flag_and_matches_published(self):
+        from services import city_runtime
+        city.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city", "description": "Столица."})
+        city.store().set_status("seldar", city.STATUS_PUBLISHED, force=True)
+        city.store().create("market", {"_kind": "city_node", "name": "Рынок", "node_type": "market", "parent_id": "seldar"})
+        city.store().set_status("market", city.STATUS_PUBLISHED, force=True)
+        city.store().create("to_market", {"_kind": "city_button", "label": "На рынок", "action": "goto_node", "node_id": "seldar", "target_node_id": "market"})
+        city.store().set_status("to_market", city.STATUS_PUBLISHED, force=True)
+
+        saved = os.environ.get("CITY_CONSTRUCTOR_LIVE")
+        try:
+            os.environ["CITY_CONSTRUCTOR_LIVE"] = ""
+            self.assertIsNone(city_runtime.try_handle("Селдар"))  # флаг выкл → легаси
+            os.environ["CITY_CONSTRUCTOR_LIVE"] = "1"
+            self.assertTrue(city_runtime.live_enabled())
+            by_name = city_runtime.try_handle("Селдар")
+            self.assertIsNotNone(by_name)
+            self.assertIn("Селдар", by_name["text"])
+            self.assertIn(["В город"], by_name["buttons"])
+            # Переход по подписи кнопки ведёт к целевому узлу «Рынок».
+            by_button = city_runtime.try_handle("На рынок")
+            self.assertIsNotNone(by_button)
+            self.assertIn("Рынок", by_button["text"])
+            # Неизвестное действие → None (легаси-навигация).
+            self.assertIsNone(city_runtime.try_handle("абракадабра"))
+        finally:
+            if saved is None:
+                os.environ.pop("CITY_CONSTRUCTOR_LIVE", None)
+            else:
+                os.environ["CITY_CONSTRUCTOR_LIVE"] = saved
+
     def test_where_used(self):
         city.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city"})
         city.store().create("market", {"_kind": "city_node", "name": "Рынок", "node_type": "market", "parent_id": "seldar"})

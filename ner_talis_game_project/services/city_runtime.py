@@ -101,3 +101,77 @@ def node_runtime_view(node_id: str) -> dict[str, Any] | None:
         "services": [_named(s, "name", "service_kind", "enabled") for s in services],
         "criminal_zones": [_named(s, "name", "raid_chance", "fine_amount") for s in criminal],
     }
+
+
+def _message_text(entry_message: Any) -> str:
+    """Плоский текст из объекта вывода сообщения (для текста бота)."""
+    if not isinstance(entry_message, dict):
+        return ""
+    if str(entry_message.get("format") or "single") == "multiple":
+        parts = [str((b or {}).get("text") or "") for b in (entry_message.get("blocks") or []) if isinstance(b, dict)]
+        return "\n\n".join(p for p in parts if p)
+    return str(entry_message.get("text") or "")
+
+
+def render_node(view: dict[str, Any]) -> dict[str, Any]:
+    """Текст + кнопки узла для навигации бота из его рантайм-представления."""
+    lines = [f"📍 {view.get('name') or ''}".strip()]
+    body = view.get("description") or ""
+    msg = _message_text(view.get("entry_message"))
+    if msg:
+        body = (body + "\n\n" + msg).strip() if body else msg
+    if body:
+        lines.append(body)
+    text = "\n\n".join(line for line in lines if line)
+    # Кнопки: явные кнопки узла + переходы в дочерние узлы + возврат в город.
+    rows: list[list[str]] = []
+    for b in view.get("buttons") or []:
+        label = str(b.get("label") or "").strip()
+        if label:
+            rows.append([(f"{b.get('icon')} {label}".strip()) if b.get("icon") else label])
+    for c in view.get("children") or []:
+        name = str(c.get("name") or "").strip()
+        if name:
+            rows.append([name])
+    rows.append(["В город"])
+    return {"text": text or (view.get("name") or "Локация"), "buttons": rows}
+
+
+def _published_label_index() -> tuple[dict[str, str], dict[str, str]]:
+    """Карты: имя узла → id узла; подпись кнопки goto → id целевого узла."""
+    items = _published()
+    node_by_name: dict[str, str] = {}
+    for n in _of_kind(items, city.KIND_NODE):
+        name = str((n.get("data") or {}).get("name") or "").strip()
+        if name and name not in node_by_name:
+            node_by_name[name] = n.get("id")
+    button_to_target: dict[str, str] = {}
+    for b in _of_kind(items, city.KIND_BUTTON):
+        d = b.get("data") or {}
+        label = str(d.get("label") or "").strip()
+        target = str(d.get("target_node_id") or "").strip()
+        icon = str(d.get("icon") or "").strip()
+        if label and target:
+            button_to_target.setdefault(label, target)
+            if icon:
+                button_to_target.setdefault(f"{icon} {label}", target)
+    return node_by_name, button_to_target
+
+
+def try_handle(action: str) -> dict[str, Any] | None:
+    """«Живая» навигация по опубликованным узлам (ТЗ §4). Возвращает {text,buttons}
+    если action соответствует опубликованному узлу (по имени) или кнопке-переходу
+    (по подписи); иначе None → легаси-навигация. Только при включённом флаге."""
+    if not live_enabled():
+        return None
+    act = str(action or "").strip()
+    if not act:
+        return None
+    node_by_name, button_to_target = _published_label_index()
+    node_id = node_by_name.get(act) or button_to_target.get(act)
+    if not node_id:
+        return None
+    view = node_runtime_view(node_id)
+    if view is None:
+        return None
+    return render_node(view)
