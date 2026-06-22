@@ -117,6 +117,15 @@ class SiteExtendedKindsServiceTest(unittest.TestCase):
         ok = site.store().create("t_ok", {"_kind": "site_theme", "title": "Тёмная", "block_opacity": 80})
         self.assertTrue(site.validate("site_theme", ok)["ok"], site.validate("site_theme", ok)["errors"])
 
+    def test_where_used(self):
+        site.store().create("home", {"_kind": "page", "title": "Главная"})
+        site.store().create("hero", {"_kind": "page_block", "title": "Шапка", "block_type": "heading", "page_id": "home"})
+        site.store().create("nav_home", {"_kind": "menu_item", "label": "Главная", "page_id": "home"})
+        ids = {u["id"] for u in site.where_used("home")}
+        self.assertIn("hero", ids)
+        self.assertIn("nav_home", ids)
+        self.assertEqual(site.where_used("nonexistent"), [])
+
 
 class SiteApiTest(unittest.TestCase):
     def setUp(self):

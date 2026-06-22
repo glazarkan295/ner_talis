@@ -63,6 +63,15 @@ class ProfileLayoutServiceTest(unittest.TestCase):
         self.assertFalse(layout.validate("profile_theme", layout.store().create("th_bad", {"_kind": "profile_theme", "title": ""}))["ok"])
         self.assertTrue(layout.validate("profile_theme", layout.store().create("th_ok", {"_kind": "profile_theme", "title": "Тёмная"}))["ok"])
 
+    def test_where_used_matches_tab_key(self):
+        layout.store().create("tab_char", {"_kind": "profile_tab", "label": "Персонаж", "tab_key": "character"})
+        layout.store().create("blk_stats", {"_kind": "profile_block", "name": "Характеристики", "block_type": "stats", "tab": "character"})
+        layout.store().create("blk_inv", {"_kind": "profile_block", "name": "Инвентарь", "block_type": "inventory", "tab": "other"})
+        ids = {u["id"] for u in layout.where_used("tab_char")}
+        self.assertIn("blk_stats", ids)
+        self.assertNotIn("blk_inv", ids)
+        self.assertEqual(layout.where_used("nope"), [])
+
 
 class ProfileLayoutApiTest(unittest.TestCase):
     def setUp(self):

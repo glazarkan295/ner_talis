@@ -4,6 +4,7 @@ import {
   fetchSiteItem,
   fetchSiteItems,
   fetchSiteMeta,
+  fetchSiteWhereUsed,
   siteLifecycle,
   updateSiteItem,
   validateSiteItem,
@@ -263,6 +264,7 @@ export function SiteSection({ guarded, hasPerm }) {
   const [statusFilter, setStatusFilter] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [usedBy, setUsedBy] = useState(null);
 
   // Права по типу — зеркало admin_site_api._KIND_CONFIG.
   const can = useMemo(() => KIND_CAN(kind, hasPerm), [kind, hasPerm]);
@@ -274,12 +276,14 @@ export function SiteSection({ guarded, hasPerm }) {
   const statuses = meta?.statuses || [];
   const statusLabel = (v) => statuses.find((s) => s.value === v)?.label || v;
 
-  function switchKind(k) { setKind(k); setEditing(null); setStatusFilter(""); }
-  function startCreate() { setEditing({ id: "", data: { ...(EMPTY_BY_KIND[kind] || {}) }, status: "draft", validation: null, isNew: true }); }
+  function switchKind(k) { setKind(k); setEditing(null); setStatusFilter(""); setUsedBy(null); }
+  function startCreate() { setEditing({ id: "", data: { ...(EMPTY_BY_KIND[kind] || {}) }, status: "draft", validation: null, isNew: true }); setUsedBy(null); }
   async function openItem(id) {
+    setUsedBy(null);
     const p = await guarded(() => fetchSiteItem(kind, id));
     if (p?.item) setEditing({ id, data: { ...(EMPTY_BY_KIND[kind] || {}), ...(p.item.data || {}) }, status: p.item.status, validation: p.validation, isNew: false });
   }
+  async function loadWhereUsed() { const p = await guarded(() => fetchSiteWhereUsed(kind, editing.id)); if (p) setUsedBy(p.usedBy || []); }
 
   async function save() {
     const e = editing;
@@ -313,6 +317,27 @@ export function SiteSection({ guarded, hasPerm }) {
             <h4 className="ntv2-subhead">{v.ok ? "✅ Готово к публикации" : "❌ Проверка не пройдена"}</h4>
             {(v.errors || []).map((e, i) => <div className="ntv2-error" key={"e" + i}>{e}</div>)}
             {(v.warnings || []).map((w, i) => <p className="ntv2-hint" key={"w" + i}>⚠️ {w}</p>)}
+          </div>
+        ) : null}
+
+        {!editing.isNew && (kind === "page" || kind === "menu_item") ? (
+          <div className="ntv2-panel">
+            <div className="ntv2-card-head" style={{ marginBottom: 6 }}>
+              <h4 className="ntv2-subhead" style={{ margin: 0 }}>Где используется</h4>
+              <button type="button" className="ntv2-btn" onClick={loadWhereUsed}>Проверить связи</button>
+            </div>
+            {usedBy === null ? <p className="ntv2-hint">Нажмите «Проверить связи», чтобы увидеть зависимые блоки/пункты меню.</p> : null}
+            {usedBy !== null && !usedBy.length ? <p className="ntv2-hint">Ничего не ссылается — можно безопасно изменить/скрыть.</p> : null}
+            {usedBy && usedBy.length ? (
+              <div className="ntv2-list">
+                {usedBy.map((u) => (
+                  <div className="ntv2-list-row" key={u.id}>
+                    <b>{u.name}</b><span className="ntv2-mono">{u.id}</span>
+                    <span className="ntv2-hint">{tr(SITE_KIND, u.kind)} · {(u.fields || []).join(", ")}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
 

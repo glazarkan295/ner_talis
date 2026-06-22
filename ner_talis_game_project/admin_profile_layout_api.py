@@ -129,6 +129,12 @@ def create_admin_profile_layout_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=404, detail="Объект раскладки не найден.")
         return {"ok": True, "item": item, "validation": layout.validate(kind, item)}
 
+    @router.get("/{kind}/{object_id}/where-used")
+    def layout_where_used(kind: str, object_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        _check_kind(kind)
+        _require(_session(get_storage(), request, token), PERM_PROFILE_LAYOUT_VIEW)
+        return {"ok": True, "usedBy": layout.where_used(object_id)}
+
     @router.post("/{kind}")
     def create(kind: str, payload: IdDataRequest, request: Request) -> dict[str, Any]:
         _check_kind(kind)

@@ -317,3 +317,27 @@ def validate(kind: str, envelope: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "errors": [f"Неизвестный тип контента: {kind}."], "warnings": []}
     errors, warnings = validator(envelope)
     return {"ok": not errors, "errors": errors, "warnings": warnings}
+
+
+def where_used(object_id: str) -> list[dict[str, Any]]:
+    """Где используется материал сайта (ТЗ §6): блоки страницы/пункты меню,
+    ссылающиеся на страницу, и дочерние пункты меню."""
+    oid = str(object_id or "").strip()
+    if not oid:
+        return []
+    refs: list[dict[str, Any]] = []
+    for env in _store.list():
+        data = env.get("data") or {}
+        kind = str(data.get("_kind") or "")
+        fields: list[str] = []
+        if kind == KIND_PAGE_BLOCK and str(data.get("page_id") or "") == oid:
+            fields.append("блок страницы")
+        if kind == KIND_MENU_ITEM:
+            if str(data.get("page_id") or "") == oid:
+                fields.append("пункт меню ведёт на страницу")
+            if str(data.get("parent_id") or "") == oid:
+                fields.append("дочерний пункт меню")
+        if fields:
+            name = data.get("title") or data.get("label") or data.get("question") or env.get("id")
+            refs.append({"id": env.get("id"), "kind": kind, "name": str(name), "fields": fields})
+    return refs

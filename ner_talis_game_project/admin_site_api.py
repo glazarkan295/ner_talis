@@ -170,6 +170,11 @@ def create_admin_site_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=404, detail="Материал не найден.")
         return {"ok": True, "item": item, "validation": site.validate(kind, item)}
 
+    @router.get("/{kind}/{content_id}/where-used")
+    def site_where_used(kind: str, content_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        _require(_session(get_storage(), request, token), _cfg(kind)["view"])
+        return {"ok": True, "usedBy": site.where_used(content_id)}
+
     @router.post("/{kind}")
     def create(kind: str, payload: IdDataRequest, request: Request) -> dict[str, Any]:
         cfg = _cfg(kind)

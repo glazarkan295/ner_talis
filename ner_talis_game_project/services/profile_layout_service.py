@@ -166,3 +166,22 @@ def validate(kind: str, envelope: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "errors": [f"Неизвестный тип объекта раскладки: {kind}."], "warnings": []}
     errors, warnings = validator(envelope)
     return {"ok": not errors, "errors": errors, "warnings": warnings}
+
+
+def where_used(object_id: str) -> list[dict[str, Any]]:
+    """Где используется объект раскладки (ТЗ §6): блоки, привязанные к вкладке."""
+    oid = str(object_id or "").strip()
+    if not oid:
+        return []
+    target = _store.get(oid)
+    keys = {oid}
+    if target is not None:
+        tab_key = str((target.get("data") or {}).get("tab_key") or "").strip()
+        if tab_key:
+            keys.add(tab_key)
+    refs: list[dict[str, Any]] = []
+    for env in _store.list():
+        data = env.get("data") or {}
+        if str(data.get("_kind") or "") == KIND_BLOCK and str(data.get("tab") or "").strip() in keys and str(data.get("tab") or "").strip():
+            refs.append({"id": env.get("id"), "kind": KIND_BLOCK, "name": str(data.get("name") or env.get("id")), "fields": ["блок на вкладке"]})
+    return refs

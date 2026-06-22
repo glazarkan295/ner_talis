@@ -5,6 +5,7 @@ import {
   fetchLayoutItem,
   fetchLayoutItems,
   fetchLayoutMeta,
+  fetchLayoutWhereUsed,
   layoutLifecycle,
   updateLayoutItem,
   validateLayoutItem,
@@ -129,6 +130,7 @@ export function ProfileLayoutSection({ guarded, hasPerm }) {
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [usedBy, setUsedBy] = useState(null);
 
   const can = useMemo(() => ({
     edit: hasPerm("profile_layout.edit"), publish: hasPerm("profile_layout.publish"),
@@ -142,12 +144,14 @@ export function ProfileLayoutSection({ guarded, hasPerm }) {
   const statusLabel = (v) => statuses.find((s) => s.value === v)?.label || v;
   const itemTitle = (item) => { const d = item.data || {}; return d.label || d.name || d.title || item.id; };
 
-  function switchKind(k) { setKind(k); setEditing(null); setStatusFilter(""); }
-  function startCreate() { setEditing({ id: "", data: { ...(EMPTY_BY_KIND[kind] || {}) }, status: "draft", validation: null, isNew: true }); }
+  function switchKind(k) { setKind(k); setEditing(null); setStatusFilter(""); setUsedBy(null); }
+  function startCreate() { setEditing({ id: "", data: { ...(EMPTY_BY_KIND[kind] || {}) }, status: "draft", validation: null, isNew: true }); setUsedBy(null); }
   async function openItem(id) {
+    setUsedBy(null);
     const p = await guarded(() => fetchLayoutItem(kind, id));
     if (p?.item) setEditing({ id, data: { ...(EMPTY_BY_KIND[kind] || {}), ...(p.item.data || {}) }, status: p.item.status, validation: p.validation, isNew: false });
   }
+  async function loadWhereUsed() { const p = await guarded(() => fetchLayoutWhereUsed(kind, editing.id)); if (p) setUsedBy(p.usedBy || []); }
   async function save() {
     const e = editing;
     if (e.isNew) { const p = await guarded(() => createLayoutItem(kind, e.id.trim(), e.data, ""), "Создано."); if (p?.item) await openItem(e.id.trim()); }
@@ -178,6 +182,27 @@ export function ProfileLayoutSection({ guarded, hasPerm }) {
             <h4 className="ntv2-subhead">{v.ok ? "✅ Готово к публикации" : "❌ Проверка не пройдена"}</h4>
             {(v.errors || []).map((e, i) => <div className="ntv2-error" key={"e" + i}>{e}</div>)}
             {(v.warnings || []).map((w, i) => <p className="ntv2-hint" key={"w" + i}>⚠️ {w}</p>)}
+          </div>
+        ) : null}
+
+        {!editing.isNew && kind === "profile_tab" ? (
+          <div className="ntv2-panel">
+            <div className="ntv2-card-head" style={{ marginBottom: 6 }}>
+              <h4 className="ntv2-subhead" style={{ margin: 0 }}>Где используется</h4>
+              <button type="button" className="ntv2-btn" onClick={loadWhereUsed}>Проверить связи</button>
+            </div>
+            {usedBy === null ? <p className="ntv2-hint">Нажмите «Проверить связи», чтобы увидеть блоки на этой вкладке.</p> : null}
+            {usedBy !== null && !usedBy.length ? <p className="ntv2-hint">На вкладке нет блоков — можно безопасно изменить/скрыть.</p> : null}
+            {usedBy && usedBy.length ? (
+              <div className="ntv2-list">
+                {usedBy.map((u) => (
+                  <div className="ntv2-list-row" key={u.id}>
+                    <b>{u.name}</b><span className="ntv2-mono">{u.id}</span>
+                    <span className="ntv2-hint">{(u.fields || []).join(", ")}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
