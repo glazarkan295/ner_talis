@@ -190,6 +190,27 @@ export const FINE_RESTRICTION = {
   raise_raid_chance: "Повышенный шанс облавы", debuff: "Дебаф на персонажа", debtor_mark: "Метка должника",
 };
 
+// --- Конструктор навыков ---------------------------------------------------
+export const SKILL_TYPE = { active: "Активный", passive: "Пассивный" };
+export const SKILL_BRANCH = { neutral: "Нейтральная", spirit: "Ветвь Духа", mana: "Ветвь Маны" };
+export const SKILL_PATH = {
+  none: "Без пути", sword: "Меч", dagger: "Кинжал", axe: "Топор", hammer: "Молот",
+  bow: "Лук", shield: "Щит", crossbow: "Арбалет", fire: "Огонь", water: "Вода",
+  earth: "Земля", air: "Воздух", support: "Поддержка", death: "Смерть", life: "Жизнь",
+};
+export const SKILL_RESOURCE_TYPE = { none: "Без ресурса", spirit: "Дух", mana: "Мана" };
+export const SKILL_DAMAGE_TYPE = {
+  none: "Без урона", physical: "Физический", magic: "Магический", mixed: "Смешанный",
+};
+export const SKILL_TARGET_MODE = {
+  self: "На себя", single_enemy: "Один враг", all_enemies: "Все враги", ally: "Союзник",
+  all_allies: "Все союзники", passive: "Пассивно",
+};
+export const SKILL_WEAPON_REQUIREMENT = {
+  any: "Любое оружие", sword: "Меч", dagger: "Кинжал", axe: "Топор", hammer: "Молот",
+  bow: "Лук", shield: "Щит", crossbow: "Арбалет", staff: "Посох", magic_book: "Магическая книга",
+};
+
 // --- Мировые события -------------------------------------------------------
 export const WORLD_EVENT_TYPE = {
   festive: "Праздничное", seasonal: "Сезонное", permanent: "Постоянное", threat: "Угроза",

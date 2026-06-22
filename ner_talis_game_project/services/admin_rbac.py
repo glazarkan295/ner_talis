@@ -151,6 +151,17 @@ PERM_FINE_DEF_PUBLISH = "fine_def.publish"
 PERM_FINE_DEF_DISABLE = "fine_def.disable"
 PERM_FINE_DEF_ARCHIVE = "fine_def.archive"
 PERM_FINE_DEF_DELETE = "fine_def.delete"
+# Конструктор навыков (ТЗ §7) — авторинг ОПРЕДЕЛЕНИЙ навыков/умений.
+# Рантайм навыков игрока (выбор у Распорядительного камня, расход ресурса)
+# остаётся на active_skill_service — здесь только шаблоны.
+PERM_SKILL_DEF_VIEW = "skill_def.view"
+PERM_SKILL_DEF_CREATE = "skill_def.create"
+PERM_SKILL_DEF_EDIT = "skill_def.edit"
+PERM_SKILL_DEF_VALIDATE = "skill_def.validate"
+PERM_SKILL_DEF_PUBLISH = "skill_def.publish"
+PERM_SKILL_DEF_DISABLE = "skill_def.disable"
+PERM_SKILL_DEF_ARCHIVE = "skill_def.archive"
+PERM_SKILL_DEF_DELETE = "skill_def.delete"
 # Гильдии
 PERM_GUILD_VIEW = "guild.view"
 PERM_GUILD_CREATE = "guild.create"
@@ -292,6 +303,9 @@ ALL_PERMISSIONS = (
     PERM_FINE_DEF_VIEW, PERM_FINE_DEF_CREATE, PERM_FINE_DEF_EDIT,
     PERM_FINE_DEF_VALIDATE, PERM_FINE_DEF_PUBLISH, PERM_FINE_DEF_DISABLE,
     PERM_FINE_DEF_ARCHIVE, PERM_FINE_DEF_DELETE,
+    PERM_SKILL_DEF_VIEW, PERM_SKILL_DEF_CREATE, PERM_SKILL_DEF_EDIT,
+    PERM_SKILL_DEF_VALIDATE, PERM_SKILL_DEF_PUBLISH, PERM_SKILL_DEF_DISABLE,
+    PERM_SKILL_DEF_ARCHIVE, PERM_SKILL_DEF_DELETE,
     PERM_GUILD_VIEW, PERM_GUILD_CREATE, PERM_GUILD_EDIT, PERM_GUILD_DISABLE,
     PERM_GUILD_MANAGE_MEMBERS, PERM_GUILD_MANAGE_STORAGE,
     PERM_GUILD_MANAGE_TREASURY, PERM_GUILD_AUDIT,
@@ -363,6 +377,11 @@ DANGEROUS_ACTIONS = frozenset({
     "fine_def.disable",
     "fine_def.archive",
     "fine_def.delete",
+    # Конструктор навыков — публикация/отключение/архив/удаление навыков.
+    "skill_def.publish",
+    "skill_def.disable",
+    "skill_def.archive",
+    "skill_def.delete",
     "guild.disable",
     "world_event.start",
     "world_event.stop",
@@ -408,7 +427,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_ACHIEVEMENT_VIEW, PERM_ACHIEVEMENT_VIEW_PLAYER_PROGRESS,
         PERM_MESSAGES_VIEW_QUEUE, PERM_MESSAGES_VIEW_PLAYER,
         PERM_MESSAGES_SEND_DIRECT, PERM_MESSAGES_RETRY,
-        PERM_ITEM_VIEW, PERM_EFFECT_VIEW, PERM_MOB_VIEW,
+        PERM_ITEM_VIEW, PERM_EFFECT_VIEW, PERM_MOB_VIEW, PERM_SKILL_DEF_VIEW,
         PERM_SITE_VIEW, PERM_NEWS_VIEW, PERM_GUIDES_VIEW, PERM_FAQ_VIEW,
         PERM_RATINGS_VIEW, PERM_PAVILION_VIEW, PERM_PAVILION_MODERATE,
     },
@@ -418,7 +437,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_GUILD_VIEW, PERM_GUILD_MANAGE_MEMBERS,
         PERM_ACHIEVEMENT_VIEW,
         PERM_MESSAGES_VIEW_PLAYER,
-        PERM_ITEM_VIEW, PERM_EFFECT_VIEW,
+        PERM_ITEM_VIEW, PERM_EFFECT_VIEW, PERM_SKILL_DEF_VIEW,
     },
     # content создаёт и правит ЧЕРНОВИКИ мира/событий/гильдий/достижений, но не
     # публикует и не запускает (publish/start/disband → admin/owner).
@@ -441,6 +460,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_MOB_TEST_BATTLE, PERM_MOB_VIEW_BALANCE,
         # Конструктор штрафов: content ведёт черновики (без публикации).
         PERM_FINE_DEF_VIEW, PERM_FINE_DEF_CREATE, PERM_FINE_DEF_EDIT, PERM_FINE_DEF_VALIDATE,
+        # Конструктор навыков: content ведёт черновики (без публикации).
+        PERM_SKILL_DEF_VIEW, PERM_SKILL_DEF_CREATE, PERM_SKILL_DEF_EDIT, PERM_SKILL_DEF_VALIDATE,
         PERM_GUILD_VIEW, PERM_GUILD_CREATE, PERM_GUILD_EDIT,
         PERM_WORLD_EVENT_VIEW, PERM_WORLD_EVENT_CREATE,
         PERM_WORLD_EVENT_EDIT, PERM_WORLD_EVENT_SCHEDULE,
@@ -490,6 +511,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_LOCATION_MOBS_VIEW, PERM_LOCATION_ZONES_VIEW,
         PERM_LOCATION_ROTATION_VIEW, PERM_LOCATION_LIMITS_VIEW,
         PERM_MOB_VIEW, PERM_MOB_VIEW_BALANCE, PERM_FINE_DEF_VIEW,
+        PERM_SKILL_DEF_VIEW,
         PERM_ACHIEVEMENT_VIEW, PERM_MESSAGES_VIEW_QUEUE,
         PERM_ITEM_VIEW, PERM_ITEM_VIEW_USAGE, PERM_EFFECT_VIEW,
         PERM_SITE_VIEW, PERM_NEWS_VIEW, PERM_GUIDES_VIEW, PERM_FAQ_VIEW,

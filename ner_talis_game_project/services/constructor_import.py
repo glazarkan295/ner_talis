@@ -31,6 +31,27 @@ def safe_constructor_id(raw: Any) -> str:
     return text if _ID_RE.match(text) else ""
 
 
+# Кириллица → латиница: каталог навыков (active_skills_registry) хранит id
+# по-русски, и обычный safe_constructor_id вырезал бы все буквы (728 разных
+# навыков схлопнулись бы в ~53 id). Транслитерация сохраняет уникальность.
+_TRANSLIT = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
+    "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+    "ф": "f", "х": "kh", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "shch",
+    "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+}
+
+
+def translit_constructor_id(raw: Any) -> str:
+    """Транслитерировать кириллический id в латинский id формата реестра."""
+    text = str(raw or "").strip().lower()
+    text = "".join(_TRANSLIT.get(ch, ch) for ch in text)
+    text = re.sub(r"[^a-z0-9_]+", "_", text)
+    text = re.sub(r"_+", "_", text).strip("_")[:64].strip("_")
+    return text if _ID_RE.match(text) else ""
+
+
 def _enum_value(value: Any) -> Any:
     return getattr(value, "value", value)
 
@@ -270,8 +291,95 @@ def import_effects(*, overwrite: bool = False, actor: str = "import") -> dict[st
     return {"kind": "effect", "created": created, "updated": updated, "skipped": skipped, "invalid": 0}
 
 
+# --- Навыки (импорт каталога путей, ТЗ §7) ---------------------------------
+# Каталог навыков (data/active_skills_registry.json) хранит ветви/пути по-русски
+# (Дух/Мана, Меч/Огонь…). Сводим их к кодам конструктора, чтобы записи проходили
+# валидацию skill_constructor_service.
+_BRANCH_TO_CODE = {"Дух": "spirit", "spirit": "spirit", "Мана": "mana", "mana": "mana"}
+_PATH_TO_CODE = {
+    "Меч": "sword", "Кинжал": "dagger", "Топор": "axe", "Молот": "hammer",
+    "Лук": "bow", "Щит": "shield", "Арбалет": "crossbow",
+    "Огонь": "fire", "Вода": "water", "Земля": "earth", "Воздух": "air",
+    "Поддержка": "support", "Смерть": "death", "Жизнь": "life",
+}
+
+
+def _map_skill(skill: dict[str, Any], source_id: str) -> dict[str, Any]:
+    from services import active_skill_service as ass
+
+    runtime = ass.runtime_skill_from_catalog(skill)
+    is_passive = str(runtime.get("skill_type") or "").casefold() == "passive"
+    branch = _BRANCH_TO_CODE.get(str(runtime.get("branch") or "").strip(), "neutral")
+    path = _PATH_TO_CODE.get(str(runtime.get("path") or "").strip(), "none")
+    weapons = runtime.get("weapon_requirements") or ["any"]
+    if isinstance(weapons, str):
+        weapons = [weapons]
+    resource = str(runtime.get("resource") or "none")
+    if resource not in ("none", "spirit", "mana"):
+        resource = "none"
+    damage = str(runtime.get("damage_type") or "none")
+    if damage not in ("none", "physical", "magic", "mixed"):
+        damage = "none"
+    modifiers = [
+        {"name": str(m.get("name") or ""), "effect": str(m.get("effect") or "")}
+        for m in (runtime.get("modifiers") or []) if isinstance(m, dict)
+    ]
+    return {
+        "name": runtime.get("name") or source_id,
+        "skill_type": "passive" if is_passive else "active",
+        "branch": branch,
+        "path": path,
+        "resource_type": resource,
+        "resource_cost": int(runtime.get("base_resource_cost") or 0),
+        "cooldown_turns": int(runtime.get("cooldown_turns") or 0),
+        "damage_type": damage,
+        "target_mode": "passive" if is_passive else str(runtime.get("target_mode") or "single_enemy"),
+        "weapon_requirements": [str(w) for w in weapons],
+        "unlock_path_level": int(runtime.get("unlock_path_level") or 0),
+        "choice_index": int(runtime.get("choice_index") or 0),
+        "description": str(runtime.get("description") or ""),
+        "base_damage_formula": runtime.get("base_damage_formula") or "",
+        "modifiers": modifiers,
+        "imported": True,
+        "import_source": "active_skills_registry",
+        "source_id": str(skill.get("id") or source_id),
+    }
+
+
+def import_skills(*, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import active_skill_service as ass
+    from services import skill_constructor_service as scs
+
+    store = scs.store()
+    created = updated = skipped = invalid = 0
+    for skill in ass.all_catalog_skills():
+        if not isinstance(skill, dict):
+            invalid += 1
+            continue
+        sid = translit_constructor_id(skill.get("id") or skill.get("name")) or safe_constructor_id(skill.get("id") or skill.get("name"))
+        if not sid:
+            invalid += 1
+            continue
+        data = _map_skill(skill, sid)
+        existing = store.get(sid)
+        if existing is not None:
+            if overwrite and _was_imported(existing):
+                store.update(sid, data, actor=actor)
+                updated += 1
+            else:
+                skipped += 1
+            continue
+        store.create(sid, data, actor=actor)
+        try:
+            store.set_status(sid, scs.STATUS_PUBLISHED, actor=actor, force=True)
+        except Exception:
+            pass
+        created += 1
+    return {"kind": "skill", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid}
+
+
 # --- Оркестратор -----------------------------------------------------------
-IMPORTERS = {"item": import_items, "mob": import_mobs, "effect": import_effects}
+IMPORTERS = {"item": import_items, "mob": import_mobs, "effect": import_effects, "skill": import_skills}
 
 
 def import_all(kinds: list[str] | None = None, *, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:

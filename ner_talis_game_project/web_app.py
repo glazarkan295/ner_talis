@@ -35,6 +35,7 @@ from admin_messages_api import create_admin_messages_router
 from admin_item_api import create_admin_item_router
 from admin_effect_api import create_admin_effect_router
 from admin_fines_api import create_admin_fines_router
+from admin_skills_api import create_admin_skills_router
 from admin_uploads_api import create_admin_uploads_router
 from admin_site_api import create_admin_site_router
 from site_api import (
@@ -333,6 +334,7 @@ def create_app() -> FastAPI:
     app.include_router(create_admin_item_router(storage))
     app.include_router(create_admin_effect_router(storage))
     app.include_router(create_admin_fines_router(storage))
+    app.include_router(create_admin_skills_router(storage))
     app.include_router(create_admin_uploads_router(storage))
     app.include_router(create_admin_site_router(storage))
 
