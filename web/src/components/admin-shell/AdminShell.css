@@ -159,6 +159,7 @@ html { scrollbar-gutter: stable; }
 .ntv2-modal-body { margin-bottom: 12px; }
 .ntv2-field { display: grid; gap: 4px; margin-bottom: 12px; font-size: 13px; }
 .ntv2-field textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.ntv2-search-box { flex: 1; min-width: 180px; box-sizing: border-box; padding: 6px 10px; }
 .ntv2-modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
 @media (max-width: 760px) {

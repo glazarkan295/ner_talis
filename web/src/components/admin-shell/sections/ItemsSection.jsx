@@ -14,6 +14,7 @@ import { tr, ITEM_TYPE, ITEM_QUALITY, EQUIP_SLOT, ITEM_PROPERTY, ITEM_EFFECT_TYP
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { ImageUploadField } from "../ImageUploadField.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
+import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 import { TechnicalData } from "../TechnicalData.jsx";
 
 const STATUS_TONE = {
@@ -64,6 +65,7 @@ export function ItemsSection({ guarded, hasPerm }) {
   const [meta, setMeta] = useState(null);
   const [list, setList] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
+  const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [usage, setUsage] = useState(null);
   const [confirm, setConfirm] = useState(null);
@@ -242,10 +244,12 @@ export function ItemsSection({ guarded, hasPerm }) {
           {statuses.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         {can.create ? <button type="button" className="ntv2-btn ntv2-btn-primary" onClick={startCreate}>＋ Новый предмет</button> : null}
+        <SearchBox value={query} onChange={setQuery} />
       </div>
       {!list.length ? <p className="ntv2-hint">Предметов нет.</p> : null}
+      <NoResults query={list.length ? query : ""} />
       <div className="ntv2-list">
-        {list.map((item) => (
+        {filterEntities(list, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>
             <b>{item.data?.name || item.id}</b>
             <span className="ntv2-mono">{item.id}</span>

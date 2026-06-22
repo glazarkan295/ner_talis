@@ -11,6 +11,7 @@ import { tr, EVENT_REPEAT_TYPE, WORLD_EVENT_TYPE, EVENT_REWARD_TYPE, SPECIAL_LOO
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { MessageComposer } from "../MessageComposer.jsx";
+import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 
 const STATUS_TONE = { active: "ntv2-badge-owner", finished: "ntv2-badge-owner", disabled: "ntv2-badge-danger", scheduled: "ntv2-badge-error" };
 
@@ -34,6 +35,7 @@ export function EventsSection({ guarded, hasPerm }) {
   const [meta, setMeta] = useState(null);
   const [items, setItems] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
+  const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
 
@@ -220,10 +222,12 @@ export function EventsSection({ guarded, hasPerm }) {
           {statuses.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         {can.create ? <button type="button" className="ntv2-btn ntv2-btn-primary" onClick={startCreate}>＋ Новое событие</button> : null}
+        <SearchBox value={query} onChange={setQuery} />
       </div>
       {!items.length ? <p className="ntv2-hint">Событий нет.</p> : null}
+      <NoResults query={items.length ? query : ""} />
       <div className="ntv2-list">
-        {items.map((item) => (
+        {filterEntities(items, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>
             <b>{item.data?.name || item.id}</b>
             <span className="ntv2-mono">{item.id}</span>

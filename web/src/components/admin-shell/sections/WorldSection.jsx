@@ -18,6 +18,7 @@ import { trOption, tr, CURRENCY } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { TechnicalData } from "../TechnicalData.jsx";
 import { MessageComposer } from "../MessageComposer.jsx";
+import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 
 const KIND_LABELS = {
   location: "🗺️ Локации", mob: "⚔️ Мобы", button: "🔘 Кнопки", transition: "🔀 Переходы",
@@ -712,6 +713,7 @@ export function WorldSection({ guarded, hasPerm }) {
   const [meta, setMeta] = useState(null);
   const [kind, setKind] = useState("location");
   const [items, setItems] = useState([]);
+  const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
@@ -958,10 +960,12 @@ export function WorldSection({ guarded, hasPerm }) {
             },
           })}>Импортировать существующее</button>
         ) : null}
+        <SearchBox value={query} onChange={setQuery} />
       </div>
       {!items.length ? <p className="ntv2-hint">Пока нет объектов. {can.create ? "Создайте первый черновик." : ""}</p> : null}
+      <NoResults query={items.length ? query : ""} />
       <div className="ntv2-list">
-        {items.map((item) => (
+        {filterEntities(items, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item)}>
             <b>{itemTitle(kind, item)}</b>
             <span className="ntv2-mono">{item.id}</span>

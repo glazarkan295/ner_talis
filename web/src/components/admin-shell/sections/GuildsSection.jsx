@@ -11,6 +11,7 @@ import {
   updateGuild,
 } from "../../../api/adminCommunityApi.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 
 const STATUS_TONE = { active: "ntv2-badge-owner", disbanded: "ntv2-badge-danger", frozen: "ntv2-badge-error" };
 
@@ -27,6 +28,7 @@ export function GuildsSection({ guarded, hasPerm }) {
   const [meta, setMeta] = useState(null);
   const [items, setItems] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
+  const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [newMember, setNewMember] = useState({ user_id: "", role: "newbie" });
@@ -163,10 +165,12 @@ export function GuildsSection({ guarded, hasPerm }) {
           {statuses.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         {can.create ? <button type="button" className="ntv2-btn ntv2-btn-primary" onClick={startCreate}>＋ Новая гильдия</button> : null}
+        <SearchBox value={query} onChange={setQuery} />
       </div>
       {!items.length ? <p className="ntv2-hint">Гильдий нет.</p> : null}
+      <NoResults query={items.length ? query : ""} />
       <div className="ntv2-list">
-        {items.map((item) => (
+        {filterEntities(items, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>
             <b>{item.data?.name || item.id}</b>
             <span className="ntv2-mono">{item.id}</span>
