@@ -29,6 +29,7 @@ from services.admin_rbac import (
     require_permission,
 )
 from services import city_constructor_service as city
+from services import message_output_service as message_output
 
 
 class IdDataRequest(BaseModel):
@@ -117,6 +118,7 @@ def create_admin_city_router(get_storage) -> APIRouter:
             "currencies": list(city.CURRENCIES),
             "stockTypes": list(city.STOCK_TYPES),
             "statuses": [{"value": s, "label": city.STATUS_LABELS.get(s, s)} for s in city.STATUSES],
+            "messageOutput": message_output.meta(),
         }
 
     @router.get("/tree")

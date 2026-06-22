@@ -17,12 +17,13 @@ import {
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { ImageUploadField } from "../ImageUploadField.jsx";
+import { MessageComposer } from "../MessageComposer.jsx";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 const KIND_NEW = { city_node: "＋ Узел", city_button: "＋ Кнопка", city_shop_item: "＋ Товар", city_service: "＋ Сервис", criminal_zone: "＋ Криминальная зона" };
 
 const EMPTY_BY_KIND = {
-  city_node: { name: "", node_type: "quarter", parent_id: "", short_description: "", description: "", image: "", background: "", order: 0, access_condition: "", restrictions: "" },
+  city_node: { name: "", node_type: "quarter", parent_id: "", short_description: "", description: "", image: "", background: "", order: 0, access_condition: "", restrictions: "", entry_message: null },
   city_button: { label: "", icon: "", action: "goto_node", node_id: "", target_node_id: "", order: 0, condition: "", cost: 0, energy_cost: 0, success_text: "", denied_text: "" },
   city_shop_item: { item_id: "", shop_kind: "city_market", node_id: "", price_buy: 0, price_sell: 0, currency: "copper", stock: 0, per_player_limit: 0, daily_limit: 0, weekly_limit: 0, appear_chance: 100, stock_type: "always", can_buy: true, can_sell: false },
   city_service: { name: "", service_kind: "forge", node_id: "", description: "", craft_time: 0, cost: 0, success_chance: 100, upgrade_chance: 0, enabled: true, start_text: "", success_text: "", fail_text: "", no_resources_text: "" },
@@ -41,6 +42,7 @@ const SCHEMA_BY_KIND = {
     { k: "background", label: "Фон", type: "image" },
     { k: "access_condition", label: "Условие доступа", type: "text" },
     { k: "restrictions", label: "Ограничения", type: "text" },
+    { k: "entry_message", label: "Сообщение игроку при входе", type: "message" },
   ],
   city_button: [
     { k: "label", label: "Текст кнопки", type: "text" },
@@ -111,6 +113,7 @@ function CityForm({ schema, value, onChange, meta, disabled, uploadKey }) {
   return (
     <div className="ntv2-world-form">
       {schema.map((f) => {
+        if (f.type === "message") return <MessageComposer key={f.k} label={f.label} value={value[f.k]} category="city" uploadKey={`${uploadKey || "new"}_${f.k}`} disabled={disabled} onChange={(v) => set(f.k, v)} />;
         if (f.type === "image") return <ImageUploadField key={f.k} label={f.label} value={value[f.k] || ""} category="city" uploadKey={`${uploadKey || "new"}_${f.k}`} disabled={disabled} onChange={(v) => set(f.k, v)} />;
         if (f.type === "checkbox") return <label className="ntv2-check" key={f.k}><input type="checkbox" checked={Boolean(value[f.k])} disabled={disabled} onChange={(e) => set(f.k, e.target.checked)} /> {f.label}</label>;
         if (f.type === "number") return <Field label={f.label} key={f.k}><input type="number" value={value[f.k] ?? ""} disabled={disabled} onChange={(e) => set(f.k, e.target.value)} /></Field>;

@@ -134,6 +134,13 @@ def _validate_node(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
         errors.append("Порядок отображения — не число.")
     if node_type not in ("city", "fortress") and not _str(data, "parent_id"):
         warnings.append("У узла не указан родительский узел (parent_id).")
+    # Вывод сообщения игроку при входе в узел (дополнение к ТЗ): формат/блоки/лимиты.
+    msg = data.get("entry_message")
+    if msg:
+        from services.message_output_service import validate_message_output
+        result = validate_message_output(msg)
+        errors += [f"Сообщение при входе — {e}" for e in result["errors"]]
+        warnings += [f"Сообщение при входе — {w}" for w in result["warnings"]]
     return errors, warnings
 
 
