@@ -63,6 +63,25 @@ class ProfileLayoutServiceTest(unittest.TestCase):
         self.assertFalse(layout.validate("profile_theme", layout.store().create("th_bad", {"_kind": "profile_theme", "title": ""}))["ok"])
         self.assertTrue(layout.validate("profile_theme", layout.store().create("th_ok", {"_kind": "profile_theme", "title": "Тёмная"}))["ok"])
 
+    def test_published_layout_runtime(self):
+        # Опубликованная раскладка: вкладки по порядку + их блоки + оформление.
+        layout.store().create("t_inv", {"_kind": "profile_tab", "label": "Инвентарь", "tab_key": "inventory", "order": 2, "icon": "🎒"})
+        layout.store().set_status("t_inv", layout.STATUS_PUBLISHED, force=True)
+        layout.store().create("t_char", {"_kind": "profile_tab", "label": "Герой", "tab_key": "character", "order": 1})
+        layout.store().set_status("t_char", layout.STATUS_PUBLISHED, force=True)
+        layout.store().create("t_draft", {"_kind": "profile_tab", "label": "Черновик", "tab_key": "secret"})  # не опубликован
+        layout.store().create("b_stats", {"_kind": "profile_block", "name": "Стат", "block_type": "stats", "tab": "character", "order": 1})
+        layout.store().set_status("b_stats", layout.STATUS_PUBLISHED, force=True)
+        layout.store().create("th", {"_kind": "profile_theme", "title": "Тёмная", "button_color": "#b58a4b"})
+        layout.store().set_status("th", layout.STATUS_PUBLISHED, force=True)
+
+        result = layout.published_layout()
+        keys = [t["key"] for t in result["tabs"]]
+        self.assertEqual(keys, ["character", "inventory"])  # по order, без черновика
+        char_tab = result["tabs"][0]
+        self.assertEqual([b["type"] for b in char_tab["blocks"]], ["stats"])
+        self.assertEqual(result["theme"]["button_color"], "#b58a4b")
+
     def test_where_used_matches_tab_key(self):
         layout.store().create("tab_char", {"_kind": "profile_tab", "label": "Персонаж", "tab_key": "character"})
         layout.store().create("blk_stats", {"_kind": "profile_block", "name": "Характеристики", "block_type": "stats", "tab": "character"})

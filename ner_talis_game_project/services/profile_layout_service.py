@@ -168,6 +168,68 @@ def validate(kind: str, envelope: dict[str, Any]) -> dict[str, Any]:
     return {"ok": not errors, "errors": errors, "warnings": warnings}
 
 
+# --- Рантайм-чтение опубликованной раскладки (ТЗ §3) ------------------------
+def _order_val(data: dict[str, Any]) -> float:
+    try:
+        return float(data.get("order"))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def published_layout() -> dict[str, Any]:
+    """Опубликованная раскладка профиля для рантайма: вкладки (с их блоками) и
+    оформление. Только status=published; аддитивно — пустые списки, если ничего
+    не опубликовано (профиль тогда работает на дефолтной раскладке)."""
+    published = [i for i in _store.list(status=STATUS_PUBLISHED)]
+    tabs_raw = [i for i in published if (i.get("data") or {}).get("_kind") == KIND_TAB]
+    blocks_raw = [i for i in published if (i.get("data") or {}).get("_kind") == KIND_BLOCK]
+    themes_raw = [i for i in published if (i.get("data") or {}).get("_kind") == KIND_THEME]
+
+    blocks_by_tab: dict[str, list[dict[str, Any]]] = {}
+    for env in sorted(blocks_raw, key=lambda e: _order_val(e.get("data") or {})):
+        data = env.get("data") or {}
+        tab = str(data.get("tab") or "").strip()
+        blocks_by_tab.setdefault(tab, []).append({
+            "id": env.get("id"),
+            "type": data.get("block_type"),
+            "name": data.get("name"),
+            "order": data.get("order"),
+            "width": data.get("width"),
+            "visibility": data.get("visibility"),
+            "hint": data.get("hint"),
+            "show_pc": data.get("show_pc", True),
+            "show_mobile": data.get("show_mobile", True),
+        })
+
+    tabs: list[dict[str, Any]] = []
+    for env in sorted(tabs_raw, key=lambda e: _order_val(e.get("data") or {})):
+        data = env.get("data") or {}
+        key = str(data.get("tab_key") or env.get("id") or "").strip()
+        tabs.append({
+            "id": env.get("id"),
+            "key": key,
+            "label": data.get("label"),
+            "icon": data.get("icon"),
+            "order": data.get("order"),
+            "visibility": data.get("visibility"),
+            "default": bool(data.get("default_tab")),
+            "show_pc": data.get("show_pc", True),
+            "show_mobile": data.get("show_mobile", True),
+            "blocks": blocks_by_tab.get(key, []),
+        })
+
+    theme = None
+    if themes_raw:
+        td = themes_raw[0].get("data") or {}
+        theme = {k: td.get(k) for k in (
+            "title", "profile_background", "tab_background", "card_background",
+            "button_color", "text_color", "border_color", "active_tab_color",
+            "icon_style", "card_style", "modal_style",
+        ) if td.get(k)}
+
+    return {"tabs": tabs, "theme": theme}
+
+
 def where_used(object_id: str) -> list[dict[str, Any]]:
     """Где используется объект раскладки (ТЗ §6): блоки, привязанные к вкладке."""
     oid = str(object_id or "").strip()

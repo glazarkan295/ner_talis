@@ -324,6 +324,37 @@ function canSellText(item) {
   return v === false ? "Нет" : "Да";
 }
 
+// Применить опубликованную раскладку (ТЗ §3) к базовым вкладкам: порядок/подпись/
+// иконка/скрытие для известных вкладок. Аддитивно: при пустой раскладке — как есть.
+function applyProfileLayoutTabs(baseTabs, layout) {
+  const tabs = Array.isArray(layout?.tabs) ? layout.tabs : [];
+  if (!tabs.length) return baseTabs;
+  const byId = new Map(baseTabs.map((t) => [t.id, t]));
+  const used = new Set();
+  const result = [];
+  for (const lt of tabs) {
+    const base = byId.get(String(lt.key || "").trim());
+    if (!base) continue;                       // нет рендера для такого ключа — пропускаем
+    if (String(lt.visibility || "") === "hidden") { used.add(base.id); continue; }
+    result.push({ ...base, label: lt.label || base.label, emoji: lt.icon || null });
+    used.add(base.id);
+  }
+  // Базовые вкладки, не упомянутые в раскладке, не теряем — добавляем в конце.
+  for (const base of baseTabs) if (!used.has(base.id)) result.push(base);
+  return result.length ? result : baseTabs;
+}
+
+// Оформление профиля из раскладки → CSS-переменные (только заданные значения).
+function profileThemeStyle(theme) {
+  if (!theme) return {};
+  const v = {};
+  if (theme.card_background) v["--nt-card"] = theme.card_background;
+  if (theme.button_color) v["--nt-gold"] = theme.button_color;
+  if (theme.text_color) v["--nt-text"] = theme.text_color;
+  if (theme.border_color) v["--nt-line"] = theme.border_color;
+  return v;
+}
+
 function compactSlotName(slotKey = "") {
   const map = {
     helmet: "Шлем",
@@ -1619,11 +1650,17 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
   // Сервисы (Передача/Промокод) недоступны в админ-просмотре/редактировании
   // чужого профиля — это личные действия игрока от своего лица.
   // Вкладка «Гильдия» появляется только при наличии блока guild.
-  const visibleTabs = [
+  const baseTabs = [
     ...TABS,
     ...(data.guild ? [GUILD_TAB] : []),
     ...((effectiveReadOnly || adminEdit) ? [] : [SERVICES_TAB]),
   ];
+  // Опубликованная раскладка профиля (ТЗ §3, рантайм) аддитивно переопределяет
+  // порядок/подпись/иконку/видимость ИЗВЕСТНЫХ вкладок. Контент рендерится по id,
+  // поэтому показываем только вкладки с готовым рендером; неизвестные ключи из
+  // конструктора игнорируются. Нет опубликованной раскладки → дефолт без изменений.
+  const visibleTabs = applyProfileLayoutTabs(baseTabs, data.profileLayout);
+  const layoutTheme = data.profileLayout?.theme || null;
   // Защита: если текущая вкладка недоступна (напр. старое состояние «overview»),
   // показываем первую доступную, чтобы профиль не оставался пустым (ТЗ §1).
   const activeTab = visibleTabs.some((t) => t.id === tab) ? tab : (visibleTabs[0]?.id || "character");
@@ -1702,14 +1739,14 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
   }
 
   return (
-    <main className={`nt-profile ${effectiveReadOnly ? "nt-profile-readonly" : ""}`.trim()} style={{ backgroundImage: `linear-gradient(rgba(5, 7, 7, .32), rgba(4, 4, 4, .50)), url(${background})` }}>
+    <main className={`nt-profile ${effectiveReadOnly ? "nt-profile-readonly" : ""}`.trim()} style={{ backgroundImage: `linear-gradient(rgba(5, 7, 7, .32), rgba(4, 4, 4, .50)), url(${layoutTheme?.profile_background || background})`, ...profileThemeStyle(layoutTheme) }}>
       <div className="nt-shell">
         <header className="nt-top">
           <div className="nt-title-block"><h1>Профиль персонажа</h1>{effectiveReadOnly ? <p className="nt-readonly-banner">Админский режим: только просмотр, изменения отключены.</p> : null}</div>
           <div className="nt-id">{data.player?.userGlobalId || data.player?.publicId || "NT-UNKNOWN"}</div>
         </header>
         <nav className="nt-tabs" aria-label="Разделы профиля">
-          {visibleTabs.map(({ id, label, icon }) => <button key={id} className={activeTab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon"><TabIcon type={icon} /></span><span className="nt-tab-text">{label}</span></button>)}
+          {visibleTabs.map(({ id, label, icon, emoji }) => <button key={id} className={activeTab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon">{emoji ? <span className="nt-tab-emoji">{emoji}</span> : <TabIcon type={icon} />}</span><span className="nt-tab-text">{label}</span></button>)}
         </nav>
         <section className="nt-content">
           {activeTab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} readOnly={effectiveReadOnly} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} onEditProfileField={onEditProfileField} /> : null}
