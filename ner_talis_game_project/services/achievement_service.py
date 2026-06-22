@@ -276,6 +276,14 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         if value and _has_markup(value):
             errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
 
+    # Уведомление игроку о получении (дополнение к ТЗ): изображение/формат/блоки.
+    notify_message = data.get("notify_message")
+    if notify_message:
+        from services.message_output_service import validate_message_output
+        result = validate_message_output(notify_message)
+        errors.extend(f"Уведомление о достижении — {e}" for e in result["errors"])
+        warnings.extend(f"Уведомление о достижении — {w}" for w in result["warnings"])
+
     return {"ok": not errors, "errors": errors, "warnings": warnings}
 
 

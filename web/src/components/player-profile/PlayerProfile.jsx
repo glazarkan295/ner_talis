@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { profileMockData } from "./profileMockData.js";
+import {
+  itemTypeRu, itemCategoryRu, itemQualityRu, itemSlotRu, itemSourceRu, yesNo,
+} from "../../i18n/itemLabels.js";
 
 const TABS = [
-  { id: "overview", label: "Обзор", icon: "head" },
+  // Вкладка «Обзор» убрана (ТЗ §1): её данные перенесены — параметры/эффекты в
+  // «Персонаж», предупреждения/статус/рейтинги в «Журнал».
   { id: "character", label: "Персонаж", icon: "head" },
   { id: "inventory", label: "Инвентарь", icon: "bag" },
   { id: "skills", label: "Навыки", icon: "star" },
@@ -295,6 +299,62 @@ function itemSellPriceText(item) {
   return `${price} медных`;
 }
 
+// Доступ к локации, который открывает предмет (ТЗ §4) — показываем, если задан.
+function accessTarget(item) {
+  if (!item || item.opens_access === false) return "";
+  return String(item.access_target_name || item.access_target || item.accessTarget || "").trim();
+}
+function accessCondition(item) {
+  if (!item) return "";
+  return String(item.access_text_condition || item.access_condition || item.accessCondition || "").trim();
+}
+// Источник получения (русское название).
+function itemSourceText(item) {
+  const raw = item?.source ?? item?.origin ?? item?.source_type;
+  return raw ? itemSourceRu(raw) : "";
+}
+// Можно ли передать/продать (Да/Нет). Неизвестно → не показываем строку.
+function canTransferText(item) {
+  const v = item?.canTransfer ?? item?.can_transfer ?? item?.transferable;
+  if (v === undefined || v === null) return "";
+  return yesNo(v);
+}
+function canSellText(item) {
+  const v = item?.canSell ?? item?.can_sell;
+  return v === false ? "Нет" : "Да";
+}
+
+// Применить опубликованную раскладку (ТЗ §3) к базовым вкладкам: порядок/подпись/
+// иконка/скрытие для известных вкладок. Аддитивно: при пустой раскладке — как есть.
+function applyProfileLayoutTabs(baseTabs, layout) {
+  const tabs = Array.isArray(layout?.tabs) ? layout.tabs : [];
+  if (!tabs.length) return baseTabs;
+  const byId = new Map(baseTabs.map((t) => [t.id, t]));
+  const used = new Set();
+  const result = [];
+  for (const lt of tabs) {
+    const base = byId.get(String(lt.key || "").trim());
+    if (!base) continue;                       // нет рендера для такого ключа — пропускаем
+    if (String(lt.visibility || "") === "hidden") { used.add(base.id); continue; }
+    result.push({ ...base, label: lt.label || base.label, emoji: lt.icon || null });
+    used.add(base.id);
+  }
+  // Базовые вкладки, не упомянутые в раскладке, не теряем — добавляем в конце.
+  for (const base of baseTabs) if (!used.has(base.id)) result.push(base);
+  return result.length ? result : baseTabs;
+}
+
+// Оформление профиля из раскладки → CSS-переменные (только заданные значения).
+function profileThemeStyle(theme) {
+  if (!theme) return {};
+  const v = {};
+  if (theme.card_background) v["--nt-card"] = theme.card_background;
+  if (theme.button_color) v["--nt-gold"] = theme.button_color;
+  if (theme.text_color) v["--nt-text"] = theme.text_color;
+  if (theme.border_color) v["--nt-line"] = theme.border_color;
+  return v;
+}
+
 function compactSlotName(slotKey = "") {
   const map = {
     helmet: "Шлем",
@@ -312,7 +372,7 @@ function compactSlotName(slotKey = "") {
     bolt_quiver: "Колчан болтов",
     special: "Особый слот",
   };
-  return map[slotKey] || slotKey || "—";
+  return map[slotKey] || itemSlotRu(slotKey) || "—";
 }
 
 function inventoryCapacity(profile) {
@@ -563,18 +623,24 @@ function ItemModal({ item, slotKey, position, readOnly = false, adminEdit = fals
     <div className="nt-modal-layer" onMouseDown={onClose}>
       <article className={`nt-modal ${qualityClass(item.quality)}`} style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
-        <div className="nt-modal-kicker">{item.category || "Предмет"}</div>
+        <div className="nt-modal-kicker">{itemCategoryRu(item.category) || "Предмет"}</div>
         <div className="nt-modal-title-row">
           <span className="nt-modal-item-icon"><ItemArt item={item} /></span>
           <div>
             <h3>{item.name || "Предмет"}</h3>
-            <div className="nt-modal-subtitle">{item.quality || "обычный"}{item.level ? ` · ур. ${item.level}` : ""}</div>
+            <div className="nt-modal-subtitle">{itemQualityRu(item.quality) || "Обычный"}{item.level ? ` · ур. ${item.level}` : ""}</div>
           </div>
         </div>
         <div className="nt-modal-grid">
-          <span>Тип</span><strong>{item.type || item.category || "—"}</strong>
+          <span>Тип</span><strong>{itemTypeRu(item.type) || itemCategoryRu(item.category) || "—"}</strong>
           <span>Слот</span><strong>{compactSlotName(slotKey || itemSlot(item))}</strong>
           <span>Количество</span><strong>×{item.amount || 1}</strong>
+          {accessTarget(item) ? <><span>Открывает доступ</span><strong>{accessTarget(item)}</strong></> : null}
+          {accessCondition(item) ? <><span>Условие</span><strong>{accessCondition(item)}</strong></> : null}
+          {itemSourceText(item) ? <><span>Источник</span><strong>{itemSourceText(item)}</strong></> : null}
+          {canTransferText(item) ? <><span>Можно передать</span><strong>{canTransferText(item)}</strong></> : null}
+          <span>Можно продать</span><strong>{canSellText(item)}</strong>
+          {actions.includes("Использовать") ? <><span>Можно использовать</span><strong>Да</strong></> : null}
           {sellPriceText ? <><span>Цена продажи</span><strong>{sellPriceText}</strong></> : null}
         </div>
         <p>{item.description || "Описание предмета пока не добавлено."}</p>
@@ -637,7 +703,7 @@ function DropItemModal({ item, position, onClose, onConfirm }) {
         {precious ? (
           <label className="nt-confirm-check">
             <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-            <span>Это <strong>{item.quality}</strong> предмет. Я понимаю, что выброшенный предмет восстановить нельзя.</span>
+            <span>Это <strong>{itemQualityRu(item.quality)}</strong> предмет. Я понимаю, что выброшенный предмет восстановить нельзя.</span>
           </label>
         ) : null}
         <footer className="nt-modal-actions">
@@ -1151,10 +1217,21 @@ function InfoTab({ profile }) {
   const activity = info.activity || {};
   const crafts = activity.craftingLevels || [];
   const fineList = activity.fineList || [];
+  const status = profile.status || null;
+  const places = (profile.ratingPlaces || []).filter((p) => p.place !== "—" && p.place != null);
   const [finesModal, setFinesModal] = useState(null);
   return (
     <div className="nt-stack">
-      <Panel title="Активность"><div className="nt-lines"><Row label="Дата регистрации" value={profile.player?.registrationDate || "—"} /><Row label="PVE убийства" value={activity.pveKills || 0} /><Row label="PVP убийства" value={activity.pvpKills || 0} /><Row label="Частицы душ" value={activity.soulParticlesAbsorbed || 0} /><div className="nt-row"><span>Штрафы</span>{fineList.length ? <button type="button" className="nt-fines-button" onClick={(event) => setFinesModal({ position: getFloatingPosition(event, 390, 360) })}>{`${fineList.length} активн. — подробнее`}</button> : <strong>нет активных штрафов</strong>}</div></div></Panel>
+      {/* Предупреждения/статус/рейтинги перенесены из убранной вкладки «Обзор» (ТЗ §1). */}
+      <ProfileWarnings warnings={profile.warnings} />
+      <Panel title="Активность"><div className="nt-lines">{status ? <Row label="Статус" value={status.label} /> : null}<Row label="Дата регистрации" value={profile.player?.registrationDate || "—"} /><Row label="PVE убийства" value={activity.pveKills || 0} /><Row label="PVP убийства" value={activity.pvpKills || 0} /><Row label="Частицы душ" value={activity.soulParticlesAbsorbed || 0} /><div className="nt-row"><span>Штрафы</span>{fineList.length ? <button type="button" className="nt-fines-button" onClick={(event) => setFinesModal({ position: getFloatingPosition(event, 390, 360) })}>{`${fineList.length} активн. — подробнее`}</button> : <strong>нет активных штрафов</strong>}</div></div></Panel>
+      {places.length ? (
+        <Panel title="Мои места в рейтингах">
+          <div className="nt-rating-places">
+            {places.map((p) => <div className="nt-rating-place" key={p.key}><span>{p.label}</span><b>{p.place} место</b></div>)}
+          </div>
+        </Panel>
+      ) : null}
       {finesModal ? <FinesModal fines={fineList} position={finesModal.position} onClose={() => setFinesModal(null)} /> : null}
       <CollapsiblePanel title="Ремёсла"><div className="nt-card-list nt-column-list">{crafts.length ? crafts.map((craft) => <div key={craft.name} className="nt-mini-card"><CardRow label={craft.name} value={`ур. ${craft.level}`} /><p>{craft.exp}</p></div>) : <p className="nt-empty-text">Ремёсла пока не развиты.</p>}</div></CollapsiblePanel>
       <CollapsiblePanel title="Достижения"><div className="nt-card-list nt-column-list">{(info.achievements || []).length ? info.achievements.map((achievement) => <div key={achievement.name || achievement} className="nt-mini-card"><CardRow label={achievement.name || achievement} value="Получено" /><p>{achievement.description || "—"}</p></div>) : <p className="nt-empty-text">Достижений пока нет.</p>}</div></CollapsiblePanel>
@@ -1560,48 +1637,10 @@ function ProfileWarnings({ warnings = [] }) {
   );
 }
 
-function OverviewTab({ profile }) {
-  const player = profile.player || {};
-  const status = profile.status || null;
-  const places = (profile.ratingPlaces || []).filter((p) => p.place !== "—" && p.place != null);
-  const expCurrent = player.experienceCurrent ?? 0;
-  const expNext = player.experienceToNext ?? 0;
-
-  // Модель персонажа в профиле не используется (дополнение к ТЗ §2): сверху —
-  // компактная карточка с основными данными в стилистике старого профиля.
-  return (
-    <div className="nt-overview">
-      <ProfileWarnings warnings={profile.warnings} />
-      <div className="nt-overview-grid">
-        <Panel title="Персонаж" className="nt-overview-character">
-          <div className="nt-overview-headinfo">
-            <div className="nt-overview-name">{player.nickname || "Безымянный"}</div>
-            <div className="nt-overview-sub">{player.raceName} · {player.genderLabel || "—"} · ур. {player.level}</div>
-            <div className="nt-overview-id ntp-mono">{player.userGlobalId || player.publicId || "—"}</div>
-            {status ? <div className="nt-overview-status">Статус: <b>{status.label}</b></div> : null}
-            <Row label="Опыт" value={`${expCurrent} / ${expNext}`} />
-            <Row label="Деньги" value={player.balanceText || "—"} />
-          </div>
-        </Panel>
-        <Panel title="Ресурсы" className="nt-overview-resources">
-          <ResourceBars parameters={profile.parameters} />
-        </Panel>
-      </div>
-      {places.length ? (
-        <Panel title="Мои места в рейтингах">
-          <div className="nt-rating-places">
-            {places.map((p) => <div className="nt-rating-place" key={p.key}><span>{p.label}</span><b>{p.place} место</b></div>)}
-          </div>
-        </Panel>
-      ) : null}
-    </div>
-  );
-}
-
 
 export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField, onSearchCourierRecipients, onSendCourierTransfer, onRedeemPromo, onAdminRemoveItem }) {
   const data = profileOrMock(profile);
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState("character");
   const [modal, setModal] = useState(null);
   const [slotModal, setSlotModal] = useState(null);
   const [dropModal, setDropModal] = useState(null);
@@ -1611,11 +1650,20 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
   // Сервисы (Передача/Промокод) недоступны в админ-просмотре/редактировании
   // чужого профиля — это личные действия игрока от своего лица.
   // Вкладка «Гильдия» появляется только при наличии блока guild.
-  const visibleTabs = [
+  const baseTabs = [
     ...TABS,
     ...(data.guild ? [GUILD_TAB] : []),
     ...((effectiveReadOnly || adminEdit) ? [] : [SERVICES_TAB]),
   ];
+  // Опубликованная раскладка профиля (ТЗ §3, рантайм) аддитивно переопределяет
+  // порядок/подпись/иконку/видимость ИЗВЕСТНЫХ вкладок. Контент рендерится по id,
+  // поэтому показываем только вкладки с готовым рендером; неизвестные ключи из
+  // конструктора игнорируются. Нет опубликованной раскладки → дефолт без изменений.
+  const visibleTabs = applyProfileLayoutTabs(baseTabs, data.profileLayout);
+  const layoutTheme = data.profileLayout?.theme || null;
+  // Защита: если текущая вкладка недоступна (напр. старое состояние «overview»),
+  // показываем первую доступную, чтобы профиль не оставался пустым (ТЗ §1).
+  const activeTab = visibleTabs.some((t) => t.id === tab) ? tab : (visibleTabs[0]?.id || "character");
   const background = data.assets?.background || "/assets/profile/backgrounds/1.png";
 
   const equipmentBySlot = data.equipment || {};
@@ -1691,23 +1739,22 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
   }
 
   return (
-    <main className={`nt-profile ${effectiveReadOnly ? "nt-profile-readonly" : ""}`.trim()} style={{ backgroundImage: `linear-gradient(rgba(5, 7, 7, .32), rgba(4, 4, 4, .50)), url(${background})` }}>
+    <main className={`nt-profile ${effectiveReadOnly ? "nt-profile-readonly" : ""}`.trim()} style={{ backgroundImage: `linear-gradient(rgba(5, 7, 7, .32), rgba(4, 4, 4, .50)), url(${layoutTheme?.profile_background || background})`, ...profileThemeStyle(layoutTheme) }}>
       <div className="nt-shell">
         <header className="nt-top">
           <div className="nt-title-block"><h1>Профиль персонажа</h1>{effectiveReadOnly ? <p className="nt-readonly-banner">Админский режим: только просмотр, изменения отключены.</p> : null}</div>
           <div className="nt-id">{data.player?.userGlobalId || data.player?.publicId || "NT-UNKNOWN"}</div>
         </header>
         <nav className="nt-tabs" aria-label="Разделы профиля">
-          {visibleTabs.map(({ id, label, icon }) => <button key={id} className={tab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon"><TabIcon type={icon} /></span><span className="nt-tab-text">{label}</span></button>)}
+          {visibleTabs.map(({ id, label, icon, emoji }) => <button key={id} className={activeTab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon">{emoji ? <span className="nt-tab-emoji">{emoji}</span> : <TabIcon type={icon} />}</span><span className="nt-tab-text">{label}</span></button>)}
         </nav>
         <section className="nt-content">
-          {tab === "overview" ? <OverviewTab profile={data} /> : null}
-          {tab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} readOnly={effectiveReadOnly} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} onEditProfileField={onEditProfileField} /> : null}
-          {tab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
-          {tab === "skills" ? <SkillsTab profile={data} readOnly={effectiveReadOnly} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
-          {tab === "info" ? <InfoTab profile={data} /> : null}
-          {tab === "guild" ? <GuildTab guild={data.guild} /> : null}
-          {tab === "services" ? <ServicesTab profile={data} onSearchRecipients={onSearchCourierRecipients} onSendTransfer={onSendCourierTransfer} onRedeemPromo={onRedeemPromo} /> : null}
+          {activeTab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} readOnly={effectiveReadOnly} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} onEditProfileField={onEditProfileField} /> : null}
+          {activeTab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
+          {activeTab === "skills" ? <SkillsTab profile={data} readOnly={effectiveReadOnly} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
+          {activeTab === "info" ? <InfoTab profile={data} /> : null}
+          {activeTab === "guild" ? <GuildTab guild={data.guild} /> : null}
+          {activeTab === "services" ? <ServicesTab profile={data} onSearchRecipients={onSearchCourierRecipients} onSendTransfer={onSendCourierTransfer} onRedeemPromo={onRedeemPromo} /> : null}
         </section>
       </div>
       <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} readOnly={effectiveReadOnly} adminEdit={adminEdit} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRequestDrop={requestDrop} onRequestSell={requestSell} onAdminRemoveItem={adminRemoveAndClose} />

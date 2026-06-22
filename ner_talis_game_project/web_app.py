@@ -34,7 +34,14 @@ from admin_achievement_api import create_admin_achievement_router
 from admin_messages_api import create_admin_messages_router
 from admin_item_api import create_admin_item_router
 from admin_effect_api import create_admin_effect_router
+from admin_fines_api import create_admin_fines_router
+from admin_skills_api import create_admin_skills_router
+from admin_promos_api import create_admin_promos_router
+from admin_profile_layout_api import create_admin_profile_layout_router
+from admin_city_api import create_admin_city_router
+from admin_uploads_api import create_admin_uploads_router
 from admin_site_api import create_admin_site_router
+from public_site_api import create_public_site_router
 from site_api import (
     create_profile_api_router,
     frontend_profile,
@@ -330,7 +337,14 @@ def create_app() -> FastAPI:
     app.include_router(create_admin_messages_router(storage))
     app.include_router(create_admin_item_router(storage))
     app.include_router(create_admin_effect_router(storage))
+    app.include_router(create_admin_fines_router(storage))
+    app.include_router(create_admin_skills_router(storage))
+    app.include_router(create_admin_promos_router(storage))
+    app.include_router(create_admin_profile_layout_router(storage))
+    app.include_router(create_admin_city_router(storage))
+    app.include_router(create_admin_uploads_router(storage))
     app.include_router(create_admin_site_router(storage))
+    app.include_router(create_public_site_router())
 
     # Очередь сообщений читает/пишет ту же БД, что и боты (SQLite/Postgres),
     # чтобы админка видела реальный статус доставки. На json-хранилище остаётся
@@ -497,6 +511,16 @@ def create_app() -> FastAPI:
         if not token:
             raise HTTPException(status_code=400, detail="В ссылке нет token просмотра профиля.")
         return HTMLResponse("<h1>Просмотр профиля игрока</h1><p>Соберите web/dist, чтобы открыть профиль в стиле сайта.</p>")
+
+    # Публичный сайт проекта (рантайм конструктора сайта, ТЗ §2): React-страница
+    # читает /api/public/site/*. Открыт всем; данные — только опубликованные.
+    @app.get("/site", response_class=HTMLResponse, response_model=None)
+    @app.get("/site/{slug}", response_class=HTMLResponse, response_model=None)
+    def public_site_page(slug: str | None = None):
+        react = _react_index_or_none()
+        if react:
+            return react
+        return HTMLResponse("<h1>Нер-Талис</h1><p>Соберите web/dist, чтобы открыть публичный сайт.</p>")
 
     @app.get("/api/player/profile", response_model=None)
     def profile_api(token: str = Query(..., min_length=16)):

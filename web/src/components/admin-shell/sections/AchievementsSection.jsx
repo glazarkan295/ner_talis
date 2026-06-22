@@ -8,7 +8,9 @@ import {
   fetchAchievements,
   updateAchievement,
 } from "../../../api/adminAchievementApi.js";
+import { tr, ITEM_QUALITY, ACH_TYPE, ACH_VISIBILITY, ACH_CONDITION_LOGIC, ACH_CONDITION_TYPE, ACH_PROGRESS_TYPE, ACH_REWARD_TYPE, ACH_REPEAT_PERIOD } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { MessageComposer } from "../MessageComposer.jsx";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 
@@ -122,31 +124,32 @@ export function AchievementsSection({ guarded, hasPerm }) {
             <Field label="Категория"><select value={d.category} disabled={disabled} onChange={(e) => set("category", e.target.value)}><option value="">— выбрать —</option>{(meta.categories || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
           </div>
           <div className="ntv2-form-row">
-            <Field label="Тип"><select value={d.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{meta.types.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
-            <Field label="Редкость"><select value={d.rarity} disabled={disabled} onChange={(e) => set("rarity", e.target.value)}>{meta.rarities.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
-            <Field label="Видимость"><select value={d.visibility} disabled={disabled} onChange={(e) => set("visibility", e.target.value)}>{meta.visibilities.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
-            <Field label="Прогресс"><select value={d.progress_type} disabled={disabled} onChange={(e) => set("progress_type", e.target.value)}>{meta.progressTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+            <Field label="Тип"><select value={d.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{meta.types.map((x) => <option key={x} value={x}>{tr(ACH_TYPE, x)}</option>)}</select></Field>
+            <Field label="Редкость"><select value={d.rarity} disabled={disabled} onChange={(e) => set("rarity", e.target.value)}>{meta.rarities.map((x) => <option key={x} value={x}>{tr(ITEM_QUALITY, x)}</option>)}</select></Field>
+            <Field label="Видимость"><select value={d.visibility} disabled={disabled} onChange={(e) => set("visibility", e.target.value)}>{meta.visibilities.map((x) => <option key={x} value={x}>{tr(ACH_VISIBILITY, x)}</option>)}</select></Field>
+            <Field label="Прогресс"><select value={d.progress_type} disabled={disabled} onChange={(e) => set("progress_type", e.target.value)}>{meta.progressTypes.map((x) => <option key={x} value={x}>{tr(ACH_PROGRESS_TYPE, x)}</option>)}</select></Field>
           </div>
           <Field label="Краткое описание"><textarea rows={2} value={d.short_description} disabled={disabled} onChange={(e) => set("short_description", e.target.value)} /></Field>
           <Field label="Полное описание"><textarea rows={3} value={d.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
           <Field label="Иконка (URL)"><input value={d.icon} disabled={disabled} onChange={(e) => set("icon", e.target.value)} /></Field>
+          <MessageComposer label="Уведомление о получении (изображение/формат/предпросмотр)" value={d.notify_message} category="achievements" uploadKey={`${editing.id || "ach"}_msg`} disabled={disabled} onChange={(v) => set("notify_message", v)} />
 
           <div className="ntv2-form-row">
-            <Field label="Логика условий"><select value={d.condition_logic} disabled={disabled} onChange={(e) => set("condition_logic", e.target.value)}>{meta.conditionLogic.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+            <Field label="Логика условий"><select value={d.condition_logic} disabled={disabled} onChange={(e) => set("condition_logic", e.target.value)}>{meta.conditionLogic.map((x) => <option key={x} value={x}>{tr(ACH_CONDITION_LOGIC, x)}</option>)}</select></Field>
             {d.condition_logic === "n_of" ? <Field label="N"><input type="number" value={d.condition_n} disabled={disabled} onChange={(e) => set("condition_n", e.target.value)} /></Field> : null}
           </div>
         </div>
 
         <RowEditor title="Условия" rows={d.conditions} disabled={disabled} onChange={(rows) => set("conditions", rows)} blank={{ type: meta.conditionTypes[0], amount: 1, target: "" }}
           render={(row, setRow) => (<>
-            <select value={row.type} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{meta.conditionTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select>
+            <select value={row.type} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{meta.conditionTypes.map((x) => <option key={x} value={x}>{tr(ACH_CONDITION_TYPE, x)}</option>)}</select>
             <input type="number" title="кол-во" style={{ width: 90 }} value={row.amount} disabled={disabled} onChange={(e) => setRow({ amount: e.target.value })} />
             <input className="ntv2-mono" placeholder="цель (id, опц.)" value={row.target || ""} disabled={disabled} onChange={(e) => setRow({ target: e.target.value })} />
           </>)} />
 
         <RowEditor title="Награды" rows={d.rewards} disabled={disabled} onChange={(rows) => set("rewards", rows)} blank={{ type: meta.rewardTypes[0], amount: 1, item_id: "", title_id: "" }}
           render={(row, setRow) => (<>
-            <select value={row.type} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{meta.rewardTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select>
+            <select value={row.type} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{meta.rewardTypes.map((x) => <option key={x} value={x}>{tr(ACH_REWARD_TYPE, x)}</option>)}</select>
             {(row.type === "item" || row.type === "unique_item") ? <input className="ntv2-mono" placeholder="item_id" value={row.item_id || ""} disabled={disabled} onChange={(e) => setRow({ item_id: e.target.value })} /> : null}
             {row.type === "title" ? <input placeholder="title_id" value={row.title_id || ""} disabled={disabled} onChange={(e) => setRow({ title_id: e.target.value })} /> : null}
             <input type="number" title="кол-во" style={{ width: 90 }} value={row.amount} disabled={disabled} onChange={(e) => setRow({ amount: e.target.value })} />
@@ -162,7 +165,7 @@ export function AchievementsSection({ guarded, hasPerm }) {
           <h4 className="ntv2-subhead">Повтор / сезон</h4>
           <div className="ntv2-form-row">
             <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.repeatable)} disabled={disabled} onChange={(e) => set("repeatable", e.target.checked)} /> Повторяемое</label>
-            {d.repeatable ? <Field label="Период"><select value={d.repeat_period} disabled={disabled} onChange={(e) => set("repeat_period", e.target.value)}><option value="">—</option>{meta.repeatPeriods.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field> : null}
+            {d.repeatable ? <Field label="Период"><select value={d.repeat_period} disabled={disabled} onChange={(e) => set("repeat_period", e.target.value)}><option value="">—</option>{meta.repeatPeriods.map((x) => <option key={x} value={x}>{tr(ACH_REPEAT_PERIOD, x)}</option>)}</select></Field> : null}
             <Field label="Дата начала (ISO)"><input value={d.start_date} disabled={disabled} onChange={(e) => set("start_date", e.target.value)} /></Field>
             <Field label="Дата окончания (ISO)"><input value={d.end_date} disabled={disabled} onChange={(e) => set("end_date", e.target.value)} /></Field>
             <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.repeat_yearly)} disabled={disabled} onChange={(e) => set("repeat_yearly", e.target.checked)} /> Каждый год</label>

@@ -671,7 +671,11 @@ button { cursor: pointer; }
 .nt-courier-pick { position: relative; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 4px; border-radius: 11px; border: 1px solid rgba(165, 132, 77, .18); background: linear-gradient(180deg, rgba(24,24,22,.48), rgba(0,0,0,.18)); color: var(--nt-text); cursor: pointer; }
 .nt-courier-pick:hover:not(:disabled) { border-color: rgba(220,177,97,.5); }
 .nt-courier-pick:disabled { opacity: .4; cursor: not-allowed; }
-.nt-courier-pick-art { width: 36px; height: 36px; }
+/* ItemArt в «Передаче» использует свой класс вместо .nt-item-art, поэтому
+   контейнер и картинку нужно ограничить здесь же — иначе img рисуется в
+   натуральную величину и ломает карточки (ТЗ §2). */
+.nt-courier-pick-art { position: relative; width: 48px; height: 48px; min-width: 48px; overflow: hidden; display: grid; place-items: center; color: #caa967; font-size: 18px; }
+.nt-courier-pick-art img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
 .nt-courier-pick-name { font-size: 9.5px; line-height: 1.15; text-align: center; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
 .nt-courier-pick-amount { font-size: 9px; color: #b9a278; }
 .nt-courier-selected { display: flex; flex-direction: column; gap: 7px; }
@@ -750,6 +754,27 @@ button { cursor: pointer; }
   line-height: 1.4;
 }
 .nt-confirm-check input { margin-top: 3px; }
+
+/* Опасные кнопки во всём профиле — высокий контраст (ТЗ §3.4): раньше
+   .nt-danger подсвечивался только в модалках, а в «Опасной зоне» кнопки
+   сливались с фоном и текст был нечитаем. Заливаем красным, светлый жирный
+   текст с тенью. Специфичность ≥ .nt-modal-actions .nt-danger и правило ниже —
+   поэтому применяется и там, и в danger-zone. */
+.nt-profile .nt-danger,
+.nt-profile .nt-modal-actions .nt-danger {
+  border: 1px solid #c0392b;
+  color: #fff4ee;
+  background: linear-gradient(180deg, #8e2b1c, #5e1a11);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .55);
+  font-weight: 600;
+}
+.nt-profile .nt-danger:hover,
+.nt-profile .nt-modal-actions .nt-danger:hover {
+  background: linear-gradient(180deg, #a8341f, #6e1f14);
+  border-color: #e0573f;
+}
+/* Сам блок «Опасной зоны» — заметная рамка/фон (надпись больше не нужна). */
+.nt-danger-zone { border-color: rgba(192, 57, 43, .55); background: rgba(192, 57, 43, .08); }
 
 /* --- Профиль V2: под-навигация вкладки «Сервисы» ----------------------- */
 .nt-subtabs {

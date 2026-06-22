@@ -51,6 +51,20 @@ EVENT_TYPES = (
 # Лимиты временных множителей мира (ТЗ §15) — превышение блокирует публикацию.
 MAX_WORLD_MULTIPLIER = 5.0
 
+# Типы повтора события (ТЗ §4.2): не только раз в год.
+REPEAT_TYPES = ("none", "weekly", "monthly", "yearly")
+
+# Типы наград мирового события (ТЗ §4.3).
+REWARD_TYPES = (
+    "experience", "coins", "item", "resource", "effect", "achievement",
+    "special_loot", "temp_buff", "temp_debuff", "event_shop", "special_location",
+)
+# Источники особой добычи события (ТЗ §4.4).
+SPECIAL_LOOT_SOURCES = (
+    "all_mobs", "selected_mobs", "all_events", "selected_events", "locations",
+    "search", "battle", "chest", "quest",
+)
+
 _store = EntityStore(
     env_var="WORLD_EVENTS_PATH",
     default_rel="data/world_events.json",
@@ -118,6 +132,60 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         elif value > MAX_WORLD_MULTIPLIER:
             errors.append(f"Множитель «{key}» превышает лимит ({MAX_WORLD_MULTIPLIER}).")
 
+    # Повтор события (ТЗ §4.1/§4.2).
+    if data.get("repeat_enabled"):
+        rtype = str(data.get("repeat_type") or "").strip()
+        if rtype and rtype not in REPEAT_TYPES:
+            errors.append(f"Неизвестный тип повтора: {rtype}.")
+        if rtype == "weekly":
+            wd = _num(data.get("repeat_weekday"))
+            if wd is None or wd < 0 or wd > 6:
+                errors.append("День недели повтора должен быть 0–6 (Пн–Вс).")
+        if rtype == "monthly":
+            dom = _num(data.get("repeat_day_of_month"))
+            if dom is None or dom < 1 or dom > 31:
+                errors.append("День месяца повтора должен быть 1–31.")
+        if rtype == "yearly":
+            mon = _num(data.get("repeat_month"))
+            if mon is not None and (mon < 1 or mon > 12):
+                errors.append("Месяц повтора должен быть 1–12.")
+        for key in ("repeat_start_hour", "repeat_end_hour"):
+            val = _num(data.get(key))
+            if val is not None and (val < 0 or val > 23):
+                errors.append(f"Час в «{key}» должен быть 0–23.")
+
+    # Награды события (ТЗ §4.3).
+    rewards = data.get("rewards")
+    if isinstance(rewards, list):
+        for i, row in enumerate(rewards, 1):
+            if not isinstance(row, dict):
+                errors.append(f"Награда {i}: неверный формат.")
+                continue
+            rtype = str(row.get("type") or "").strip()
+            if rtype and rtype not in REWARD_TYPES:
+                errors.append(f"Награда {i}: неизвестный тип «{rtype}».")
+            amt = _num(row.get("amount"))
+            if amt is not None and amt < 0:
+                errors.append(f"Награда {i}: количество не может быть отрицательным.")
+
+    # Особая добыча события (ТЗ §4.4).
+    special_loot = data.get("special_loot")
+    if isinstance(special_loot, list):
+        for i, row in enumerate(special_loot, 1):
+            if not isinstance(row, dict):
+                errors.append(f"Особая добыча {i}: неверный формат.")
+                continue
+            source = str(row.get("source") or "").strip()
+            if source and source not in SPECIAL_LOOT_SOURCES:
+                errors.append(f"Особая добыча {i}: неизвестный источник «{source}».")
+            chance = _num(row.get("chance"))
+            if chance is not None and (chance < 0 or chance > 100):
+                errors.append(f"Особая добыча {i}: шанс должен быть 0–100.")
+            mn = _num(row.get("min_count"))
+            mx = _num(row.get("max_count"))
+            if mn is not None and mx is not None and mn > mx:
+                errors.append(f"Особая добыча {i}: мин. количество больше макс.")
+
     if not str(data.get("start_message") or "").strip():
         warnings.append("Нет сообщения о начале события.")
     if not str(data.get("end_message") or "").strip():
@@ -127,5 +195,13 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         value = str(data.get(key) or "").strip()
         if value and _has_markup(value):
             errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+
+    # Вывод объявления игрокам (дополнение к ТЗ): изображение/формат/блоки.
+    announce_message = data.get("announce_message")
+    if announce_message:
+        from services.message_output_service import validate_message_output
+        result = validate_message_output(announce_message)
+        errors.extend(f"Объявление — {e}" for e in result["errors"])
+        warnings.extend(f"Объявление — {w}" for w in result["warnings"])
 
     return {"ok": not errors, "errors": errors, "warnings": warnings}

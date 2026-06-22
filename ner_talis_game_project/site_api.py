@@ -1365,6 +1365,17 @@ def _profile_warnings(player: dict[str, Any], *, overflow: int, free_attr: int, 
     return warnings
 
 
+def _published_profile_layout() -> dict[str, Any]:
+    """Опубликованная раскладка профиля (ТЗ §3, рантайм). Аддитивно и безопасно:
+    при любой ошибке/пустоте возвращает пустую раскладку, и профиль работает на
+    дефолтных вкладках/оформлении."""
+    try:
+        from services.profile_layout_service import published_layout
+        return published_layout()
+    except Exception:  # noqa: BLE001 - раскладка не должна ломать профиль
+        return {"tabs": [], "theme": None}
+
+
 def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
     prune_expired_effects(player)
     ensure_curse_bearer_effect(player)
@@ -1486,6 +1497,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         "ratingPlaces": _profile_rating_places(player),
         "services": _profile_services(player),
         "guild": _profile_guild(player),
+        "profileLayout": _published_profile_layout(),
         "assets": {
             "background": "/assets/profile/backgrounds/1.png",
             "raceModels": {

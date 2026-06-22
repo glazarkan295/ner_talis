@@ -2,6 +2,17 @@ import React, { useCallback, useEffect, useState } from "react";
 import { assignRole, clearRole, fetchRoles } from "../../../api/adminV2Api.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 
+// Краткое описание ролей (ТЗ §8.1): что роль может делать.
+const ROLE_DESCRIPTIONS = {
+  owner: "Владелец — полный доступ ко всему, включая управление ролями и доступами.",
+  admin: "Администратор — полный доступ к игрокам, конструкторам, промокодам и рассылкам (кроме управления ролями).",
+  support: "Поддержка — помощь игрокам: просмотр, награды, сообщения, разблокировка, очередь сообщений.",
+  moderator: "Модератор — следит за порядком: предупреждения, муты, базовый просмотр игроков и гильдий.",
+  content: "Контент — создаёт и правит черновики мира/предметов/эффектов/достижений/сайта (без публикации).",
+  economy: "Экономика/баланс — правит цены, дроп, награды, недельные лимиты и подтверждает события с наградами.",
+  read_only: "Только чтение — может просматривать данные, но ничего не изменяет.",
+};
+
 export function RolesSection({ guarded }) {
   const [data, setData] = useState(null);
   const [platform, setPlatform] = useState("telegram");
@@ -96,6 +107,7 @@ export function RolesSection({ guarded }) {
           {roles.map((r) => (
             <details className="ntv2-tech" key={r.role}>
               <summary>{r.label} — {(matrix[r.role] || []).includes("*") ? "все права" : `${(matrix[r.role] || []).length} прав`}</summary>
+              {ROLE_DESCRIPTIONS[r.role] ? <p className="ntv2-hint" style={{ margin: "6px 0 8px" }}>{ROLE_DESCRIPTIONS[r.role]}</p> : null}
               <div className="ntv2-perm-grid">
                 {(matrix[r.role] || []).map((perm) => <span key={perm} className="ntv2-perm-chip">{perm}</span>)}
               </div>

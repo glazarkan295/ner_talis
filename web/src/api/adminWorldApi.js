@@ -6,6 +6,13 @@ export function fetchWorldMeta() {
   return requestAdminJson(`/api/admin/v2/world/kinds?_=${Date.now()}`);
 }
 
+export function importExistingContent(kinds, overwrite, reason) {
+  return requestAdminJson(`/api/admin/v2/world/import`, {
+    method: "POST",
+    body: JSON.stringify({ kinds: kinds || [], overwrite: Boolean(overwrite), reason: reason || "" }),
+  });
+}
+
 export function fetchWorldItems(kind, status = "") {
   const params = new URLSearchParams();
   if (status) params.set("status", status);

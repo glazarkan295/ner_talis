@@ -6,9 +6,12 @@ import {
   fetchEffect,
   fetchEffectMeta,
   fetchEffects,
+  fetchEffectUsage,
+  importExistingEffects,
   updateEffect,
   validateEffect,
 } from "../../../api/adminEffectApi.js";
+import { tr, EFFECT_TYPE, EFFECT_SOURCE, EFFECT_TARGET, EFFECT_ACTIVE_WHEN, EFFECT_STACK_RULE, STAT, RESOURCE, CONTROL_KIND, ZONE_ELEMENT } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
@@ -35,6 +38,7 @@ export function EffectsSection({ guarded, hasPerm }) {
   const [statusFilter, setStatusFilter] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [usage, setUsage] = useState(null);
 
   const can = useMemo(() => ({
     create: hasPerm("effect.create"), edit: hasPerm("effect.edit"), validate: hasPerm("effect.validate"),
@@ -52,8 +56,10 @@ export function EffectsSection({ guarded, hasPerm }) {
   async function openItem(id) {
     const p = await guarded(() => fetchEffect(id));
     if (p?.item) setEditing({ id, data: { ...EMPTY, ...(p.item.data || {}) }, status: p.item.status, validation: p.validation, isNew: false });
+    const u = await guarded(() => fetchEffectUsage(id));
+    setUsage(u?.usage || []);
   }
-  function startCreate() { setEditing({ id: "", data: { ...EMPTY }, status: "draft", validation: null, isNew: true }); }
+  function startCreate() { setUsage(null); setEditing({ id: "", data: { ...EMPTY }, status: "draft", validation: null, isNew: true }); }
 
   async function save() {
     const e = editing;
@@ -86,21 +92,21 @@ export function EffectsSection({ guarded, hasPerm }) {
         <div className="ntv2-world-form">
           <div className="ntv2-form-row">
             <Field label="Название (админ)"><input value={d.effect_name} disabled={disabled} onChange={(e) => set("effect_name", e.target.value)} /></Field>
-            <Field label="Тип эффекта"><select value={d.effect_type} disabled={disabled} onChange={(e) => set("effect_type", e.target.value)}>{meta.effectTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+            <Field label="Тип эффекта"><select value={d.effect_type} disabled={disabled} onChange={(e) => set("effect_type", e.target.value)}>{meta.effectTypes.map((x) => <option key={x} value={x}>{tr(EFFECT_TYPE, x)}</option>)}</select></Field>
           </div>
           <div className="ntv2-form-row">
-            <Field label="Источник"><select value={d.source_type} disabled={disabled} onChange={(e) => set("source_type", e.target.value)}>{meta.sourceTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
-            <Field label="Цель"><select value={d.target} disabled={disabled} onChange={(e) => set("target", e.target.value)}>{meta.targets.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
-            <Field label="Когда работает"><select value={d.active_when} disabled={disabled} onChange={(e) => set("active_when", e.target.value)}>{meta.activeWhen.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
-            <Field label="Стак"><select value={d.stack_rule} disabled={disabled} onChange={(e) => set("stack_rule", e.target.value)}>{meta.stackRules.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+            <Field label="Источник"><select value={d.source_type} disabled={disabled} onChange={(e) => set("source_type", e.target.value)}>{meta.sourceTypes.map((x) => <option key={x} value={x}>{tr(EFFECT_SOURCE, x)}</option>)}</select></Field>
+            <Field label="Цель"><select value={d.target} disabled={disabled} onChange={(e) => set("target", e.target.value)}>{meta.targets.map((x) => <option key={x} value={x}>{tr(EFFECT_TARGET, x)}</option>)}</select></Field>
+            <Field label="Когда работает"><select value={d.active_when} disabled={disabled} onChange={(e) => set("active_when", e.target.value)}>{meta.activeWhen.map((x) => <option key={x} value={x}>{tr(EFFECT_ACTIVE_WHEN, x)}</option>)}</select></Field>
+            <Field label="Стак"><select value={d.stack_rule} disabled={disabled} onChange={(e) => set("stack_rule", e.target.value)}>{meta.stackRules.map((x) => <option key={x} value={x}>{tr(EFFECT_STACK_RULE, x)}</option>)}</select></Field>
           </div>
 
           {/* Type-specific selectors */}
           <div className="ntv2-form-row">
-            {et === "stat_modifier" ? <Field label="Характеристика"><select value={d.stat} disabled={disabled} onChange={(e) => set("stat", e.target.value)}>{meta.stats.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field> : null}
-            {["max_resource_modifier", "resource_regeneration", "absorb_effect"].includes(et) ? <Field label="Ресурс"><select value={d.resource} disabled={disabled} onChange={(e) => set("resource", e.target.value)}>{meta.resources.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field> : null}
-            {et === "control_effect" ? <Field label="Тип контроля"><select value={d.control_kind} disabled={disabled} onChange={(e) => set("control_kind", e.target.value)}>{meta.controlKinds.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field> : null}
-            {et === "zone_effect" ? <Field label="Стихия зоны"><select value={d.zone_element} disabled={disabled} onChange={(e) => set("zone_element", e.target.value)}>{meta.zoneElements.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field> : null}
+            {et === "stat_modifier" ? <Field label="Характеристика"><select value={d.stat} disabled={disabled} onChange={(e) => set("stat", e.target.value)}>{meta.stats.map((x) => <option key={x} value={x}>{tr(STAT, x)}</option>)}</select></Field> : null}
+            {["max_resource_modifier", "resource_regeneration", "absorb_effect"].includes(et) ? <Field label="Ресурс"><select value={d.resource} disabled={disabled} onChange={(e) => set("resource", e.target.value)}>{meta.resources.map((x) => <option key={x} value={x}>{tr(RESOURCE, x)}</option>)}</select></Field> : null}
+            {et === "control_effect" ? <Field label="Тип контроля"><select value={d.control_kind} disabled={disabled} onChange={(e) => set("control_kind", e.target.value)}>{meta.controlKinds.map((x) => <option key={x} value={x}>{tr(CONTROL_KIND, x)}</option>)}</select></Field> : null}
+            {et === "zone_effect" ? <Field label="Стихия зоны"><select value={d.zone_element} disabled={disabled} onChange={(e) => set("zone_element", e.target.value)}>{meta.zoneElements.map((x) => <option key={x} value={x}>{tr(ZONE_ELEMENT, x)}</option>)}</select></Field> : null}
           </div>
 
           <Field label="Текст для игрока (без формул)"><textarea rows={2} value={d.player_text} disabled={disabled} onChange={(e) => set("player_text", e.target.value)} /></Field>
@@ -130,6 +136,15 @@ export function EffectsSection({ guarded, hasPerm }) {
           </div>
         ) : null}
 
+        {!editing.isNew ? (
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Где используется</h4>
+            {usage === null ? <p className="ntv2-hint">Загрузка…</p>
+              : !usage.length ? <p className="ntv2-hint">Нигде не используется (можно безопасно отключить/удалить).</p>
+              : <div className="ntv2-list">{usage.map((u, i) => <div className="ntv2-list-row" key={i}><span className="ntv2-badge">{u.kind}</span><b>{u.name}</b><span className="ntv2-mono">{u.id}</span></div>)}</div>}
+          </div>
+        ) : null}
+
         <div className="ntv2-form-row" style={{ marginTop: 14 }}>
           {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={editing.isNew && !editing.id.trim()} onClick={save}>{editing.isNew ? "Создать" : "Сохранить"}</button> : null}
           {!editing.isNew && can.validate ? <button type="button" className="ntv2-btn" onClick={runValidate}>Проверить</button> : null}
@@ -154,6 +169,18 @@ export function EffectsSection({ guarded, hasPerm }) {
           {statuses.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         {can.create ? <button type="button" className="ntv2-btn ntv2-btn-primary" onClick={startCreate}>＋ Новый эффект</button> : null}
+        {can.publish ? (
+          <button type="button" className="ntv2-btn" title="Добавить известные состояния и проклятия в конструктор" onClick={() => setConfirm({
+            title: "Импортировать существующие эффекты?",
+            body: <p>Известные состояния и проклятия будут добавлены в конструктор как опубликованные записи (повторно — без дублей).</p>,
+            confirmLabel: "Импортировать",
+            run: async (r) => {
+              const res = await guarded(() => importExistingEffects(false, r), "Импорт выполнен.");
+              await load();
+              if (res) window.alert(`Создано: ${res.created ?? 0}, пропущено: ${res.skipped ?? 0}`);
+            },
+          })}>Импортировать существующие</button>
+        ) : null}
       </div>
       {!list.length ? <p className="ntv2-hint">Эффектов нет.</p> : null}
       <div className="ntv2-list">

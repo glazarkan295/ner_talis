@@ -8,10 +8,12 @@ import {
   grantRewards,
   messagePlayer,
   openPlayerView,
+  repairFines,
   resetPlayer,
   unstuckPlayer,
 } from "../../../api/adminV2Api.js";
 import { loadCatalog } from "../../../api/adminApi.js";
+import { tr, FINE_STATUS } from "../../../i18n/adminLabels.js";
 import {
   fetchPlayerAchievements,
   grantAchievementToPlayer,
@@ -19,6 +21,7 @@ import {
 } from "../../../api/adminAchievementApi.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { TechnicalData } from "../TechnicalData.jsx";
+import { EmojiTextarea } from "../EmojiField.jsx";
 
 // Admin achievements panel for a player: progress + manual grant/revoke.
 function AchievementsPanel({ gameId, guarded, hasPerm }) {
@@ -240,7 +243,7 @@ export function PlayerCard({ gameId, guarded, hasPerm, onBack, onDeleted }) {
       {hasPerm("players.message") ? (
         <div className="ntv2-panel">
           <h3>Сообщение игроку</h3>
-          <textarea rows={3} placeholder="Текст сообщения — придёт в чат бота" value={message} onChange={(e) => setMessage(e.target.value)} style={{ width: "100%", boxSizing: "border-box" }} />
+          <EmojiTextarea rows={3} placeholder="Текст сообщения — придёт в чат бота" value={message} onChange={setMessage} style={{ width: "100%", boxSizing: "border-box" }} />
           <div className="ntv2-form-row" style={{ marginTop: 8 }}>
             <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={!message.trim()} onClick={() => sendMessage("")}>Отправить</button>
           </div>
@@ -269,20 +272,29 @@ export function PlayerCard({ gameId, guarded, hasPerm, onBack, onDeleted }) {
                 <div className="ntv2-list-row" key={f.id}>
                   <span>{f.source || "штраф"}</span>
                   <span className="ntv2-badge">{f.amount} меди</span>
-                  <span className="ntv2-hint">день {f.day} · {f.status}</span>
+                  <span className="ntv2-hint">день {f.day} · {tr(FINE_STATUS, f.status)}</span>
                 </div>
               ))}
             </div>
           )}
-          {fines.length ? (
-            <button type="button" className="ntv2-btn ntv2-btn-danger" style={{ marginTop: 10 }} onClick={() => setConfirm({
-              title: "Простить все штрафы?",
-              body: <p>С игрока будут сняты все активные штрафы ({fines.length}) и снят запрет на перемещение.</p>,
-              confirmLabel: "Простить",
-              dangerous: true,
-              run: async (reason) => { await guarded(() => forgiveFine(gameId, reason), "Штрафы прощены."); await load(); },
-            })}>Простить штрафы</button>
-          ) : null}
+          <div className="ntv2-form-row" style={{ marginTop: 10 }}>
+            {fines.length ? (
+              <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({
+                title: "Простить все штрафы?",
+                body: <p>С игрока будут сняты все активные штрафы ({fines.length}) и снят запрет на перемещение.</p>,
+                confirmLabel: "Простить",
+                dangerous: true,
+                run: async (reason) => { await guarded(() => forgiveFine(gameId, reason), "Штрафы прощены."); await load(); },
+              })}>Простить штрафы</button>
+            ) : null}
+            {/* §6: найти и починить зависшие штрафы (терминальные, что висят как активные). */}
+            <button type="button" className="ntv2-btn" onClick={async () => {
+              const res = await guarded(() => repairFines(gameId, "проверка штрафов из панели"), "Проверка штрафов выполнена.");
+              await load();
+              const rep = res?.report;
+              if (rep) window.alert(rep.fixed ? `Исправлено. Состояние: ${rep.state}. Изменения: ${(rep.issues || []).join(", ") || "—"}` : `Штрафы в порядке. Состояние: ${rep.state}.`);
+            }}>Проверить штрафы</button>
+          </div>
         </div>
       ) : null}
 

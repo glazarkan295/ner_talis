@@ -8,10 +8,16 @@ import { GuildsSection } from "./sections/GuildsSection.jsx";
 import { EventsSection } from "./sections/EventsSection.jsx";
 import { AchievementsSection } from "./sections/AchievementsSection.jsx";
 import { MessagesSection } from "./sections/MessagesSection.jsx";
+import { PromosSection } from "./sections/PromosSection.jsx";
 import { ItemsSection } from "./sections/ItemsSection.jsx";
 import { EffectsSection } from "./sections/EffectsSection.jsx";
+import { FinesSection } from "./sections/FinesSection.jsx";
+import { SkillsSection } from "./sections/SkillsSection.jsx";
 import { SiteSection } from "./sections/SiteSection.jsx";
+import { ProfileLayoutSection } from "./sections/ProfileLayoutSection.jsx";
+import { CitySection } from "./sections/CitySection.jsx";
 import { AuditSection } from "./sections/AuditSection.jsx";
+import { ReferenceSection } from "./sections/ReferenceSection.jsx";
 import { RolesSection } from "./sections/RolesSection.jsx";
 import { SessionsSection } from "./sections/SessionsSection.jsx";
 
@@ -23,11 +29,17 @@ const NAV = [
   { id: "world", label: "Конструктор мира", icon: "🌍", perm: "world.view" },
   { id: "items", label: "Конструктор предметов", icon: "📦", perm: "item.view" },
   { id: "effects", label: "Конструктор эффектов", icon: "✨", perm: "effect.view" },
+  { id: "fines", label: "Конструктор штрафов", icon: "⚖️", perm: "fine_def.view" },
+  { id: "skills", label: "Конструктор навыков", icon: "🌀", perm: "skill_def.view" },
   { id: "site", label: "Конструктор сайта", icon: "🌐", perm: "site.view" },
+  { id: "profile_layout", label: "Раскладка профиля", icon: "🪪", perm: "profile_layout.view" },
+  { id: "city", label: "Город и крепость", icon: "🏙️", perm: "city.view" },
   { id: "guilds", label: "Гильдии", icon: "🏰", perm: "guild.view" },
   { id: "events", label: "Мировые события", icon: "🌌", perm: "world_event.view" },
   { id: "achievements", label: "Достижения", icon: "🏆", perm: "achievement.view" },
   { id: "messages", label: "Очередь сообщений", icon: "📨", perm: "messages.view_queue" },
+  { id: "promos", label: "Промокоды и рассылки", icon: "🎟️", perm: "promos.view" },
+  { id: "reference", label: "Справочник", icon: "📖", perm: null },
   { id: "audit", label: "Аудит", icon: "📜", perm: "audit.view" },
   { id: "sessions", label: "Сессии", icon: "🔑", perm: "system.view" },
   { id: "roles", label: "Роли и доступ", icon: "🛡️", perm: "roles.manage" },
@@ -123,11 +135,17 @@ export function AdminShell() {
         {active === "world" && hasPerm("world.view") && <WorldSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "items" && hasPerm("item.view") && <ItemsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "effects" && hasPerm("effect.view") && <EffectsSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "fines" && hasPerm("fine_def.view") && <FinesSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "skills" && hasPerm("skill_def.view") && <SkillsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "site" && hasPerm("site.view") && <SiteSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "profile_layout" && hasPerm("profile_layout.view") && <ProfileLayoutSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "city" && hasPerm("city.view") && <CitySection guarded={guarded} hasPerm={hasPerm} />}
         {active === "guilds" && hasPerm("guild.view") && <GuildsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "events" && hasPerm("world_event.view") && <EventsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "achievements" && hasPerm("achievement.view") && <AchievementsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "messages" && hasPerm("messages.view_queue") && <MessagesSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "promos" && hasPerm("promos.view") && <PromosSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "reference" && <ReferenceSection />}
         {active === "audit" && hasPerm("audit.view") && <AuditSection guarded={guarded} />}
         {active === "sessions" && hasPerm("system.view") && (
           <SessionsSection guarded={guarded} canRevoke={hasPerm("system.manage")} />

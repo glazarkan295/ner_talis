@@ -32,7 +32,13 @@ from services.admin_rbac import (
     PERM_NEWS_EDIT,
     PERM_NEWS_PUBLISH,
     PERM_NEWS_VIEW,
+    PERM_RATINGS_CREATE,
+    PERM_RATINGS_EDIT,
+    PERM_RATINGS_PUBLISH,
+    PERM_RATINGS_VIEW,
     PERM_SITE_HOMEPAGE_EDIT,
+    PERM_SITE_MENU_EDIT,
+    PERM_SITE_SETTINGS_EDIT,
     PERM_SITE_VIEW,
     identity_key,
     require_permission,
@@ -47,6 +53,17 @@ _KIND_CONFIG = {
     site.KIND_FAQ: {"family": "faq", "view": PERM_FAQ_VIEW, "create": PERM_FAQ_CREATE, "edit": PERM_FAQ_EDIT, "publish": PERM_FAQ_PUBLISH, "archive": PERM_FAQ_PUBLISH},
     site.KIND_BANNER: {"family": "site", "view": PERM_SITE_VIEW, "create": PERM_SITE_HOMEPAGE_EDIT, "edit": PERM_SITE_HOMEPAGE_EDIT, "publish": PERM_SITE_HOMEPAGE_EDIT, "archive": PERM_SITE_HOMEPAGE_EDIT},
     site.KIND_ANNOUNCEMENT: {"family": "site", "view": PERM_SITE_VIEW, "create": PERM_SITE_HOMEPAGE_EDIT, "edit": PERM_SITE_HOMEPAGE_EDIT, "publish": PERM_SITE_HOMEPAGE_EDIT, "archive": PERM_SITE_HOMEPAGE_EDIT},
+    # Расширение конструктора сайта (§2): страницы/блоки — homepage_edit; меню —
+    # menu_edit; оформление — settings_edit; посты — как новости; рейтинги — ratings.*;
+    # лор и «что где находится» — семья гайдов (контент-роль ведёт черновики).
+    site.KIND_PAGE: {"family": "site", "view": PERM_SITE_VIEW, "create": PERM_SITE_HOMEPAGE_EDIT, "edit": PERM_SITE_HOMEPAGE_EDIT, "publish": PERM_SITE_HOMEPAGE_EDIT, "archive": PERM_SITE_HOMEPAGE_EDIT},
+    site.KIND_PAGE_BLOCK: {"family": "site", "view": PERM_SITE_VIEW, "create": PERM_SITE_HOMEPAGE_EDIT, "edit": PERM_SITE_HOMEPAGE_EDIT, "publish": PERM_SITE_HOMEPAGE_EDIT, "archive": PERM_SITE_HOMEPAGE_EDIT},
+    site.KIND_MENU_ITEM: {"family": "site", "view": PERM_SITE_VIEW, "create": PERM_SITE_MENU_EDIT, "edit": PERM_SITE_MENU_EDIT, "publish": PERM_SITE_MENU_EDIT, "archive": PERM_SITE_MENU_EDIT},
+    site.KIND_THEME: {"family": "site", "view": PERM_SITE_VIEW, "create": PERM_SITE_SETTINGS_EDIT, "edit": PERM_SITE_SETTINGS_EDIT, "publish": PERM_SITE_SETTINGS_EDIT, "archive": PERM_SITE_SETTINGS_EDIT},
+    site.KIND_POST: {"family": "news", "view": PERM_NEWS_VIEW, "create": PERM_NEWS_CREATE, "edit": PERM_NEWS_EDIT, "publish": PERM_NEWS_PUBLISH, "archive": PERM_NEWS_ARCHIVE},
+    site.KIND_RATING: {"family": "ratings", "view": PERM_RATINGS_VIEW, "create": PERM_RATINGS_CREATE, "edit": PERM_RATINGS_EDIT, "publish": PERM_RATINGS_PUBLISH, "archive": PERM_RATINGS_PUBLISH},
+    site.KIND_LORE: {"family": "guides", "view": PERM_GUIDES_VIEW, "create": PERM_GUIDES_CREATE, "edit": PERM_GUIDES_EDIT, "publish": PERM_GUIDES_PUBLISH, "archive": PERM_GUIDES_ARCHIVE},
+    site.KIND_WHERE_IS: {"family": "guides", "view": PERM_GUIDES_VIEW, "create": PERM_GUIDES_CREATE, "edit": PERM_GUIDES_EDIT, "publish": PERM_GUIDES_PUBLISH, "archive": PERM_GUIDES_ARCHIVE},
 }
 
 
@@ -111,6 +128,8 @@ def _cfg(kind: str) -> dict[str, Any]:
 def _title(data: dict[str, Any], kind: str) -> str:
     if kind == site.KIND_FAQ:
         return str(data.get("question") or "")
+    if kind == site.KIND_MENU_ITEM:
+        return str(data.get("label") or "")
     return str(data.get("title") or "")
 
 
@@ -127,6 +146,13 @@ def create_admin_site_router(get_storage) -> APIRouter:
             "newsCategories": list(site.NEWS_CATEGORIES),
             "guideDifficulties": list(site.GUIDE_DIFFICULTIES),
             "bannerTypes": list(site.BANNER_TYPES),
+            "blockTypes": list(site.PAGE_BLOCK_TYPES),
+            "pageVisibilities": list(site.PAGE_VISIBILITIES),
+            "blockWidths": list(site.BLOCK_WIDTHS),
+            "blockAligns": list(site.BLOCK_ALIGNS),
+            "ratingTypes": list(site.RATING_TYPES),
+            "ratingPeriods": list(site.RATING_PERIODS),
+            "loreTypes": list(site.LORE_TYPES),
         }
 
     @router.get("/{kind}")
@@ -143,6 +169,11 @@ def create_admin_site_router(get_storage) -> APIRouter:
         if item is None:
             raise HTTPException(status_code=404, detail="Материал не найден.")
         return {"ok": True, "item": item, "validation": site.validate(kind, item)}
+
+    @router.get("/{kind}/{content_id}/where-used")
+    def site_where_used(kind: str, content_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        _require(_session(get_storage(), request, token), _cfg(kind)["view"])
+        return {"ok": True, "usedBy": site.where_used(content_id)}
 
     @router.post("/{kind}")
     def create(kind: str, payload: IdDataRequest, request: Request) -> dict[str, Any]:

@@ -110,6 +110,38 @@ def _truthy(value: Any) -> bool:
     return bool(value) and str(value).strip().lower() not in {"0", "false", "no", ""}
 
 
+def where_used(effect_id: str) -> list[dict[str, Any]]:
+    """Где используется эффект (ТЗ §12): мобы/зоны/события, ссылающиеся на него.
+
+    Сканирует конструктор мира (world_content_registry): mob_effect.effect_id,
+    защита зон location_zone.protections[].effect_id и поле effect у событий.
+    Возвращает [{kind, id, name}]. Реестр недоступен → пустой список."""
+    eid = str(effect_id or "").strip()
+    if not eid:
+        return []
+    used: list[dict[str, Any]] = []
+    try:
+        from services import world_content_registry as wcr
+    except Exception:
+        return []
+
+    def _name(env: dict[str, Any]) -> str:
+        data = env.get("data") or {}
+        return str(data.get("name") or env.get("id"))
+
+    for env in wcr.list_content(wcr.KIND_MOB_EFFECT):
+        if str((env.get("data") or {}).get("effect_id") or "") == eid:
+            used.append({"kind": "mob_effect", "id": env.get("id"), "name": _name(env)})
+    for env in wcr.list_content(wcr.KIND_LOCATION_ZONE):
+        protections = (env.get("data") or {}).get("protections")
+        if isinstance(protections, list) and any(str((p or {}).get("effect_id") or "") == eid for p in protections if isinstance(p, dict)):
+            used.append({"kind": "location_zone", "id": env.get("id"), "name": _name(env)})
+    for env in wcr.list_content(wcr.KIND_EVENT):
+        if str((env.get("data") or {}).get("effect") or "") == eid:
+            used.append({"kind": "event", "id": env.get("id"), "name": _name(env)})
+    return used
+
+
 def validate(envelope: dict[str, Any]) -> dict[str, Any]:
     """Проверка определения эффекта (ТЗ §1.1, §1.2, баланс)."""
     data = envelope.get("data") or {}

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { fetchAudit } from "../../../api/adminV2Api.js";
+import { tr, ACTION_LABEL } from "../../../i18n/adminLabels.js";
 import { TechnicalData } from "../TechnicalData.jsx";
 
 const EMPTY_FILTERS = {
@@ -65,7 +66,7 @@ export function AuditSection({ guarded }) {
             <div key={record.created_at + ":" + index} className={`ntv2-audit-row${record.dangerous ? " ntv2-audit-danger" : ""}${isError ? " ntv2-audit-error" : ""}`}>
               <div className="ntv2-audit-head">
                 <span className="ntv2-audit-time">{record.created_at || "—"}</span>
-                <span className="ntv2-audit-action">{action}</span>
+                <span className="ntv2-audit-action" title={action}>{tr(ACTION_LABEL, action)}</span>
                 {record.dangerous ? <span className="ntv2-badge ntv2-badge-danger">опасное</span> : null}
                 {isError ? <span className="ntv2-badge ntv2-badge-error">ошибка</span> : null}
               </div>
