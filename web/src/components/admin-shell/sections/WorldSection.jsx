@@ -138,7 +138,7 @@ function LocationSelect({ value, onChange, options, disabled }) {
   );
 }
 
-function LocationForm({ value, onChange, meta, disabled }) {
+function LocationForm({ value, onChange, meta, disabled, uploadKey }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
   const flag = (key, label) => (
     <label className="ntv2-check" key={key}>
@@ -164,6 +164,7 @@ function LocationForm({ value, onChange, meta, disabled }) {
         {flag("can_search", "Поиск")}{flag("can_camp", "Лагерь")}{flag("can_fish", "Рыбалка")}
         {flag("can_teleport", "Телепорт")}{flag("city_functions", "Городские функции")}{flag("safe", "Безопасная")}
       </div>
+      <MessageComposer label="Сообщение при входе (изображение/формат/предпросмотр)" value={value.scene_message} category="locations" uploadKey={`${uploadKey || "location"}_msg`} disabled={disabled} onChange={(v) => set("scene_message", v)} />
     </div>
   );
 }

@@ -514,6 +514,7 @@ def _validate_location(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
         except Exception:
             pass
 
+    _validate_player_message(data.get("scene_message"), "Сообщение при входе", errors, warnings)
     return errors, warnings
 
 
