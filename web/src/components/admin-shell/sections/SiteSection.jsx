@@ -16,6 +16,7 @@ import {
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { ImageUploadField } from "../ImageUploadField.jsx";
+import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 
 const KIND_LABELS = {
   news: "📰 Новости", guide: "📚 Гайды", faq: "❓ FAQ", banner: "🎌 Баннеры", announcement: "📢 Объявления",
@@ -265,6 +266,7 @@ export function SiteSection({ guarded, hasPerm }) {
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [usedBy, setUsedBy] = useState(null);
+  const [query, setQuery] = useState("");
 
   // Права по типу — зеркало admin_site_api._KIND_CONFIG.
   const can = useMemo(() => KIND_CAN(kind, hasPerm), [kind, hasPerm]);
@@ -367,10 +369,12 @@ export function SiteSection({ guarded, hasPerm }) {
           {statuses.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         {can.create ? <button type="button" className="ntv2-btn ntv2-btn-primary" onClick={startCreate}>{KIND_NEW[kind]}</button> : null}
+        <SearchBox value={query} onChange={setQuery} />
       </div>
       {!list.length ? <p className="ntv2-hint">Материалов нет.</p> : null}
+      <NoResults query={list.length ? query : ""} />
       <div className="ntv2-list">
-        {list.map((item) => (
+        {filterEntities(list, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>
             <b>{itemTitle(kind, item)}</b>
             <span className="ntv2-mono">{item.id}</span>

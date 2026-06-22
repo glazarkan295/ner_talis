@@ -16,6 +16,7 @@ import {
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { EmojiInput } from "../EmojiField.jsx";
 import { ImageUploadField } from "../ImageUploadField.jsx";
+import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 const KIND_LABELS = { profile_tab: "📑 Вкладки", profile_block: "🧩 Блоки", profile_theme: "🎨 Оформление" };
@@ -131,6 +132,7 @@ export function ProfileLayoutSection({ guarded, hasPerm }) {
   const [confirm, setConfirm] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [usedBy, setUsedBy] = useState(null);
+  const [query, setQuery] = useState("");
 
   const can = useMemo(() => ({
     edit: hasPerm("profile_layout.edit"), publish: hasPerm("profile_layout.publish"),
@@ -235,11 +237,13 @@ export function ProfileLayoutSection({ guarded, hasPerm }) {
         </select>
         {can.edit ? <button type="button" className="ntv2-btn ntv2-btn-primary" onClick={startCreate}>{KIND_NEW[kind]}</button> : null}
         <button type="button" className="ntv2-btn" onClick={() => setShowPreview((s) => !s)}>{showPreview ? "Скрыть предпросмотр" : "Предпросмотр раскладки"}</button>
+        <SearchBox value={query} onChange={setQuery} />
       </div>
       {showPreview ? <LayoutPreview guarded={guarded} /> : null}
       {!list.length ? <p className="ntv2-hint">Объектов нет.</p> : null}
+      <NoResults query={list.length ? query : ""} />
       <div className="ntv2-list">
-        {list.map((item) => (
+        {filterEntities(list, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>
             <b>{itemTitle(item)}</b>
             <span className="ntv2-mono">{item.id}</span>

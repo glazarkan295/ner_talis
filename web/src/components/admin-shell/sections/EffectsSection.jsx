@@ -13,6 +13,7 @@ import {
 } from "../../../api/adminEffectApi.js";
 import { tr, EFFECT_TYPE, EFFECT_SOURCE, EFFECT_TARGET, EFFECT_ACTIVE_WHEN, EFFECT_STACK_RULE, STAT, RESOURCE, CONTROL_KIND, ZONE_ELEMENT } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 
@@ -36,6 +37,7 @@ export function EffectsSection({ guarded, hasPerm }) {
   const [meta, setMeta] = useState(null);
   const [list, setList] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
+  const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [usage, setUsage] = useState(null);
@@ -181,10 +183,12 @@ export function EffectsSection({ guarded, hasPerm }) {
             },
           })}>Импортировать существующие</button>
         ) : null}
+        <SearchBox value={query} onChange={setQuery} />
       </div>
       {!list.length ? <p className="ntv2-hint">Эффектов нет.</p> : null}
+      <NoResults query={list.length ? query : ""} />
       <div className="ntv2-list">
-        {list.map((item) => (
+        {filterEntities(list, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>
             <b>{item.data?.effect_name || item.id}</b>
             <span className="ntv2-mono">{item.id}</span>
