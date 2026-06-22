@@ -211,6 +211,27 @@ export const SKILL_WEAPON_REQUIREMENT = {
   bow: "Лук", shield: "Щит", crossbow: "Арбалет", staff: "Посох", magic_book: "Магическая книга",
 };
 
+// --- Конструктор раскладки профиля -----------------------------------------
+export const PROFILE_LAYOUT_KIND = {
+  profile_tab: "Вкладка", profile_block: "Блок", profile_theme: "Оформление",
+};
+export const PROFILE_BLOCK_TYPE = {
+  main_info: "Основные данные", resources: "HP/мана/дух/энергия", stats: "Характеристики",
+  equipment: "Экипировка", inventory: "Инвентарь", effects: "Эффекты", fines: "Штрафы",
+  warnings: "Предупреждения", activity: "Активность", currency: "Валюта", skills: "Навыки",
+  passive_skills: "Пассивные навыки", services: "Сервисы", transfer: "Передача предметов",
+  pavilion: "Торговый павильон", danger_zone: "Опасная зона",
+};
+export const PROFILE_VISIBILITY = {
+  always: "Всегда", has_data: "Если есть данные", conditional: "По условию", hidden: "Скрыт",
+};
+export const PROFILE_BLOCK_WIDTH = { full: "Полная", half: "Половина", third: "Треть" };
+export const PROFILE_TAB_PRESET = {
+  character: "Персонаж", inventory: "Инвентарь", skills: "Навыки", services: "Сервисы",
+  info: "Информация", effects: "Эффекты", activity: "Активность", pavilion: "Торговый Павильон",
+  achievements: "Достижения", raids: "Рейды",
+};
+
 // --- Мировые события -------------------------------------------------------
 export const WORLD_EVENT_TYPE = {
   festive: "Праздничное", seasonal: "Сезонное", permanent: "Постоянное", threat: "Угроза",

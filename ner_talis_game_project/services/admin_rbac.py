@@ -412,6 +412,9 @@ DANGEROUS_ACTIONS = frozenset({
     "ratings.publish",
     "ratings.reward",
     "profile_layout.publish",
+    "profile_layout.disable",
+    "profile_layout.archive",
+    "profile_layout.delete",
     "pavilion.block",
     "site.settings_edit",
 })
