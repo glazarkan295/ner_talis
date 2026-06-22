@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { profileMockData } from "./profileMockData.js";
+import {
+  itemTypeRu, itemCategoryRu, itemQualityRu, itemSlotRu, itemSourceRu, yesNo,
+} from "../../i18n/itemLabels.js";
 
 const TABS = [
   // Вкладка «Обзор» убрана (ТЗ §1): её данные перенесены — параметры/эффекты в
@@ -296,6 +299,31 @@ function itemSellPriceText(item) {
   return `${price} медных`;
 }
 
+// Доступ к локации, который открывает предмет (ТЗ §4) — показываем, если задан.
+function accessTarget(item) {
+  if (!item || item.opens_access === false) return "";
+  return String(item.access_target_name || item.access_target || item.accessTarget || "").trim();
+}
+function accessCondition(item) {
+  if (!item) return "";
+  return String(item.access_text_condition || item.access_condition || item.accessCondition || "").trim();
+}
+// Источник получения (русское название).
+function itemSourceText(item) {
+  const raw = item?.source ?? item?.origin ?? item?.source_type;
+  return raw ? itemSourceRu(raw) : "";
+}
+// Можно ли передать/продать (Да/Нет). Неизвестно → не показываем строку.
+function canTransferText(item) {
+  const v = item?.canTransfer ?? item?.can_transfer ?? item?.transferable;
+  if (v === undefined || v === null) return "";
+  return yesNo(v);
+}
+function canSellText(item) {
+  const v = item?.canSell ?? item?.can_sell;
+  return v === false ? "Нет" : "Да";
+}
+
 function compactSlotName(slotKey = "") {
   const map = {
     helmet: "Шлем",
@@ -313,7 +341,7 @@ function compactSlotName(slotKey = "") {
     bolt_quiver: "Колчан болтов",
     special: "Особый слот",
   };
-  return map[slotKey] || slotKey || "—";
+  return map[slotKey] || itemSlotRu(slotKey) || "—";
 }
 
 function inventoryCapacity(profile) {
@@ -564,18 +592,24 @@ function ItemModal({ item, slotKey, position, readOnly = false, adminEdit = fals
     <div className="nt-modal-layer" onMouseDown={onClose}>
       <article className={`nt-modal ${qualityClass(item.quality)}`} style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
-        <div className="nt-modal-kicker">{item.category || "Предмет"}</div>
+        <div className="nt-modal-kicker">{itemCategoryRu(item.category) || "Предмет"}</div>
         <div className="nt-modal-title-row">
           <span className="nt-modal-item-icon"><ItemArt item={item} /></span>
           <div>
             <h3>{item.name || "Предмет"}</h3>
-            <div className="nt-modal-subtitle">{item.quality || "обычный"}{item.level ? ` · ур. ${item.level}` : ""}</div>
+            <div className="nt-modal-subtitle">{itemQualityRu(item.quality) || "Обычный"}{item.level ? ` · ур. ${item.level}` : ""}</div>
           </div>
         </div>
         <div className="nt-modal-grid">
-          <span>Тип</span><strong>{item.type || item.category || "—"}</strong>
+          <span>Тип</span><strong>{itemTypeRu(item.type) || itemCategoryRu(item.category) || "—"}</strong>
           <span>Слот</span><strong>{compactSlotName(slotKey || itemSlot(item))}</strong>
           <span>Количество</span><strong>×{item.amount || 1}</strong>
+          {accessTarget(item) ? <><span>Открывает доступ</span><strong>{accessTarget(item)}</strong></> : null}
+          {accessCondition(item) ? <><span>Условие</span><strong>{accessCondition(item)}</strong></> : null}
+          {itemSourceText(item) ? <><span>Источник</span><strong>{itemSourceText(item)}</strong></> : null}
+          {canTransferText(item) ? <><span>Можно передать</span><strong>{canTransferText(item)}</strong></> : null}
+          <span>Можно продать</span><strong>{canSellText(item)}</strong>
+          {actions.includes("Использовать") ? <><span>Можно использовать</span><strong>Да</strong></> : null}
           {sellPriceText ? <><span>Цена продажи</span><strong>{sellPriceText}</strong></> : null}
         </div>
         <p>{item.description || "Описание предмета пока не добавлено."}</p>
@@ -638,7 +672,7 @@ function DropItemModal({ item, position, onClose, onConfirm }) {
         {precious ? (
           <label className="nt-confirm-check">
             <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-            <span>Это <strong>{item.quality}</strong> предмет. Я понимаю, что выброшенный предмет восстановить нельзя.</span>
+            <span>Это <strong>{itemQualityRu(item.quality)}</strong> предмет. Я понимаю, что выброшенный предмет восстановить нельзя.</span>
           </label>
         ) : null}
         <footer className="nt-modal-actions">
