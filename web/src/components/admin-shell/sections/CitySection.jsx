@@ -6,6 +6,7 @@ import {
   fetchCityItem,
   fetchCityItems,
   fetchCityMeta,
+  fetchCityNodeRuntime,
   fetchCityTree,
   fetchCityWhereUsed,
   updateCityItem,
@@ -156,6 +157,7 @@ export function CitySection({ guarded, hasPerm }) {
   const [confirm, setConfirm] = useState(null);
   const [showTree, setShowTree] = useState(false);
   const [usedBy, setUsedBy] = useState(null);
+  const [runtimeView, setRuntimeView] = useState(null);
 
   const can = useMemo(() => ({
     create: hasPerm("city.create"), edit: hasPerm("city.edit"), publish: hasPerm("city.publish"),
@@ -174,10 +176,12 @@ export function CitySection({ guarded, hasPerm }) {
   function startCreate() { setEditing({ id: "", data: { ...(EMPTY_BY_KIND[kind] || {}) }, status: "draft", validation: null, isNew: true }); }
   async function openItem(id) {
     setUsedBy(null);
+    setRuntimeView(null);
     const p = await guarded(() => fetchCityItem(kind, id));
     if (p?.item) setEditing({ id, data: { ...(EMPTY_BY_KIND[kind] || {}), ...(p.item.data || {}) }, status: p.item.status, validation: p.validation, isNew: false });
   }
   async function loadWhereUsed() { const p = await guarded(() => fetchCityWhereUsed(kind, editing.id)); if (p) setUsedBy(p.usedBy || []); }
+  async function loadRuntimeView() { const p = await guarded(() => fetchCityNodeRuntime(editing.id)); if (p) setRuntimeView({ ...p.view, _live: p.liveEnabled }); }
   async function save() {
     const e = editing;
     if (e.isNew) { const p = await guarded(() => createCityItem(kind, e.id.trim(), e.data, ""), "Создано."); if (p?.item) await openItem(e.id.trim()); }
@@ -208,6 +212,26 @@ export function CitySection({ guarded, hasPerm }) {
             <h4 className="ntv2-subhead">{v.ok ? "✅ Готово к публикации" : "❌ Проверка не пройдена"}</h4>
             {(v.errors || []).map((e, i) => <div className="ntv2-error" key={"e" + i}>{e}</div>)}
             {(v.warnings || []).map((w, i) => <p className="ntv2-hint" key={"w" + i}>⚠️ {w}</p>)}
+          </div>
+        ) : null}
+
+        {!editing.isNew && kind === "city_node" ? (
+          <div className="ntv2-panel">
+            <div className="ntv2-card-head" style={{ marginBottom: 6 }}>
+              <h4 className="ntv2-subhead" style={{ margin: 0 }}>Рантайм-вид (как увидит бот)</h4>
+              <button type="button" className="ntv2-btn" onClick={loadRuntimeView}>Показать</button>
+            </div>
+            {runtimeView === null ? <p className="ntv2-hint">Предпросмотр узла из опубликованного контента (живой город включается флагом CITY_CONSTRUCTOR_LIVE).</p> : null}
+            {runtimeView && runtimeView.id === undefined ? <p className="ntv2-hint">Узел не опубликован — рантайм-вид доступен только для опубликованных узлов.</p> : null}
+            {runtimeView && runtimeView.id ? (
+              <div>
+                {runtimeView._live ? null : <p className="ntv2-hint">⚠️ Флаг CITY_CONSTRUCTOR_LIVE выключен — в живой игре пока используется статическая навигация.</p>}
+                <p><b>{runtimeView.name}</b> — {runtimeView.description || "без описания"}</p>
+                <div className="ntv2-hint">Кнопки: {(runtimeView.buttons || []).map((b) => b.label).join(", ") || "—"}</div>
+                <div className="ntv2-hint">Переходы (дети): {(runtimeView.children || []).map((c) => c.name).join(", ") || "—"}</div>
+                <div className="ntv2-hint">Товары: {(runtimeView.shop_items || []).length} · Сервисы: {(runtimeView.services || []).length} · Криминал: {(runtimeView.criminal_zones || []).length}</div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

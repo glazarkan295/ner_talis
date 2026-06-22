@@ -69,6 +69,35 @@ class CityServiceTest(unittest.TestCase):
         crim_bad = city.store().create("bm_bad", {"_kind": "criminal_zone", "name": "X", "raid_chance": 150})
         self.assertFalse(city.validate("criminal_zone", crim_bad)["ok"])
 
+    def test_runtime_node_view_published_only(self):
+        from services import city_runtime
+        city.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city"})
+        city.store().set_status("seldar", city.STATUS_PUBLISHED, force=True)
+        city.store().create("market", {"_kind": "city_node", "name": "Рынок", "node_type": "market", "parent_id": "seldar", "order": 1})
+        city.store().set_status("market", city.STATUS_PUBLISHED, force=True)
+        city.store().create("draft_q", {"_kind": "city_node", "name": "Черновик", "node_type": "quarter", "parent_id": "seldar"})  # не опубликован
+        city.store().create("to_market", {"_kind": "city_button", "label": "В рынок", "action": "goto_node", "node_id": "seldar", "target_node_id": "market"})
+        city.store().set_status("to_market", city.STATUS_PUBLISHED, force=True)
+        city.store().create("sword", {"_kind": "city_shop_item", "item_id": "iron_sword", "node_id": "market"})
+        city.store().set_status("sword", city.STATUS_PUBLISHED, force=True)
+
+        view = city_runtime.node_runtime_view("seldar")
+        self.assertEqual(view["name"], "Селдар")
+        self.assertEqual([b["label"] for b in view["buttons"]], ["В рынок"])
+        # Только опубликованные дети: market есть, черновик — нет.
+        self.assertEqual([c["id"] for c in view["children"]], ["market"])
+        market_view = city_runtime.node_runtime_view("market")
+        self.assertEqual([s["item_id"] for s in market_view["shop_items"]], ["iron_sword"])
+        # Неопубликованный/несуществующий узел → None.
+        self.assertIsNone(city_runtime.node_runtime_view("draft_q"))
+        self.assertIsNone(city_runtime.node_runtime_view("nope"))
+        # Корневые узлы — опубликованный город.
+        self.assertIn("seldar", [r["id"] for r in city_runtime.root_nodes()])
+
+    def test_runtime_flag_default_off(self):
+        from services import city_runtime
+        self.assertFalse(city_runtime.live_enabled())
+
     def test_where_used(self):
         city.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city"})
         city.store().create("market", {"_kind": "city_node", "name": "Рынок", "node_type": "market", "parent_id": "seldar"})

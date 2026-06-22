@@ -126,6 +126,17 @@ def create_admin_city_router(get_storage) -> APIRouter:
         _require(_session(get_storage(), request, token), PERM_CITY_VIEW)
         return {"ok": True, "tree": city.build_tree()}
 
+    @router.get("/node/{node_id}/runtime")
+    def node_runtime(node_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        # Предпросмотр «живого» вида узла (как его увидит навигация бота при
+        # включённом CITY_CONSTRUCTOR_LIVE). Только чтение опубликованного.
+        from services import city_runtime
+        _require(_session(get_storage(), request, token), PERM_CITY_VIEW)
+        view = city_runtime.node_runtime_view(node_id)
+        if view is None:
+            raise HTTPException(status_code=404, detail="Опубликованный узел не найден.")
+        return {"ok": True, "view": view, "liveEnabled": city_runtime.live_enabled()}
+
     @router.get("/{kind}")
     def list_kind(kind: str, request: Request, token: str | None = Query(default=None, min_length=16), status: str | None = None) -> dict[str, Any]:
         _check_kind(kind)
