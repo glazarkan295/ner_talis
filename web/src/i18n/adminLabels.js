@@ -266,6 +266,35 @@ export const ACTION_LABEL = {
 // --- Конструктор сайта -----------------------------------------------------
 export const SITE_KIND = {
   news: "Новость", guide: "Гайд", faq: "FAQ", banner: "Баннер", announcement: "Объявление",
+  page: "Страница", page_block: "Блок страницы", menu_item: "Пункт меню", post: "Пост",
+  rating: "Рейтинг", lore: "Лор", where_is: "Что где находится", site_theme: "Оформление",
+};
+export const SITE_BLOCK_TYPE = {
+  heading: "Заголовок", text: "Текст", image: "Изображение", gallery: "Галерея",
+  banner: "Баннер", card: "Карточка", list: "Список", table: "Таблица", button: "Кнопка",
+  link: "Ссылка", quote: "Цитата", warning: "Предупреждение", news: "Блок новости",
+  guide: "Блок гайда", faq: "Блок FAQ", lore: "Блок лора", rating: "Блок рейтинга",
+  where_is: "Что где находится", items: "Предметы", mobs: "Мобы", locations: "Локации",
+  city: "Город", fortress: "Крепость",
+};
+export const SITE_PAGE_VISIBILITY = {
+  public: "Публичная", authorized: "Для авторизованных", hidden: "Скрыта",
+};
+export const SITE_BLOCK_WIDTH = { full: "Полная", half: "Половина", third: "Треть", quarter: "Четверть" };
+export const SITE_BLOCK_ALIGN = { left: "Слева", center: "По центру", right: "Справа" };
+export const SITE_RATING_TYPE = {
+  level: "По уровню", exp: "По опыту", wins: "По победам", pvp: "По PVP", loot: "По добыче",
+  craft: "По ремеслу", events: "По событиям", raids: "По рейдам", wealth: "По богатству",
+  weekly: "Недельный", monthly: "Месячный", seasonal: "Сезонный",
+};
+export const SITE_RATING_PERIOD = {
+  all_time: "За всё время", weekly: "Неделя", monthly: "Месяц", seasonal: "Сезон",
+};
+export const SITE_LORE_TYPE = {
+  history: "История мира", ancient_record: "Древняя запись", diary: "Дневник", book: "Книга",
+  note: "Заметка", legend: "Легенда", race: "Описание расы", city: "Описание города",
+  ancient_place: "Древнее место", seldar: "История Селдара", fortress: "История Крепости",
+  ner_vir: "История Нер-Вира", ancients: "История Древних",
 };
 export const GUIDE_DIFFICULTY = {
   novice: "Новичок", normal: "Обычный", advanced: "Продвинутый", admin: "Админский", service: "Служебный",
