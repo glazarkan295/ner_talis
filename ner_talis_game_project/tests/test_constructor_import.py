@@ -25,6 +25,8 @@ class ConstructorImportTest(unittest.TestCase):
         self._city = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._ach = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._achcat = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._fines = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        os.environ["FINE_CONSTRUCTOR_PATH"] = self._fines
         os.environ["ITEM_CONSTRUCTOR_PATH"] = self._items
         os.environ["WORLD_CONTENT_PATH"] = self._world
         os.environ["EFFECT_CONSTRUCTOR_PATH"] = self._effects
@@ -39,7 +41,8 @@ class ConstructorImportTest(unittest.TestCase):
         os.environ.pop("CITY_CONSTRUCTOR_PATH", None)
         os.environ.pop("ACHIEVEMENTS_PATH", None)
         os.environ.pop("ACHIEVEMENT_CATEGORIES_PATH", None)
-        for base in (self._items, self._world, self._effects, self._city, self._ach, self._achcat):
+        os.environ.pop("FINE_CONSTRUCTOR_PATH", None)
+        for base in (self._items, self._world, self._effects, self._city, self._ach, self._achcat, self._fines):
             for suffix in ("", ".lock", ".tmp"):
                 try:
                     os.unlink(base + suffix)
@@ -210,6 +213,21 @@ class ConstructorImportTest(unittest.TestCase):
         # Идемпотентность.
         r2 = ci.import_achievements(mode="new")
         self.assertEqual(r2["created"], 0)
+
+    def test_import_fines(self):
+        from services import fine_constructor_service as fc
+
+        report = ci.import_fines()
+        self.assertGreaterEqual(report["created"], 5)
+        items = fc.store().list()
+        ids = {i["id"] for i in items}
+        self.assertIn("black_market_raid_fine", ids)
+        self.assertTrue(all(i["status"] == "published" for i in items))
+        # Импортированные типы проходят валидацию конструктора штрафов.
+        for it in items:
+            res = fc.validate(it)
+            self.assertTrue(res["ok"], (it["id"], res["errors"]))
+        self.assertEqual(ci.import_fines(mode="new")["created"], 0)
 
     def test_import_all_summary(self):
         result = ci.import_all(["location", "event"])

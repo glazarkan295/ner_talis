@@ -696,6 +696,49 @@ def import_achievements(*, mode: str | None = None, overwrite: bool = False, act
     return report
 
 
+# --- Импорт штрафов (ТЗ «импорт штрафов») -----------------------------------
+# Существующие ТИПЫ штрафов заданы в коде (fine_service: облавы Чёрного рынка/
+# Крота/казино, базовая сумма 100). Заводим их как опубликованные шаблоны в
+# Конструкторе штрафов. Активные штрафы игроков — отдельный рантайм (fine_service),
+# уже отображаются в карточке игрока/профиле.
+# (id, название, тип, источник, базовая сумма, ограничения)
+_FINE_SEED = [
+    ("city_fine", "Городской штраф", "city", "guard_decision", 100, ["force_fortress", "block_city"]),
+    ("black_market_raid_fine", "Штраф за облаву на Чёрном рынке", "raid", "black_market_raid", 100, ["force_fortress", "block_city"]),
+    ("informer_raid_fine", "Штраф за облаву у информатора Крота", "raid", "informer_raid", 100, ["force_fortress", "block_city"]),
+    ("casino_raid_fine", "Штраф за облаву в подпольном казино", "raid", "casino_raid", 100, ["force_fortress", "block_city"]),
+    ("chat_rules_fine", "Штраф за нарушение правил чата", "chat_rules", "chat_violation", 100, ["block_chat"]),
+    ("manual_fine", "Ручной штраф администратора", "manual", "admin_decision", 100, []),
+]
+
+
+def import_fines(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import fine_constructor_service as fc
+
+    report = _rich_report("fine_def")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(fc.store(), fc.STATUS_PUBLISHED, actor)
+    for fid, name, ftype, source, base, restrictions in _FINE_SEED:
+        record = {
+            "name": name, "type": ftype, "source": source, "currency": "copper",
+            "base_amount": base, "first_deadline_days": 7, "second_deadline_days": 23,
+            "restriction_start_day": 24, "interest_enabled": True, "interest_percent_per_day": 1,
+            "interest_start_day": 8, "restrictions": [{"code": c} for c in restrictions],
+            "issuer_roles": ["guard", "manager", "admin"],
+            "messages": {
+                "on_issue": "Вам выписан штраф.", "on_pay": "Штраф оплачен.",
+                "on_block": "Доступ закрыт до оплаты штрафа.",
+            },
+            "imported": True, "import_source": "fine_seed", "source_id": fid,
+        }
+        _apply_record(report, fid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    report["needs_check"].append({
+        "id": "fines", "type": "fine_def",
+        "reason": "Суммы/сроки/проценты — типовые значения; уточните под каждую облаву. Оплата у Управляющего города/крепости и снятие в админке работают через fine_service.",
+    })
+    return report
+
+
 # --- Проверка целостности импорта (ТЗ §10) ----------------------------------
 def check_import() -> dict[str, Any]:
     """Сканирует реестры конструкторов и находит проблемы связей/полей."""
@@ -743,7 +786,7 @@ def check_import() -> dict[str, Any]:
 IMPORTERS = {
     "item": import_items, "mob": import_mobs, "effect": import_effects, "skill": import_skills,
     "location": import_locations, "event": import_events, "city_node": import_city_nodes,
-    "achievement": import_achievements,
+    "achievement": import_achievements, "fine_def": import_fines,
 }
 
 
