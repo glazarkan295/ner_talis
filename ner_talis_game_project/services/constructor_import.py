@@ -629,6 +629,73 @@ def import_city_nodes(*, mode: str | None = None, overwrite: bool = False, actor
     return report
 
 
+# --- Импорт достижений (ТЗ «импорт достижений») -----------------------------
+# Существующие достижения заданы в коде/данных (small_plateau_mechanics.json +
+# small_plateau_service). Структурные поля (тип/редкость/видимость/условие/
+# награда) известны — задаём сид, имена/описания подтягиваем из данных.
+# ВАЖНО (§5): «Проклятье? Какое проклятье?» учитывает ТОЛЬКО посмертное
+# PVP-проклятье (curse_bearer_pvp_death), не от мобов/предметов/ловушек/событий/зон.
+_ACHIEVEMENT_SEED = {
+    "seeker": {
+        "name": "Ищущий", "category": "small_plateau", "type": "exploration",
+        "rarity": "legendary", "visibility": "open", "progress_type": "numeric",
+        "conditions": [{"type": "discover_location", "amount": 1, "target": "small_plateau"}],
+        "needs_check": "Награда «Ищущего» — игровой доступ к seeker-контенту; задайте при необходимости.",
+    },
+    "curse_what_curse": {
+        "name": "Проклятье? Какое проклятье?", "category": "small_plateau", "type": "story",
+        "rarity": "epic", "visibility": "hidden_until_earned", "progress_type": "numeric",
+        "conditions": [{"type": "finish_event", "amount": 1, "target": "pvp_death_curse"}],
+        "needs_check": "Условие засчитывает ТОЛЬКО посмертное PVP-проклятье (curse_bearer_pvp_death), §5 — не от мобов/предметов/ловушек/событий/зон. Логику обеспечивает small_plateau_service; награда — постоянный эффект «Носитель проклятья».",
+    },
+}
+
+
+def import_achievements(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import achievement_service as ach
+
+    report = _rich_report("achievement")
+    mode = _resolve_mode(mode, overwrite)
+
+    # Гарантируем категорию для импортированных достижений.
+    cats = ach.categories()
+    if cats.get("small_plateau") is None:
+        try:
+            cats.create("small_plateau", {"name": "Малое плато"}, actor=actor)
+            cats.set_status("small_plateau", ach.STATUS_PUBLISHED, actor=actor, force=True)
+        except Exception:
+            pass
+
+    # Имена/описания из данных (приоритет), структура — из сид-таблицы.
+    descriptions: dict[str, dict[str, Any]] = {}
+    data_raw = _read_data_json("small_plateau_mechanics.json")
+    if isinstance(data_raw, dict) and isinstance(data_raw.get("achievements"), list):
+        for entry in data_raw["achievements"]:
+            if isinstance(entry, dict):
+                aid = str(entry.get("achievement_id") or entry.get("id") or "").strip()
+                if aid:
+                    descriptions[aid] = entry
+
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(ach.store(), ach.STATUS_PUBLISHED, actor)
+    for aid, seed in _ACHIEVEMENT_SEED.items():
+        src = descriptions.get(aid, {})
+        name = src.get("name") or seed["name"]
+        desc = src.get("description") or ""
+        record = {
+            "name": name, "short_description": desc[:300], "description": desc,
+            "category": seed["category"], "type": seed["type"], "rarity": seed["rarity"],
+            "visibility": seed["visibility"], "progress_type": seed["progress_type"],
+            "condition_logic": "all", "conditions": seed["conditions"], "rewards": [],
+            "notify_message": {"format": "single", "text": f"Получено достижение: «{name}»."},
+            "imported": True, "import_source": "achievement_seed", "source_id": aid,
+        }
+        before = report["created"] + report["updated"]
+        _apply_record(report, aid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+        if report["created"] + report["updated"] > before and seed.get("needs_check"):
+            report["needs_check"].append({"id": aid, "type": "achievement", "reason": seed["needs_check"]})
+    return report
+
+
 # --- Проверка целостности импорта (ТЗ §10) ----------------------------------
 def check_import() -> dict[str, Any]:
     """Сканирует реестры конструкторов и находит проблемы связей/полей."""
@@ -676,6 +743,7 @@ def check_import() -> dict[str, Any]:
 IMPORTERS = {
     "item": import_items, "mob": import_mobs, "effect": import_effects, "skill": import_skills,
     "location": import_locations, "event": import_events, "city_node": import_city_nodes,
+    "achievement": import_achievements,
 }
 
 

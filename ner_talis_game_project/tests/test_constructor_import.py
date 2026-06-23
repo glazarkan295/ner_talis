@@ -23,17 +23,23 @@ class ConstructorImportTest(unittest.TestCase):
         self._world = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._effects = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._city = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._ach = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._achcat = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         os.environ["ITEM_CONSTRUCTOR_PATH"] = self._items
         os.environ["WORLD_CONTENT_PATH"] = self._world
         os.environ["EFFECT_CONSTRUCTOR_PATH"] = self._effects
         os.environ["CITY_CONSTRUCTOR_PATH"] = self._city
+        os.environ["ACHIEVEMENTS_PATH"] = self._ach
+        os.environ["ACHIEVEMENT_CATEGORIES_PATH"] = self._achcat
 
     def tearDown(self):
         os.environ.pop("ITEM_CONSTRUCTOR_PATH", None)
         os.environ.pop("WORLD_CONTENT_PATH", None)
         os.environ.pop("EFFECT_CONSTRUCTOR_PATH", None)
         os.environ.pop("CITY_CONSTRUCTOR_PATH", None)
-        for base in (self._items, self._world, self._effects, self._city):
+        os.environ.pop("ACHIEVEMENTS_PATH", None)
+        os.environ.pop("ACHIEVEMENT_CATEGORIES_PATH", None)
+        for base in (self._items, self._world, self._effects, self._city, self._ach, self._achcat):
             for suffix in ("", ".lock", ".tmp"):
                 try:
                     os.unlink(base + suffix)
@@ -187,6 +193,23 @@ class ConstructorImportTest(unittest.TestCase):
         bad = ci.check_import()
         self.assertFalse(bad["ok"])
         self.assertTrue(any(i["id"] == "orphan_ev" for i in bad["issues"]))
+
+    def test_import_achievements(self):
+        from services import achievement_service as ach
+
+        report = ci.import_achievements()
+        self.assertGreaterEqual(report["created"], 2)
+        ids = {a["id"] for a in ach.store().list()}
+        self.assertIn("seeker", ids)
+        self.assertIn("curse_what_curse", ids)
+        # Категория создана, достижения опубликованы и помечены imported.
+        self.assertIsNotNone(ach.categories().get("small_plateau"))
+        self.assertTrue(all(a["status"] == "published" for a in ach.store().list()))
+        # §5: у curse_what_curse — пометка про только PVP-посмертное проклятье.
+        self.assertTrue(any(n["id"] == "curse_what_curse" and "PVP" in n["reason"] for n in report["needs_check"]))
+        # Идемпотентность.
+        r2 = ci.import_achievements(mode="new")
+        self.assertEqual(r2["created"], 0)
 
     def test_import_all_summary(self):
         result = ci.import_all(["location", "event"])
