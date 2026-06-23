@@ -39,6 +39,8 @@ from admin_skills_api import create_admin_skills_router
 from admin_promos_api import create_admin_promos_router
 from admin_profile_layout_api import create_admin_profile_layout_router
 from admin_city_api import create_admin_city_router
+from admin_recipes_api import create_admin_recipes_router
+from admin_import_api import create_admin_import_router
 from admin_uploads_api import create_admin_uploads_router
 from admin_site_api import create_admin_site_router
 from public_site_api import create_public_site_router
@@ -342,6 +344,8 @@ def create_app() -> FastAPI:
     app.include_router(create_admin_promos_router(storage))
     app.include_router(create_admin_profile_layout_router(storage))
     app.include_router(create_admin_city_router(storage))
+    app.include_router(create_admin_recipes_router(storage))
+    app.include_router(create_admin_import_router(storage))
     app.include_router(create_admin_uploads_router(storage))
     app.include_router(create_admin_site_router(storage))
     app.include_router(create_public_site_router())

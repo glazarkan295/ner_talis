@@ -249,6 +249,7 @@ def create_admin_community_router(get_storage) -> APIRouter:
             "repeatTypes": list(events.REPEAT_TYPES),
             "rewardTypes": list(events.REWARD_TYPES),
             "specialLootSources": list(events.SPECIAL_LOOT_SOURCES),
+            "locationBindings": list(events.LOCATION_BINDINGS),
             "statuses": [{"value": s, "label": events.STATUS_LABELS.get(s, s)} for s in events.STATUSES],
             "maxMultiplier": events.MAX_WORLD_MULTIPLIER,
         }

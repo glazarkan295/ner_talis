@@ -20,6 +20,7 @@ import { ConfirmModal } from "../ConfirmModal.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { ImageUploadField } from "../ImageUploadField.jsx";
 import { MessageComposer } from "../MessageComposer.jsx";
+import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 const KIND_NEW = { city_node: "＋ Узел", city_button: "＋ Кнопка", city_shop_item: "＋ Товар", city_service: "＋ Сервис", criminal_zone: "＋ Криминальная зона" };
@@ -158,6 +159,7 @@ export function CitySection({ guarded, hasPerm }) {
   const [showTree, setShowTree] = useState(false);
   const [usedBy, setUsedBy] = useState(null);
   const [runtimeView, setRuntimeView] = useState(null);
+  const [query, setQuery] = useState("");
 
   const can = useMemo(() => ({
     create: hasPerm("city.create"), edit: hasPerm("city.edit"), publish: hasPerm("city.publish"),
@@ -286,11 +288,13 @@ export function CitySection({ guarded, hasPerm }) {
         </select>
         {can.create ? <button type="button" className="ntv2-btn ntv2-btn-primary" onClick={startCreate}>{KIND_NEW[kind]}</button> : null}
         <button type="button" className="ntv2-btn" onClick={() => setShowTree((s) => !s)}>{showTree ? "Скрыть дерево" : "Дерево узлов"}</button>
+        <SearchBox value={query} onChange={setQuery} />
       </div>
       {showTree ? <CityTree guarded={guarded} /> : null}
       {!list.length ? <p className="ntv2-hint">Объектов нет.</p> : null}
+      <NoResults query={list.length ? query : ""} />
       <div className="ntv2-list">
-        {list.map((item) => (
+        {filterEntities(list, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>
             <b>{itemTitle(item)}</b>
             <span className="ntv2-mono">{item.id}</span>

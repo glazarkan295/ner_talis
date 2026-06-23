@@ -232,6 +232,12 @@ export const PROFILE_TAB_PRESET = {
   achievements: "Достижения", raids: "Рейды",
 };
 
+// --- Конструктор ремесла ---------------------------------------------------
+export const RECIPE_WORKSHOP = {
+  smeltery: "Плавильня", forge: "Кузница", leatherwork: "Кожевенная мастерская",
+  alchemy: "Алхимическая мастерская", jewelry: "Ювелирная мастерская", enchanting: "Чародейская мастерская",
+};
+
 // --- Конструктор города и крепости -----------------------------------------
 export const CITY_KIND = {
   city_node: "Узел", city_button: "Кнопка", city_shop_item: "Товар",
@@ -284,6 +290,12 @@ export const SPECIAL_LOOT_SOURCE = {
   all_mobs: "Из всех мобов", selected_mobs: "Из выбранных мобов", all_events: "Из всех событий",
   selected_events: "Из выбранных событий", locations: "В выбранных локациях", search: "При поиске",
   battle: "При победе в бою", chest: "Из сундука", quest: "При завершении задания",
+  camp: "При лагере", fishing: "При рыбалке", gather: "При сборе ресурсов", special: "При особом событии",
+};
+export const EVENT_LOCATION_BINDING = {
+  none: "Без привязки", all: "Во всех локациях", selected: "В выбранных локациях",
+  city: "Только в городе", fortress: "Только в крепости", external: "Только во внешних",
+  dangerous: "Только в опасных", starting: "Только в стартовых",
 };
 
 // --- Действия аудита (частые; код доступен в подсказке/тех-блоке) -----------

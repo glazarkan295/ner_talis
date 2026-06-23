@@ -7,10 +7,11 @@ import {
   fetchEvents,
   updateEvent,
 } from "../../../api/adminCommunityApi.js";
-import { tr, EVENT_REPEAT_TYPE, WORLD_EVENT_TYPE, EVENT_REWARD_TYPE, SPECIAL_LOOT_SOURCE } from "../../../i18n/adminLabels.js";
+import { tr, EVENT_REPEAT_TYPE, WORLD_EVENT_TYPE, EVENT_REWARD_TYPE, SPECIAL_LOOT_SOURCE, EVENT_LOCATION_BINDING } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { MessageComposer } from "../MessageComposer.jsx";
+import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 
 const STATUS_TONE = { active: "ntv2-badge-owner", finished: "ntv2-badge-owner", disabled: "ntv2-badge-danger", scheduled: "ntv2-badge-error" };
 
@@ -20,6 +21,7 @@ const EMPTY_EVENT = {
   // Повтор (ТЗ §4.1/§4.2): тип + параметры в зависимости от типа.
   repeat_enabled: false, repeat_type: "yearly", repeat_weekday: "", repeat_day_of_month: "",
   repeat_month: "", repeat_start_hour: "", repeat_end_hour: "",
+  repeat_duration_days: "", repeat_start_day: "", repeat_end_month: "", repeat_end_day: "",
   exp_multiplier: "", drop_multiplier: "", coin_multiplier: "",
   start_message: "", end_message: "",
   // Награды (§4.3) и особая добыча (§4.4).
@@ -34,6 +36,7 @@ export function EventsSection({ guarded, hasPerm }) {
   const [meta, setMeta] = useState(null);
   const [items, setItems] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
+  const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
 
@@ -131,6 +134,14 @@ export function EventsSection({ guarded, hasPerm }) {
               <div className="ntv2-form-row">
                 <Field label="Час запуска (0–23)"><input type="number" min="0" max="23" value={d.repeat_start_hour} disabled={disabled} onChange={(e) => set("repeat_start_hour", e.target.value)} /></Field>
                 <Field label="Час завершения (0–23)"><input type="number" min="0" max="23" value={d.repeat_end_hour} disabled={disabled} onChange={(e) => set("repeat_end_hour", e.target.value)} /></Field>
+                <Field label="Длится дней"><input type="number" min="0" value={d.repeat_duration_days} disabled={disabled} onChange={(e) => set("repeat_duration_days", e.target.value)} /></Field>
+              </div>
+            ) : null}
+            {d.repeat_enabled && d.repeat_type === "yearly" ? (
+              <div className="ntv2-form-row">
+                <Field label="День начала (1–31)"><input type="number" min="1" max="31" value={d.repeat_start_day} disabled={disabled} onChange={(e) => set("repeat_start_day", e.target.value)} /></Field>
+                <Field label="Месяц окончания (1–12)"><input type="number" min="1" max="12" value={d.repeat_end_month} disabled={disabled} onChange={(e) => set("repeat_end_month", e.target.value)} /></Field>
+                <Field label="День окончания (1–31)"><input type="number" min="1" max="31" value={d.repeat_end_day} disabled={disabled} onChange={(e) => set("repeat_end_day", e.target.value)} /></Field>
               </div>
             ) : null}
           </div>
@@ -178,6 +189,9 @@ export function EventsSection({ guarded, hasPerm }) {
                     <input type="number" style={{ width: 80 }} title="шанс %" value={row.chance || ""} disabled={disabled} onChange={(e) => upd({ chance: e.target.value })} />
                     <input type="number" style={{ width: 70 }} title="мин" value={row.min_count || ""} disabled={disabled} onChange={(e) => upd({ min_count: e.target.value })} />
                     <input type="number" style={{ width: 70 }} title="макс" value={row.max_count || ""} disabled={disabled} onChange={(e) => upd({ max_count: e.target.value })} />
+                    <select value={row.location_binding || ""} disabled={disabled} title="привязка к локациям" onChange={(e) => upd({ location_binding: e.target.value })}><option value="">локации</option>{(meta.locationBindings || []).map((x) => <option key={x} value={x}>{tr(EVENT_LOCATION_BINDING, x)}</option>)}</select>
+                    <input type="number" style={{ width: 80 }} title="лимит на игрока" value={row.per_player_limit || ""} disabled={disabled} onChange={(e) => upd({ per_player_limit: e.target.value })} />
+                    <input type="number" style={{ width: 80 }} title="общий лимит" value={row.total_limit || ""} disabled={disabled} onChange={(e) => upd({ total_limit: e.target.value })} />
                     {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => set("special_loot", d.special_loot.filter((_, idx) => idx !== i))}>×</button> : null}
                   </div>
                 );
@@ -220,10 +234,12 @@ export function EventsSection({ guarded, hasPerm }) {
           {statuses.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         {can.create ? <button type="button" className="ntv2-btn ntv2-btn-primary" onClick={startCreate}>＋ Новое событие</button> : null}
+        <SearchBox value={query} onChange={setQuery} />
       </div>
       {!items.length ? <p className="ntv2-hint">Событий нет.</p> : null}
+      <NoResults query={items.length ? query : ""} />
       <div className="ntv2-list">
-        {items.map((item) => (
+        {filterEntities(items, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>
             <b>{item.data?.name || item.id}</b>
             <span className="ntv2-mono">{item.id}</span>

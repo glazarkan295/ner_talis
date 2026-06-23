@@ -10,6 +10,7 @@ import {
 import { loadCatalog } from "../../../api/adminApi.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { EmojiTextarea } from "../EmojiField.jsx";
+import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 
 function Field({ label, children }) {
   return <label className="ntv2-field"><span>{label}</span>{children}</label>;
@@ -78,6 +79,7 @@ function PromosTab({ guarded, can }) {
   const [meta, setMeta] = useState(null);
   const [promos, setPromos] = useState([]);
   const [confirm, setConfirm] = useState(null);
+  const [promoQuery, setPromoQuery] = useState("");
   const [code, setCode] = useState("");
   const [uses, setUses] = useState(1);
   const [duration, setDuration] = useState("never");
@@ -115,9 +117,11 @@ function PromosTab({ guarded, can }) {
       ) : null}
 
       <h3>Промокоды</h3>
+      <div className="ntv2-filters"><SearchBox value={promoQuery} onChange={setPromoQuery} placeholder="Поиск по коду/награде…" /></div>
       {!promos.length ? <p className="ntv2-hint">Промокодов пока нет.</p> : null}
+      <NoResults query={promos.length ? promoQuery : ""} />
       <div className="ntv2-list">
-        {promos.map((p) => (
+        {filterEntities(promos, promoQuery).map((p) => (
           <div className="ntv2-list-row" key={p.code}>
             <b>{p.code}</b>
             <span className={`ntv2-badge ${p.active ? "ntv2-badge-owner" : "ntv2-badge-danger"}`}>{p.active ? "активен" : "выключен"}</span>

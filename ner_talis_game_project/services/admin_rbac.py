@@ -162,6 +162,15 @@ PERM_SKILL_DEF_PUBLISH = "skill_def.publish"
 PERM_SKILL_DEF_DISABLE = "skill_def.disable"
 PERM_SKILL_DEF_ARCHIVE = "skill_def.archive"
 PERM_SKILL_DEF_DELETE = "skill_def.delete"
+# Конструктор ремесла (ТЗ «импорт ремесла») — рецепты/мастерские/алхимия/чертежи.
+PERM_RECIPE_VIEW = "recipe.view"
+PERM_RECIPE_CREATE = "recipe.create"
+PERM_RECIPE_EDIT = "recipe.edit"
+PERM_RECIPE_VALIDATE = "recipe.validate"
+PERM_RECIPE_PUBLISH = "recipe.publish"
+PERM_RECIPE_DISABLE = "recipe.disable"
+PERM_RECIPE_ARCHIVE = "recipe.archive"
+PERM_RECIPE_DELETE = "recipe.delete"
 # Конструктор города и крепости (ТЗ §4) — узлы/кнопки/товары/сервисы/криминал.
 # Город и крепость редактируются как система узлов (узел = точка структуры).
 PERM_CITY_VIEW = "city.view"
@@ -317,6 +326,8 @@ ALL_PERMISSIONS = (
     PERM_SKILL_DEF_ARCHIVE, PERM_SKILL_DEF_DELETE,
     PERM_CITY_VIEW, PERM_CITY_CREATE, PERM_CITY_EDIT, PERM_CITY_PUBLISH,
     PERM_CITY_DISABLE, PERM_CITY_ARCHIVE, PERM_CITY_DELETE,
+    PERM_RECIPE_VIEW, PERM_RECIPE_CREATE, PERM_RECIPE_EDIT, PERM_RECIPE_VALIDATE,
+    PERM_RECIPE_PUBLISH, PERM_RECIPE_DISABLE, PERM_RECIPE_ARCHIVE, PERM_RECIPE_DELETE,
     PERM_GUILD_VIEW, PERM_GUILD_CREATE, PERM_GUILD_EDIT, PERM_GUILD_DISABLE,
     PERM_GUILD_MANAGE_MEMBERS, PERM_GUILD_MANAGE_STORAGE,
     PERM_GUILD_MANAGE_TREASURY, PERM_GUILD_AUDIT,
@@ -398,6 +409,13 @@ DANGEROUS_ACTIONS = frozenset({
     "city.disable",
     "city.archive",
     "city.delete",
+    # Конструктор ремесла — публикация/отключение/архив/удаление рецептов.
+    "recipe.publish",
+    "recipe.disable",
+    "recipe.archive",
+    "recipe.delete",
+    # Импорт-миграция — массовая публикация существующего контента в конструкторы.
+    "import.run",
     "guild.disable",
     "world_event.start",
     "world_event.stop",
@@ -483,6 +501,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_SKILL_DEF_VIEW, PERM_SKILL_DEF_CREATE, PERM_SKILL_DEF_EDIT, PERM_SKILL_DEF_VALIDATE,
         # Конструктор города/крепости: content ведёт черновики узлов (без публикации).
         PERM_CITY_VIEW, PERM_CITY_CREATE, PERM_CITY_EDIT,
+        # Конструктор ремесла: content ведёт черновики рецептов.
+        PERM_RECIPE_VIEW, PERM_RECIPE_CREATE, PERM_RECIPE_EDIT, PERM_RECIPE_VALIDATE,
         PERM_GUILD_VIEW, PERM_GUILD_CREATE, PERM_GUILD_EDIT,
         PERM_WORLD_EVENT_VIEW, PERM_WORLD_EVENT_CREATE,
         PERM_WORLD_EVENT_EDIT, PERM_WORLD_EVENT_SCHEDULE,
@@ -520,6 +540,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_MOB_CHANGE_SPAWN_CHANCE, PERM_MOB_VIEW_BALANCE,
         # Баланс города: economy правит товары/цены/сервисы (узлы — без публикации).
         PERM_CITY_VIEW, PERM_CITY_EDIT,
+        # Баланс ремесла: economy правит рецепты (шансы/время/ресурсы).
+        PERM_RECIPE_VIEW, PERM_RECIPE_EDIT,
         PERM_FINE_DEF_VIEW,
         PERM_ITEM_VIEW, PERM_ITEM_CHANGE_PRICE, PERM_ITEM_VIEW_USAGE,
         PERM_EFFECT_VIEW,
@@ -534,7 +556,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_LOCATION_MOBS_VIEW, PERM_LOCATION_ZONES_VIEW,
         PERM_LOCATION_ROTATION_VIEW, PERM_LOCATION_LIMITS_VIEW,
         PERM_MOB_VIEW, PERM_MOB_VIEW_BALANCE, PERM_FINE_DEF_VIEW,
-        PERM_SKILL_DEF_VIEW, PERM_CITY_VIEW,
+        PERM_SKILL_DEF_VIEW, PERM_CITY_VIEW, PERM_RECIPE_VIEW,
         PERM_ACHIEVEMENT_VIEW, PERM_MESSAGES_VIEW_QUEUE,
         PERM_ITEM_VIEW, PERM_ITEM_VIEW_USAGE, PERM_EFFECT_VIEW,
         PERM_SITE_VIEW, PERM_NEWS_VIEW, PERM_GUIDES_VIEW, PERM_FAQ_VIEW,

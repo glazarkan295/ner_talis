@@ -16,6 +16,7 @@ import { SkillsSection } from "./sections/SkillsSection.jsx";
 import { SiteSection } from "./sections/SiteSection.jsx";
 import { ProfileLayoutSection } from "./sections/ProfileLayoutSection.jsx";
 import { CitySection } from "./sections/CitySection.jsx";
+import { RecipesSection } from "./sections/RecipesSection.jsx";
 import { AuditSection } from "./sections/AuditSection.jsx";
 import { ReferenceSection } from "./sections/ReferenceSection.jsx";
 import { RolesSection } from "./sections/RolesSection.jsx";
@@ -34,6 +35,7 @@ const NAV = [
   { id: "site", label: "Конструктор сайта", icon: "🌐", perm: "site.view" },
   { id: "profile_layout", label: "Раскладка профиля", icon: "🪪", perm: "profile_layout.view" },
   { id: "city", label: "Город и крепость", icon: "🏙️", perm: "city.view" },
+  { id: "recipes", label: "Конструктор ремесла", icon: "⚒️", perm: "recipe.view" },
   { id: "guilds", label: "Гильдии", icon: "🏰", perm: "guild.view" },
   { id: "events", label: "Мировые события", icon: "🌌", perm: "world_event.view" },
   { id: "achievements", label: "Достижения", icon: "🏆", perm: "achievement.view" },
@@ -140,6 +142,7 @@ export function AdminShell() {
         {active === "site" && hasPerm("site.view") && <SiteSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "profile_layout" && hasPerm("profile_layout.view") && <ProfileLayoutSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "city" && hasPerm("city.view") && <CitySection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "recipes" && hasPerm("recipe.view") && <RecipesSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "guilds" && hasPerm("guild.view") && <GuildsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "events" && hasPerm("world_event.view") && <EventsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "achievements" && hasPerm("achievement.view") && <AchievementsSection guarded={guarded} hasPerm={hasPerm} />}
