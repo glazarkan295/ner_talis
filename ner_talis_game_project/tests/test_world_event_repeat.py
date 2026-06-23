@@ -55,6 +55,25 @@ class WorldEventRepeatTest(unittest.TestCase):
         self.assertIn("Награда 1", joined)
         self.assertIn("Особая добыча 1", joined)
 
+    def test_repeat_duration_and_yearly_end(self):
+        ok = _val({"name": "Праздник", "repeat_enabled": True, "repeat_type": "yearly", "repeat_month": 12,
+                   "repeat_start_day": 20, "repeat_end_month": 12, "repeat_end_day": 31, "repeat_duration_days": 11})
+        self.assertTrue(ok["ok"], ok["errors"])
+        bad = _val({"name": "X", "repeat_enabled": True, "repeat_type": "yearly", "repeat_end_month": 13,
+                    "repeat_end_day": 40, "repeat_duration_days": -1})
+        self.assertFalse(bad["ok"])
+        joined = " ".join(bad["errors"])
+        self.assertIn("Месяц окончания", joined)
+        self.assertIn("Длительность", joined)
+
+    def test_special_loot_binding_and_limits(self):
+        ok = _val({"name": "Дроп", "special_loot": [{"item_id": "gold", "source": "all_mobs", "chance": 50,
+                   "min_count": 1, "max_count": 3, "location_binding": "selected", "per_player_limit": 2, "total_limit": 100}]})
+        self.assertTrue(ok["ok"], ok["errors"])
+        bad = _val({"name": "Дроп", "special_loot": [{"item_id": "gold", "location_binding": "moon", "per_player_limit": -5}]})
+        self.assertFalse(bad["ok"])
+        self.assertTrue(any("привязка к локациям" in e.lower() for e in bad["errors"]))
+
 
 if __name__ == "__main__":
     unittest.main()

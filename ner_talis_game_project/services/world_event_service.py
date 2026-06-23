@@ -62,7 +62,11 @@ REWARD_TYPES = (
 # Источники особой добычи события (ТЗ §4.4).
 SPECIAL_LOOT_SOURCES = (
     "all_mobs", "selected_mobs", "all_events", "selected_events", "locations",
-    "search", "battle", "chest", "quest",
+    "search", "battle", "chest", "quest", "camp", "fishing", "gather", "special",
+)
+# Привязка выпадения предметов мирового события к локациям (доп. ТЗ §2.3).
+LOCATION_BINDINGS = (
+    "none", "all", "selected", "city", "fortress", "external", "dangerous", "starting",
 )
 
 _store = EntityStore(
@@ -149,10 +153,23 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             mon = _num(data.get("repeat_month"))
             if mon is not None and (mon < 1 or mon > 12):
                 errors.append("Месяц повтора должен быть 1–12.")
+        if rtype == "yearly":
+            # Ежегодный повтор может задавать день начала/окончания и месяц окончания (§3.4).
+            end_mon = _num(data.get("repeat_end_month"))
+            if end_mon is not None and (end_mon < 1 or end_mon > 12):
+                errors.append("Месяц окончания повтора должен быть 1–12.")
+            for key in ("repeat_start_day", "repeat_end_day"):
+                val = _num(data.get(key))
+                if val is not None and (val < 1 or val > 31):
+                    errors.append(f"День в «{key}» должен быть 1–31.")
         for key in ("repeat_start_hour", "repeat_end_hour"):
             val = _num(data.get(key))
             if val is not None and (val < 0 or val > 23):
                 errors.append(f"Час в «{key}» должен быть 0–23.")
+        # Длительность события в днях (§3.1) — неотрицательная.
+        dur = _num(data.get("repeat_duration_days"))
+        if data.get("repeat_duration_days") not in (None, "") and (dur is None or dur < 0):
+            errors.append("Длительность события (дней) не может быть отрицательной.")
 
     # Награды события (ТЗ §4.3).
     rewards = data.get("rewards")
@@ -185,6 +202,14 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             mx = _num(row.get("max_count"))
             if mn is not None and mx is not None and mn > mx:
                 errors.append(f"Особая добыча {i}: мин. количество больше макс.")
+            # Привязка к локациям (§2.3) и лимиты (§2.2).
+            binding = str(row.get("location_binding") or "").strip()
+            if binding and binding not in LOCATION_BINDINGS:
+                errors.append(f"Особая добыча {i}: неизвестная привязка к локациям «{binding}».")
+            for lim in ("per_player_limit", "total_limit"):
+                val = _num(row.get(lim))
+                if val is not None and val < 0:
+                    errors.append(f"Особая добыча {i}: «{lim}» не может быть отрицательным.")
 
     if not str(data.get("start_message") or "").strip():
         warnings.append("Нет сообщения о начале события.")
