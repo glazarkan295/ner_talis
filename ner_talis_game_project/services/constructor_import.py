@@ -782,6 +782,63 @@ def import_recipes(*, mode: str | None = None, overwrite: bool = False, actor: s
     return report
 
 
+# --- Импорт раскладки профиля (ТЗ «импорт профиля») -------------------------
+# Текущая раскладка профиля задана во фронте (вкладки Персонаж/Инвентарь/Навыки/
+# Журнал/Сервисы; вкладки «Обзор» НЕТ — §1.4). Заводим её в Конструктор раскладки
+# профиля, чтобы админ мог открыть/править/переставлять. Ключи вкладок совпадают
+# с рендером профиля (character/inventory/skills/info/services).
+_PROFILE_TAB_SEED = [
+    ("character", "Персонаж", "🧙", 1),
+    ("inventory", "Инвентарь", "🎒", 2),
+    ("skills", "Навыки", "✨", 3),
+    ("info", "Журнал", "📜", 4),
+    ("services", "Сервисы", "🤝", 5),
+]
+# (id, название, тип блока, вкладка, порядок) — распределение данных «Обзора» (§1.4).
+_PROFILE_BLOCK_SEED = [
+    ("blk_main_info", "Основные данные", "main_info", "character", 1),
+    ("blk_resources", "HP/мана/дух/энергия", "resources", "character", 2),
+    ("blk_stats", "Характеристики", "stats", "character", 3),
+    ("blk_equipment", "Экипировка", "equipment", "character", 4),
+    ("blk_effects", "Эффекты", "effects", "character", 5),
+    ("blk_warnings", "Предупреждения", "warnings", "character", 6),
+    ("blk_inventory", "Инвентарь", "inventory", "inventory", 1),
+    ("blk_skills", "Навыки", "skills", "skills", 1),
+    ("blk_passive_skills", "Пассивные навыки", "passive_skills", "skills", 2),
+    ("blk_activity", "Активность", "activity", "info", 1),
+    ("blk_fines", "Штрафы", "fines", "info", 2),
+    ("blk_currency", "Валюта", "currency", "info", 3),
+    ("blk_services", "Сервисы", "services", "services", 1),
+    ("blk_transfer", "Передача предметов", "transfer", "services", 2),
+    ("blk_danger", "Опасная зона", "danger_zone", "character", 7),
+]
+
+
+def import_profile_layout(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import profile_layout_service as pls
+
+    report = _rich_report("profile_layout")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(pls.store(), pls.STATUS_PUBLISHED, actor)
+    for tab_key, label, icon, order in _PROFILE_TAB_SEED:
+        _apply_record(report, f"tab_{tab_key}", {
+            "_kind": pls.KIND_TAB, "label": label, "tab_key": tab_key, "icon": icon,
+            "order": order, "visibility": "always", "default_tab": tab_key == "character",
+            "imported": True, "import_source": "profile_layout_seed", "source_id": tab_key,
+        }, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    for bid, name, block_type, tab, order in _PROFILE_BLOCK_SEED:
+        _apply_record(report, bid, {
+            "_kind": pls.KIND_BLOCK, "name": name, "block_type": block_type, "tab": tab,
+            "order": order, "visibility": "always",
+            "imported": True, "import_source": "profile_layout_seed", "source_id": bid,
+        }, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    report["needs_check"].append({
+        "id": "overview", "type": "profile_layout",
+        "reason": "Вкладка «Обзор» не переносится как отдельная (§1.4) — её данные распределены по Персонаж/Журнал/Сервисы. Проверьте порядок/видимость и при необходимости добавьте оформление (profile_theme).",
+    })
+    return report
+
+
 # --- Проверка целостности импорта (ТЗ §10) ----------------------------------
 def check_import() -> dict[str, Any]:
     """Сканирует реестры конструкторов и находит проблемы связей/полей."""
@@ -830,6 +887,7 @@ IMPORTERS = {
     "item": import_items, "mob": import_mobs, "effect": import_effects, "skill": import_skills,
     "location": import_locations, "event": import_events, "city_node": import_city_nodes,
     "achievement": import_achievements, "fine_def": import_fines, "recipe": import_recipes,
+    "profile_layout": import_profile_layout,
 }
 
 

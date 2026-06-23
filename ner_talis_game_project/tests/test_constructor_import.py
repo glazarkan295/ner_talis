@@ -27,8 +27,10 @@ class ConstructorImportTest(unittest.TestCase):
         self._achcat = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._fines = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._recipes = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._playout = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         os.environ["FINE_CONSTRUCTOR_PATH"] = self._fines
         os.environ["RECIPE_CONSTRUCTOR_PATH"] = self._recipes
+        os.environ["PROFILE_LAYOUT_PATH"] = self._playout
         os.environ["ITEM_CONSTRUCTOR_PATH"] = self._items
         os.environ["WORLD_CONTENT_PATH"] = self._world
         os.environ["EFFECT_CONSTRUCTOR_PATH"] = self._effects
@@ -45,7 +47,8 @@ class ConstructorImportTest(unittest.TestCase):
         os.environ.pop("ACHIEVEMENT_CATEGORIES_PATH", None)
         os.environ.pop("FINE_CONSTRUCTOR_PATH", None)
         os.environ.pop("RECIPE_CONSTRUCTOR_PATH", None)
-        for base in (self._items, self._world, self._effects, self._city, self._ach, self._achcat, self._fines, self._recipes):
+        os.environ.pop("PROFILE_LAYOUT_PATH", None)
+        for base in (self._items, self._world, self._effects, self._city, self._ach, self._achcat, self._fines, self._recipes, self._playout):
             for suffix in ("", ".lock", ".tmp"):
                 try:
                     os.unlink(base + suffix)
@@ -248,6 +251,24 @@ class ConstructorImportTest(unittest.TestCase):
         # where_used находит рецепт по результату.
         self.assertTrue(rcs.where_used(d["output_item_id"]))
         self.assertEqual(ci.import_recipes(mode="new")["created"], 0)
+
+    def test_import_profile_layout(self):
+        from services import profile_layout_service as pls
+
+        report = ci.import_profile_layout()
+        self.assertGreater(report["created"], 0)
+        items = pls.store().list()
+        tabs = [i for i in items if (i.get("data") or {}).get("_kind") == "profile_tab"]
+        keys = {(t.get("data") or {}).get("tab_key") for t in tabs}
+        self.assertIn("character", keys)
+        # «Обзор» не переносится как отдельная вкладка (§1.4).
+        self.assertNotIn("overview", keys)
+        # published_layout видит импортированные вкладки и блоки.
+        layout = pls.published_layout()
+        self.assertTrue(layout["tabs"])
+        char = next(t for t in layout["tabs"] if t["key"] == "character")
+        self.assertTrue(any(b["type"] == "main_info" for b in char["blocks"]))
+        self.assertEqual(ci.import_profile_layout(mode="new")["created"], 0)
 
     def test_import_all_summary(self):
         result = ci.import_all(["location", "event"])
