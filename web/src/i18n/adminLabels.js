@@ -232,6 +232,12 @@ export const PROFILE_TAB_PRESET = {
   achievements: "Достижения", raids: "Рейды",
 };
 
+// --- Конструктор ремесла ---------------------------------------------------
+export const RECIPE_WORKSHOP = {
+  smeltery: "Плавильня", forge: "Кузница", leatherwork: "Кожевенная мастерская",
+  alchemy: "Алхимическая мастерская", jewelry: "Ювелирная мастерская", enchanting: "Чародейская мастерская",
+};
+
 // --- Конструктор города и крепости -----------------------------------------
 export const CITY_KIND = {
   city_node: "Узел", city_button: "Кнопка", city_shop_item: "Товар",

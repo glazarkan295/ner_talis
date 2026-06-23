@@ -739,6 +739,49 @@ def import_fines(*, mode: str | None = None, overwrite: bool = False, actor: str
     return report
 
 
+# --- Импорт рецептов ремесла (ТЗ «импорт ремесла») --------------------------
+def import_recipes(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import recipe_constructor_service as rcs
+
+    report = _rich_report("recipe")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(rcs.store(), rcs.STATUS_PUBLISHED, actor)
+    data_raw = _read_data_json("crafting_recipes.json")
+    if not isinstance(data_raw, list):
+        report["errors"].append({"id": "crafting_recipes.json", "type": "recipe", "reason": "Файл рецептов отсутствует или повреждён."})
+        return report
+    for raw in data_raw:
+        if not isinstance(raw, dict):
+            report["invalid"] += 1
+            continue
+        sid = safe_constructor_id(raw.get("id"))
+        if not sid:
+            report["invalid"] += 1
+            report["errors"].append({"id": str(raw.get("id")), "type": "recipe", "reason": "Не удалось получить корректный id."})
+            continue
+        output = raw.get("output") if isinstance(raw.get("output"), dict) else {}
+        ingredients = [
+            {"item_id": str(ing.get("item_id") or ""), "amount": ing.get("amount") or 1}
+            for ing in (raw.get("ingredients") or []) if isinstance(ing, dict) and ing.get("item_id")
+        ]
+        record = {
+            "name": (output.get("name") or raw.get("description") or sid),
+            "workshop": str(raw.get("workshop") or ""),
+            "section": str(raw.get("section") or ""),
+            "description": str(raw.get("description") or ""),
+            "output_item_id": str(output.get("item_id") or ""),
+            "output_amount": output.get("amount") or 1,
+            "ingredients": ingredients,
+            "craft_time": raw.get("craft_time_seconds") or 0,
+            "success_chance": 100, "quality_chance": 0, "fail_chance": 0,
+            "actions": list(raw.get("actions") or []),
+            "blueprint_required": False, "hidden": False,
+            "imported": True, "import_source": "data/crafting_recipes.json", "source_id": str(raw.get("id")),
+        }
+        _apply_record(report, sid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    return report
+
+
 # --- Проверка целостности импорта (ТЗ §10) ----------------------------------
 def check_import() -> dict[str, Any]:
     """Сканирует реестры конструкторов и находит проблемы связей/полей."""
@@ -786,7 +829,7 @@ def check_import() -> dict[str, Any]:
 IMPORTERS = {
     "item": import_items, "mob": import_mobs, "effect": import_effects, "skill": import_skills,
     "location": import_locations, "event": import_events, "city_node": import_city_nodes,
-    "achievement": import_achievements, "fine_def": import_fines,
+    "achievement": import_achievements, "fine_def": import_fines, "recipe": import_recipes,
 }
 
 

@@ -26,7 +26,9 @@ class ConstructorImportTest(unittest.TestCase):
         self._ach = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._achcat = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._fines = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._recipes = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         os.environ["FINE_CONSTRUCTOR_PATH"] = self._fines
+        os.environ["RECIPE_CONSTRUCTOR_PATH"] = self._recipes
         os.environ["ITEM_CONSTRUCTOR_PATH"] = self._items
         os.environ["WORLD_CONTENT_PATH"] = self._world
         os.environ["EFFECT_CONSTRUCTOR_PATH"] = self._effects
@@ -42,7 +44,8 @@ class ConstructorImportTest(unittest.TestCase):
         os.environ.pop("ACHIEVEMENTS_PATH", None)
         os.environ.pop("ACHIEVEMENT_CATEGORIES_PATH", None)
         os.environ.pop("FINE_CONSTRUCTOR_PATH", None)
-        for base in (self._items, self._world, self._effects, self._city, self._ach, self._achcat, self._fines):
+        os.environ.pop("RECIPE_CONSTRUCTOR_PATH", None)
+        for base in (self._items, self._world, self._effects, self._city, self._ach, self._achcat, self._fines, self._recipes):
             for suffix in ("", ".lock", ".tmp"):
                 try:
                     os.unlink(base + suffix)
@@ -228,6 +231,23 @@ class ConstructorImportTest(unittest.TestCase):
             res = fc.validate(it)
             self.assertTrue(res["ok"], (it["id"], res["errors"]))
         self.assertEqual(ci.import_fines(mode="new")["created"], 0)
+
+    def test_import_recipes(self):
+        from services import recipe_constructor_service as rcs
+
+        report = ci.import_recipes()
+        self.assertGreater(report["created"], 0)
+        items = rcs.store().list()
+        self.assertTrue(items)
+        self.assertTrue(all(i["status"] == "published" for i in items))
+        # У импортированных рецептов есть мастерская/результат/ингредиенты.
+        sample = next(i for i in items if (i.get("data") or {}).get("ingredients"))
+        d = sample["data"]
+        self.assertIn(d["workshop"], rcs.WORKSHOPS)
+        self.assertTrue(d["output_item_id"])
+        # where_used находит рецепт по результату.
+        self.assertTrue(rcs.where_used(d["output_item_id"]))
+        self.assertEqual(ci.import_recipes(mode="new")["created"], 0)
 
     def test_import_all_summary(self):
         result = ci.import_all(["location", "event"])
