@@ -827,6 +827,16 @@ def _validate_mob(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
     _validate_drop_rows(data.get("drop"), errors, warnings)
     _warn_farm_loop(data.get("drop"), warnings)
 
+    # Лимиты ранга (ТЗ «черты/благословения/фазы» §2.1–§2.2): сверяем количества
+    # навыков/черт/фаз с рангом. Аддитивно — только если ранг задан.
+    rank = _str_field(data, "mob_rank")
+    if rank:
+        from services.mob_rank_limits import validate_mob_rank_limits
+
+        rl = validate_mob_rank_limits(data, mode=_str_field(data, "validation_mode") or "warning_only")
+        errors.extend(rl["errors"])
+        warnings.extend(rl["warnings"])
+
     if not mob_type:
         warnings.append("Не указан тип моба.")
     return errors, warnings
