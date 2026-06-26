@@ -12,6 +12,7 @@ import {
 } from "../../../api/adminRecipesApi.js";
 import { tr, RECIPE_WORKSHOP } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { VersionHistory } from "../VersionHistory.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 
@@ -143,6 +144,8 @@ export function RecipesSection({ guarded, hasPerm }) {
           {!editing.isNew && can.archive ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "В архив?", dangerous: true, confirmLabel: "В архив", body: <p>Рецепт уйдёт в архив.</p>, run: async (r) => { await guarded(() => recipeLifecycle(editing.id, "archive", r), "В архиве."); await refreshEditing(); } })}>В архив</button> : null}
           {!editing.isNew && can.del ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Удалить рецепт?", dangerous: true, confirmLabel: "Удалить", body: <p>Полное удаление рецепта.</p>, run: async (r) => { await guarded(() => deleteRecipe(editing.id, editing.id, r), "Удалено."); setEditing(null); await load(); } })}>Удалить</button> : null}
         </div>
+
+        {!editing.isNew ? <VersionHistory base="recipes" id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
 
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />

@@ -14,6 +14,7 @@ import {
 import { tr, EFFECT_TYPE, EFFECT_SOURCE, EFFECT_TARGET, EFFECT_ACTIVE_WHEN, EFFECT_STACK_RULE, STAT, RESOURCE, CONTROL_KIND, ZONE_ELEMENT } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
+import { VersionHistory } from "../VersionHistory.jsx";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 
@@ -155,6 +156,8 @@ export function EffectsSection({ guarded, hasPerm }) {
           {!editing.isNew && can.archive ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "В архив?", dangerous: true, confirmLabel: "В архив", body: <p>Эффект уйдёт в архив.</p>, run: async (r) => { await guarded(() => effectLifecycle(editing.id, "archive", r), "В архиве."); await refreshEditing(); } })}>В архив</button> : null}
           {!editing.isNew && can.del ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Удалить эффект?", dangerous: true, confirmLabel: "Удалить", body: <p>Полное удаление определения эффекта.</p>, run: async (r) => { await guarded(() => deleteEffect(editing.id, editing.id, r), "Удалено."); setEditing(null); await load(); } })}>Удалить</button> : null}
         </div>
+
+        {!editing.isNew ? <VersionHistory base="effects" id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
 
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />

@@ -10,6 +10,7 @@ import {
 } from "../../../api/adminAchievementApi.js";
 import { tr, ITEM_QUALITY, ACH_TYPE, ACH_VISIBILITY, ACH_CONDITION_LOGIC, ACH_CONDITION_TYPE, ACH_PROGRESS_TYPE, ACH_REWARD_TYPE, ACH_REPEAT_PERIOD } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { VersionHistory } from "../VersionHistory.jsx";
 import { MessageComposer } from "../MessageComposer.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 
@@ -189,6 +190,8 @@ export function AchievementsSection({ guarded, hasPerm }) {
           {!editing.isNew && can.disable && editing.status === "published" ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Отключить?", dangerous: true, confirmLabel: "Отключить", body: <p>Достижение перестанет действовать.</p>, run: async (r) => { await guarded(() => achievementLifecycle(editing.id, "disable", r), "Отключено."); await refreshEditing(); } })}>Отключить</button> : null}
           {!editing.isNew && can.archive ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "В архив?", dangerous: true, confirmLabel: "В архив", body: <p>Достижение уйдёт в архив.</p>, run: async (r) => { await guarded(() => achievementLifecycle(editing.id, "archive", r), "В архиве."); setEditing(null); await load(); } })}>В архив</button> : null}
         </div>
+
+        {!editing.isNew ? <VersionHistory base="achievements" id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
 
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />
