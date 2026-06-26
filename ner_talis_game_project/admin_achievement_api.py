@@ -35,6 +35,7 @@ from services.admin_rbac import (
 )
 from services import achievement_service as ach
 from services import achievement_engine as engine
+from services.admin_versioning_routes import attach_entity_versioning_routes
 
 
 class IdDataRequest(BaseModel):
@@ -332,4 +333,12 @@ def create_admin_achievement_router(get_storage) -> APIRouter:
         )
         return {"ok": True, "revoked": bool(removed)}
 
+    attach_entity_versioning_routes(
+        router,
+        session_for=lambda req, tok: _session(get_storage(), req, tok),
+        require=_require, actor=_actor, store=ach.store,
+        target_type="achievement",
+        view_perm=PERM_ACHIEVEMENT_VIEW, edit_perm=PERM_ACHIEVEMENT_EDIT, publish_perm=PERM_ACHIEVEMENT_PUBLISH,
+        not_found="Достижение не найдено.",
+    )
     return router

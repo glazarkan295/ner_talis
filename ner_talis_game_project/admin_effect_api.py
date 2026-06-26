@@ -29,6 +29,7 @@ from services.admin_rbac import (
     require_permission,
 )
 from services import effect_constructor_service as effects
+from services.admin_versioning_routes import attach_entity_versioning_routes
 
 
 class IdDataRequest(BaseModel):
@@ -281,4 +282,12 @@ def create_admin_effect_router(get_storage) -> APIRouter:
         )
         return {"ok": True, "deleted": True}
 
+    attach_entity_versioning_routes(
+        router,
+        session_for=lambda req, tok: _session(get_storage(), req, tok),
+        require=_require, actor=_actor, store=effects.store,
+        target_type="effect", name_field="effect_name",
+        view_perm=PERM_EFFECT_VIEW, edit_perm=PERM_EFFECT_EDIT, publish_perm=PERM_EFFECT_PUBLISH,
+        not_found="Эффект не найден.",
+    )
     return router

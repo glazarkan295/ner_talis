@@ -31,6 +31,7 @@ from services.admin_rbac import (
     require_permission,
 )
 from services import skill_constructor_service as skills
+from services.admin_versioning_routes import attach_entity_versioning_routes
 
 
 class IdDataRequest(BaseModel):
@@ -272,4 +273,12 @@ def create_admin_skills_router(get_storage) -> APIRouter:
         )
         return {"ok": True, "deleted": True}
 
+    attach_entity_versioning_routes(
+        router,
+        session_for=lambda req, tok: _session(get_storage(), req, tok),
+        require=_require, actor=_actor, store=skills.store,
+        target_type="skill_def",
+        view_perm=PERM_SKILL_DEF_VIEW, edit_perm=PERM_SKILL_DEF_EDIT, publish_perm=PERM_SKILL_DEF_PUBLISH,
+        not_found="Навык не найден.",
+    )
     return router

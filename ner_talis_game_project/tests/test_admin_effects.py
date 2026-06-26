@@ -146,6 +146,29 @@ class EffectApiTest(unittest.TestCase):
         self.assertEqual(self.client.get("/api/admin/v2/effects", headers=self._auth(token)).status_code, 200)
         self.assertEqual(self._create(token).status_code, 403)
 
+    def test_history_and_rollback_endpoints(self):
+        # Этап 1: история версий + откат через общий помощник версионирования.
+        token = self._token("999")
+        self._create(token, eid="regen")  # effect_name «Регенерация»
+        self.client.put("/api/admin/v2/effects/regen", headers=self._auth(token), json={"data": {"effect_name": "Изменено"}})
+        hist = self.client.get("/api/admin/v2/effects/regen/history", headers=self._auth(token))
+        self.assertEqual(hist.status_code, 200, hist.text)
+        self.assertIn(1, [h["version"] for h in hist.json()["history"]])
+        rb = self.client.post("/api/admin/v2/effects/regen/rollback", headers=self._auth(token), json={"version": 1})
+        self.assertEqual(rb.status_code, 200, rb.text)
+        got = self.client.get("/api/admin/v2/effects/regen", headers=self._auth(token)).json()["item"]
+        self.assertEqual(got["data"]["effect_name"], "Регенерация")
+
+    def test_rollback_published_requires_publish_right(self):
+        owner = self._token("999")
+        self._create(owner, eid="reg2")
+        self.client.put("/api/admin/v2/effects/reg2", headers=self._auth(owner), json={"data": {"effect_name": "v2"}})
+        self.client.post("/api/admin/v2/effects/reg2/publish", headers=self._auth(owner), json={})
+        rbac.set_role_override("telegram", "999", rbac.CONTENT)
+        content_token = self._token("999")
+        rb = self.client.post("/api/admin/v2/effects/reg2/rollback", headers=self._auth(content_token), json={"version": 1})
+        self.assertEqual(rb.status_code, 403, rb.text)
+
 
 if __name__ == "__main__":
     unittest.main()
