@@ -128,6 +128,12 @@ def register_platform_sender(platform: str, send_fn: Callable[[str, str], None])
     logger.info("Registered bot message sender for platform %s", platform)
 
 
+def registered_platforms() -> list[str]:
+    """Платформы, для которых в ЭТОМ процессе есть отправитель."""
+    with _lock:
+        return [p for p in _platform_senders.keys()]
+
+
 def start_message_dispatcher(interval_seconds: int = 5) -> bool:
     """Запустить фоновый цикл диспетчера один раз (демон-поток)."""
     global _dispatcher_started
@@ -139,7 +145,10 @@ def start_message_dispatcher(interval_seconds: int = 5) -> bool:
     def _loop() -> None:
         while True:
             try:
-                mq.dispatch_once()
+                # Клеймим только сообщения платформ, для которых в этом процессе
+                # есть отправитель — иначе процесс одной платформы жёг бы попытки
+                # чужим сообщениям (Codex P2).
+                mq.dispatch_once(platforms=registered_platforms())
             except Exception:  # noqa: BLE001
                 logger.exception("Bot message dispatch tick failed")
             time.sleep(max(1, int(interval_seconds)))

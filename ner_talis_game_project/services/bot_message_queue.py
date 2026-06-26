@@ -171,13 +171,20 @@ class _JsonFileBackend:
         start = max(0, int(offset))
         return items[start:start + max(1, int(limit))]
 
-    def claim_due(self, *, now_iso: str, limit: int = 25) -> list[dict[str, Any]]:
+    def claim_due(self, *, now_iso: str, limit: int = 25, platforms: list[str] | None = None) -> list[dict[str, Any]]:
         now = _parse_dt(now_iso) or _now()
+        # platforms=None → без фильтра; пустой список → не клеймить ничего (нет
+        # зарегистрированных отправителей).
+        plats = None if platforms is None else {str(p) for p in platforms if p}
+        if plats is not None and not plats:
+            return []
         with self._lock, self._file_lock():
             data = self._load()
             due = []
             for m in self._items(data):
                 if m.get("status") not in (STATUS_QUEUED, STATUS_RETRY_WAIT):
+                    continue
+                if plats is not None and str(m.get("platform") or "") not in plats:
                     continue
                 nxt = _parse_dt(m.get("next_attempt_at"))
                 if nxt is None or nxt <= now:
@@ -232,8 +239,12 @@ class _StorageBackend:
     def list(self, **kwargs) -> list[dict[str, Any]]:
         return self._s.list_outgoing_messages(**kwargs)
 
-    def claim_due(self, *, now_iso: str, limit: int = 25) -> list[dict[str, Any]]:
-        return self._s.claim_due_outgoing_messages(now_iso=now_iso, limit=limit)
+    def claim_due(self, *, now_iso: str, limit: int = 25, platforms: list[str] | None = None) -> list[dict[str, Any]]:
+        try:
+            return self._s.claim_due_outgoing_messages(now_iso=now_iso, limit=limit, platforms=platforms)
+        except TypeError:
+            # Старое хранилище без параметра platforms — без фильтра.
+            return self._s.claim_due_outgoing_messages(now_iso=now_iso, limit=limit)
 
     def counts(self) -> dict[str, int]:
         return self._s.outgoing_message_status_counts()
@@ -408,12 +419,16 @@ def _apply_result(msg: dict[str, Any], result: str, error: str, now: datetime) -
             msg["error"] = error or "Временная ошибка, повтор запланирован."
 
 
-def dispatch_once(sender: Callable[[dict[str, Any]], tuple[str, str]] | None = None, *, now: datetime | None = None, limit: int = 25) -> dict[str, int]:
-    """Один проход диспетчера: взять готовые к отправке и отправить."""
+def dispatch_once(sender: Callable[[dict[str, Any]], tuple[str, str]] | None = None, *, now: datetime | None = None, limit: int = 25, platforms: list[str] | None = None) -> dict[str, int]:
+    """Один проход диспетчера: взять готовые к отправке и отправить.
+
+    platforms (если задан) ограничивает claim только этими платформами — чтобы
+    процесс с отправителем одной платформы не «забирал» чужие сообщения и не
+    жёг им попытки доставки (Codex P2)."""
     now = now or _now()
     send = sender or _SENDER or _default_sender
     counts = {"sent": 0, "failed": 0, "blocked": 0, "retry": 0, "processed": 0}
-    due = _backend.claim_due(now_iso=now.isoformat(), limit=limit)
+    due = _backend.claim_due(now_iso=now.isoformat(), limit=limit, platforms=platforms)
 
     last_error = None
     last_success = None
