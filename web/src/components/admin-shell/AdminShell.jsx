@@ -18,6 +18,48 @@ import { ProfileLayoutSection } from "./sections/ProfileLayoutSection.jsx";
 import { CitySection } from "./sections/CitySection.jsx";
 import { RecipesSection } from "./sections/RecipesSection.jsx";
 import { CampSection } from "./sections/CampSection.jsx";
+import { LibrarySection } from "./sections/LibrarySection.jsx";
+
+const TRAIT_CONFIG = {
+  base: "traits", title: "Конструктор черт мобов", permPrefix: "trait",
+  newLabel: "Новая черта", nameField: "trait_name",
+  importLabel: "Импортировать библиотеку черт?", importText: "50 универсальных черт будут заведены как опубликованные записи (без дублей).",
+  fields: [
+    { key: "trait_name", label: "Название", type: "text" },
+    { key: "trait_rank", label: "Ранг", type: "select", metaKey: "traitRanks" },
+    { key: "trigger", label: "Триггер", type: "select", metaKey: "triggers" },
+    { key: "stack_rule", label: "Правило стака", type: "select", metaKey: "stackRules" },
+    { key: "player_text", label: "Текст для игрока", type: "textarea" },
+    { key: "admin_description", label: "Описание для админа", type: "textarea" },
+    { key: "applicable_mob_categories", label: "Категории мобов", type: "multiselect", metaKey: "mobCategories" },
+  ],
+};
+const BLESSING_CONFIG = {
+  base: "blessings", title: "Конструктор благословений", permPrefix: "blessing",
+  newLabel: "Новое благословение", nameField: "blessing_name",
+  importLabel: "Импортировать библиотеку благословений?", importText: "19 благословений будут заведены как опубликованные записи (без дублей).",
+  fields: [
+    { key: "blessing_name", label: "Название", type: "text" },
+    { key: "source_type", label: "Источник", type: "select", metaKey: "sourceTypes" },
+    { key: "stack_rule", label: "Правило стака", type: "select", metaKey: "stackRules" },
+    { key: "allowed_targets", label: "Цели", type: "multiselect", metaKey: "allowedTargets" },
+    { key: "player_text", label: "Текст для игрока", type: "textarea" },
+    { key: "bonus_values", label: "Бонусы", type: "numbergroup", sub: [{ key: "flat_bonus", label: "Плоский" }, { key: "percent_bonus", label: "%" }, { key: "duration_seconds", label: "Длит. (сек)" }] },
+  ],
+};
+const PHASE_CONFIG = {
+  base: "phases", title: "Конструктор фаз боссов", permPrefix: "phase",
+  newLabel: "Новая фаза", nameField: "phase_name",
+  importLabel: "Импортировать библиотеку фаз?", importText: "20 универсальных фаз боссов будут заведены как опубликованные записи (без дублей).",
+  fields: [
+    { key: "phase_name", label: "Название", type: "text" },
+    { key: "trigger_type", label: "Тип триггера", type: "select", metaKey: "triggerTypes" },
+    { key: "trigger_value", label: "Значение триггера", type: "number" },
+    { key: "allowed_boss_ranks", label: "Ранги боссов", type: "multiselect", metaKey: "bossRanks" },
+    { key: "phase_text_for_player", label: "Текст для игрока", type: "textarea" },
+    { key: "phase_admin_notes", label: "Заметки админа", type: "textarea" },
+  ],
+};
 import { AuditSection } from "./sections/AuditSection.jsx";
 import { ReferenceSection } from "./sections/ReferenceSection.jsx";
 import { RolesSection } from "./sections/RolesSection.jsx";
@@ -38,6 +80,9 @@ const NAV = [
   { id: "city", label: "Город и крепость", icon: "🏙️", perm: "city.view" },
   { id: "recipes", label: "Конструктор ремесла", icon: "⚒️", perm: "recipe.view" },
   { id: "camps", label: "Конструктор лагеря", icon: "🏕️", perm: "camp.view" },
+  { id: "traits", label: "Черты мобов", icon: "🧬", perm: "trait.view" },
+  { id: "blessings", label: "Благословения", icon: "🌟", perm: "blessing.view" },
+  { id: "phases", label: "Фазы боссов", icon: "🌀", perm: "phase.view" },
   { id: "guilds", label: "Гильдии", icon: "🏰", perm: "guild.view" },
   { id: "events", label: "Мировые события", icon: "🌌", perm: "world_event.view" },
   { id: "achievements", label: "Достижения", icon: "🏆", perm: "achievement.view" },
@@ -146,6 +191,9 @@ export function AdminShell() {
         {active === "city" && hasPerm("city.view") && <CitySection guarded={guarded} hasPerm={hasPerm} />}
         {active === "recipes" && hasPerm("recipe.view") && <RecipesSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "camps" && hasPerm("camp.view") && <CampSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "traits" && hasPerm("trait.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={TRAIT_CONFIG} />}
+        {active === "blessings" && hasPerm("blessing.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={BLESSING_CONFIG} />}
+        {active === "phases" && hasPerm("phase.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PHASE_CONFIG} />}
         {active === "guilds" && hasPerm("guild.view") && <GuildsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "events" && hasPerm("world_event.view") && <EventsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "achievements" && hasPerm("achievement.view") && <AchievementsSection guarded={guarded} hasPerm={hasPerm} />}

@@ -1012,6 +1012,162 @@ def import_camps(*, mode: str | None = None, overwrite: bool = False, actor: str
     return report
 
 
+# --- Импорт черт/благословений/фаз (ТЗ «черты/благословения/фазы») ----------
+# (id, название, ранг, триггер, описание-для-игрока)
+_TRAIT_SEED = [
+    ("tough_hide", "Крепкая шкура", "special", "passive", "Моб получает меньше физического урона."),
+    ("dense_shell", "Плотная оболочка", "special", "on_receive_damage", "Доп. защита от первого сильного удара."),
+    ("quick_reaction", "Быстрая реакция", "special", "passive", "Чаще уклоняется или снижает шанс попадания по себе."),
+    ("sharp_claws", "Острые когти", "special", "on_attack", "Атаки с шансом вызывают кровотечение."),
+    ("acid_spit", "Едкая слюна", "special", "on_attack", "Атака может немного снизить защиту цели."),
+    ("weak_venom_body", "Слабое ядовитое тело", "special", "on_receive_damage", "Атакующий в ближнем бою может получить слабое отравление."),
+    ("heavy_body", "Тяжёлое тело", "special", "passive", "Бонус к сопротивлению оглушению и отталкиванию."),
+    ("night_hunt", "Ночная охота", "special", "passive", "В тьме/ночью/подземелье — бонус к точности и урону."),
+    ("territorial_rage", "Территориальная ярость", "special", "passive", "Сильнее в своей основной локации."),
+    ("fearsome_visage", "Пугающий вид", "special", "battle_start", "В начале боя снижает точность/крит игрока."),
+    ("ragged_strike", "Рваный удар", "special", "on_attack", "Атака с шансом накладывает лёгкую травму/кровотечение."),
+    ("element_resist", "Сопротивление стихии", "special", "passive", "Меньше урона от выбранной стихии или зоны."),
+    ("unstable_flesh", "Нестабильная плоть", "special", "on_receive_damage", "При получении урона с шансом случайный слабый баф/дебаф."),
+    ("survival_instinct", "Инстинкт выживания", "special", "passive", "При низком HP бонус к уклонению/побегу."),
+    ("unpleasant_prey", "Неприятная добыча", "special", "on_death", "Риск слабого негативного эффекта при сборе добычи."),
+    ("enhanced_regen", "Усиленная регенерация", "elite", "on_turn_start", "Восстанавливает здоровье каждый ход."),
+    ("combat_adaptation", "Боевая адаптация", "elite", "on_receive_damage", "После ударов одного типа — временное сопротивление этому типу."),
+    ("riposte", "Ответный выпад", "elite", "on_receive_damage", "После прямого удара с шансом отвечает атакой."),
+    ("elite_pressure", "Давление элиты", "elite", "passive", "Пока жив, игрок получает штраф к точности/уклонению."),
+    ("armor_pierce", "Бронебойные удары", "elite", "on_attack", "Атаки частично игнорируют физзащиту игрока."),
+    ("disrupting_strike", "Срывающий удар", "elite", "on_attack", "Атака может временно заблокировать доп. действие игрока."),
+    ("hunter_threat", "Угроза охотника", "elite", "on_attack", "Выбирает ослабленную цель и бьёт сильнее."),
+    ("healing_suppression", "Подавление лечения", "elite", "passive", "Пока жив, лечение игрока/группы слабее."),
+    ("unstable_field", "Нестабильное поле", "elite", "on_turn_start", "Каждые N ходов на поле появляется случайный слабый эффект."),
+    ("wound_empowerment", "Усиление от ранения", "elite", "passive", "Чем меньше HP, тем сильнее атаки."),
+    ("defensive_phase", "Защитная фаза", "elite", "phase_change", "При низком HP временно усиливает защиту."),
+    ("summon_weak_minions", "Призыв слабых помощников", "elite", "on_turn_start", "Призывает слабых помощников через интервалы."),
+    ("threat_aura", "Аура угрозы", "elite", "passive", "Снижает боевую эффективность игроков вокруг."),
+    ("strong_natural_defense", "Сильная природная защита", "elite", "passive", "Заметная защита от выбранных эффектов (яд/кровь/огонь/контроль)."),
+    ("defense_breaker", "Разрушитель защиты", "elite", "on_attack", "Атаки могут временно снижать защиту игрока."),
+    ("unique_defense", "Уникальная защита", "unique", "passive", "Особая защита, меняющая тактику боя."),
+    ("unique_attack", "Уникальная атака", "unique", "on_attack", "Особая усиленная атака с откатом/условием."),
+    ("shifting_defense", "Меняющаяся защита", "unique", "on_turn_start", "Тип защиты меняется каждые N ходов."),
+    ("mirror_carapace", "Зеркальный панцирь", "unique", "on_receive_damage", "Часть магического урона отражается (без цепочек)."),
+    ("unbreakable_stance", "Непробиваемая стойка", "unique", "phase_change", "Резко снижает входящий физурон, пока стойка активна."),
+    ("cursed_presence", "Проклятое присутствие", "unique", "on_turn_start", "Шанс наложить/усилить слабое проклятье."),
+    ("space_rift", "Разлом пространства", "unique", "on_turn_start", "Искажает бой: цель/точность/стоимость/позиция."),
+    ("resource_devour", "Пожирание ресурса", "unique", "on_attack", "Забирает ману/Дух/энергию при атаке."),
+    ("phase_invulnerability", "Фазовая неуязвимость", "unique", "phase_change", "Периодически почти неуязвим до конца фазы."),
+    ("legendary_rage", "Легендарная ярость", "unique", "phase_change", "При низком HP больше урона/навыков, но больше входящего урона."),
+    ("world_pressure", "Давление мирового существа", "world", "passive", "Пока жив, все участники получают штраф к точности/уклонению/восстановлению."),
+    ("region_quake", "Сотрясение региона", "world", "on_turn_start", "Каждые N ходов региональный удар по всем участникам."),
+    ("world_suppression_aura", "Мировая аура подавления", "world", "passive", "Ослабляет лечение/очищение/благословения во всём бою."),
+    ("formation_break", "Разрушение строя", "world", "passive", "Снижает эффективность групповых аур и построений."),
+    ("world_devour", "Поглощение мира", "world", "on_turn_start", "Периодически поглощает ману/Дух/энергию игроков."),
+    ("minion_call", "Зов прислужников", "world", "on_turn_start", "Призывает волны помощников по фазе/таймеру."),
+    ("unstable_reality", "Нестабильная реальность", "world", "on_turn_start", "Периодически меняет правила боя."),
+    ("inexhaustible_body", "Неистощимое тело", "world", "on_turn_start", "Восстанавливает HP, если урона давно не было достаточно."),
+    ("catastrophic_limit", "Катастрофический предел", "world", "on_turn_start", "При затяжном бое усиливается по таймеру (soft-enrage)."),
+    ("world_loot", "Мировая добыча", "world", "on_death", "Награда зависит от вклада/стадии/участия в фазах."),
+]
+
+# (id, название, источник, описание)
+_BLESSING_SEED = [
+    ("blessing_strength", "Благословение силы", "item", "Повышает Силу и физический урон."),
+    ("blessing_endurance", "Благословение выносливости", "item", "Повышает Выносливость и максимум HP."),
+    ("blessing_wisdom", "Благословение мудрости", "zone", "Усиливает лечение, очищение и защитные действия."),
+    ("blessing_intellect", "Благословение интеллекта", "zone", "Усиливает навыки Маны и магические эффекты."),
+    ("blessing_combat_spirit", "Благословение боевого Духа", "item", "Усиливает ресурс Дух, физнавыки, стойки и приёмы."),
+    ("blessing_hunter", "Благословение охотника", "event", "Повышает шанс добычи с животных, следов и охотничьих событий."),
+    ("blessing_herbalist", "Благословение травника", "zone", "Повышает шанс найти травы и алхимические ингредиенты."),
+    ("blessing_miner", "Благословение рудокопа", "zone", "Повышает шанс найти руду, камень или материал."),
+    ("blessing_craftsman", "Благословение ремесленника", "event", "Повышает шанс успеха/качества ремесла."),
+    ("blessing_merchant", "Благословение купца", "event", "Улучшает покупку/продажу или снижает комиссию."),
+    ("blessing_wanderer", "Благословение странника", "zone", "Снижает расход энергии или повышает мирные события."),
+    ("blessing_protection", "Благословение защиты", "item", "Снижает входящий урон."),
+    ("blessing_cleanse", "Благословение очищения", "zone", "Повышает шанс снять негатив или ослабляет проклятья."),
+    ("blessing_luck", "Благословение удачи", "event", "Повышает шанс получить дополнительную/редкую награду."),
+    ("blessing_experience", "Благословение опыта", "event", "Увеличивает получаемый опыт."),
+    ("blessing_coins", "Благословение монет", "event", "Увеличивает получаемые монеты из разрешённых источников."),
+    ("blessing_event", "Благословение события", "event", "Усиливает игрока/мобов в рамках определённого события."),
+    ("blessing_victor", "Благословение победителя", "boss_phase", "Временный бонус после сложной победы над боссом."),
+    ("blessing_risk", "Благословение риска", "event", "Больше наград, но бой/поиск становится опаснее."),
+]
+
+# (id, название, тип триггера, описание)
+_PHASE_SEED = [
+    ("phase_intro", "Вступительная фаза", "manual", "Начальная фаза боя: базовый набор навыков, показ главной механики."),
+    ("phase_defense_check", "Фаза проверки защиты", "hp_percent", "Сильные удары — проверка физ/маг защиты игроков."),
+    ("phase_pressure", "Фаза давления", "turn_count", "Чаще атакует, сокращает безопасные окна восстановления."),
+    ("phase_summon", "Фаза призыва", "turn_count", "Призывает помощников или волны врагов."),
+    ("phase_shell", "Фаза защитного панциря", "hp_percent", "Сильная защита, пока не кончится фаза или условие."),
+    ("phase_vulnerable", "Уязвимая фаза", "objective", "После условия временно получает больше урона."),
+    ("phase_rage", "Фаза ярости", "hp_percent", "При низком HP больше урона и чаще активные навыки."),
+    ("phase_drain", "Фаза истощения игроков", "hp_percent", "Активно снижает ресурсы игроков (мана/Дух/энергия)."),
+    ("phase_field_control", "Фаза контроля поля", "turn_count", "Эффекты зоны: туман/огонь/мороз/тьма/ловушки."),
+    ("phase_hunt_weak", "Фаза охоты на слабых", "objective", "Чаще выбирает игроков с низким HP или дебафами."),
+    ("phase_reflection", "Фаза отражения", "hp_percent", "Часть урона возвращается атакующим."),
+    ("phase_no_heal", "Фаза запрета восстановления", "hp_percent", "Ослабляет лечение/регенерацию/очищение."),
+    ("phase_rift", "Фаза разлома", "turn_count", "Искажает порядок действий/цели/стоимость/позиции."),
+    ("phase_charge", "Фаза накопления силы", "turn_count", "Накопление заряда → сильная атака, если не прервать."),
+    ("phase_armor_decay", "Фаза распада брони", "hp_percent", "Теряет защиту, но наносит больше урона."),
+    ("phase_recovery", "Фаза восстановления", "hp_percent", "Пытается восстановить HP или снять негатив."),
+    ("phase_damage_check", "Фаза испытания урона", "turn_count", "Нужно нанести достаточно урона за N ходов, иначе усиление."),
+    ("phase_survival_check", "Фаза испытания выживания", "turn_count", "Усиливает давление; задача игроков — пережить фазу."),
+    ("phase_final", "Финальная фаза", "hp_percent", "Последняя опасная фаза, самые сильные навыки."),
+    ("phase_post_death", "Посмертная фаза", "manual", "После смерти: взрыв/проклятье/волна/зона/событие."),
+]
+
+
+def import_traits(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import trait_constructor_service as tcs
+
+    report = _rich_report("trait")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(tcs.store(), tcs.STATUS_PUBLISHED, actor)
+    for tid, name, rank, trigger, desc in _TRAIT_SEED:
+        record = {
+            "trait_name": name, "trait_rank": rank, "trigger": trigger,
+            "player_text": desc, "admin_description": desc,
+            "stack_rule": "strongest_only", "applicable_mob_categories": [],
+            "can_be_removed": False,
+            "imported": True, "import_source": "trait_seed", "source_id": tid,
+        }
+        _apply_record(report, tid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    return report
+
+
+def import_blessings(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import blessing_constructor_service as bcs
+
+    report = _rich_report("blessing")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(bcs.store(), bcs.STATUS_PUBLISHED, actor)
+    for bid, name, source, desc in _BLESSING_SEED:
+        record = {
+            "blessing_name": name, "source_type": source, "allowed_targets": ["player"],
+            "player_text": desc, "bonus_values": {"flat_bonus": 0, "percent_bonus": 0, "duration_seconds": 0},
+            "stack_rule": "refresh", "show_to_player": True,
+            "imported": True, "import_source": "blessing_seed", "source_id": bid,
+        }
+        _apply_record(report, bid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    return report
+
+
+def import_phases(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import phase_constructor_service as pcs
+
+    report = _rich_report("phase")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(pcs.store(), pcs.STATUS_PUBLISHED, actor)
+    all_ranks = list(pcs.BOSS_RANKS)
+    for pid, name, trigger, desc in _PHASE_SEED:
+        record = {
+            "phase_name": name, "trigger_type": trigger, "trigger_value": 0,
+            "allowed_boss_ranks": all_ranks, "phase_text_for_player": desc,
+            "phase_admin_notes": desc, "phase_effects": [], "phase_skill_pool": [],
+            "imported": True, "import_source": "phase_seed", "source_id": pid,
+        }
+        _apply_record(report, pid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    return report
+
+
 # --- Проверка целостности импорта (ТЗ §10) ----------------------------------
 def check_import() -> dict[str, Any]:
     """Сканирует реестры конструкторов и находит проблемы связей/полей."""
@@ -1060,7 +1216,8 @@ IMPORTERS = {
     "item": import_items, "mob": import_mobs, "effect": import_effects, "skill": import_skills,
     "location": import_locations, "event": import_events, "city_node": import_city_nodes,
     "achievement": import_achievements, "fine_def": import_fines, "recipe": import_recipes,
-    "profile_layout": import_profile_layout,
+    "profile_layout": import_profile_layout, "camp": import_camps,
+    "trait": import_traits, "blessing": import_blessings, "phase": import_phases,
 }
 
 
