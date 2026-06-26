@@ -365,6 +365,19 @@ class WorldApiTest(unittest.TestCase):
         )
         self.assertEqual(edit_draft.status_code, 200, edit_draft.text)
 
+    def test_history_and_rollback_endpoints(self):
+        # Этап 1: история версий и откат через admin-эндпоинты.
+        token = self._token("999")
+        self._create_location(token, cid="loc_v")  # имя «Малое плато», draft
+        self.client.put("/api/admin/v2/world/location/loc_v", headers=self._auth(token), json={"data": {"name": "V2"}})
+        hist = self.client.get("/api/admin/v2/world/location/loc_v/history", headers=self._auth(token))
+        self.assertEqual(hist.status_code, 200, hist.text)
+        self.assertIn(1, [h["version"] for h in hist.json()["history"]])
+        rb = self.client.post("/api/admin/v2/world/location/loc_v/rollback", headers=self._auth(token), json={"version": 1})
+        self.assertEqual(rb.status_code, 200, rb.text)
+        got = self.client.get("/api/admin/v2/world/location/loc_v", headers=self._auth(token)).json()["item"]
+        self.assertEqual(got["data"]["name"], "Малое плато")  # данные восстановлены
+
     def test_unknown_kind_is_404(self):
         token = self._token("999")
         self.assertEqual(self.client.get("/api/admin/v2/world/dragon", headers=self._auth(token)).status_code, 404)

@@ -57,6 +57,12 @@ class WorldActionRequest(BaseModel):
     reason: str = ""
 
 
+class WorldRollbackRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    version: int
+    reason: str = ""
+
+
 class WorldImportRequest(BaseModel):
     token: str | None = Field(default=None, min_length=16)
     kinds: list[str] = Field(default_factory=list)
@@ -312,6 +318,46 @@ def create_admin_world_router(get_storage) -> APIRouter:
             details={"kind": kind},
         )
         return {"ok": True, "validation": result}
+
+    @router.get("/{kind}/{content_id}/history")
+    def history(kind: str, content_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, token)
+        _require(session, PERM_WORLD_VIEW)
+        _ensure_kind(kind)
+        if registry.get_content(kind, content_id) is None:
+            raise HTTPException(status_code=404, detail="Объект не найден.")
+        return {"ok": True, "history": registry.content_history(kind, content_id)}
+
+    @router.post("/{kind}/{content_id}/rollback")
+    def rollback(kind: str, content_id: str, payload: WorldRollbackRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_WORLD_EDIT_DRAFT)
+        _ensure_kind(kind)
+        before = registry.get_content(kind, content_id)
+        if before is None:
+            raise HTTPException(status_code=404, detail="Объект не найден.")
+        # Откат ОПУБЛИКОВАННОГО объекта меняет live-данные → права публикации
+        # (как и обычная правка published).
+        if str(before.get("status") or "") == registry.STATUS_PUBLISHED:
+            _require(session, PERM_WORLD_PUBLISH)
+        try:
+            item = run_admin_operation(
+                session=session,
+                action="world.rollback",
+                func=lambda: registry.rollback_content(kind, content_id, payload.version, actor=_actor(session)),
+                target_type=kind,
+                target_id=content_id,
+                target_name=str(before.get("data", {}).get("name") or content_id),
+                before={"version": before.get("version")},
+                after_func=lambda r: {"version": r.get("version")},
+                reason=payload.reason,
+                details={"kind": kind, "rollback_to": payload.version},
+            )
+        except registry.ContentError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "item": item}
 
     @router.get("/{kind}/{content_id}/preview")
     def preview(kind: str, content_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
