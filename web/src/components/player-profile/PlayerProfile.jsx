@@ -344,6 +344,32 @@ function applyProfileLayoutTabs(baseTabs, layout) {
   return result.length ? result : baseTabs;
 }
 
+// Применение раскладки на уровне БЛОКОВ (ТЗ §3, рантайм): опубликованная
+// раскладка вкладки задаёт видимость/порядок известных блоков. Аддитивно, как и
+// для вкладок: блок с visibility "hidden" скрывается, перечисленные блоки идут в
+// заданном порядке, неизвестные раскладке блоки сохраняются в конце (контент не
+// теряется). Нет раскладки для вкладки → дефолтный порядок без изменений.
+// defaultBlocks: [{ type, node }]. layout: data.profileLayout.
+function planProfileBlocks(tabKey, layout, defaultBlocks) {
+  const layoutTab = (Array.isArray(layout?.tabs) ? layout.tabs : []).find(
+    (t) => String(t.key || "").trim() === tabKey,
+  );
+  const blocks = Array.isArray(layoutTab?.blocks) ? layoutTab.blocks : [];
+  if (!blocks.length) return defaultBlocks;
+  const byType = new Map(defaultBlocks.map((b) => [b.type, b]));
+  const used = new Set();
+  const result = [];
+  for (const lb of blocks) {
+    const base = byType.get(String(lb.type || "").trim());
+    if (!base) continue;                 // нет такого блока в рендере — игнорируем
+    used.add(base.type);                 // упомянут (даже скрытый) — не дублируем ниже
+    if (String(lb.visibility || "") === "hidden") continue;
+    result.push(base);
+  }
+  for (const base of defaultBlocks) if (!used.has(base.type)) result.push(base);
+  return result.length ? result : defaultBlocks;
+}
+
 // Оформление профиля из раскладки → CSS-переменные (только заданные значения).
 function profileThemeStyle(theme) {
   if (!theme) return {};
@@ -958,8 +984,9 @@ function CharacterTab({ profile, readOnly = false, onOpenItem, onOpenSlot, onCon
     setPendingAttributes({});
   }
 
-  return (
-    <div className="nt-stack">
+  // Блоки вкладки в дефолтном порядке; раскладка может скрыть/переставить их.
+  const defaultBlocks = [
+    { type: "main_info", node: (
       <Panel title="Сводка">
         <div className="nt-lines">
           <div className="nt-row">
@@ -979,8 +1006,11 @@ function CharacterTab({ profile, readOnly = false, onOpenItem, onOpenSlot, onCon
         <div className="nt-progress-label">Опыт: {xpCurrent} / {xpNext}</div>
         <div className="nt-progress"><i style={{ width: `${xpPercent}%` }} /></div>
       </Panel>
-      {editField ? <ProfileEditModal field={editField.field} player={profile.player} position={editField.position} onClose={() => setEditField(null)} onSubmit={submitFieldEdit} /> : null}
+    ) },
+    { type: "equipment", node: (
       <EquipmentPanel profile={profile} readOnly={readOnly} onOpenItem={onOpenItem} onOpenSlot={onOpenSlot} />
+    ) },
+    { type: "stats", node: (
       <Panel title="Характеристики" right={<span className="nt-badge">Свободно: {remainingFreeStats}</span>}>
         <div className="nt-lines">
           {(profile.attributes || []).map((attribute) => {
@@ -1005,10 +1035,21 @@ function CharacterTab({ profile, readOnly = false, onOpenItem, onOpenSlot, onCon
           </div>
         ) : null}
       </Panel>
+    ) },
+    { type: "resources", node: (
       <Panel title="Параметры"><div className="nt-lines">{(profile.parameters || []).map((row) => <Row key={row.label} label={row.label} value={row.value} />)}</div></Panel>
+    ) },
+    { type: "active_sets", node: (
       <Panel title="Активные сеты">
         {(profile.activeSets || []).length ? <div className="nt-column-list">{profile.activeSets.map((set) => <div key={set.name} className="nt-mini-card"><CardRow label={set.name} value="активен" /><p>{set.bonus}</p></div>)}</div> : <p className="nt-empty-text">Активных сетов нет.</p>}
       </Panel>
+    ) },
+  ];
+  const blocks = planProfileBlocks("character", profile.profileLayout, defaultBlocks);
+  return (
+    <div className="nt-stack">
+      {blocks.map((b) => <React.Fragment key={b.type}>{b.node}</React.Fragment>)}
+      {editField ? <ProfileEditModal field={editField.field} player={profile.player} position={editField.position} onClose={() => setEditField(null)} onSubmit={submitFieldEdit} /> : null}
     </div>
   );
 }
@@ -1220,21 +1261,32 @@ function InfoTab({ profile }) {
   const status = profile.status || null;
   const places = (profile.ratingPlaces || []).filter((p) => p.place !== "—" && p.place != null);
   const [finesModal, setFinesModal] = useState(null);
+  // Блоки вкладки «Журнал» в дефолтном порядке; раскладка может скрыть/переставить.
+  const defaultBlocks = [
+    // Предупреждения/статус/рейтинги перенесены из убранной вкладки «Обзор» (ТЗ §1).
+    { type: "warnings", node: <ProfileWarnings warnings={profile.warnings} /> },
+    { type: "activity", node: (
+      <Panel title="Активность"><div className="nt-lines">{status ? <Row label="Статус" value={status.label} /> : null}<Row label="Дата регистрации" value={profile.player?.registrationDate || "—"} /><Row label="PVE убийства" value={activity.pveKills || 0} /><Row label="PVP убийства" value={activity.pvpKills || 0} /><Row label="Частицы душ" value={activity.soulParticlesAbsorbed || 0} /><div className="nt-row"><span>Штрафы</span>{fineList.length ? <button type="button" className="nt-fines-button" onClick={(event) => setFinesModal({ position: getFloatingPosition(event, 390, 360) })}>{`${fineList.length} активн. — подробнее`}</button> : <strong>нет активных штрафов</strong>}</div></div></Panel>
+    ) },
+    { type: "ratings", node: places.length ? (
+      <Panel title="Мои места в рейтингах">
+        <div className="nt-rating-places">
+          {places.map((p) => <div className="nt-rating-place" key={p.key}><span>{p.label}</span><b>{p.place} место</b></div>)}
+        </div>
+      </Panel>
+    ) : null },
+    { type: "crafting", node: (
+      <CollapsiblePanel title="Ремёсла"><div className="nt-card-list nt-column-list">{crafts.length ? crafts.map((craft) => <div key={craft.name} className="nt-mini-card"><CardRow label={craft.name} value={`ур. ${craft.level}`} /><p>{craft.exp}</p></div>) : <p className="nt-empty-text">Ремёсла пока не развиты.</p>}</div></CollapsiblePanel>
+    ) },
+    { type: "achievements", node: (
+      <CollapsiblePanel title="Достижения"><div className="nt-card-list nt-column-list">{(info.achievements || []).length ? info.achievements.map((achievement) => <div key={achievement.name || achievement} className="nt-mini-card"><CardRow label={achievement.name || achievement} value="Получено" /><p>{achievement.description || "—"}</p></div>) : <p className="nt-empty-text">Достижений пока нет.</p>}</div></CollapsiblePanel>
+    ) },
+  ];
+  const blocks = planProfileBlocks("info", profile.profileLayout, defaultBlocks);
   return (
     <div className="nt-stack">
-      {/* Предупреждения/статус/рейтинги перенесены из убранной вкладки «Обзор» (ТЗ §1). */}
-      <ProfileWarnings warnings={profile.warnings} />
-      <Panel title="Активность"><div className="nt-lines">{status ? <Row label="Статус" value={status.label} /> : null}<Row label="Дата регистрации" value={profile.player?.registrationDate || "—"} /><Row label="PVE убийства" value={activity.pveKills || 0} /><Row label="PVP убийства" value={activity.pvpKills || 0} /><Row label="Частицы душ" value={activity.soulParticlesAbsorbed || 0} /><div className="nt-row"><span>Штрафы</span>{fineList.length ? <button type="button" className="nt-fines-button" onClick={(event) => setFinesModal({ position: getFloatingPosition(event, 390, 360) })}>{`${fineList.length} активн. — подробнее`}</button> : <strong>нет активных штрафов</strong>}</div></div></Panel>
-      {places.length ? (
-        <Panel title="Мои места в рейтингах">
-          <div className="nt-rating-places">
-            {places.map((p) => <div className="nt-rating-place" key={p.key}><span>{p.label}</span><b>{p.place} место</b></div>)}
-          </div>
-        </Panel>
-      ) : null}
+      {blocks.map((b) => <React.Fragment key={b.type}>{b.node}</React.Fragment>)}
       {finesModal ? <FinesModal fines={fineList} position={finesModal.position} onClose={() => setFinesModal(null)} /> : null}
-      <CollapsiblePanel title="Ремёсла"><div className="nt-card-list nt-column-list">{crafts.length ? crafts.map((craft) => <div key={craft.name} className="nt-mini-card"><CardRow label={craft.name} value={`ур. ${craft.level}`} /><p>{craft.exp}</p></div>) : <p className="nt-empty-text">Ремёсла пока не развиты.</p>}</div></CollapsiblePanel>
-      <CollapsiblePanel title="Достижения"><div className="nt-card-list nt-column-list">{(info.achievements || []).length ? info.achievements.map((achievement) => <div key={achievement.name || achievement} className="nt-mini-card"><CardRow label={achievement.name || achievement} value="Получено" /><p>{achievement.description || "—"}</p></div>) : <p className="nt-empty-text">Достижений пока нет.</p>}</div></CollapsiblePanel>
     </div>
   );
 }
