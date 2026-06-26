@@ -679,7 +679,54 @@ def _validate_location(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
             pass
 
     _validate_player_message(data.get("scene_message"), "Сообщение при входе", errors, warnings)
+
+    # Глубина поиска (ТЗ 09 §19.5–§19.6): необязательная настройка карточки.
+    if data.get("search_depth_enabled"):
+        for key, label in (("search_depth_start", "Стартовая глубина"),
+                           ("search_depth_max", "Максимальная глубина")):
+            raw = data.get(key)
+            if raw is None or raw == "":
+                continue
+            try:
+                if int(raw) < 0:
+                    errors.append(f"{label} поиска не может быть отрицательной.")
+            except (TypeError, ValueError):
+                errors.append(f"{label} поиска — не число.")
+        start = _num(data.get("search_depth_start")) or 0
+        cap = _num(data.get("search_depth_max")) or 0
+        if cap and start and cap > 0 and start > cap:
+            errors.append("Стартовая глубина поиска больше максимальной.")
+        txt = _str_field(data, "search_depth_text")
+        if txt and _has_markup(txt):
+            errors.append("В тексте глубины поиска недопустимая разметка/HTML.")
+        _validate_search_depth_thresholds(data.get("search_depth_thresholds"), errors, warnings)
+
     return errors, warnings
+
+
+def _validate_search_depth_thresholds(rows: Any, errors: list[str], warnings: list[str]) -> None:
+    """Пороги глубины поиска (§19.6): список {min_depth, max_depth, ...}."""
+    if rows in (None, "", []):
+        return
+    if not isinstance(rows, list):
+        errors.append("Пороги глубины поиска должны быть списком.")
+        return
+    for idx, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            errors.append(f"Порог глубины #{idx} — не объект.")
+            continue
+        lo = row.get("min_depth")
+        hi = row.get("max_depth")
+        try:
+            lo_i = int(lo) if lo not in (None, "") else 0
+            hi_i = int(hi) if hi not in (None, "") else 0
+        except (TypeError, ValueError):
+            errors.append(f"Порог глубины #{idx}: min/max — не число.")
+            continue
+        if lo_i < 0 or hi_i < 0:
+            errors.append(f"Порог глубины #{idx}: значения не могут быть отрицательными.")
+        if hi_i > 0 and lo_i > hi_i:
+            errors.append(f"Порог глубины #{idx}: min_depth больше max_depth.")
 
 
 def _num(value: Any) -> float | None:

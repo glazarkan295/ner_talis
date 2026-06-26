@@ -67,6 +67,9 @@ const EMPTY_LOCATION = {
   image: "", min_level: 1, mob_level_min: "", mob_level_max: "",
   can_search: false, can_camp: false, can_fish: false, can_teleport: false,
   city_functions: false, safe: false,
+  // Глубина поиска (ТЗ 09 §19): необязательная настройка.
+  search_depth_enabled: false, search_depth_start: 1, search_depth_max: 0,
+  show_search_depth: false, search_depth_text: "", search_depth_thresholds: [],
 };
 
 const EMPTY_MOB = {
@@ -171,6 +174,43 @@ function LocationForm({ value, onChange, meta, disabled, uploadKey }) {
         {flag("can_teleport", "Телепорт")}{flag("city_functions", "Городские функции")}{flag("safe", "Безопасная")}
       </div>
       <MessageComposer label="Сообщение при входе (изображение/формат/предпросмотр)" value={value.scene_message} category="locations" uploadKey={`${uploadKey || "location"}_msg`} disabled={disabled} onChange={(v) => set("scene_message", v)} />
+      <fieldset className="ntv2-fieldset">
+        <legend>🔎 Глубина поиска</legend>
+        <div className="ntv2-form-row" style={{ gap: 14 }}>
+          {flag("search_depth_enabled", "Включить глубину поиска")}
+          {flag("show_search_depth", "Показывать игроку")}
+        </div>
+        {value.search_depth_enabled ? (
+          <>
+            <div className="ntv2-form-row">
+              <Field label="Стартовая глубина"><input type="number" value={value.search_depth_start} disabled={disabled} onChange={(e) => set("search_depth_start", e.target.value)} /></Field>
+              <Field label="Макс. глубина (0 = без лимита)"><input type="number" value={value.search_depth_max} disabled={disabled} onChange={(e) => set("search_depth_max", e.target.value)} /></Field>
+            </div>
+            <Field label="Текст для игрока (при показе глубины)"><textarea rows={2} value={value.search_depth_text} disabled={disabled} onChange={(e) => set("search_depth_text", e.target.value)} /></Field>
+            <SearchDepthThresholdsEditor rows={value.search_depth_thresholds || []} disabled={disabled} onChange={(rows) => set("search_depth_thresholds", rows)} />
+          </>
+        ) : null}
+      </fieldset>
+    </div>
+  );
+}
+
+function SearchDepthThresholdsEditor({ rows, disabled, onChange }) {
+  const update = (idx, key, val) => onChange(rows.map((r, i) => (i === idx ? { ...r, [key]: val } : r)));
+  const add = () => onChange([...rows, { min_depth: "", max_depth: "", note: "" }]);
+  const remove = (idx) => onChange(rows.filter((_, i) => i !== idx));
+  return (
+    <div className="ntv2-depth-thresholds">
+      <div className="ntv2-field-label">Пороги глубины (события/ресурсы/мобы по глубине, §19.6)</div>
+      {rows.map((row, idx) => (
+        <div className="ntv2-form-row" key={idx} style={{ gap: 8, alignItems: "flex-end" }}>
+          <Field label="От глубины"><input type="number" value={row.min_depth ?? ""} disabled={disabled} onChange={(e) => update(idx, "min_depth", e.target.value)} /></Field>
+          <Field label="До (0 = ∞)"><input type="number" value={row.max_depth ?? ""} disabled={disabled} onChange={(e) => update(idx, "max_depth", e.target.value)} /></Field>
+          <Field label="Что открывается (заметка)"><input value={row.note ?? ""} disabled={disabled} onChange={(e) => update(idx, "note", e.target.value)} /></Field>
+          {!disabled ? <button type="button" className="ntv2-btn-mini" onClick={() => remove(idx)}>✕</button> : null}
+        </div>
+      ))}
+      {!disabled ? <button type="button" className="ntv2-btn-mini" onClick={add}>＋ Порог</button> : null}
     </div>
   );
 }
