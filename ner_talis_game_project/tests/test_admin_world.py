@@ -328,6 +328,30 @@ class WorldApiTest(unittest.TestCase):
         # But can list.
         self.assertEqual(self.client.get("/api/admin/v2/world/location", headers=self._auth(token)).status_code, 200)
 
+    def test_content_cannot_edit_published_world(self):
+        # Codex P2: правка ОПУБЛИКОВАННОГО объекта снимает его с публикации,
+        # поэтому требует прав публикации (а не только edit_draft).
+        owner = self._token("999")
+        self._create_location(owner)
+        self.client.post("/api/admin/v2/world/location/small_plateau/validate", headers=self._auth(owner), json={})
+        pub = self.client.post("/api/admin/v2/world/location/small_plateau/publish", headers=self._auth(owner), json={"reason": "rel"})
+        self.assertEqual(pub.status_code, 200, pub.text)
+
+        rbac.set_role_override("telegram", "999", rbac.CONTENT)
+        content_token = self._token("999")
+        edit_published = self.client.put(
+            "/api/admin/v2/world/location/small_plateau",
+            headers=self._auth(content_token), json={"data": {"name": "Изменено"}},
+        )
+        self.assertEqual(edit_published.status_code, 403, edit_published.text)
+        # Черновик content править может (edit_draft).
+        self._create_location(content_token, cid="draft_loc")
+        edit_draft = self.client.put(
+            "/api/admin/v2/world/location/draft_loc",
+            headers=self._auth(content_token), json={"data": {"type": "city"}},
+        )
+        self.assertEqual(edit_draft.status_code, 200, edit_draft.text)
+
     def test_unknown_kind_is_404(self):
         token = self._token("999")
         self.assertEqual(self.client.get("/api/admin/v2/world/dragon", headers=self._auth(token)).status_code, 404)

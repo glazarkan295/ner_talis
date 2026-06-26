@@ -239,6 +239,12 @@ def create_admin_world_router(get_storage) -> APIRouter:
         before = registry.get_content(kind, content_id)
         if before is None:
             raise HTTPException(status_code=404, detail="Объект не найден.")
+        # Правка ОПУБЛИКОВАННОГО объекта снимает его с публикации (update_content
+        # переводит published→draft) и до повторной публикации убирает из игры.
+        # Поэтому требуем права публикации, а не только edit_draft — иначе
+        # draft-редактор «погасил» бы живой контент простым редактированием.
+        if str(before.get("status") or "") == registry.STATUS_PUBLISHED:
+            _require(session, PERM_WORLD_PUBLISH)
         try:
             item = run_admin_operation(
                 session=session,

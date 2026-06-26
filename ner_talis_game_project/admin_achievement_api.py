@@ -189,6 +189,12 @@ def create_admin_achievement_router(get_storage) -> APIRouter:
         before = ach.store().get(ach_id)
         if before is None:
             raise HTTPException(status_code=404, detail="Достижение не найдено.")
+        # Правка ОПУБЛИКОВАННОГО достижения уходит в игру немедленно (рантайм
+        # читает published-определения, а update merge-ит в тот же конверт без
+        # перевода в черновик). Поэтому требуем права публикации, а не только
+        # edit — иначе content-роль молча меняла бы живые условия/награды.
+        if str(before.get("status") or "") == ach.STATUS_PUBLISHED:
+            _require(session, PERM_ACHIEVEMENT_PUBLISH)
         try:
             item = run_admin_operation(
                 session=session, action="achievement.edit",
