@@ -49,6 +49,43 @@ WORKSHOP_LABELS = {
     "enchanting": "Чародейская мастерская",
 }
 
+# Типы рецептов (ТЗ 13 §5.7).
+RECIPE_TYPES = (
+    "create_item", "create_material", "smelt", "process", "alchemy", "cooking",
+    "smithing", "armor", "weapon", "potion", "poison", "pill", "artifact",
+    "jewelry", "enchant", "upgrade", "repair", "disassemble", "purify",
+    "combine", "create_blueprint", "learn_blueprint", "quest", "event",
+)
+RECIPE_TYPE_LABELS = {
+    "create_item": "Создание предмета", "create_material": "Создание материала",
+    "smelt": "Плавка", "process": "Переработка", "alchemy": "Алхимия",
+    "cooking": "Кулинария", "smithing": "Кузнечное изделие", "armor": "Броня",
+    "weapon": "Оружие", "potion": "Зелье", "poison": "Яд", "pill": "Пилюля",
+    "artifact": "Артефакт", "jewelry": "Ювелирное изделие", "enchant": "Зачарование",
+    "upgrade": "Улучшение", "repair": "Ремонт", "disassemble": "Разборка",
+    "purify": "Очищение", "combine": "Объединение", "create_blueprint": "Создание чертежа",
+    "learn_blueprint": "Изучение чертежа", "quest": "Квестовое", "event": "Событийное",
+}
+
+# Роли предметов в рецепте (ТЗ 13 §5.8).
+MATERIAL_ROLES = (
+    "main", "secondary", "rare", "catalyst", "reagent", "fuel", "tool",
+    "blueprint", "mold", "blank", "intermediate", "result", "byproduct",
+    "upgrade_target", "enchant_target", "disassemble_target", "repair_target",
+    "purify_target", "process_consumable", "container", "recipe_key", "reward",
+)
+MATERIAL_ROLE_LABELS = {
+    "main": "Основной материал", "secondary": "Дополнительный материал",
+    "rare": "Редкий материал", "catalyst": "Катализатор", "reagent": "Реагент",
+    "fuel": "Топливо", "tool": "Инструмент", "blueprint": "Чертёж", "mold": "Форма",
+    "blank": "Заготовка", "intermediate": "Промежуточный компонент", "result": "Результат",
+    "byproduct": "Побочный результат", "upgrade_target": "Улучшаемый предмет",
+    "enchant_target": "Для зачарования", "disassemble_target": "Для разборки",
+    "repair_target": "Для ремонта", "purify_target": "Для очищения",
+    "process_consumable": "Расходник процесса", "container": "Контейнер",
+    "recipe_key": "Ключ доступа", "reward": "Награда за ремесло",
+}
+
 _HTML_RE = re.compile(r"<[^>]+>")
 
 _store = EntityStore(
@@ -114,6 +151,9 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             amount = _num(row.get("amount"))
             if amount is None or amount <= 0:
                 errors.append(f"Ингредиент {index}: количество должно быть > 0.")
+            role = str(row.get("role") or "").strip()
+            if role and role not in MATERIAL_ROLES:
+                warnings.append(f"Ингредиент {index}: роль «{role}» не из стандартного списка.")
 
     craft_time = _num(data.get("craft_time"))
     if data.get("craft_time") not in (None, "") and (craft_time is None or craft_time < 0):
@@ -130,6 +170,17 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         warnings.append("Рецепт требует чертёж, но чертёж (blueprint_id) не указан.")
     if data.get("hidden") and not _str(data, "unlock_condition"):
         warnings.append("Скрытый рецепт без условия открытия — игрок не сможет его получить.")
+
+    # Расширение ремесла (ТЗ 13 §5.6–§5.7).
+    recipe_type = _str(data, "recipe_type")
+    if recipe_type and recipe_type not in RECIPE_TYPES:
+        warnings.append(f"Тип рецепта «{recipe_type}» не из стандартного списка.")
+    for key in ("profession_level", "player_level"):
+        if data.get(key) in (None, ""):
+            continue
+        num = _num(data.get(key))
+        if num is None or num < 0:
+            errors.append(f"Поле «{key}» не может быть отрицательным.")
 
     for key in ("name", "description"):
         value = _str(data, key)

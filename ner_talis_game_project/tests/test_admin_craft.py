@@ -25,7 +25,7 @@ from storage.json_storage import JsonStorage
 
 class _Base(unittest.TestCase):
     ENVS = ("PROFESSION_CONSTRUCTOR_PATH", "WORKSHOP_CONSTRUCTOR_PATH",
-            "WORLD_CONTENT_PATH", "FORMULA_CONSTRUCTOR_PATH")
+            "WORLD_CONTENT_PATH", "FORMULA_CONSTRUCTOR_PATH", "RECIPE_CONSTRUCTOR_PATH")
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -87,6 +87,35 @@ class GraphTest(_Base):
         pairs = {(e["from"], e["to"], e["type"]) for e in g["edges"]}
         self.assertIn(("workshop:forge1", "location:seldar", "in_location"), pairs)
         self.assertIn(("profession:smithing", "formula:prof_exp", "uses_formula"), pairs)
+
+
+class RecipeExtensionTest(_Base):
+    """Расширение рецептов (ТЗ 13 §5.6–§5.8): валидация + рёбра графа."""
+
+    def test_recipe_type_and_role_warnings(self):
+        from services import recipe_constructor_service as recipes
+        env = recipes.store().create("r1", {"name": "Меч", "workshop": "forge",
+                                             "output_item_id": "iron_sword", "recipe_type": "weapon",
+                                             "ingredients": [{"item_id": "iron_ingot", "amount": 2, "role": "main"}]})
+        self.assertTrue(recipes.validate(env)["ok"], recipes.validate(env)["errors"])
+        bad = recipes.store().create("r2", {"name": "X", "workshop": "forge", "output_item_id": "i",
+                                            "recipe_type": "nonsense"})
+        self.assertTrue(any("Тип рецепта" in w for w in recipes.validate(bad)["warnings"]))
+
+    def test_recipe_graph_edges(self):
+        from services import recipe_constructor_service as recipes
+        from services import formula_constructor_service as fx
+        from services import admin_graph_service as graph
+        professions.store().create("smithing", {"name": "Кузнечное", "max_level": 50})
+        workshops.store().create("forge1", {"name": "Кузница", "type": "forge"})
+        fx.store().create("time_fx", {"name": "Время", "expression": "base_amount", "variables": [{"key": "base_amount"}]})
+        recipes.store().create("forge_sword", {"name": "Меч", "workshop": "forge", "output_item_id": "iron_sword",
+                                              "profession": "smithing", "workshop_id": "forge1", "time_formula_id": "time_fx"})
+        g = graph.full_graph()
+        pairs = {(e["from"], e["to"], e["type"]) for e in g["edges"]}
+        self.assertIn(("recipe:forge_sword", "profession:smithing", "uses_profession"), pairs)
+        self.assertIn(("recipe:forge_sword", "workshop:forge1", "in_workshop"), pairs)
+        self.assertIn(("recipe:forge_sword", "formula:time_fx", "uses_formula"), pairs)
 
 
 class ApiTest(_Base):

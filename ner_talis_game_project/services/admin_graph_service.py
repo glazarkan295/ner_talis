@@ -63,6 +63,7 @@ EDGE_TYPE_LABELS: dict[str, str] = {
     "rewards_item": "награждает предметом", "in_category": "в категории",
     "in_zone": "в зоне", "in_page": "в странице", "child_of": "вложен в",
     "in_tab": "во вкладке", "uses_formula": "использует формулу",
+    "uses_profession": "требует профессию", "in_workshop": "в мастерской",
 }
 
 # Поля-ссылки на формулу по типу узла (ТЗ 13 §2.8). Любой конструктор, в data
@@ -521,6 +522,20 @@ def _constructor_edges(nodes: dict[str, dict[str, Any]], seen: set[str]) -> list
                     f"Связь «{edge['label']}» ведёт в несуществующий предмет: {ref_id}.")
         edges.append(edge)
 
+    def _add_typed(from_nid: str, ref_id: str, target_type: str, edge_type: str) -> None:
+        target_id, resolved = _resolve_target(ref_id, target_type, nodes)
+        eid = f"{from_nid}|{edge_type}|{target_id}"
+        if eid in seen:
+            return
+        seen.add(eid)
+        edge = {"id": eid, "from": from_nid, "to": target_id, "type": edge_type,
+                "label": EDGE_TYPE_LABELS.get(edge_type, edge_type)}
+        if not resolved:
+            edge["broken"] = True
+            if from_nid in nodes:
+                nodes[from_nid]["has_errors"] = True
+        edges.append(edge)
+
     for nid, node in list(nodes.items()):
         if node["type"] == "recipe":
             data = _node_data(node) or {}
@@ -531,6 +546,10 @@ def _constructor_edges(nodes: dict[str, dict[str, Any]], seen: set[str]) -> list
                     _add(nid, str(row["item_id"]).strip(), "ingredient")
             if str(data.get("blueprint_id") or "").strip():
                 _add(nid, str(data["blueprint_id"]).strip(), "blueprint")
+            if str(data.get("profession") or "").strip():
+                _add_typed(nid, str(data["profession"]).strip(), "profession", "uses_profession")
+            if str(data.get("workshop_id") or "").strip():
+                _add_typed(nid, str(data["workshop_id"]).strip(), "workshop", "in_workshop")
         elif node["type"] == "achievement":
             data = _node_data(node) or {}
             for row in (data.get("rewards") or []):

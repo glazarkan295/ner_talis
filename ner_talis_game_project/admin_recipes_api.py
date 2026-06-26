@@ -109,6 +109,9 @@ def create_admin_recipes_router(get_storage) -> APIRouter:
         return {
             "ok": True,
             "workshops": list(recipes.WORKSHOPS),
+            "workshopLabels": recipes.WORKSHOP_LABELS,
+            "recipeTypes": [{"value": t, "label": recipes.RECIPE_TYPE_LABELS.get(t, t)} for t in recipes.RECIPE_TYPES],
+            "materialRoles": [{"value": r, "label": recipes.MATERIAL_ROLE_LABELS.get(r, r)} for r in recipes.MATERIAL_ROLES],
             "statuses": [{"value": s, "label": recipes.STATUS_LABELS.get(s, s)} for s in recipes.STATUSES],
         }
 
