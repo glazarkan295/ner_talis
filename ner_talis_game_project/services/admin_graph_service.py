@@ -61,7 +61,19 @@ EDGE_TYPE_LABELS: dict[str, str] = {
     "produces": "создаёт", "ingredient": "ингредиент", "blueprint": "по чертежу",
     "rewards_item": "награждает предметом", "in_category": "в категории",
     "in_zone": "в зоне", "in_page": "в странице", "child_of": "вложен в",
-    "in_tab": "во вкладке",
+    "in_tab": "во вкладке", "uses_formula": "использует формулу",
+}
+
+# Поля-ссылки на формулу по типу узла (ТЗ 13 §2.8). Любой конструктор, в data
+# которого есть эти ключи, автоматически связывается с узлом формулы.
+FORMULA_REF_FIELDS: dict[str, tuple[str, ...]] = {
+    "level": ("formula_id", "exp_formula_id"),
+    "exp": ("formula_id",),
+    "recipe": ("result_formula_id", "time_formula_id", "cost_formula_id", "exp_formula_id"),
+    "event": ("chance_formula_id",),
+    "location": ("search_depth_formula_id",),
+    "mob": ("exp_formula_id", "damage_formula_id"),
+    "fine": ("amount_formula_id",),
 }
 
 # --- Декларативные спецификации связей -------------------------------------
@@ -431,6 +443,38 @@ def _collect_edges(nodes: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     edges.extend(_constructor_edges(nodes, seen))
     # Рёбра сайта/профиля (реестры с _kind).
     edges.extend(_kinded_edges(nodes, seen))
+    # Рёбра «использует формулу» (ТЗ 13 §2.8).
+    edges.extend(_formula_edges(nodes, seen))
+    return edges
+
+
+def _formula_edges(nodes: dict[str, dict[str, Any]], seen: set[str]) -> list[dict[str, Any]]:
+    """Связи объектов с формулами по полям *_formula_id (ТЗ 13 §2.8)."""
+    edges: list[dict[str, Any]] = []
+    for nid, node in list(nodes.items()):
+        fields = FORMULA_REF_FIELDS.get(node["type"])
+        if not fields:
+            continue
+        data = _node_data(node)
+        if data is None:
+            continue
+        for field in fields:
+            ref = str(data.get(field) or "").strip()
+            if not ref:
+                continue
+            target_id, resolved = _resolve_target(ref, "formula", nodes)
+            eid = f"{nid}|uses_formula|{target_id}"
+            if eid in seen:
+                continue
+            seen.add(eid)
+            edge = {"id": eid, "from": nid, "to": target_id, "type": "uses_formula",
+                    "label": EDGE_TYPE_LABELS["uses_formula"]}
+            if not resolved:
+                edge["broken"] = True
+                nodes[nid]["has_errors"] = True
+                nodes[nid].setdefault("errors", []).append(
+                    f"Ссылка на несуществующую формулу: {ref}.")
+            edges.append(edge)
     return edges
 
 

@@ -77,6 +77,7 @@ const LEVEL_CONFIG = {
     { key: "exp_required", label: "Опыт до уровня", type: "number" },
     { key: "stat_points", label: "Очки характеристик", type: "number" },
     { key: "skill_points", label: "Очки навыков", type: "number" },
+    { key: "exp_formula_id", label: "Формула опыта (ТЗ 13 §2.8)", type: "formularef" },
     { key: "description", label: "Описание", type: "textarea" },
   ],
 };
@@ -88,6 +89,7 @@ const EXP_CONFIG = {
     { key: "source_type", label: "Тип источника", type: "select", metaKey: "sourceTypes" },
     { key: "base_exp", label: "Базовый опыт", type: "number" },
     { key: "level_scaling_percent", label: "Масштаб по уровню, %", type: "number" },
+    { key: "formula_id", label: "Формула (ТЗ 13 §2.8)", type: "formularef" },
     { key: "notes", label: "Заметки", type: "textarea" },
   ],
 };

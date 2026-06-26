@@ -96,4 +96,9 @@ def create_admin_formula_router(get_storage) -> APIRouter:
         _guard(request, payload.token)
         return {"ok": True, "test": svc.test_formula(payload.data or {}, payload.values)}
 
+    @router.get("/{formula_id}/where-used")
+    def where_used(formula_id: str, request: Request, token: str | None = None) -> dict[str, Any]:
+        _guard(request, token)
+        return {"ok": True, "usage": svc.where_used(formula_id)}
+
     return router

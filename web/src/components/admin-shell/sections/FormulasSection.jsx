@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchFormulaMeta, fetchFormulas, fetchFormula, createFormula, updateFormula,
-  formulaLifecycle, evaluateFormula,
+  formulaLifecycle, evaluateFormula, fetchFormulaWhereUsed,
 } from "../../../api/adminFormulaApi.js";
 
 // Конструктор формул (ТЗ 13 §2): выражение + переменные + ограничения +
@@ -28,6 +28,7 @@ export function FormulasSection({ guarded, hasPerm }) {
   const [newId, setNewId] = useState("");
   const [testValues, setTestValues] = useState({});
   const [testResult, setTestResult] = useState(null);
+  const [whereUsed, setWhereUsed] = useState(null);
   const [info, setInfo] = useState("");
 
   const can = useMemo(() => ({
@@ -46,12 +47,17 @@ export function FormulasSection({ guarded, hasPerm }) {
   const statusLabel = (v) => statuses.find((s) => s.value === v)?.label || v;
 
   async function openItem(id) {
-    setSelected(id); setCreating(false); setTestResult(null);
+    setSelected(id); setCreating(false); setTestResult(null); setWhereUsed(null);
     const p = await guarded(() => fetchFormula(id));
     if (p) { setData({ ...EMPTY, ...(p.item.data || {}) }); seedTestValues(p.item.data); }
   }
   function startCreate() {
-    setCreating(true); setSelected(null); setNewId(""); setData({ ...EMPTY }); setTestResult(null); setTestValues({});
+    setCreating(true); setSelected(null); setNewId(""); setData({ ...EMPTY }); setTestResult(null); setTestValues({}); setWhereUsed(null);
+  }
+  async function loadWhereUsed() {
+    if (!selected) return;
+    const p = await guarded(() => fetchFormulaWhereUsed(selected));
+    if (p) setWhereUsed(p.usage || []);
   }
   function seedTestValues(d) {
     const tv = {};
@@ -170,6 +176,7 @@ export function FormulasSection({ guarded, hasPerm }) {
 
                 <div className="ntfx-actions">
                   {can.edit ? <button type="button" className="ntv2-btn" onClick={save}>{creating ? "Создать" : "Сохранить"}</button> : null}
+                  {!creating ? <button type="button" className="ntv2-btn-mini" onClick={loadWhereUsed}>Где используется</button> : null}
                   {!creating && can.publish ? (
                     <>
                       <button type="button" className="ntv2-btn-mini" onClick={() => lifecycle("publish")}>Опубликовать</button>
@@ -178,6 +185,14 @@ export function FormulasSection({ guarded, hasPerm }) {
                     </>
                   ) : null}
                 </div>
+                {whereUsed ? (
+                  <div className="ntfx-whereused">
+                    <b>Где используется ({whereUsed.length}):</b>
+                    {whereUsed.length === 0 ? <span className="ntv2-muted"> нигде</span> : (
+                      <ul>{whereUsed.map((r, i) => <li key={i}>{r.type}: <b>{r.name}</b> <code>{r.id}</code> <span className="ntv2-muted">({(r.fields || []).join(", ")})</span></li>)}</ul>
+                    )}
+                  </div>
+                ) : null}
               </div>
 
               <div className="ntfx-test">

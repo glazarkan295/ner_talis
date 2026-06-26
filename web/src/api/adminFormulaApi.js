@@ -15,3 +15,4 @@ export const formulaLifecycle = (id, verb, reason) => post(`${base}/${encodeURIC
 export const deleteFormula = (id, confirm, reason) => requestAdminJson(`${base}/${encodeURIComponent(id)}`, { method: "DELETE", body: JSON.stringify({ confirm, reason }) });
 export const testFormula = (id, values) => post(`${base}/${encodeURIComponent(id)}/test`, { values });
 export const evaluateFormula = (data, values) => post(`${base}/evaluate`, { data, values });
+export const fetchFormulaWhereUsed = (id) => requestAdminJson(`${base}/${encodeURIComponent(id)}/where-used?_=${t()}`);

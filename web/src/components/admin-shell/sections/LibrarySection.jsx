@@ -13,6 +13,7 @@ import {
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { VersionHistory } from "../VersionHistory.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
+import { fetchFormulas } from "../../../api/adminFormulaApi.js";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 
@@ -37,6 +38,8 @@ export function LibrarySection({ guarded, hasPerm, config }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [formulaOptions, setFormulaOptions] = useState([]);
+  const hasFormulaField = useMemo(() => fields.some((f) => f.type === "formularef"), [fields]);
 
   const can = useMemo(() => ({
     create: hasPerm(`${permPrefix}.create`), edit: hasPerm(`${permPrefix}.edit`),
@@ -54,6 +57,7 @@ export function LibrarySection({ guarded, hasPerm, config }) {
   const load = useCallback(async () => { const p = await guarded(() => fetchLibList(base, statusFilter)); if (p) setList(p.items || []); }, [guarded, base, statusFilter]);
   useEffect(() => { (async () => { const m = await guarded(() => fetchLibMeta(base)); if (m) setMeta(m); })(); }, [guarded, base]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!hasFormulaField) return; (async () => { const p = await guarded(() => fetchFormulas("published")); if (p) setFormulaOptions((p.items || []).map((f) => ({ value: f.id, label: (f.data?.name || f.id) }))); })(); }, [guarded, hasFormulaField]);
 
   const statuses = meta?.statuses || [];
   const statusLabel = (v) => statuses.find((s) => (s.value || s) === v)?.label || v;
@@ -99,6 +103,7 @@ export function LibrarySection({ guarded, hasPerm, config }) {
             if (f.type === "number") return <Field key={f.key} label={f.label}><input type="number" value={d[f.key] ?? 0} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} /></Field>;
             if (f.type === "checkbox") return <label className="ntv2-check" key={f.key}><input type="checkbox" checked={Boolean(d[f.key])} disabled={disabled} onChange={(e) => set(f.key, e.target.checked)} /> {f.label}</label>;
             if (f.type === "select") return <Field key={f.key} label={f.label}><select value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)}><option value="">—</option>{options(meta, f.metaKey).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>;
+            if (f.type === "formularef") return <Field key={f.key} label={f.label}><select value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)}><option value="">— без формулы —</option>{formulaOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>;
             if (f.type === "multiselect") return (
               <div className="ntv2-panel" key={f.key}>
                 <h4 className="ntv2-subhead">{f.label}</h4>

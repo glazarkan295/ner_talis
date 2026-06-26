@@ -307,7 +307,52 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
     return {"ok": not errors, "errors": errors, "warnings": warnings}
 
 
+# Где формулы могут быть привязаны (ТЗ §2.8): (источник, поля).
+# world-* читаются из world_content_registry, остальные — из своих EntityStore.
+_WORLD_FORMULA_FIELDS = {
+    "event": ("chance_formula_id",),
+    "location": ("search_depth_formula_id",),
+    "mob": ("exp_formula_id", "damage_formula_id"),
+}
+_CONSTRUCTOR_FORMULA_FIELDS = {
+    "level_constructor_service": ("formula_id", "exp_formula_id"),
+    "exp_constructor_service": ("formula_id",),
+    "recipe_constructor_service": ("result_formula_id", "time_formula_id", "cost_formula_id", "exp_formula_id"),
+    "fine_constructor_service": ("amount_formula_id",),
+}
+
+
 def where_used(formula_id: str) -> list[dict[str, Any]]:
-    """Где используется формула (ТЗ §2.8). Заглушка: связи появятся по мере
-    привязки формул в других конструкторах (поле formula_id)."""
-    return []
+    """Где используется формула (ТЗ §2.8): сканирует конструкторы по полям *_formula_id."""
+    fid = str(formula_id or "").strip()
+    if not fid:
+        return []
+    refs: list[dict[str, Any]] = []
+    # Мир (события/локации/мобы).
+    try:
+        from services import world_content_registry as wcr
+        for kind, fields in _WORLD_FORMULA_FIELDS.items():
+            for env in wcr.list_content(kind):
+                data = env.get("data") or {}
+                hit = [f for f in fields if str(data.get(f) or "").strip() == fid]
+                if hit:
+                    refs.append({"type": kind, "id": env.get("id"),
+                                 "name": data.get("name") or env.get("id"), "fields": hit})
+    except Exception:
+        pass
+    # Конструкторы на EntityStore.
+    import importlib
+    for module_name, fields in _CONSTRUCTOR_FORMULA_FIELDS.items():
+        try:
+            mod = importlib.import_module(f"services.{module_name}")
+            for env in mod.store().list():
+                data = env.get("data") or {}
+                hit = [f for f in fields if str(data.get(f) or "").strip() == fid]
+                if hit:
+                    refs.append({"type": module_name.replace("_constructor_service", ""),
+                                 "id": env.get("id"),
+                                 "name": data.get("name") or data.get("title") or env.get("id"),
+                                 "fields": hit})
+        except Exception:
+            continue
+    return refs

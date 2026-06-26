@@ -95,6 +95,40 @@ class TestFormulaTest(unittest.TestCase):
         self.assertEqual(res["result"], 12)
 
 
+class FormulaBindingTest(unittest.TestCase):
+    """Привязка формул к механикам (ТЗ 13 §2.8): where_used + ребро в графе."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        base = Path(self._tmp.name)
+        self._keys = ("FORMULA_CONSTRUCTOR_PATH", "LEVEL_CONSTRUCTOR_PATH")
+        self._saved = {k: os.environ.get(k) for k in self._keys}
+        for k in self._keys:
+            os.environ[k] = str(base / f"{k.lower()}.json")
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_where_used_and_graph_edge(self):
+        from services import level_constructor_service as levels
+        from services import admin_graph_service as graph
+        fx.store().create("exp_curve", {"name": "Кривая опыта", "expression": "base_amount * 2",
+                                        "variables": [{"key": "base_amount"}]})
+        levels.store().create("lvl5", {"title": "Уровень 5", "level": 5, "exp_required": 100,
+                                       "exp_formula_id": "exp_curve"})
+        used = fx.where_used("exp_curve")
+        self.assertTrue(any(r["id"] == "lvl5" for r in used), used)
+        g = graph.full_graph()
+        pairs = {(e["from"], e["to"], e["type"]) for e in g["edges"]}
+        self.assertIn(("level:lvl5", "formula:exp_curve", "uses_formula"), pairs)
+
+
 class FormulaApiTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
