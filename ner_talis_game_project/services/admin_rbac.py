@@ -171,6 +171,15 @@ PERM_RECIPE_PUBLISH = "recipe.publish"
 PERM_RECIPE_DISABLE = "recipe.disable"
 PERM_RECIPE_ARCHIVE = "recipe.archive"
 PERM_RECIPE_DELETE = "recipe.delete"
+# Конструктор лагеря (доп. ТЗ §4) — отдых/восстановление/события лагеря.
+PERM_CAMP_VIEW = "camp.view"
+PERM_CAMP_CREATE = "camp.create"
+PERM_CAMP_EDIT = "camp.edit"
+PERM_CAMP_VALIDATE = "camp.validate"
+PERM_CAMP_PUBLISH = "camp.publish"
+PERM_CAMP_DISABLE = "camp.disable"
+PERM_CAMP_ARCHIVE = "camp.archive"
+PERM_CAMP_DELETE = "camp.delete"
 # Конструктор города и крепости (ТЗ §4) — узлы/кнопки/товары/сервисы/криминал.
 # Город и крепость редактируются как система узлов (узел = точка структуры).
 PERM_CITY_VIEW = "city.view"
@@ -328,6 +337,8 @@ ALL_PERMISSIONS = (
     PERM_CITY_DISABLE, PERM_CITY_ARCHIVE, PERM_CITY_DELETE,
     PERM_RECIPE_VIEW, PERM_RECIPE_CREATE, PERM_RECIPE_EDIT, PERM_RECIPE_VALIDATE,
     PERM_RECIPE_PUBLISH, PERM_RECIPE_DISABLE, PERM_RECIPE_ARCHIVE, PERM_RECIPE_DELETE,
+    PERM_CAMP_VIEW, PERM_CAMP_CREATE, PERM_CAMP_EDIT, PERM_CAMP_VALIDATE,
+    PERM_CAMP_PUBLISH, PERM_CAMP_DISABLE, PERM_CAMP_ARCHIVE, PERM_CAMP_DELETE,
     PERM_GUILD_VIEW, PERM_GUILD_CREATE, PERM_GUILD_EDIT, PERM_GUILD_DISABLE,
     PERM_GUILD_MANAGE_MEMBERS, PERM_GUILD_MANAGE_STORAGE,
     PERM_GUILD_MANAGE_TREASURY, PERM_GUILD_AUDIT,
@@ -414,6 +425,11 @@ DANGEROUS_ACTIONS = frozenset({
     "recipe.disable",
     "recipe.archive",
     "recipe.delete",
+    # Конструктор лагеря — публикация/отключение/архив/удаление лагерей.
+    "camp.publish",
+    "camp.disable",
+    "camp.archive",
+    "camp.delete",
     # Импорт-миграция — массовая публикация существующего контента в конструкторы.
     "import.run",
     "guild.disable",
@@ -503,6 +519,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_CITY_VIEW, PERM_CITY_CREATE, PERM_CITY_EDIT,
         # Конструктор ремесла: content ведёт черновики рецептов.
         PERM_RECIPE_VIEW, PERM_RECIPE_CREATE, PERM_RECIPE_EDIT, PERM_RECIPE_VALIDATE,
+        # Конструктор лагеря: content ведёт черновики лагерей.
+        PERM_CAMP_VIEW, PERM_CAMP_CREATE, PERM_CAMP_EDIT, PERM_CAMP_VALIDATE,
         PERM_GUILD_VIEW, PERM_GUILD_CREATE, PERM_GUILD_EDIT,
         PERM_WORLD_EVENT_VIEW, PERM_WORLD_EVENT_CREATE,
         PERM_WORLD_EVENT_EDIT, PERM_WORLD_EVENT_SCHEDULE,
@@ -556,7 +574,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_LOCATION_MOBS_VIEW, PERM_LOCATION_ZONES_VIEW,
         PERM_LOCATION_ROTATION_VIEW, PERM_LOCATION_LIMITS_VIEW,
         PERM_MOB_VIEW, PERM_MOB_VIEW_BALANCE, PERM_FINE_DEF_VIEW,
-        PERM_SKILL_DEF_VIEW, PERM_CITY_VIEW, PERM_RECIPE_VIEW,
+        PERM_SKILL_DEF_VIEW, PERM_CITY_VIEW, PERM_RECIPE_VIEW, PERM_CAMP_VIEW,
         PERM_ACHIEVEMENT_VIEW, PERM_MESSAGES_VIEW_QUEUE,
         PERM_ITEM_VIEW, PERM_ITEM_VIEW_USAGE, PERM_EFFECT_VIEW,
         PERM_SITE_VIEW, PERM_NEWS_VIEW, PERM_GUIDES_VIEW, PERM_FAQ_VIEW,

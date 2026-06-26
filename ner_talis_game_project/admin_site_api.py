@@ -133,6 +133,19 @@ def _title(data: dict[str, Any], kind: str) -> str:
     return str(data.get("title") or "")
 
 
+def _get_checked(content_id: str, kind: str) -> dict[str, Any]:
+    """Запись из стора с проверкой принадлежности типу (Codex P1): типы сайта
+    лежат в одном сторе, поэтому правка по чужому kind недопустима — иначе можно
+    конвертировать/затереть материал и обойти per-kind RBAC."""
+    item = site.store().get(content_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Материал не найден.")
+    stored_kind = (item.get("data") or {}).get("_kind")
+    if stored_kind and stored_kind != kind:
+        raise HTTPException(status_code=404, detail="Материал не найден.")
+    return item
+
+
 def create_admin_site_router(get_storage) -> APIRouter:
     router = APIRouter(prefix="/api/admin/v2/site", tags=["admin-site"])
 
@@ -165,9 +178,7 @@ def create_admin_site_router(get_storage) -> APIRouter:
     @router.get("/{kind}/{content_id}")
     def get_one(kind: str, content_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
         _require(_session(get_storage(), request, token), _cfg(kind)["view"])
-        item = site.store().get(content_id)
-        if item is None:
-            raise HTTPException(status_code=404, detail="Материал не найден.")
+        item = _get_checked(content_id, kind)
         return {"ok": True, "item": item, "validation": site.validate(kind, item)}
 
     @router.get("/{kind}/{content_id}/where-used")
@@ -197,9 +208,7 @@ def create_admin_site_router(get_storage) -> APIRouter:
         cfg = _cfg(kind)
         session = _session(get_storage(), request, payload.token)
         _require(session, cfg["edit"])
-        before = site.store().get(content_id)
-        if before is None:
-            raise HTTPException(status_code=404, detail="Материал не найден.")
+        before = _get_checked(content_id, kind)
         try:
             item = run_admin_operation(
                 session=session, action=f"{cfg['family']}.edit",
@@ -218,9 +227,7 @@ def create_admin_site_router(get_storage) -> APIRouter:
         cfg = _cfg(kind)
         session = _session(get_storage(), request, payload.token)
         _require(session, cfg["edit"])
-        item = site.store().get(content_id)
-        if item is None:
-            raise HTTPException(status_code=404, detail="Материал не найден.")
+        item = _get_checked(content_id, kind)
         result = site.validate(kind, item)
         record_admin_operation(
             session=session, action=f"{cfg['family']}.validate", target_type=kind,
@@ -234,9 +241,7 @@ def create_admin_site_router(get_storage) -> APIRouter:
         cfg = _cfg(kind)
         session = _session(get_storage(), request, payload.token)
         _require(session, cfg["publish"])
-        before = site.store().get(content_id)
-        if before is None:
-            raise HTTPException(status_code=404, detail="Материал не найден.")
+        before = _get_checked(content_id, kind)
         result = site.validate(kind, before)
         if not result["ok"]:
             try:
@@ -267,9 +272,7 @@ def create_admin_site_router(get_storage) -> APIRouter:
         cfg = _cfg(kind)
         session = _session(get_storage(), request, payload.token)
         _require(session, cfg[perm_key])
-        before = site.store().get(content_id)
-        if before is None:
-            raise HTTPException(status_code=404, detail="Материал не найден.")
+        before = _get_checked(content_id, kind)
         try:
             item = run_admin_operation(
                 session=session, action=f"{cfg['family']}.{action_suffix}",

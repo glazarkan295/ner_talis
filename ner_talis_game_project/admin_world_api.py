@@ -171,11 +171,15 @@ def create_admin_world_router(get_storage) -> APIRouter:
         _require(session, PERM_WORLD_PUBLISH)
         from services import constructor_import
 
+        # Этот legacy-эндпоинт ограничен МИР-типами (Codex P2): город/достижения/
+        # штрафы импортируются только через единый /api/admin/v2/import/run.
+        world_kinds = ("item", "mob", "location", "event")
+        selected = [k for k in (payload.kinds or world_kinds) if k in world_kinds]
         result = run_admin_operation(
             session=session,
             action="world.import_existing",
             func=lambda: constructor_import.import_all(
-                payload.kinds or None, overwrite=bool(payload.overwrite), actor=_actor(session)
+                selected, overwrite=bool(payload.overwrite), actor=_actor(session)
             ),
             target_type="constructor_import",
             target_id=(",".join(payload.kinds) or "all"),

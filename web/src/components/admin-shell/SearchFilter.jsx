@@ -34,8 +34,11 @@ export function SearchBox({ value, onChange, placeholder = "Поиск по со
   );
 }
 
-// Сообщение «ничего не найдено» (когда фильтр задан, но список пуст).
-export function NoResults({ query }) {
-  if (!String(query || "").trim()) return null;
+// Сообщение «ничего не найдено» — только когда фильтр задан И ОТФИЛЬТРОВАННЫЙ
+// список пуст (иначе сообщение ошибочно показывалось над найденными строками).
+export function NoResults({ items, query }) {
+  const q = String(query || "").trim();
+  if (!q) return null;
+  if (filterEntities(items, q).length > 0) return null;
   return <p className="ntv2-hint">Ничего не найдено. Попробуйте изменить запрос или фильтры.</p>;
 }

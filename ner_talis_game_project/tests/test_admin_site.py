@@ -223,6 +223,16 @@ class SiteApiTest(unittest.TestCase):
         self.assertEqual(self.client.get("/api/admin/v2/site/menu_item", headers=self._auth(token)).status_code, 200)
         self.assertEqual(self.client.post("/api/admin/v2/site/menu_item", headers=self._auth(token), json={"id": "m1", "data": {"label": "Главная"}}).status_code, 403)
 
+    def test_cross_kind_update_rejected(self):
+        # Codex P1: правка материала под чужим kind должна давать 404, а не
+        # конвертировать/затирать его и обходить per-kind RBAC.
+        token = self._token()
+        self.client.post("/api/admin/v2/site/page", headers=self._auth(token), json={"id": "p_secret", "data": {"title": "Стр", "slug": "s"}})
+        bad = self.client.put("/api/admin/v2/site/news/p_secret", headers=self._auth(token), json={"data": {"title": "Взлом"}})
+        self.assertEqual(bad.status_code, 404, bad.text)
+        # Тип записи не изменился.
+        self.assertEqual(self.client.get("/api/admin/v2/site/page/p_secret", headers=self._auth(token)).json()["item"]["data"]["_kind"], "page")
+
     def test_content_can_draft_lore_and_rating(self):
         rbac.set_role_override("telegram", "999", rbac.CONTENT)
         token = self._token("999")

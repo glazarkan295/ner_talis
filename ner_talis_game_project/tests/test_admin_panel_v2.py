@@ -114,6 +114,14 @@ class AdminPanelV2Test(unittest.TestCase):
         token = self._session_token("999")
         self.assertEqual(self.client.get("/api/admin/v2/audit", headers=self._auth(token)).status_code, 403)
 
+    def test_view_token_requires_edit_right(self):
+        # Codex P1: read-only/просмотровая роль не должна получать редактируемый
+        # токен профиля (даёт правки инвентаря/имени/очков/курьера).
+        rbac.set_role_override("telegram", "999", rbac.READ_ONLY)
+        token = self._session_token("999")
+        resp = self.client.post("/api/admin/v2/players/ANYID/view-token", headers=self._auth(token), json={})
+        self.assertEqual(resp.status_code, 403, resp.text)
+
     def test_missing_session_is_401(self):
         self.assertEqual(self.client.get("/api/admin/v2/me").status_code, 401)
 

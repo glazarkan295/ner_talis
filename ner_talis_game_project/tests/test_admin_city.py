@@ -98,6 +98,28 @@ class CityServiceTest(unittest.TestCase):
         from services import city_runtime
         self.assertFalse(city_runtime.live_enabled())
 
+    def test_try_handle_button_scoped_by_node(self):
+        # Codex P2: одинаковая подпись «Назад» на разных узлах ведёт в разные места.
+        from services import city_runtime
+        for nid in ("hub", "market", "tavern"):
+            city.store().create(nid, {"_kind": "city_node", "name": nid.title(), "node_type": "quarter"})
+            city.store().set_status(nid, city.STATUS_PUBLISHED, force=True)
+        city.store().create("b_market_back", {"_kind": "city_button", "label": "Назад", "action": "goto_node", "node_id": "market", "target_node_id": "hub"})
+        city.store().set_status("b_market_back", city.STATUS_PUBLISHED, force=True)
+        city.store().create("b_tavern_back", {"_kind": "city_button", "label": "Назад", "action": "goto_node", "node_id": "tavern", "target_node_id": "market"})
+        city.store().set_status("b_tavern_back", city.STATUS_PUBLISHED, force=True)
+        saved = os.environ.get("CITY_CONSTRUCTOR_LIVE")
+        try:
+            os.environ["CITY_CONSTRUCTOR_LIVE"] = "1"
+            # «Назад» на рынке → hub; «Назад» в таверне → market (разные цели).
+            self.assertIn("Hub", city_runtime.try_handle("Назад", current_node_id="market")["text"])
+            self.assertIn("Market", city_runtime.try_handle("Назад", current_node_id="tavern")["text"])
+        finally:
+            if saved is None:
+                os.environ.pop("CITY_CONSTRUCTOR_LIVE", None)
+            else:
+                os.environ["CITY_CONSTRUCTOR_LIVE"] = saved
+
     def test_try_handle_respects_flag_and_matches_published(self):
         from services import city_runtime
         city.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city", "description": "Столица."})

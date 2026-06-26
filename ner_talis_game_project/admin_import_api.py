@@ -87,7 +87,13 @@ def create_admin_import_router(get_storage) -> APIRouter:
     def run(payload: ImportRunRequest, request: Request) -> dict[str, Any]:
         session = _session(get_storage(), request, payload.token)
         _require(session, PERM_WORLD_PUBLISH)
-        kinds = [k for k in payload.kinds if k in ci.IMPORTERS] or None
+        # Защита (Codex P1): если клиент прислал типы, но все они неизвестны —
+        # ошибка, а не «импортировать всё». Пустой список = осознанный импорт всего.
+        requested = list(payload.kinds or [])
+        kinds = [k for k in requested if k in ci.IMPORTERS]
+        if requested and not kinds:
+            raise HTTPException(status_code=400, detail="Неизвестные типы импорта: " + ", ".join(requested))
+        kinds = kinds or None
         result = run_admin_operation(
             session=session, action="import.run",
             func=lambda: ci.import_all(kinds, mode=payload.mode, actor=_actor(session)),

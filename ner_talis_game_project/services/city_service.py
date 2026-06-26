@@ -1071,7 +1071,8 @@ def process_world_action(
     # При выключенном флаге ветка не входит и поведение 1:1 как раньше.
     from services import city_runtime
     if city_runtime.live_enabled():
-        node_response = city_runtime.try_handle(action)
+        current_node = str(player.get("current_zone") or player.get("location_id") or "")
+        node_response = city_runtime.try_handle(action, current_node_id=current_node)
         if node_response is not None:
             return _with_extra_messages(
                 WorldActionResult(text=node_response["text"], buttons=node_response["buttons"]),

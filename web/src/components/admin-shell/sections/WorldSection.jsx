@@ -963,7 +963,7 @@ export function WorldSection({ guarded, hasPerm }) {
         <SearchBox value={query} onChange={setQuery} />
       </div>
       {!items.length ? <p className="ntv2-hint">Пока нет объектов. {can.create ? "Создайте первый черновик." : ""}</p> : null}
-      <NoResults query={items.length ? query : ""} />
+      <NoResults items={items} query={query} />
       <div className="ntv2-list">
         {filterEntities(items, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item)}>

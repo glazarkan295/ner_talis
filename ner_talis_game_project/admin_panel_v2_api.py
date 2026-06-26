@@ -35,6 +35,7 @@ from services.admin_rbac import (
     OWNER,
     PERM_AUDIT_VIEW,
     PERM_FINES_MANAGE,
+    PERM_INVENTORY_EDIT,
     PERM_PLAYERS_DELETE,
     PERM_PLAYERS_MESSAGE,
     PERM_PLAYERS_RESET,
@@ -390,7 +391,10 @@ def create_admin_panel_v2_router(get_storage) -> APIRouter:
     def player_view_token(game_id: str, payload: PlayerActionRequest, request: Request) -> dict[str, Any]:
         storage = get_storage()
         session = _session(storage, request, payload.token)
-        _require(session, PERM_PLAYERS_VIEW)
+        # Этот токен даёт РЕДАКТИРУЕМЫЙ доступ к профилю игрока (выброс предметов,
+        # смена имени, очки, курьер), поэтому требует права на изменение, а не
+        # только players.view (Codex P1: read-only не должен получать edit-токен).
+        _require(session, PERM_INVENTORY_EDIT)
         try:
             view_token = create_admin_player_view_token(storage, target_game_id=game_id, admin_session=session)
         except ValueError as exc:

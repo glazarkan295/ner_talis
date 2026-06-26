@@ -158,17 +158,43 @@ def _published_label_index() -> tuple[dict[str, str], dict[str, str]]:
     return node_by_name, button_to_target
 
 
-def try_handle(action: str) -> dict[str, Any] | None:
-    """«Живая» навигация по опубликованным узлам (ТЗ §4). Возвращает {text,buttons}
-    если action соответствует опубликованному узлу (по имени) или кнопке-переходу
-    (по подписи); иначе None → легаси-навигация. Только при включённом флаге."""
+def _button_target_on_node(node_id: str, action: str) -> str | None:
+    """Цель кнопки-перехода с заданной подписью, ПРИВЯЗАННОЙ к конкретному узлу
+    (Codex P2: одинаковые подписи «Назад»/«Войти» на разных узлах ведут в разные
+    места — нельзя резолвить по глобальной карте подписей)."""
+    if not node_id:
+        return None
+    for b in _of_kind(_published(), city.KIND_BUTTON):
+        d = b.get("data") or {}
+        if str(d.get("node_id") or "") != node_id:
+            continue
+        label = str(d.get("label") or "").strip()
+        icon = str(d.get("icon") or "").strip()
+        target = str(d.get("target_node_id") or "").strip()
+        if target and action in (label, f"{icon} {label}".strip()):
+            return target
+    return None
+
+
+def try_handle(action: str, current_node_id: str | None = None) -> dict[str, Any] | None:
+    """«Живая» навигация по опубликованным узлам (ТЗ §4). Сначала — кнопка-переход
+    с этой подписью НА ТЕКУЩЕМ узле, затем — узел по имени. Иначе None → легаси.
+    Только при включённом флаге."""
     if not live_enabled():
         return None
     act = str(action or "").strip()
     if not act:
         return None
-    node_by_name, button_to_target = _published_label_index()
-    node_id = node_by_name.get(act) or button_to_target.get(act)
+    # 1) Кнопка-переход на текущем узле (контекстно — без коллизий подписей).
+    target = _button_target_on_node(str(current_node_id or ""), act)
+    node_id = target
+    # 2) Имя узла (вход в узел по его названию).
+    if not node_id:
+        node_by_name, button_to_target = _published_label_index()
+        node_id = node_by_name.get(act)
+        # 3) Глобальный фолбэк по подписи кнопки — только если текущий узел неизвестен.
+        if not node_id and not current_node_id:
+            node_id = button_to_target.get(act)
     if not node_id:
         return None
     view = node_runtime_view(node_id)
