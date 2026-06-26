@@ -1168,6 +1168,34 @@ def import_phases(*, mode: str | None = None, overwrite: bool = False, actor: st
     return report
 
 
+# --- Импорт рас (чат-ТЗ «уровни/опыт/регистрация/расы») ---------------------
+def import_races(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import race_constructor_service as rcs
+
+    report = _rich_report("race")
+    mode = _resolve_mode(mode, overwrite)
+    data_raw = _read_data_json("races.json")
+    if not isinstance(data_raw, dict) or not data_raw:
+        report["errors"].append({"id": "races.json", "type": "race", "reason": "Файл рас отсутствует или повреждён."})
+        return report
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(rcs.store(), rcs.STATUS_PUBLISHED, actor)
+    for raw_id, race in data_raw.items():
+        sid = safe_constructor_id(raw_id)
+        if not sid or not isinstance(race, dict):
+            report["invalid"] += 1
+            continue
+        record = {
+            "race_name": race.get("name") or sid,
+            "description": str(race.get("description") or ""),
+            "stat_bonuses": race.get("bonuses") if isinstance(race.get("bonuses"), dict) else {},
+            "starting_stats": race.get("stats") if isinstance(race.get("stats"), dict) else {},
+            "playable": True,
+            "imported": True, "import_source": "data/races.json", "source_id": str(raw_id),
+        }
+        _apply_record(report, sid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    return report
+
+
 # --- Проверка целостности импорта (ТЗ §10) ----------------------------------
 def check_import() -> dict[str, Any]:
     """Сканирует реестры конструкторов и находит проблемы связей/полей."""
@@ -1218,6 +1246,7 @@ IMPORTERS = {
     "achievement": import_achievements, "fine_def": import_fines, "recipe": import_recipes,
     "profile_layout": import_profile_layout, "camp": import_camps,
     "trait": import_traits, "blessing": import_blessings, "phase": import_phases,
+    "race": import_races,
 }
 
 

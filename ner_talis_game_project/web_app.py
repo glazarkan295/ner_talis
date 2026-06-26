@@ -44,6 +44,12 @@ from admin_camp_api import create_admin_camp_router
 from admin_trait_api import create_admin_trait_router
 from admin_blessing_api import create_admin_blessing_router
 from admin_phase_api import create_admin_phase_router
+from admin_progression_api import (
+    create_admin_levels_router,
+    create_admin_exp_router,
+    create_admin_registration_router,
+    create_admin_races_router,
+)
 from admin_import_api import create_admin_import_router
 from admin_uploads_api import create_admin_uploads_router
 from admin_site_api import create_admin_site_router
@@ -369,6 +375,10 @@ def create_app() -> FastAPI:
     app.include_router(create_admin_trait_router(storage))
     app.include_router(create_admin_blessing_router(storage))
     app.include_router(create_admin_phase_router(storage))
+    app.include_router(create_admin_levels_router(storage))
+    app.include_router(create_admin_exp_router(storage))
+    app.include_router(create_admin_registration_router(storage))
+    app.include_router(create_admin_races_router(storage))
     app.include_router(create_admin_import_router(storage))
     app.include_router(create_admin_uploads_router(storage))
     app.include_router(create_admin_site_router(storage))

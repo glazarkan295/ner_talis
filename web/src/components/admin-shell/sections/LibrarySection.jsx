@@ -47,7 +47,7 @@ export function LibrarySection({ guarded, hasPerm, config }) {
 
   const empty = useMemo(() => {
     const o = {};
-    for (const f of fields) o[f.key] = f.type === "multiselect" ? [] : (f.type === "number" ? 0 : (f.type === "numbergroup" ? {} : ""));
+    for (const f of fields) o[f.key] = f.type === "multiselect" ? [] : (f.type === "number" ? 0 : (f.type === "numbergroup" ? {} : (f.type === "checkbox" ? false : "")));
     return o;
   }, [fields]);
 
@@ -97,6 +97,7 @@ export function LibrarySection({ guarded, hasPerm, config }) {
           {fields.map((f) => {
             if (f.type === "textarea") return <Field key={f.key} label={f.label}><textarea rows={f.rows || 2} value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} /></Field>;
             if (f.type === "number") return <Field key={f.key} label={f.label}><input type="number" value={d[f.key] ?? 0} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} /></Field>;
+            if (f.type === "checkbox") return <label className="ntv2-check" key={f.key}><input type="checkbox" checked={Boolean(d[f.key])} disabled={disabled} onChange={(e) => set(f.key, e.target.checked)} /> {f.label}</label>;
             if (f.type === "select") return <Field key={f.key} label={f.label}><select value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)}><option value="">—</option>{options(meta, f.metaKey).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>;
             if (f.type === "multiselect") return (
               <div className="ntv2-panel" key={f.key}>

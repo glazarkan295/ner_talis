@@ -60,6 +60,59 @@ const PHASE_CONFIG = {
     { key: "phase_admin_notes", label: "Заметки админа", type: "textarea" },
   ],
 };
+const _STAT_SUB = [
+  { key: "strength", label: "Сила" }, { key: "endurance", label: "Выносл." },
+  { key: "agility", label: "Ловк." }, { key: "perception", label: "Воспр." },
+  { key: "intelligence", label: "Интел." }, { key: "wisdom", label: "Мудр." },
+];
+const LEVEL_CONFIG = {
+  base: "levels", title: "Конструктор уровней", permPrefix: "level",
+  newLabel: "Новый уровень", nameField: "title",
+  fields: [
+    { key: "title", label: "Заголовок", type: "text" },
+    { key: "level", label: "Уровень", type: "number" },
+    { key: "exp_required", label: "Опыт до уровня", type: "number" },
+    { key: "stat_points", label: "Очки характеристик", type: "number" },
+    { key: "skill_points", label: "Очки навыков", type: "number" },
+    { key: "description", label: "Описание", type: "textarea" },
+  ],
+};
+const EXP_CONFIG = {
+  base: "exp", title: "Конструктор опыта", permPrefix: "exp",
+  newLabel: "Новый источник опыта", nameField: "name",
+  fields: [
+    { key: "name", label: "Название", type: "text" },
+    { key: "source_type", label: "Тип источника", type: "select", metaKey: "sourceTypes" },
+    { key: "base_exp", label: "Базовый опыт", type: "number" },
+    { key: "level_scaling_percent", label: "Масштаб по уровню, %", type: "number" },
+    { key: "notes", label: "Заметки", type: "textarea" },
+  ],
+};
+const REGISTRATION_CONFIG = {
+  base: "registration", title: "Конструктор регистрации", permPrefix: "registration",
+  newLabel: "Новый шаг", nameField: "label",
+  fields: [
+    { key: "label", label: "Подпись шага", type: "text" },
+    { key: "step_type", label: "Тип шага", type: "select", metaKey: "stepTypes" },
+    { key: "order", label: "Порядок", type: "number" },
+    { key: "required", label: "Обязательный шаг", type: "checkbox" },
+    { key: "text", label: "Текст", type: "textarea" },
+  ],
+};
+const RACE_CONFIG = {
+  base: "races", title: "Конструктор рас", permPrefix: "race",
+  newLabel: "Новая раса", nameField: "race_name",
+  importLabel: "Импортировать существующие расы?", importText: "Расы из data/races.json будут заведены как опубликованные записи (без дублей).",
+  fields: [
+    { key: "race_name", label: "Название", type: "text" },
+    { key: "description", label: "Описание", type: "textarea" },
+    { key: "lore", label: "Лор", type: "textarea" },
+    { key: "model_image", label: "Изображение модели (/assets/…)", type: "text" },
+    { key: "playable", label: "Доступна для игры", type: "checkbox" },
+    { key: "stat_bonuses", label: "Бонусы характеристик", type: "numbergroup", sub: _STAT_SUB },
+    { key: "starting_stats", label: "Стартовые характеристики", type: "numbergroup", sub: _STAT_SUB },
+  ],
+};
 import { AuditSection } from "./sections/AuditSection.jsx";
 import { ReferenceSection } from "./sections/ReferenceSection.jsx";
 import { RolesSection } from "./sections/RolesSection.jsx";
@@ -83,6 +136,10 @@ const NAV = [
   { id: "traits", label: "Черты мобов", icon: "🧬", perm: "trait.view" },
   { id: "blessings", label: "Благословения", icon: "🌟", perm: "blessing.view" },
   { id: "phases", label: "Фазы боссов", icon: "🌀", perm: "phase.view" },
+  { id: "levels", label: "Уровни", icon: "🪜", perm: "level.view" },
+  { id: "exp", label: "Опыт", icon: "📈", perm: "exp.view" },
+  { id: "registration", label: "Регистрация", icon: "📝", perm: "registration.view" },
+  { id: "races", label: "Расы", icon: "🧝", perm: "race.view" },
   { id: "guilds", label: "Гильдии", icon: "🏰", perm: "guild.view" },
   { id: "events", label: "Мировые события", icon: "🌌", perm: "world_event.view" },
   { id: "achievements", label: "Достижения", icon: "🏆", perm: "achievement.view" },
@@ -194,6 +251,10 @@ export function AdminShell() {
         {active === "traits" && hasPerm("trait.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={TRAIT_CONFIG} />}
         {active === "blessings" && hasPerm("blessing.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={BLESSING_CONFIG} />}
         {active === "phases" && hasPerm("phase.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PHASE_CONFIG} />}
+        {active === "levels" && hasPerm("level.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={LEVEL_CONFIG} />}
+        {active === "exp" && hasPerm("exp.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={EXP_CONFIG} />}
+        {active === "registration" && hasPerm("registration.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={REGISTRATION_CONFIG} />}
+        {active === "races" && hasPerm("race.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={RACE_CONFIG} />}
         {active === "guilds" && hasPerm("guild.view") && <GuildsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "events" && hasPerm("world_event.view") && <EventsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "achievements" && hasPerm("achievement.view") && <AchievementsSection guarded={guarded} hasPerm={hasPerm} />}
