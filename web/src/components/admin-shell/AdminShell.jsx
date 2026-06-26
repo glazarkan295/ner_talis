@@ -18,6 +18,7 @@ import { ProfileLayoutSection } from "./sections/ProfileLayoutSection.jsx";
 import { CitySection } from "./sections/CitySection.jsx";
 import { RecipesSection } from "./sections/RecipesSection.jsx";
 import { CampSection } from "./sections/CampSection.jsx";
+import { GraphSection } from "./sections/GraphSection.jsx";
 import { LibrarySection } from "./sections/LibrarySection.jsx";
 
 const TRAIT_CONFIG = {
@@ -122,6 +123,7 @@ import { SessionsSection } from "./sections/SessionsSection.jsx";
 // is handled by hasPerm below, so listing the concrete permission is enough.
 const NAV = [
   { id: "overview", label: "Обзор", icon: "🏠", perm: null },
+  { id: "graph", label: "Интерактивная схема", icon: "🕸️", perm: "graph.view" },
   { id: "players", label: "Игроки", icon: "👤", perm: "players.view" },
   { id: "world", label: "Конструктор мира", icon: "🌍", perm: "world.view" },
   { id: "items", label: "Конструктор предметов", icon: "📦", perm: "item.view" },
@@ -238,6 +240,7 @@ export function AdminShell() {
 
         {active === "overview" && <OverviewSection me={me} />}
         {active === "players" && hasPerm("players.view") && <PlayersSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "graph" && hasPerm("graph.view") && <GraphSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "world" && hasPerm("world.view") && <WorldSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "items" && hasPerm("item.view") && <ItemsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "effects" && hasPerm("effect.view") && <EffectsSection guarded={guarded} hasPerm={hasPerm} />}
