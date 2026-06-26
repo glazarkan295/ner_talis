@@ -34,6 +34,7 @@ except Exception:  # pragma: no cover - Windows
 from project_paths import project_path, resolve_project_path
 from services.currency import format_money, format_price
 from services.derived_stats_service import safe_int
+from services.gathering_tools import TOOL_USES_PER_UNIT, USES_FIELD
 from services.inventory_service import add_inventory_item, recalculate_inventory_overflow
 
 # --- Параметры доставки -----------------------------------------------------
@@ -334,7 +335,78 @@ def _set_wallet(player: dict[str, Any], value: int) -> None:
     player["money"] = value
 
 
+def _is_non_tradable(item: dict[str, Any]) -> bool:
+    """Предмет нельзя передавать другому игроку (квест/связанный/защищённый).
+
+    Те же флаги, что блокируют торговлю в остальном инвентаре
+    (inventory_service._stack_identifier, market_service._is_sell_protected)."""
+    if not isinstance(item, dict):
+        return False
+    if item.get("quest_item") or item.get("locked") or item.get("protected"):
+        return True
+    if item.get("bound_on_receive"):
+        return True
+    if item.get("can_trade") is False:
+        return True
+    return False
+
+
+# Внутрипроцессный лок на отправителя: сериализует списание+постановку в очередь,
+# чтобы параллельные отправки (двойной клик, две вкладки) не списывали дважды с
+# одного снимка. Под локом отправитель перечитывается из хранилища.
+_SENDER_LOCKS: dict[str, threading.Lock] = {}
+_SENDER_LOCKS_GUARD = threading.Lock()
+
+
+def _sender_lock(sender_id: str) -> threading.Lock:
+    with _SENDER_LOCKS_GUARD:
+        lock = _SENDER_LOCKS.get(sender_id)
+        if lock is None:
+            lock = threading.Lock()
+            _SENDER_LOCKS[sender_id] = lock
+        return lock
+
+
 def create_courier_transfer(
+    storage: Any,
+    sender: dict[str, Any],
+    receiver_query: str,
+    item_requests: list[dict[str, Any]],
+    coins: int = 0,
+    letter: str = "",
+    *,
+    now: datetime | None = None,
+    rng: random.Random | None = None,
+) -> dict[str, Any]:
+    """Оформляет посылку атомарно по отправителю.
+
+    Под пер-отправительским локом перечитывает отправителя из хранилища (свежий
+    остаток монет/инвентаря) и только потом списывает+ставит в очередь, иначе
+    две параллельные отправки спишут с одного снимка (списано один раз — посылок
+    две). Обновляет переданный ``sender`` на месте, чтобы вызывающий код/тесты
+    видели результат списания.
+    """
+    sender_id = str(sender.get("game_id") or sender.get("id") or "")
+    lock = _sender_lock(sender_id) if sender_id else None
+    if lock is not None:
+        lock.acquire()
+    try:
+        get_player = getattr(storage, "get_player_by_game_id", None)
+        if sender_id and callable(get_player):
+            fresh = get_player(sender_id)
+            if isinstance(fresh, dict):
+                sender.clear()
+                sender.update(fresh)
+        return _create_courier_transfer_impl(
+            storage, sender, receiver_query, item_requests,
+            coins, letter, now=now, rng=rng,
+        )
+    finally:
+        if lock is not None:
+            lock.release()
+
+
+def _create_courier_transfer_impl(
     storage: Any,
     sender: dict[str, Any],
     receiver_query: str,
@@ -397,6 +469,10 @@ def create_courier_transfer(
         if index is None or index in used_indexes:
             raise CourierError("Предмет в инвентаре не найден. Обновите профиль и повторите.")
         item = inventory[index]
+        if _is_non_tradable(item):
+            raise CourierError(
+                f"Предмет «{item.get('name', 'предмет')}» нельзя передать другому игроку."
+            )
         available = max(1, safe_int(item.get("amount"), 1))
         if amount > available:
             raise CourierError(f"В стопке «{item.get('name', 'предмет')}» недостаточно предметов.")
@@ -408,6 +484,13 @@ def create_courier_transfer(
     for index, amount, item in planned:
         snapshot = deepcopy(item)
         snapshot.pop("inventoryIndex", None)
+        # Долговечность инструментов: «начатый» инструмент (tool_uses_left < 10)
+        # остаётся у отправителя, поэтому при ЧАСТИЧНОЙ отправке получателю уходят
+        # полные инструменты. Иначе оба стака получают один счётчик и суммарный
+        # запас использований уменьшается.
+        available = max(1, safe_int(item.get("amount"), 1))
+        if USES_FIELD in item and amount < available:
+            snapshot[USES_FIELD] = TOOL_USES_PER_UNIT
         items_snapshot.append({
             "item": snapshot,
             "amount": amount,
@@ -629,9 +712,19 @@ def process_due_transfers(
                         str(wrong.get("game_id") or wrong.get("id") or ""),
                         _receiver_messages(transfer, random_recipient=True),
                     )
-                _notify(sender_id, [
-                    SENDER_MISDELIVERED_TEXT.format(receiver_name=transfer.get("receiver_name", "игрок")),
-                ])
+                    _notify(sender_id, [
+                        SENDER_MISDELIVERED_TEXT.format(receiver_name=transfer.get("receiver_name", "игрок")),
+                    ])
+                else:
+                    # Некому ошибочно вручить (в мире только отправитель и
+                    # получатель, либо все прочие мертвы) — НЕ теряем посылку, а
+                    # доставляем штатно адресату. Посылка уже снята из очереди.
+                    receiver = _reload(receiver_id)
+                    if receiver is not None:
+                        undelivered = _deliver_items_to(receiver, transfer)
+                        update_player(receiver)
+                        committed = True
+                        _notify(receiver_id, _receiver_messages(transfer, random_recipient=False))
             else:
                 receiver = _reload(receiver_id)
                 if receiver is not None:

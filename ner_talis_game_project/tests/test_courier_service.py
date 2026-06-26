@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -368,6 +369,96 @@ class CourierServiceTest(unittest.TestCase):
         send_pending = "\n".join(fresh_send.get("pending_bot_messages", []))
         self.assertIn("вернулась к вам", send_pending)
         self.assertEqual(courier_service._load_transfers(), [])
+
+    # --- Codex: непередаваемые предметы, сплит инструмента, fallback, атомарность
+    def test_rejects_non_tradable_items(self):
+        # Связанные/квестовые/защищённые предметы нельзя передавать гонцом.
+        bound = {"id": "starter_sword", "item_id": "starter_sword", "name": "Меч новичка", "amount": 1, "bound_on_receive": True}
+        sender = self._make_player("sb1", "ОтпрB", money=1000, inventory=[bound])
+        self._make_player("rb1", "АдрB")
+        with self.assertRaises(courier_service.CourierError):
+            courier_service.create_courier_transfer(
+                self.storage, sender, "АдрB",
+                [{"item_id": "starter_sword", "inventory_index": 0, "amount": 1}],
+                now=self.now, rng=FakeRng(),
+            )
+        notrade = {"id": "quest_key", "item_id": "quest_key", "name": "Ключ", "amount": 1, "can_trade": False}
+        sender2 = self._make_player("sb2", "ОтпрB2", money=1000, inventory=[notrade])
+        with self.assertRaises(courier_service.CourierError):
+            courier_service.create_courier_transfer(
+                self.storage, sender2, "АдрB",
+                [{"item_id": "quest_key", "inventory_index": 0, "amount": 1}],
+                now=self.now, rng=FakeRng(),
+            )
+
+    def test_partial_tool_send_splits_durability(self):
+        # Частичная отправка стака инструментов: «начатый» остаётся у отправителя,
+        # получателю уходит полный инструмент (суммарный запас сохраняется).
+        tool = {
+            "id": "fishing_rod", "item_id": "fishing_rod", "name": "Удочка",
+            "amount": 3, "tool_uses_left": 5, "stackable": True, "max_stack": 99,
+        }
+        sender = self._make_player("st1", "ОтпрT", money=1000, inventory=[tool])
+        receiver = self._make_player("rt1", "АдрT")
+        courier_service.create_courier_transfer(
+            self.storage, sender, "АдрT",
+            [{"item_id": "fishing_rod", "inventory_index": 0, "amount": 1}],
+            now=self.now, rng=FakeRng(),
+        )
+        rod = next(it for it in sender["inventory"] if it.get("item_id") == "fishing_rod")
+        self.assertEqual(rod["amount"], 2)
+        self.assertEqual(rod["tool_uses_left"], 5)  # начатый инструмент остался
+        self.storage.update_player(sender)
+
+        courier_service.process_due_transfers(
+            self.storage, now=self.now + timedelta(minutes=20), rng=FakeRng(random_value=0.5),
+        )
+        fresh = self.storage.get_player_by_game_id(receiver["game_id"])
+        recv_rod = next(it for it in fresh["inventory"] if it.get("item_id") == "fishing_rod")
+        self.assertEqual(recv_rod["amount"], 1)
+        self.assertEqual(recv_rod["tool_uses_left"], 10)  # получен полный инструмент
+
+    def test_misdelivery_without_target_delivers_to_intended(self):
+        # В мире только отправитель и получатель → некому ошибочно вручить →
+        # посылка доставляется адресату, а не теряется.
+        sender = self._make_player("sf1", "ОтпрF", money=1000, inventory=[_make_item(amount=5)])
+        receiver = self._make_player("rf1", "АдрF")
+        self._enqueue(sender, "АдрF")
+        self.storage.update_player(sender)
+
+        processed = courier_service.process_due_transfers(
+            self.storage, now=self.now + timedelta(minutes=20),
+            rng=FakeRng(random_value=0.0005),  # *100 = 0.05 → misdelivery
+        )
+        self.assertEqual(processed, 1)
+        fresh = self.storage.get_player_by_game_id(receiver["game_id"])
+        stack = next((it for it in fresh["inventory"] if it.get("item_id") == "test_potion"), None)
+        self.assertIsNotNone(stack)
+        self.assertEqual(stack["amount"], 2)
+        self.assertEqual(courier_service._load_transfers(), [])
+
+    def test_send_rereads_sender_from_storage(self):
+        # Атомарность: повторная отправка по УСТАРЕВШЕМУ снимку отправителя
+        # перечитывает свежий остаток из хранилища (не списывает дважды с одного).
+        sender = self._make_player("sa1", "Атом", level=1, money=1000, inventory=[_make_item(amount=2)])
+        self._make_player("ra1", "ПолучА")
+        stale = deepcopy(sender)  # снимок ДО любой отправки (2 зелья)
+
+        courier_service.create_courier_transfer(
+            self.storage, sender, "ПолучА",
+            [{"item_id": "test_potion", "inventory_index": 0, "amount": 1}],
+            now=self.now, rng=FakeRng(),
+        )
+        # Вторая отправка думает, что в стопке ещё 2, но из хранилища
+        # перечитается остаток 1 → отправит ровно 1, не задвоит.
+        courier_service.create_courier_transfer(
+            self.storage, stale, "ПолучА",
+            [{"item_id": "test_potion", "inventory_index": 0, "amount": 1}],
+            now=self.now, rng=FakeRng(),
+        )
+        fresh = self.storage.get_player_by_game_id(sender["game_id"])
+        potion = next((it for it in fresh["inventory"] if it.get("item_id") == "test_potion"), None)
+        self.assertIsNone(potion)  # 2 - 1 - 1 = 0, стак удалён
 
 
 if __name__ == "__main__":

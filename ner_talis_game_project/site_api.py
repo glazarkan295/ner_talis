@@ -2581,8 +2581,16 @@ def create_profile_api_router(get_storage) -> APIRouter:
             )
         except CourierError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+        # Посылка уже оформлена и СОХРАНЕНА внутри create_courier_transfer
+        # (списание durable до постановки в очередь). Повторное сохранение
+        # синх-параметров для ботов не должно делать запрос повторяемым: при сбое
+        # клиент создал бы вторую платную посылку. Параметры пересчитаются при
+        # следующем действии игрока.
         sync_player_parameters_for_bots(player)
-        save_player(storage, player)
+        try:
+            save_player(storage, player)
+        except Exception:
+            pass
         return {
             "ok": True,
             "message": result["message"],
