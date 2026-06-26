@@ -38,6 +38,8 @@ NODE_TYPE_LABELS: dict[str, str] = {
     "skill": "Навык", "race": "Раса", "fine": "Штраф", "camp": "Лагерь",
     "city": "Город", "achievement": "Достижение",
     "world_event": "Мировое событие", "guild": "Гильдия",
+    "sublocation": "Подлокация", "sublocation_node": "Узел подлокации",
+    "sublocation_transition": "Переход подлокации",
     # Сайт (ТЗ §16) и профиль — из своих реестров с тегом _kind.
     "site_page": "Страница сайта", "site_page_block": "Блок страницы",
     "site_menu_item": "Пункт меню", "site_news": "Новость", "site_guide": "Гайд",
@@ -152,6 +154,18 @@ REF_SPECS: dict[str, list[tuple]] = {
         (SCALAR, "zone_id", "location_zone", "in_zone"),
     ],
     wcr.KIND_MOB_PHASE: [(SCALAR, "mob_id", "mob", "in_location")],
+    wcr.KIND_SUBLOCATION: [
+        (SCALAR, "parent_location", "location", "in_location"),
+    ],
+    wcr.KIND_SUBLOCATION_NODE: [
+        (SCALAR, "sublocation_id", "sublocation", "in_location"),
+    ],
+    wcr.KIND_SUBLOCATION_TRANSITION: [
+        (SCALAR, "sublocation_id", "sublocation", "in_location"),
+        (SCALAR, "from_node", "sublocation_node", "from_location"),
+        (SCALAR, "to_node", "sublocation_node", "to_location"),
+        (SCALAR, "required_item", "item", "requires_item"),
+    ],
 }
 
 # Конструкторы на EntityStore: (node_type, модуль-сервис, поле-заголовок).

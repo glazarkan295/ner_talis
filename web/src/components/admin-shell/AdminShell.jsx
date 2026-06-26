@@ -19,6 +19,7 @@ import { CitySection } from "./sections/CitySection.jsx";
 import { RecipesSection } from "./sections/RecipesSection.jsx";
 import { CampSection } from "./sections/CampSection.jsx";
 import { GraphSection } from "./sections/GraphSection.jsx";
+import { SublocationsSection } from "./sections/SublocationsSection.jsx";
 import { LibrarySection } from "./sections/LibrarySection.jsx";
 
 const TRAIT_CONFIG = {
@@ -126,6 +127,7 @@ const NAV = [
   { id: "graph", label: "Интерактивная схема", icon: "🕸️", perm: "graph.view" },
   { id: "players", label: "Игроки", icon: "👤", perm: "players.view" },
   { id: "world", label: "Конструктор мира", icon: "🌍", perm: "world.view" },
+  { id: "sublocations", label: "Конструктор подлокаций", icon: "🕳️", perm: "world.view" },
   { id: "items", label: "Конструктор предметов", icon: "📦", perm: "item.view" },
   { id: "effects", label: "Конструктор эффектов", icon: "✨", perm: "effect.view" },
   { id: "fines", label: "Конструктор штрафов", icon: "⚖️", perm: "fine_def.view" },
@@ -242,6 +244,7 @@ export function AdminShell() {
         {active === "players" && hasPerm("players.view") && <PlayersSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "graph" && hasPerm("graph.view") && <GraphSection guarded={guarded} hasPerm={hasPerm} onOpenSection={setActive} />}
         {active === "world" && hasPerm("world.view") && <WorldSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "sublocations" && hasPerm("world.view") && <SublocationsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "items" && hasPerm("item.view") && <ItemsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "effects" && hasPerm("effect.view") && <EffectsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "fines" && hasPerm("fine_def.view") && <FinesSection guarded={guarded} hasPerm={hasPerm} />}
