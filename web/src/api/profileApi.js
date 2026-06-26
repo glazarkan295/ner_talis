@@ -53,6 +53,20 @@ export function setActiveProfileSession(token) {
   rememberActiveProfileSession(token);
 }
 
+// Админский edit-token цели держим ТОЛЬКО в памяти этого модуля и НЕ пишем в
+// общий слот сессии профиля: иначе, открыв затем /profile в той же вкладке,
+// админ аутентифицировался бы как просматриваемый игрок (Codex P2). Токен
+// живёт только пока открыт AdminProfileView (сбрасывается при перезагрузке).
+let adminProfileToken = "";
+
+export function setAdminProfileToken(token) {
+  adminProfileToken = String(token || "");
+}
+
+export function clearAdminProfileToken() {
+  adminProfileToken = "";
+}
+
 function removePathTokenFromAddressBar() {
   try {
     window.history.replaceState({}, document.title, "/profile");
@@ -88,7 +102,9 @@ export function getProfileIdentifierFromUrl() {
 export const getPublicIdFromUrl = getProfileIdentifierFromUrl;
 
 function profileAuthHeaders() {
-  const token = getRememberedActiveProfileSession();
+  // Админский edit-token (если активен AdminProfileView) имеет приоритет, но
+  // живёт только в памяти — общий слот сессии им не затирается.
+  const token = adminProfileToken || getRememberedActiveProfileSession();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
@@ -120,11 +136,15 @@ async function requestJson(url, options = {}) {
   }
 
   const payload = await response.json();
-  if (payload?.sessionToken) {
-    rememberActiveProfileSession(payload.sessionToken);
-  }
-  if (payload?.profile?.sessionToken) {
-    rememberActiveProfileSession(payload.profile.sessionToken);
+  // В админском режиме НЕ переносим возвращённый sessionToken в общий слот —
+  // иначе токен цели «прилип» бы к собственной сессии профиля админа.
+  if (!adminProfileToken) {
+    if (payload?.sessionToken) {
+      rememberActiveProfileSession(payload.sessionToken);
+    }
+    if (payload?.profile?.sessionToken) {
+      rememberActiveProfileSession(payload.profile.sessionToken);
+    }
   }
   return payload;
 }

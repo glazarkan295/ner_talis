@@ -18,12 +18,12 @@ import {
   redeemPromoCode,
   searchCourierRecipients,
   sendCourierTransfer,
-  setActiveProfileSession,
   spendAttributePoints,
   spendSkillPoints,
   unequipItem,
   unequipSkill,
   useItem,
+  setAdminProfileToken,
 } from "./api/profileApi.js";
 import { isAdminPanelPath, isAdminViewProfilePath, getAdminViewTokenFromUrl, loadAdminPlayerView } from "./api/adminApi.js";
 
@@ -37,7 +37,9 @@ function AdminProfileView() {
     if (!token) throw new Error("Нет token для админского просмотра профиля.");
     const payload = await loadAdminPlayerView(token);
     const canEdit = Boolean(payload.editToken);
-    if (canEdit) setActiveProfileSession(payload.editToken);
+    // Держим edit-token цели локально (в памяти модуля profileApi), НЕ в общем
+    // слоте сессии — иначе /profile в той же вкладке открылся бы как игрок-цель.
+    if (canEdit) setAdminProfileToken(payload.editToken);
     setProfile({ ...(payload.profile || {}), readOnly: !canEdit, adminView: true, adminEdit: canEdit });
   }, []);
 

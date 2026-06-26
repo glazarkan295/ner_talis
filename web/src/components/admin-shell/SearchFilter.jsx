@@ -7,10 +7,18 @@ import React from "react";
 export function itemSearchText(item) {
   if (!item || typeof item !== "object") return "";
   const bag = [];
-  const push = (v) => { if (typeof v === "string" || typeof v === "number") bag.push(String(v)); };
-  push(item.id); push(item.status); push(item.code);
+  // Рекурсивно собираем вложенные примитивы: значения могут лежать в массивах/
+  // объектах (ingredients[].item_id, conditions[].target, rewards, special_loot…),
+  // и без обхода поиск по связанным id никогда бы не находил их.
+  const visit = (v, depth) => {
+    if (v == null || depth > 6) return;
+    if (typeof v === "string" || typeof v === "number") { bag.push(String(v)); return; }
+    if (Array.isArray(v)) { for (const x of v) visit(x, depth + 1); return; }
+    if (typeof v === "object") { for (const x of Object.values(v)) visit(x, depth + 1); return; }
+  };
+  visit(item.id, 0); visit(item.status, 0); visit(item.code, 0);
   const data = item.data && typeof item.data === "object" ? item.data : item;
-  for (const v of Object.values(data)) push(v);
+  visit(data, 0);
   return bag.join(" ").toLowerCase();
 }
 
