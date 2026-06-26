@@ -39,7 +39,7 @@ NODE_TYPE_LABELS: dict[str, str] = {
     "city": "Город", "achievement": "Достижение",
     "world_event": "Мировое событие", "guild": "Гильдия",
     "sublocation": "Подлокация", "sublocation_node": "Узел подлокации",
-    "sublocation_transition": "Переход подлокации",
+    "sublocation_transition": "Переход подлокации", "formula": "Формула",
     # Сайт (ТЗ §16) и профиль — из своих реестров с тегом _kind.
     "site_page": "Страница сайта", "site_page_block": "Блок страницы",
     "site_menu_item": "Пункт меню", "site_news": "Новость", "site_guide": "Гайд",
@@ -186,6 +186,7 @@ CONSTRUCTOR_SOURCES: list[tuple[str, str, str]] = [
     ("achievement", "achievement_service", "name"),
     ("world_event", "world_event_service", "name"),
     ("guild", "guild_service", "name"),
+    ("formula", "formula_constructor_service", "name"),
 ]
 
 # Реестры с тегом _kind в data (сайт/профиль): один стор — много типов узлов.

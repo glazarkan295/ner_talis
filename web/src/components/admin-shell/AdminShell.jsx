@@ -20,6 +20,7 @@ import { RecipesSection } from "./sections/RecipesSection.jsx";
 import { CampSection } from "./sections/CampSection.jsx";
 import { GraphSection } from "./sections/GraphSection.jsx";
 import { SublocationsSection } from "./sections/SublocationsSection.jsx";
+import { FormulasSection } from "./sections/FormulasSection.jsx";
 import { LibrarySection } from "./sections/LibrarySection.jsx";
 
 const TRAIT_CONFIG = {
@@ -136,6 +137,7 @@ const NAV = [
   { id: "profile_layout", label: "Раскладка профиля", icon: "🪪", perm: "profile_layout.view" },
   { id: "city", label: "Город и крепость", icon: "🏙️", perm: "city.view" },
   { id: "recipes", label: "Конструктор ремесла", icon: "⚒️", perm: "recipe.view" },
+  { id: "formulas", label: "Конструктор формул", icon: "🧮", perm: "formula.view" },
   { id: "camps", label: "Конструктор лагеря", icon: "🏕️", perm: "camp.view" },
   { id: "traits", label: "Черты мобов", icon: "🧬", perm: "trait.view" },
   { id: "blessings", label: "Благословения", icon: "🌟", perm: "blessing.view" },
@@ -253,6 +255,7 @@ export function AdminShell() {
         {active === "profile_layout" && hasPerm("profile_layout.view") && <ProfileLayoutSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "city" && hasPerm("city.view") && <CitySection guarded={guarded} hasPerm={hasPerm} />}
         {active === "recipes" && hasPerm("recipe.view") && <RecipesSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "formulas" && hasPerm("formula.view") && <FormulasSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "camps" && hasPerm("camp.view") && <CampSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "traits" && hasPerm("trait.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={TRAIT_CONFIG} />}
         {active === "blessings" && hasPerm("blessing.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={BLESSING_CONFIG} />}

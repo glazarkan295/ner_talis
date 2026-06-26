@@ -358,6 +358,15 @@ PERM_SITE_AUDIT_VIEW = "site_audit.view"
 # Интерактивная схема / карта связей (ТЗ 12) — единый граф всех сущностей.
 # Read-only агрегатор: достаточно одной просмотровой привилегии.
 PERM_GRAPH_VIEW = "graph.view"
+# Конструктор формул (ТЗ 13 §2) — игровые формулы без правки кода.
+PERM_FORMULA_VIEW = "formula.view"
+PERM_FORMULA_CREATE = "formula.create"
+PERM_FORMULA_EDIT = "formula.edit"
+PERM_FORMULA_VALIDATE = "formula.validate"
+PERM_FORMULA_PUBLISH = "formula.publish"
+PERM_FORMULA_DISABLE = "formula.disable"
+PERM_FORMULA_ARCHIVE = "formula.archive"
+PERM_FORMULA_DELETE = "formula.delete"
 
 ALL_PERMISSIONS = (
     PERM_PLAYERS_VIEW, PERM_CATALOG_VIEW, PERM_ECONOMY_VIEW, PERM_PROMOS_VIEW,
@@ -450,6 +459,8 @@ ALL_PERMISSIONS = (
     PERM_RATINGS_EDIT, PERM_RATINGS_PUBLISH, PERM_RATINGS_REWARD,
     PERM_SITE_ASSETS_UPLOAD, PERM_SITE_ASSETS_EDIT, PERM_SITE_AUDIT_VIEW,
     PERM_GRAPH_VIEW,
+    PERM_FORMULA_VIEW, PERM_FORMULA_CREATE, PERM_FORMULA_EDIT, PERM_FORMULA_VALIDATE,
+    PERM_FORMULA_PUBLISH, PERM_FORMULA_DISABLE, PERM_FORMULA_ARCHIVE, PERM_FORMULA_DELETE,
 )
 
 # Опасные действия — требуют двойного подтверждения на фронте и помечаются в
@@ -623,6 +634,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_PROFILE_LAYOUT_VIEW, PERM_PROFILE_LAYOUT_EDIT,
         PERM_SITE_ASSETS_UPLOAD,
         PERM_GRAPH_VIEW,
+        PERM_FORMULA_VIEW, PERM_FORMULA_CREATE, PERM_FORMULA_EDIT, PERM_FORMULA_VALIDATE,
     },
     # economy подтверждает события с крупными наградами/множителями экономики.
     ECONOMY: {
@@ -668,7 +680,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_SITE_VIEW, PERM_NEWS_VIEW, PERM_GUIDES_VIEW, PERM_FAQ_VIEW,
         PERM_RATINGS_VIEW, PERM_PROFILE_LAYOUT_VIEW, PERM_PAVILION_VIEW,
         PERM_SITE_AUDIT_VIEW,
-        PERM_GRAPH_VIEW,
+        PERM_GRAPH_VIEW, PERM_FORMULA_VIEW,
     },
 }
 

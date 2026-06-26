@@ -126,11 +126,11 @@ function computeLayout(nodes, edges) {
 const DEPTH_TIERS = [
   ["city", "world_event"],
   ["location", "location_zone", "transition", "button"],
-  ["location_resource", "location_loot", "location_mob_spawn", "location_weekly_limit", "location_weekly_rotation", "location_depletion_rule", "location_empty_event"],
-  ["event", "location_hidden_event", "location_event_answer", "npc", "quest", "raid"],
+  ["sublocation", "location_resource", "location_loot", "location_mob_spawn", "location_weekly_limit", "location_weekly_rotation", "location_depletion_rule", "location_empty_event"],
+  ["sublocation_node", "sublocation_transition", "event", "location_hidden_event", "location_event_answer", "npc", "quest", "raid"],
   ["mob", "mob_variant", "mob_skill", "mob_passive", "mob_resistance", "mob_effect", "mob_event_link", "mob_zone_link", "mob_phase"],
   ["item", "recipe"],
-  ["effect", "trait", "blessing", "phase"],
+  ["effect", "trait", "blessing", "phase", "formula"],
   ["site_page", "site_page_block", "site_menu_item", "site_news", "site_guide", "site_faq", "site_banner", "site_announcement", "site_post", "site_rating", "site_lore", "site_where_is", "site_theme", "profile_tab", "profile_block", "profile_theme", "achievement", "fine", "level", "exp", "skill", "race", "guild", "registration"],
 ];
 const TIER_OF = (() => {
