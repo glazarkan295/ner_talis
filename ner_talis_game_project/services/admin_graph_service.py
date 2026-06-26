@@ -42,6 +42,8 @@ NODE_TYPE_LABELS: dict[str, str] = {
     "sublocation_transition": "Переход подлокации", "formula": "Формула",
     "profession": "Профессия", "workshop": "Мастерская",
     "workshop_message": "Сообщение мастерской",
+    "item_upgrade": "Улучшение", "item_enchant": "Зачарование",
+    "item_disassemble": "Разборка",
     # Сайт (ТЗ §16) и профиль — из своих реестров с тегом _kind.
     "site_page": "Страница сайта", "site_page_block": "Блок страницы",
     "site_menu_item": "Пункт меню", "site_news": "Новость", "site_guide": "Гайд",
@@ -65,6 +67,7 @@ EDGE_TYPE_LABELS: dict[str, str] = {
     "in_zone": "в зоне", "in_page": "в странице", "child_of": "вложен в",
     "in_tab": "во вкладке", "uses_formula": "использует формулу",
     "uses_profession": "требует профессию", "in_workshop": "в мастерской",
+    "disassembles": "разбирает", "enchants": "зачаровывает",
 }
 
 # Поля-ссылки на формулу по типу узла (ТЗ 13 §2.8). Любой конструктор, в data
@@ -206,6 +209,9 @@ CONSTRUCTOR_SOURCES: list[tuple[str, str, str]] = [
     ("profession", "profession_constructor_service", "name"),
     ("workshop", "workshop_constructor_service", "name"),
     ("workshop_message", "workshop_message_service", "name"),
+    ("item_upgrade", "upgrade_constructor_service", "name"),
+    ("item_enchant", "enchant_constructor_service", "name"),
+    ("item_disassemble", "disassemble_constructor_service", "name"),
 ]
 
 # Реестры с тегом _kind в data (сайт/профиль): один стор — много типов узлов.
@@ -576,6 +582,22 @@ def _constructor_edges(nodes: dict[str, dict[str, Any]], seen: set[str]) -> list
                         edge["broken"] = True
                         nodes[nid]["has_errors"] = True
                     edges.append(edge)
+        elif node["type"] == "item_disassemble":
+            data = _node_data(node) or {}
+            if str(data.get("source_item_id") or "").strip():
+                _add(nid, str(data["source_item_id"]).strip(), "disassembles")
+            for row in (data.get("outputs") or []):
+                ref = row.get("item_id") if isinstance(row, dict) else row
+                if str(ref or "").strip():
+                    _add(nid, str(ref).strip(), "produces")
+        elif node["type"] == "item_enchant":
+            data = _node_data(node) or {}
+            if str(data.get("enchant_effect") or "").strip():
+                _add_typed(nid, str(data["enchant_effect"]).strip(), "effect", "applies_effect")
+        elif node["type"] == "item_upgrade":
+            data = _node_data(node) or {}
+            if str(data.get("result_effect") or "").strip():
+                _add_typed(nid, str(data["result_effect"]).strip(), "effect", "applies_effect")
     return edges
 
 

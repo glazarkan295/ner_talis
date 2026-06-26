@@ -154,6 +154,54 @@ const WORKSHOP_CONFIG = {
     { key: "image", label: "Изображение (/assets/…)", type: "text" },
   ],
 };
+const UPGRADE_CONFIG = {
+  base: "upgrades", title: "Конструктор улучшения", permPrefix: "recipe",
+  newLabel: "Новое правило улучшения", nameField: "name",
+  fields: [
+    { key: "name", label: "Название", type: "text" },
+    { key: "upgrade_type", label: "Тип улучшения", type: "select", metaKey: "upgradeTypes" },
+    { key: "target_item_type", label: "Тип предмета (ограничение)", type: "text" },
+    { key: "result_effect", label: "Эффект результата (id)", type: "text" },
+    { key: "success_chance", label: "Шанс успеха %", type: "number" },
+    { key: "break_risk", label: "Риск поломки %", type: "number" },
+    { key: "material_loss_risk", label: "Риск потери материала %", type: "number" },
+    { key: "extra_effect_chance", label: "Шанс доп. эффекта %", type: "number" },
+    { key: "materials", label: "Материалы (id по строкам)", type: "list" },
+    { key: "description", label: "Описание", type: "textarea" },
+  ],
+};
+const ENCHANT_CONFIG = {
+  base: "enchants", title: "Конструктор зачарования", permPrefix: "recipe",
+  newLabel: "Новое зачарование", nameField: "name",
+  fields: [
+    { key: "name", label: "Название", type: "text" },
+    { key: "enchant_effect", label: "Эффект зачарования (id)", type: "text" },
+    { key: "clear_enchant", label: "Очистка зачарования", type: "checkbox" },
+    { key: "target_item_type", label: "Тип предмета (ограничение)", type: "text" },
+    { key: "success_chance", label: "Шанс успеха %", type: "number" },
+    { key: "break_risk", label: "Риск поломки %", type: "number" },
+    { key: "extra_effect_chance", label: "Шанс доп. эффекта %", type: "number" },
+    { key: "materials", label: "Материалы (id по строкам)", type: "list" },
+    { key: "description", label: "Описание", type: "textarea" },
+  ],
+};
+const DISASSEMBLE_CONFIG = {
+  base: "disassembles", title: "Конструктор разборки", permPrefix: "recipe",
+  newLabel: "Новое правило разборки", nameField: "name",
+  fields: [
+    { key: "name", label: "Название", type: "text" },
+    { key: "source_item_id", label: "Разбираемый предмет (id)", type: "text" },
+    { key: "outputs", label: "Что можно получить (id по строкам)", type: "list" },
+    { key: "output_chance", label: "Шанс получения %", type: "number" },
+    { key: "depends_on_quality", label: "Зависит от качества", type: "checkbox" },
+    { key: "depends_on_level", label: "Зависит от уровня", type: "checkbox" },
+    { key: "requires_workshop", label: "Нужна мастерская (id)", type: "text" },
+    { key: "requires_tool", label: "Нужен инструмент (id)", type: "text" },
+    { key: "gives_exp", label: "Ремесленный опыт", type: "number" },
+    { key: "success_text", label: "Текст успеха", type: "textarea" },
+    { key: "fail_text", label: "Текст провала", type: "textarea" },
+  ],
+};
 import { AuditSection } from "./sections/AuditSection.jsx";
 import { ReferenceSection } from "./sections/ReferenceSection.jsx";
 import { RolesSection } from "./sections/RolesSection.jsx";
@@ -178,6 +226,9 @@ const NAV = [
   { id: "professions", label: "Профессии ремесла", icon: "🛠️", perm: "profession.view" },
   { id: "workshops", label: "Мастерские", icon: "🏭", perm: "workshop.view" },
   { id: "workshop_messages", label: "Сообщения мастерских", icon: "🧾", perm: "workshop_message.view" },
+  { id: "upgrades", label: "Улучшение предметов", icon: "🔧", perm: "recipe.view" },
+  { id: "enchants", label: "Зачарование", icon: "🔮", perm: "recipe.view" },
+  { id: "disassembles", label: "Разборка", icon: "🪓", perm: "recipe.view" },
   { id: "formulas", label: "Конструктор формул", icon: "🧮", perm: "formula.view" },
   { id: "camps", label: "Конструктор лагеря", icon: "🏕️", perm: "camp.view" },
   { id: "traits", label: "Черты мобов", icon: "🧬", perm: "trait.view" },
@@ -299,6 +350,9 @@ export function AdminShell() {
         {active === "professions" && hasPerm("profession.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PROFESSION_CONFIG} />}
         {active === "workshops" && hasPerm("workshop.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={WORKSHOP_CONFIG} />}
         {active === "workshop_messages" && hasPerm("workshop_message.view") && <WorkshopMessagesSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "upgrades" && hasPerm("recipe.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={UPGRADE_CONFIG} />}
+        {active === "enchants" && hasPerm("recipe.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={ENCHANT_CONFIG} />}
+        {active === "disassembles" && hasPerm("recipe.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={DISASSEMBLE_CONFIG} />}
         {active === "formulas" && hasPerm("formula.view") && <FormulasSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "camps" && hasPerm("camp.view") && <CampSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "traits" && hasPerm("trait.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={TRAIT_CONFIG} />}
