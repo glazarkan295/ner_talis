@@ -37,6 +37,15 @@ NODE_TYPE_LABELS: dict[str, str] = {
     "blessing": "Благословение", "phase": "Фаза боя", "level": "Уровень",
     "skill": "Навык", "race": "Раса", "fine": "Штраф", "camp": "Лагерь",
     "city": "Город", "achievement": "Достижение",
+    "world_event": "Мировое событие", "guild": "Гильдия",
+    # Сайт (ТЗ §16) и профиль — из своих реестров с тегом _kind.
+    "site_page": "Страница сайта", "site_page_block": "Блок страницы",
+    "site_menu_item": "Пункт меню", "site_news": "Новость", "site_guide": "Гайд",
+    "site_faq": "FAQ", "site_banner": "Баннер", "site_announcement": "Объявление",
+    "site_post": "Пост", "site_rating": "Рейтинг", "site_lore": "Лор",
+    "site_where_is": "Что где", "site_theme": "Тема сайта",
+    "profile_tab": "Вкладка профиля", "profile_block": "Блок профиля",
+    "profile_theme": "Тема профиля",
 }
 
 EDGE_TYPE_LABELS: dict[str, str] = {
@@ -49,7 +58,8 @@ EDGE_TYPE_LABELS: dict[str, str] = {
     "given_by": "выдаёт", "uses_item": "использует предмет",
     "produces": "создаёт", "ingredient": "ингредиент", "blueprint": "по чертежу",
     "rewards_item": "награждает предметом", "in_category": "в категории",
-    "in_zone": "в зоне",
+    "in_zone": "в зоне", "in_page": "в странице", "child_of": "вложен в",
+    "in_tab": "во вкладке",
 }
 
 # --- Декларативные спецификации связей -------------------------------------
@@ -160,6 +170,15 @@ CONSTRUCTOR_SOURCES: list[tuple[str, str, str]] = [
     ("camp", "camp_constructor_service", "name"),
     ("city", "city_constructor_service", "city_name"),
     ("achievement", "achievement_service", "name"),
+    ("world_event", "world_event_service", "name"),
+    ("guild", "guild_service", "name"),
+]
+
+# Реестры с тегом _kind в data (сайт/профиль): один стор — много типов узлов.
+# (node_type_prefix, модуль, использовать_kind_как_есть)
+KINDED_SOURCES: list[tuple[str, str, bool]] = [
+    ("site_", "site_content_registry", False),  # _kind="page" → site_page
+    ("", "profile_layout_service", True),       # _kind="profile_tab" уже с префиксом
 ]
 
 
@@ -248,6 +267,46 @@ def _constructor_nodes() -> dict[str, dict[str, Any]]:
                 "updated_by": env.get("updated_by"),
             }
     return nodes
+
+
+def _kinded_nodes() -> dict[str, dict[str, Any]]:
+    """Узлы из реестров с тегом _kind (сайт §16, профиль): один стор — много типов."""
+    nodes: dict[str, dict[str, Any]] = {}
+    for prefix, module_name, kind_is_full in KINDED_SOURCES:
+        svc = _import_service(module_name)
+        if svc is None or not hasattr(svc, "store"):
+            continue
+        try:
+            envelopes = svc.store().list()
+        except Exception:
+            continue
+        for env in envelopes:
+            eid = str(env.get("id") or "")
+            data = env.get("data") or {}
+            kind = str(data.get("_kind") or "")
+            if not eid or not kind:
+                continue
+            node_type = kind if kind_is_full else f"{prefix}{kind}"
+            nid = node_id(node_type, eid)
+            title = (data.get("title") or data.get("label") or data.get("question")
+                     or data.get("name") or eid)
+            nodes[nid] = {
+                "id": nid, "type": node_type, "entity_id": eid,
+                "title": str(title), "status": env.get("status"),
+                "has_errors": False, "errors": [], "warnings": [],
+                "updated_at": env.get("updated_at"),
+                "updated_by": env.get("updated_by"),
+            }
+    return nodes
+
+
+# Рёбра реестров с _kind: (node_type, поле, целевой_тип, тип_ребра).
+KINDED_EDGE_SPECS: list[tuple[str, str, str, str]] = [
+    ("site_page_block", "page_id", "site_page", "in_page"),
+    ("site_menu_item", "page_id", "site_page", "leads_to"),
+    ("site_menu_item", "parent_id", "site_menu_item", "child_of"),
+    ("profile_block", "tab", "profile_tab", "in_tab"),
+]
 
 
 def _item_exists_in_registry(item_id: str) -> bool:
@@ -355,6 +414,8 @@ def _collect_edges(nodes: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
                 edges.append(edge)
     # Рёбра конструкторов (recipe→item, achievement→item) — отдельной логикой.
     edges.extend(_constructor_edges(nodes, seen))
+    # Рёбра сайта/профиля (реестры с _kind).
+    edges.extend(_kinded_edges(nodes, seen))
     return edges
 
 
@@ -416,10 +477,55 @@ def _constructor_edges(nodes: dict[str, dict[str, Any]], seen: set[str]) -> list
     return edges
 
 
+def _kinded_edges(nodes: dict[str, dict[str, Any]], seen: set[str]) -> list[dict[str, Any]]:
+    """Рёбра сайта/профиля (page_block→page, menu_item→page, block→tab)."""
+    edges: list[dict[str, Any]] = []
+    for prefix, module_name, kind_is_full in KINDED_SOURCES:
+        svc = _import_service(module_name)
+        if svc is None or not hasattr(svc, "store"):
+            continue
+        try:
+            envelopes = svc.store().list()
+        except Exception:
+            continue
+        for env in envelopes:
+            data = env.get("data") or {}
+            kind = str(data.get("_kind") or "")
+            eid = str(env.get("id") or "")
+            if not kind or not eid:
+                continue
+            node_type = kind if kind_is_full else f"{prefix}{kind}"
+            from_nid = node_id(node_type, eid)
+            if from_nid not in nodes:
+                continue
+            for spec_type, field, target_type, edge_type in KINDED_EDGE_SPECS:
+                if spec_type != node_type:
+                    continue
+                ref_id = str(data.get(field) or "").strip()
+                if not ref_id:
+                    continue
+                target_id, resolved = _resolve_target(ref_id, target_type, nodes)
+                eidk = f"{from_nid}|{edge_type}|{target_id}"
+                if eidk in seen:
+                    continue
+                seen.add(eidk)
+                edge = {"id": eidk, "from": from_nid, "to": target_id,
+                        "type": edge_type,
+                        "label": EDGE_TYPE_LABELS.get(edge_type, edge_type)}
+                if not resolved:
+                    edge["broken"] = True
+                    nodes[from_nid]["has_errors"] = True
+                    nodes[from_nid].setdefault("errors", []).append(
+                        f"Связь «{edge['label']}» ведёт в несуществующий объект: {ref_id}.")
+                edges.append(edge)
+    return edges
+
+
 # --- Построение полного графа и режимы -------------------------------------
 def _build_all() -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
     nodes = _world_nodes()
     nodes.update(_constructor_nodes())
+    nodes.update(_kinded_nodes())
     edges = _collect_edges(nodes)
     return nodes, edges
 
@@ -581,3 +687,47 @@ def build(mode: str = "full", **params: Any) -> dict[str, Any]:
     types = params.get("types")
     statuses = params.get("statuses")
     return full_graph(types=types, statuses=statuses)
+
+
+# --- Экспорт схемы (ТЗ §20, §22) -------------------------------------------
+def export_markdown(graph: dict[str, Any]) -> str:
+    """Markdown-отчёт по графу: узлы по типам, связи, ошибки."""
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+    by_type: dict[str, list[dict[str, Any]]] = {}
+    for n in nodes:
+        by_type.setdefault(n.get("type", "?"), []).append(n)
+    lines = ["# Схема Нер-Талис", "",
+             f"Узлов: **{len(nodes)}**, связей: **{len(edges)}**.", ""]
+    broken = [e for e in edges if e.get("broken")]
+    error_nodes = [n for n in nodes if n.get("has_errors")]
+    if error_nodes or broken:
+        lines += ["## Проблемы", "",
+                  f"- Узлов с ошибками: **{len(error_nodes)}**",
+                  f"- Битых связей: **{len(broken)}**", ""]
+    lines.append("## Узлы по типам")
+    lines.append("")
+    for ntype in sorted(by_type):
+        label = NODE_TYPE_LABELS.get(ntype, ntype)
+        lines.append(f"### {label} ({len(by_type[ntype])})")
+        for n in sorted(by_type[ntype], key=lambda x: str(x.get("title") or x.get("id"))):
+            mark = " ⚠️" if n.get("has_errors") else ""
+            status = n.get("status") or "—"
+            lines.append(f"- {n.get('title') or n.get('id')} — `{n.get('id')}` [{status}]{mark}")
+        lines.append("")
+    lines.append("## Связи")
+    lines.append("")
+    for e in edges:
+        mark = " ⚠️ (битая)" if e.get("broken") else ""
+        lines.append(f"- `{e.get('from')}` —{e.get('label')}→ `{e.get('to')}`{mark}")
+    return "\n".join(lines)
+
+
+def export(mode: str = "full", fmt: str = "json", **params: Any) -> dict[str, Any]:
+    """Экспорт схемы выбранного режима в JSON или Markdown."""
+    graph = build(mode, **params)
+    fmt = str(fmt or "json").lower()
+    if fmt in ("md", "markdown"):
+        return {"format": "md", "filename": f"graph_{mode}.md",
+                "content": export_markdown(graph)}
+    return {"format": "json", "filename": f"graph_{mode}.json", "content": graph}

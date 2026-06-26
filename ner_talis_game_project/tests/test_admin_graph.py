@@ -17,6 +17,8 @@ from admin_graph_api import create_admin_graph_router
 from services import admin_graph_service as graph
 from services import admin_rbac as rbac
 from services import item_constructor_service as items
+from services import profile_layout_service as profile
+from services import site_content_registry as site
 from services import world_content_registry as wcr
 from services.admin_panel_service import (
     consume_or_read_admin_session,
@@ -31,6 +33,7 @@ _STORE_ENVS = (
     "PHASE_CONSTRUCTOR_PATH", "LEVEL_CONSTRUCTOR_PATH", "SKILL_CONSTRUCTOR_PATH",
     "RACE_CONSTRUCTOR_PATH", "FINE_CONSTRUCTOR_PATH", "CAMP_CONSTRUCTOR_PATH",
     "CITY_CONSTRUCTOR_PATH", "ACHIEVEMENTS_PATH", "ACHIEVEMENT_CATEGORIES_PATH",
+    "WORLD_EVENTS_PATH", "GUILDS_PATH", "SITE_CONTENT_PATH", "PROFILE_LAYOUT_PATH",
 )
 
 
@@ -69,6 +72,11 @@ class GraphTestBase(unittest.TestCase):
         # Предмет в конструкторе + событие с валидной и битой ссылкой на предмет.
         items.store().create("sword", {"name": "Меч"})
         wcr.create_content(wcr.KIND_EVENT, "ev_find", {"name": "Находка", "text": "Вы нашли предмет", "location": "forest", "given_item": "sword", "required_item": "ghost_item"})
+        # Сайт (_kind) + профиль (_kind): страница/блок и вкладка/блок.
+        site.store().create("home", {"_kind": "page", "title": "Главная"})
+        site.store().create("blk_news", {"_kind": "page_block", "title": "Новости", "page_id": "home"})
+        profile.store().create("char_tab", {"_kind": "profile_tab", "name": "Персонаж"})
+        profile.store().create("hp_block", {"_kind": "profile_block", "name": "HP", "block_type": "stats", "tab": "char_tab"})
 
 
 class GraphServiceTest(GraphTestBase):
@@ -130,6 +138,31 @@ class GraphServiceTest(GraphTestBase):
         self.assertGreaterEqual(v["node_count"], 7)
         self.assertGreaterEqual(len(v["broken_edges"]), 1)
 
+    def test_site_and_profile_nodes_and_edges(self):
+        g = graph.full_graph()
+        ids = {n["id"] for n in g["nodes"]}
+        self.assertIn("site_page:home", ids)
+        self.assertIn("site_page_block:blk_news", ids)
+        self.assertIn("profile_tab:char_tab", ids)
+        self.assertIn("profile_block:hp_block", ids)
+        pairs = {(e["from"], e["to"], e["type"]) for e in g["edges"]}
+        self.assertIn(("site_page_block:blk_news", "site_page:home", "in_page"), pairs)
+        self.assertIn(("profile_block:hp_block", "profile_tab:char_tab", "in_tab"), pairs)
+
+    def test_export_markdown(self):
+        g = graph.full_graph()
+        md = graph.export_markdown(g)
+        self.assertIn("# Схема Нер-Талис", md)
+        self.assertIn("location:forest", md)
+
+    def test_export_dispatch(self):
+        js = graph.export("full", fmt="json")
+        self.assertEqual(js["format"], "json")
+        self.assertTrue(js["content"]["nodes"])
+        md = graph.export("errors", fmt="md")
+        self.assertEqual(md["format"], "md")
+        self.assertIsInstance(md["content"], str)
+
 
 class GraphApiTest(GraphTestBase):
     def setUp(self):
@@ -175,6 +208,15 @@ class GraphApiTest(GraphTestBase):
         r = self.client.get("/api/admin/v2/graph/node/location/forest", headers=self._auth(token))
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()["node"]["id"], "location:forest")
+
+    def test_export_endpoint(self):
+        token = self._token()
+        j = self.client.get("/api/admin/v2/graph/export", params={"format": "json"}, headers=self._auth(token))
+        self.assertEqual(j.status_code, 200, j.text)
+        self.assertEqual(j.json()["format"], "json")
+        m = self.client.get("/api/admin/v2/graph/export", params={"format": "md"}, headers=self._auth(token))
+        self.assertEqual(m.status_code, 200, m.text)
+        self.assertIn("Схема", m.json()["content"])
 
 
 if __name__ == "__main__":

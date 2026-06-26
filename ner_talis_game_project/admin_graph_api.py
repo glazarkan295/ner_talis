@@ -120,4 +120,24 @@ def create_admin_graph_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=404, detail="Объект схемы не найден.")
         return {"ok": True, **detail}
 
+    @router.get("/export")
+    def export(
+        request: Request,
+        token: str | None = Query(default=None, min_length=16),
+        mode: str = Query(default="full"),
+        format: str = Query(default="json"),
+        focus: str | None = Query(default=None),
+        location_id: str | None = Query(default=None),
+        source: str | None = Query(default=None),
+        target: str | None = Query(default=None),
+        types: str | None = Query(default=None),
+        statuses: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        _guard(get_storage(), request, token)
+        result = graph.export(
+            mode, fmt=format, focus=focus, location_id=location_id,
+            source=source, target=target, types=_split(types), statuses=_split(statuses),
+        )
+        return {"ok": True, **result}
+
     return router

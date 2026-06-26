@@ -24,6 +24,44 @@ const TYPE_COLORS = {
 const DEFAULT_COLOR = "#94a3b8";
 const RENDER_SOFT_CAP = 600;
 
+// Тип узла → раздел админки (для «открыть в конструкторе», ТЗ §8).
+const TYPE_TO_SECTION = {
+  item: "items", effect: "effects", recipe: "recipes", trait: "traits",
+  blessing: "blessings", phase: "phases", level: "levels", skill: "skills",
+  race: "races", fine: "fines", camp: "camps", city: "city",
+  achievement: "achievements", world_event: "events", guild: "guilds",
+  profile_tab: "profile_layout", profile_block: "profile_layout", profile_theme: "profile_layout",
+};
+function sectionForType(type) {
+  if (type in TYPE_TO_SECTION) return TYPE_TO_SECTION[type];
+  if (type.startsWith("site_")) return "site";
+  return "world"; // локации/мобы/события/переходы/кнопки/npc/квесты/рейды
+}
+
+function downloadFile(name, content, mime) {
+  try {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  } catch { /* noop */ }
+}
+function toMarkdown(nodes, edges, label) {
+  const byType = {};
+  nodes.forEach((n) => { (byType[n.type] = byType[n.type] || []).push(n); });
+  const out = [`# Схема Нер-Талис${label ? ` — ${label}` : ""}`, "", `Узлов: ${nodes.length}, связей: ${edges.length}`, ""];
+  Object.keys(byType).sort().forEach((t) => {
+    out.push(`## ${t} (${byType[t].length})`);
+    byType[t].forEach((n) => out.push(`- ${n.title || n.id} — \`${n.id}\` [${n.status || "—"}]${n.has_errors ? " ⚠️" : ""}`));
+    out.push("");
+  });
+  out.push("## Связи", "");
+  edges.forEach((e) => out.push(`- \`${e.from}\` —${e.label}→ \`${e.to}\`${e.broken ? " ⚠️" : ""}`));
+  return out.join("\n");
+}
+
 function colorFor(type) {
   if (type in TYPE_COLORS) return TYPE_COLORS[type];
   if (type.startsWith("location_")) return "#60a5fa";
@@ -100,7 +138,7 @@ function nodeOpacity(node) {
   return 1;
 }
 
-export function GraphSection({ guarded }) {
+export function GraphSection({ guarded, onOpenSection }) {
   const [legend, setLegend] = useState(null);
   const [graph, setGraph] = useState({ nodes: [], edges: [] });
   const [positions, setPositions] = useState({});
@@ -278,6 +316,8 @@ export function GraphSection({ guarded }) {
           <button type="button" className="ntv2-btn-mini" onClick={() => setView((v) => ({ ...v, scale: Math.min(3, v.scale * 1.2) }))}>＋</button>
           <button type="button" className="ntv2-btn-mini" onClick={() => setView((v) => ({ ...v, scale: Math.max(0.12, v.scale / 1.2) }))}>－</button>
           <button type="button" className="ntv2-btn-mini" onClick={fitView}>Вписать</button>
+          <button type="button" className="ntv2-btn-mini" onClick={() => downloadFile("graph.json", JSON.stringify({ nodes: visibleNodes, edges: visibleEdges }, null, 2), "application/json")}>⬇ JSON</button>
+          <button type="button" className="ntv2-btn-mini" onClick={() => downloadFile("graph.md", toMarkdown(visibleNodes, visibleEdges, mode), "text/markdown")}>⬇ MD</button>
         </div>
       </div>
 
@@ -411,6 +451,9 @@ export function GraphSection({ guarded }) {
             ) : null}
             <div className="ntgraph-card-actions">
               <button type="button" className="ntv2-btn-mini" onClick={() => focusNode(selectedNode.id)}>Показать связи</button>
+              {onOpenSection ? (
+                <button type="button" className="ntv2-btn-mini" onClick={() => onOpenSection(sectionForType(selectedNode.type))}>Открыть в конструкторе</button>
+              ) : null}
               <button type="button" className="ntv2-btn-mini" onClick={() => { setPathInputs((p) => ({ ...p, source: selectedNode.id })); }}>В путь: источник</button>
               <button type="button" className="ntv2-btn-mini" onClick={() => { setPathInputs((p) => ({ ...p, target: selectedNode.id })); }}>В путь: цель</button>
               <button type="button" className="ntv2-btn-mini" onClick={() => { try { navigator.clipboard?.writeText(selectedNode.id); setInfo("ID скопирован: " + selectedNode.id); } catch { /* noop */ } }}>Скопировать ID</button>
