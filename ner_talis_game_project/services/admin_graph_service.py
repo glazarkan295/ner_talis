@@ -41,6 +41,7 @@ NODE_TYPE_LABELS: dict[str, str] = {
     "sublocation": "Подлокация", "sublocation_node": "Узел подлокации",
     "sublocation_transition": "Переход подлокации", "formula": "Формула",
     "profession": "Профессия", "workshop": "Мастерская",
+    "workshop_message": "Сообщение мастерской",
     # Сайт (ТЗ §16) и профиль — из своих реестров с тегом _kind.
     "site_page": "Страница сайта", "site_page_block": "Блок страницы",
     "site_menu_item": "Пункт меню", "site_news": "Новость", "site_guide": "Гайд",
@@ -204,6 +205,7 @@ CONSTRUCTOR_SOURCES: list[tuple[str, str, str]] = [
     ("formula", "formula_constructor_service", "name"),
     ("profession", "profession_constructor_service", "name"),
     ("workshop", "workshop_constructor_service", "name"),
+    ("workshop_message", "workshop_message_service", "name"),
 ]
 
 # Реестры с тегом _kind в data (сайт/профиль): один стор — много типов узлов.
@@ -548,6 +550,10 @@ def _constructor_edges(nodes: dict[str, dict[str, Any]], seen: set[str]) -> list
                 _add(nid, str(data["blueprint_id"]).strip(), "blueprint")
             if str(data.get("profession") or "").strip():
                 _add_typed(nid, str(data["profession"]).strip(), "profession", "uses_profession")
+            if str(data.get("workshop_id") or "").strip():
+                _add_typed(nid, str(data["workshop_id"]).strip(), "workshop", "in_workshop")
+        elif node["type"] == "workshop_message":
+            data = _node_data(node) or {}
             if str(data.get("workshop_id") or "").strip():
                 _add_typed(nid, str(data["workshop_id"]).strip(), "workshop", "in_workshop")
         elif node["type"] == "achievement":

@@ -21,6 +21,7 @@ import { CampSection } from "./sections/CampSection.jsx";
 import { GraphSection } from "./sections/GraphSection.jsx";
 import { SublocationsSection } from "./sections/SublocationsSection.jsx";
 import { FormulasSection } from "./sections/FormulasSection.jsx";
+import { WorkshopMessagesSection } from "./sections/WorkshopMessagesSection.jsx";
 import { LibrarySection } from "./sections/LibrarySection.jsx";
 
 const TRAIT_CONFIG = {
@@ -176,6 +177,7 @@ const NAV = [
   { id: "recipes", label: "Конструктор ремесла", icon: "⚒️", perm: "recipe.view" },
   { id: "professions", label: "Профессии ремесла", icon: "🛠️", perm: "profession.view" },
   { id: "workshops", label: "Мастерские", icon: "🏭", perm: "workshop.view" },
+  { id: "workshop_messages", label: "Сообщения мастерских", icon: "🧾", perm: "workshop_message.view" },
   { id: "formulas", label: "Конструктор формул", icon: "🧮", perm: "formula.view" },
   { id: "camps", label: "Конструктор лагеря", icon: "🏕️", perm: "camp.view" },
   { id: "traits", label: "Черты мобов", icon: "🧬", perm: "trait.view" },
@@ -296,6 +298,7 @@ export function AdminShell() {
         {active === "recipes" && hasPerm("recipe.view") && <RecipesSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "professions" && hasPerm("profession.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PROFESSION_CONFIG} />}
         {active === "workshops" && hasPerm("workshop.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={WORKSHOP_CONFIG} />}
+        {active === "workshop_messages" && hasPerm("workshop_message.view") && <WorkshopMessagesSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "formulas" && hasPerm("formula.view") && <FormulasSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "camps" && hasPerm("camp.view") && <CampSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "traits" && hasPerm("trait.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={TRAIT_CONFIG} />}
