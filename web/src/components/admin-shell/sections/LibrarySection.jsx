@@ -50,7 +50,7 @@ export function LibrarySection({ guarded, hasPerm, config }) {
 
   const empty = useMemo(() => {
     const o = {};
-    for (const f of fields) o[f.key] = f.type === "multiselect" ? [] : (f.type === "number" ? 0 : (f.type === "numbergroup" ? {} : (f.type === "checkbox" ? false : "")));
+    for (const f of fields) o[f.key] = (f.type === "multiselect" || f.type === "list") ? [] : (f.type === "number" ? 0 : (f.type === "numbergroup" ? {} : (f.type === "checkbox" ? false : "")));
     return o;
   }, [fields]);
 
@@ -104,6 +104,7 @@ export function LibrarySection({ guarded, hasPerm, config }) {
             if (f.type === "checkbox") return <label className="ntv2-check" key={f.key}><input type="checkbox" checked={Boolean(d[f.key])} disabled={disabled} onChange={(e) => set(f.key, e.target.checked)} /> {f.label}</label>;
             if (f.type === "select") return <Field key={f.key} label={f.label}><select value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)}><option value="">—</option>{options(meta, f.metaKey).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>;
             if (f.type === "formularef") return <Field key={f.key} label={f.label}><select value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)}><option value="">— без формулы —</option>{formulaOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>;
+            if (f.type === "list") return <Field key={f.key} label={f.label}><textarea rows={f.rows || 2} value={(Array.isArray(d[f.key]) ? d[f.key] : []).join("\n")} disabled={disabled} onChange={(e) => set(f.key, e.target.value.split("\n").map((s) => s.trim()).filter(Boolean))} /></Field>;
             if (f.type === "multiselect") return (
               <div className="ntv2-panel" key={f.key}>
                 <h4 className="ntv2-subhead">{f.label}</h4>

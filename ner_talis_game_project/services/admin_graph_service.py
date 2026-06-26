@@ -40,6 +40,7 @@ NODE_TYPE_LABELS: dict[str, str] = {
     "world_event": "Мировое событие", "guild": "Гильдия",
     "sublocation": "Подлокация", "sublocation_node": "Узел подлокации",
     "sublocation_transition": "Переход подлокации", "formula": "Формула",
+    "profession": "Профессия", "workshop": "Мастерская",
     # Сайт (ТЗ §16) и профиль — из своих реестров с тегом _kind.
     "site_page": "Страница сайта", "site_page_block": "Блок страницы",
     "site_menu_item": "Пункт меню", "site_news": "Новость", "site_guide": "Гайд",
@@ -74,6 +75,7 @@ FORMULA_REF_FIELDS: dict[str, tuple[str, ...]] = {
     "location": ("search_depth_formula_id",),
     "mob": ("exp_formula_id", "damage_formula_id"),
     "fine": ("amount_formula_id",),
+    "profession": ("exp_formula_id", "next_level_formula_id"),
 }
 
 # --- Декларативные спецификации связей -------------------------------------
@@ -199,6 +201,8 @@ CONSTRUCTOR_SOURCES: list[tuple[str, str, str]] = [
     ("world_event", "world_event_service", "name"),
     ("guild", "guild_service", "name"),
     ("formula", "formula_constructor_service", "name"),
+    ("profession", "profession_constructor_service", "name"),
+    ("workshop", "workshop_constructor_service", "name"),
 ]
 
 # Реестры с тегом _kind в data (сайт/профиль): один стор — много типов узлов.
@@ -533,6 +537,20 @@ def _constructor_edges(nodes: dict[str, dict[str, Any]], seen: set[str]) -> list
                 if isinstance(row, dict) and str(row.get("type") or "") in ("item", "unique_item"):
                     if str(row.get("item_id") or "").strip():
                         _add(nid, str(row["item_id"]).strip(), "rewards_item")
+        elif node["type"] == "workshop":
+            data = _node_data(node) or {}
+            loc = str(data.get("location") or "").strip()
+            if loc:
+                target_id, resolved = _resolve_target(loc, "location", nodes)
+                eid = f"{nid}|in_location|{target_id}"
+                if eid not in seen:
+                    seen.add(eid)
+                    edge = {"id": eid, "from": nid, "to": target_id, "type": "in_location",
+                            "label": EDGE_TYPE_LABELS["in_location"]}
+                    if not resolved:
+                        edge["broken"] = True
+                        nodes[nid]["has_errors"] = True
+                    edges.append(edge)
     return edges
 
 

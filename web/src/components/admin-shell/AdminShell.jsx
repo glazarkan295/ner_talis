@@ -118,6 +118,41 @@ const RACE_CONFIG = {
     { key: "starting_stats", label: "Стартовые характеристики", type: "numbergroup", sub: _STAT_SUB },
   ],
 };
+const PROFESSION_CONFIG = {
+  base: "professions", title: "Конструктор профессий", permPrefix: "profession",
+  newLabel: "Новая профессия", nameField: "name",
+  fields: [
+    { key: "name", label: "Название", type: "text" },
+    { key: "profession_type", label: "Тип профессии", type: "select", metaKey: "professionTypes" },
+    { key: "description", label: "Описание", type: "textarea" },
+    { key: "max_level", label: "Максимальный уровень", type: "number" },
+    { key: "start_level", label: "Стартовый уровень", type: "number" },
+    { key: "exp_formula_id", label: "Формула опыта", type: "formularef" },
+    { key: "next_level_formula_id", label: "Формула опыта до след. уровня", type: "formularef" },
+    { key: "rewards_per_level", label: "Награды за уровень (по строкам)", type: "list" },
+    { key: "unlocked_recipes", label: "Открываемые рецепты (id по строкам)", type: "list" },
+    { key: "workshops", label: "Мастерские (id по строкам)", type: "list" },
+  ],
+};
+const WORKSHOP_CONFIG = {
+  base: "workshops", title: "Конструктор мастерских", permPrefix: "workshop",
+  newLabel: "Новая мастерская", nameField: "name",
+  fields: [
+    { key: "name", label: "Название", type: "text" },
+    { key: "type", label: "Тип мастерской", type: "select", metaKey: "workshopTypes" },
+    { key: "location", label: "Локация (id)", type: "text" },
+    { key: "city", label: "Город (id)", type: "text" },
+    { key: "fortress", label: "Крепость (id)", type: "text" },
+    { key: "available", label: "Доступна", type: "checkbox" },
+    { key: "access_condition", label: "Условие доступа", type: "text" },
+    { key: "use_cost", label: "Стоимость использования", type: "number" },
+    { key: "work_time", label: "Время работы (сек)", type: "number" },
+    { key: "professions", label: "Профессии (id по строкам)", type: "list" },
+    { key: "recipes", label: "Рецепты (id по строкам)", type: "list" },
+    { key: "description", label: "Описание", type: "textarea" },
+    { key: "image", label: "Изображение (/assets/…)", type: "text" },
+  ],
+};
 import { AuditSection } from "./sections/AuditSection.jsx";
 import { ReferenceSection } from "./sections/ReferenceSection.jsx";
 import { RolesSection } from "./sections/RolesSection.jsx";
@@ -139,6 +174,8 @@ const NAV = [
   { id: "profile_layout", label: "Раскладка профиля", icon: "🪪", perm: "profile_layout.view" },
   { id: "city", label: "Город и крепость", icon: "🏙️", perm: "city.view" },
   { id: "recipes", label: "Конструктор ремесла", icon: "⚒️", perm: "recipe.view" },
+  { id: "professions", label: "Профессии ремесла", icon: "🛠️", perm: "profession.view" },
+  { id: "workshops", label: "Мастерские", icon: "🏭", perm: "workshop.view" },
   { id: "formulas", label: "Конструктор формул", icon: "🧮", perm: "formula.view" },
   { id: "camps", label: "Конструктор лагеря", icon: "🏕️", perm: "camp.view" },
   { id: "traits", label: "Черты мобов", icon: "🧬", perm: "trait.view" },
@@ -257,6 +294,8 @@ export function AdminShell() {
         {active === "profile_layout" && hasPerm("profile_layout.view") && <ProfileLayoutSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "city" && hasPerm("city.view") && <CitySection guarded={guarded} hasPerm={hasPerm} />}
         {active === "recipes" && hasPerm("recipe.view") && <RecipesSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "professions" && hasPerm("profession.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PROFESSION_CONFIG} />}
+        {active === "workshops" && hasPerm("workshop.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={WORKSHOP_CONFIG} />}
         {active === "formulas" && hasPerm("formula.view") && <FormulasSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "camps" && hasPerm("camp.view") && <CampSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "traits" && hasPerm("trait.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={TRAIT_CONFIG} />}
