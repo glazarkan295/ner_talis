@@ -1576,6 +1576,29 @@ function PromoForm({ onRedeemPromo }) {
 }
 
 // --- Профиль V2: вкладка «Сервисы» (ТЗ §22, Передача + Промокод) ----------
+function ReferralPanel({ referral }) {
+  const data = referral || {};
+  const link = data.link || "";
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* буфер может быть недоступен */ }
+  }
+  return (
+    <Panel title="Реферальная программа">
+      <div className="nt-lines">
+        <Row label="Приглашено игроков" value={data.count || 0} />
+        {data.code ? <Row label="Ваш код" value={data.code} /> : null}
+        {link ? (
+          <div className="nt-row">
+            <span>Ссылка-приглашение</span>
+            <strong className="nt-summary-value"><span className="nt-summary-text nt-mono">{link}</span><button type="button" className="nt-fines-button" onClick={copy}>{copied ? "Скопировано" : "Копировать"}</button></strong>
+          </div>
+        ) : <p className="nt-empty-text">Ссылка появится после настройки бота. Передайте новичку ваш код — он привяжется при регистрации.</p>}
+      </div>
+    </Panel>
+  );
+}
+
 function ServicesTab({ profile, onSearchRecipients, onSendTransfer, onRedeemPromo }) {
   // Бэкенд диктует список и порядок сервисов; запасной вариант — только Передача.
   const services = (profile.services && profile.services.length)
@@ -1605,6 +1628,7 @@ function ServicesTab({ profile, onSearchRecipients, onSendTransfer, onRedeemProm
       ) : null}
       {active === "transfer" ? <CourierTab profile={profile} onSearchRecipients={onSearchRecipients} onSendTransfer={onSendTransfer} /> : null}
       {active === "promo" ? <PromoForm onRedeemPromo={onRedeemPromo} /> : null}
+      <ReferralPanel referral={profile.referral} />
     </div>
   );
 }
