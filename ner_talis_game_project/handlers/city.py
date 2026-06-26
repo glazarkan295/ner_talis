@@ -6,7 +6,12 @@ from telegram.ext import ContextTypes
 
 from keyboards.reply_keyboards import make_keyboard, start_keyboard
 from services.city_service import CITY_BUTTONS, process_world_action, unstuck_player
-from services.chat_log_service import append_player_chat_log, normalize_bot_messages, pop_pending_bot_messages
+from services.chat_log_service import (
+    DurableOutboxDelivery,
+    append_player_chat_log,
+    normalize_bot_messages,
+    pop_pending_bot_messages,
+)
 from services.external_location_service import complete_active_timer
 from services.runtime_timer_scheduler import attach_timer_notification, schedule_timer_delivery
 from storage.base import PlayerStorage
@@ -124,12 +129,19 @@ async def send_city_response(
         platform=TELEGRAM_PLATFORM,
     )
 
-    for message in [*durable_messages, *pop_pending_bot_messages(player), *getattr(result, "extra_messages", ())]:
-        append_player_chat_log(player, direction="bot", text=message, platform=TELEGRAM_PLATFORM)
-        await update.message.reply_text(
-            message,
-            disable_web_page_preview=True,
-        )
+    # Durable-outbox доставляем с гарантией: при сбое reply_text несработавшие
+    # сообщения возвращаются в очередь (см. DurableOutboxDelivery), а не теряются.
+    delivery = DurableOutboxDelivery(storage, game_id, durable_messages)
+    try:
+        for message in durable_messages:
+            append_player_chat_log(player, direction="bot", text=message, platform=TELEGRAM_PLATFORM)
+            await update.message.reply_text(message, disable_web_page_preview=True)
+            delivery.mark_sent()
+        for message in [*pop_pending_bot_messages(player), *getattr(result, "extra_messages", ())]:
+            append_player_chat_log(player, direction="bot", text=message, platform=TELEGRAM_PLATFORM)
+            await update.message.reply_text(message, disable_web_page_preview=True)
+    finally:
+        delivery.requeue_unsent()
 
     append_player_chat_log(player, direction="bot", text=result.text, platform=TELEGRAM_PLATFORM)
     await update.message.reply_text(

@@ -49,3 +49,33 @@ def pop_pending_bot_messages(player: dict[str, Any]) -> list[str]:
     messages = normalize_bot_messages(pending)
     player["pending_bot_messages"] = []
     return messages
+
+
+class DurableOutboxDelivery:
+    """Гарантия доставки durable-outbox: помечай отправленные, в finally верни
+    недоставленные обратно в очередь.
+
+    Хендлеры выгребают outbox через dequeue (атомарно удаляя записи) и затем
+    шлют их боту. Если бот-API упал/лимит/краш в середине — выгруженные
+    сообщения уже не в хранилище и пропали бы навсегда. Этот драйвер (без I/O —
+    подходит и для sync VK, и для async Telegram) возвращает несработавшие
+    записи обратно, чтобы они доставились при следующем действии игрока."""
+
+    def __init__(self, storage: Any, game_id: str, messages: list[str]) -> None:
+        self._storage = storage
+        self._game_id = str(game_id or "")
+        self.remaining: list[str] = list(messages or [])
+
+    def mark_sent(self) -> None:
+        """Вызывать ПОСЛЕ успешной отправки очередного durable-сообщения."""
+        if self.remaining:
+            self.remaining.pop(0)
+
+    def requeue_unsent(self) -> None:
+        """Вызывать в finally: вернуть недоставленные durable-сообщения в outbox."""
+        if self.remaining and self._game_id and hasattr(self._storage, "enqueue_bot_messages"):
+            try:
+                self._storage.enqueue_bot_messages(self._game_id, list(self.remaining))
+            except Exception:
+                pass
+        self.remaining = []

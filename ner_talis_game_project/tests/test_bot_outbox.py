@@ -81,6 +81,39 @@ class BotOutboxAtomicityTest(unittest.TestCase):
             pending = storage.get_player_by_game_id(gid)["pending_bot_messages"]
             self.assertEqual(pending[-1]["text"], "дар")
 
+    def test_durable_delivery_requeues_unsent_on_failure(self):
+        # Codex P2: сбой бот-API в середине отправки не теряет outbox —
+        # несработавшие сообщения возвращаются в очередь на повтор.
+        from services.chat_log_service import DurableOutboxDelivery
+        for storage, gid in self._both():
+            messages = ["m1", "m2", "m3"]
+            delivery = DurableOutboxDelivery(storage, gid, messages)
+            sent = []
+            try:
+                for m in messages:
+                    if m == "m2":
+                        raise RuntimeError("bot api down")
+                    sent.append(m)
+                    delivery.mark_sent()
+            except RuntimeError:
+                pass
+            finally:
+                delivery.requeue_unsent()
+            self.assertEqual(sent, ["m1"])
+            self.assertEqual(storage.dequeue_bot_messages(gid), ["m2", "m3"])
+
+    def test_durable_delivery_no_requeue_on_success(self):
+        from services.chat_log_service import DurableOutboxDelivery
+        for storage, gid in self._both():
+            messages = ["a", "b"]
+            delivery = DurableOutboxDelivery(storage, gid, messages)
+            try:
+                for _m in messages:
+                    delivery.mark_sent()
+            finally:
+                delivery.requeue_unsent()
+            self.assertEqual(storage.dequeue_bot_messages(gid), [])
+
 
 if __name__ == "__main__":
     unittest.main()
