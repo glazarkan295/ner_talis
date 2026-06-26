@@ -156,6 +156,23 @@ def _client_ip_for_rate_limit(request: Request) -> str:
     return direct_ip
 
 
+def _request_is_https(request: Request) -> bool:
+    """HTTPS ли запрос. X-Forwarded-Proto подделывается прямым HTTP-клиентом,
+    поэтому доверяем ему только при TRUST_PROXY_HEADERS и доверенном ближайшем
+    узле — та же модель доверия, что и для IP в _client_ip_for_rate_limit.
+    Иначе FORCE_HTTPS обходится спуфом заголовка на любом прямом развёртывании."""
+    if request.url.scheme == "https":
+        return True
+    if _truthy_env("TRUST_PROXY_HEADERS", "false"):
+        direct_ip = request.client.host if request.client else "unknown"
+        trusted_proxies = set(_csv_env("TRUSTED_PROXY_IPS", "127.0.0.1,::1"))
+        if direct_ip in trusted_proxies:
+            proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+            if proto == "https":
+                return True
+    return False
+
+
 def _safe_uploaded_asset_path(asset_path: str) -> Path | None:
     relative = Path(str(asset_path or ""))
     if relative.is_absolute() or ".." in relative.parts:
@@ -261,8 +278,7 @@ def create_app() -> FastAPI:
     async def security_and_rate_limit_middleware(request: Request, call_next):
         path = request.url.path
         if _truthy_env("FORCE_HTTPS", "false") and path != "/health":
-            forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
-            is_https = request.url.scheme == "https" or forwarded_proto == "https"
+            is_https = _request_is_https(request)
             host = request.headers.get("host", "")
             if not is_https and not host.startswith(("localhost", "127.0.0.1")):
                 secure_url = request.url.replace(scheme="https")

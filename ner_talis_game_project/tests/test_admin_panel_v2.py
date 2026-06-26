@@ -101,6 +101,58 @@ class AdminPanelV2Test(unittest.TestCase):
         self.assertEqual(res.status_code, 400, res.text)
         self.assertIn("owner", res.json()["detail"].lower())
 
+    def test_owner_via_override_cannot_clear_own_override(self):
+        # Codex P2: owner-через-override не может снять собственный override —
+        # иначе мгновенно станет read_only и потеряет управление ролями.
+        rbac.set_role_override("telegram", "777", rbac.OWNER)
+        token = self._session_token("777")
+        res = self.client.delete(
+            "/api/admin/v2/roles", headers=self._auth(token),
+            params={"platform": "telegram", "admin_user_id": "777"},
+        )
+        self.assertEqual(res.status_code, 400, res.text)
+        self.assertIn("owner", res.json()["detail"].lower())
+        self.assertEqual(rbac.resolve_admin_role("telegram", "777"), rbac.OWNER)
+
+    def test_env_owner_can_clear_other_override(self):
+        # Снятие чужого override и снятие собственного у ENV-owner — разрешены.
+        rbac.set_role_override("telegram", "555", rbac.SUPPORT)
+        token = self._session_token("999")
+        res = self.client.delete(
+            "/api/admin/v2/roles", headers=self._auth(token),
+            params={"platform": "telegram", "admin_user_id": "555"},
+        )
+        self.assertEqual(res.status_code, 200, res.text)
+        self.assertTrue(res.json()["removed"])
+
+    def test_reward_notify_failure_is_not_fatal(self):
+        # Codex P2: награда уже сохранена; сбой постановки уведомления не должен
+        # ронять операцию (иначе повтор админа начислит награду повторно).
+        from services import message_delivery
+        from services.admin_panel_service import deliver_rewards_to_player
+
+        sess = {"platform": "telegram", "admin_user_id": "999"}
+        gid = self._make_player(name="Дарёный")
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("outbox down")
+
+        orig = message_delivery.notify_player
+        message_delivery.notify_player = boom
+        try:
+            res = deliver_rewards_to_player(
+                self.storage, target_game_id=gid,
+                rewards=[{"item_id": "money_copper", "amount": 50}],
+                admin_session=sess, reason="компенсация",
+            )
+        finally:
+            message_delivery.notify_player = orig
+
+        self.assertTrue(res["ok"])
+        self.assertFalse(res["playerMessageQueued"])
+        player = self.storage.get_player_by_game_id(gid)
+        self.assertEqual(player.get("money_copper", player.get("money", 0)), 50)
+
     def test_support_session_cannot_manage_roles_but_can_view_audit(self):
         # Downgrade the session admin to support.
         rbac.set_role_override("telegram", "999", rbac.SUPPORT)

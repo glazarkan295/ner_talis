@@ -32,6 +32,7 @@ from services.admin_player_service import delete_player_profile, reset_player_pr
 from services.admin_rbac import (
     ALL_PERMISSIONS,
     DANGEROUS_ACTIONS,
+    DEFAULT_ROLE,
     OWNER,
     PERM_AUDIT_VIEW,
     PERM_FINES_MANAGE,
@@ -49,6 +50,7 @@ from services.admin_rbac import (
     ROLES,
     get_role_overrides,
     identity_key,
+    is_configured_admin_user,
     normalize_role,
     permissions_for,
     remove_role_override,
@@ -262,7 +264,19 @@ def create_admin_panel_v2_router(get_storage) -> APIRouter:
         session = _session(storage, request, token)
         _require(session, PERM_ROLES_MANAGE)
         target_key = identity_key(platform, admin_user_id)
+        actor_key = identity_key(session.get("platform"), session.get("admin_user_id"))
         before = resolve_admin_role(platform, admin_user_id)
+        # Защита от самоблокировки: снятие СОБСТВЕННОГО override owner запрещено,
+        # если роль owner держится только на override (нет ENV-bootstrap). Иначе
+        # owner-через-override снимет себе доступ к управлению ролями. Путь assign
+        # уже имеет такую защиту — здесь её не было.
+        if target_key == actor_key and before == OWNER:
+            would_be = OWNER if is_configured_admin_user(platform, admin_user_id) else DEFAULT_ROLE
+            if would_be != OWNER:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Нельзя снять собственный override owner (защита от потери доступа).",
+                )
         removed = remove_role_override(platform, admin_user_id)
         after = resolve_admin_role(platform, admin_user_id)
         record_admin_operation(
