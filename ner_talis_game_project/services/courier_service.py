@@ -106,6 +106,14 @@ SENDER_MISDELIVERED_TEXT = (
     "Вернуть отправленные предметы не удалось."
 )
 
+SENDER_RETURNED_TEXT = (
+    "↩️ Часть посылки вернулась к вам.\n\n"
+    "Гонец дошёл до получателя, но у того не нашлось места в сумке для всех "
+    "предметов.\n\n"
+    "— Часть свёртка я привёз обратно — не выбрасывать же добро на дорогу.\n\n"
+    "Непоместившиеся предметы возвращены в ваш инвентарь."
+)
+
 RANDOM_RECIPIENT_TEXT = (
     "🏃‍♂️ Гонец подходит к вам и протягивает свёрток.\n\n"
     "— Посылка для вас. По крайней мере, так мне сказали. Имя вроде сходится… "
@@ -313,6 +321,19 @@ def _match_inventory_index(
     return None
 
 
+def _wallet(player: dict[str, Any]) -> int:
+    """Баланс игрока в медяках. Каноничное поле — money_copper, money — зеркало."""
+    return max(0, safe_int(player.get("money_copper", player.get("money", 0)), 0))
+
+
+def _set_wallet(player: dict[str, Any], value: int) -> None:
+    """Пишем баланс в ОБА поля, иначе остальные системы (рынок, штрафы) читают
+    money_copper и не видят списание/начисление гонца → потеря или дублирование монет."""
+    value = max(0, safe_int(value, 0))
+    player["money_copper"] = value
+    player["money"] = value
+
+
 def create_courier_transfer(
     storage: Any,
     sender: dict[str, Any],
@@ -352,7 +373,7 @@ def create_courier_transfer(
 
     level = safe_int(sender.get("level"), 1)
     cost = delivery_cost_copper(level)
-    money = safe_int(sender.get("money"), 0)
+    money = _wallet(sender)
     if money < cost + coins:
         raise CourierError("Недостаточно монет для оплаты доставки и вложенных монет.")
 
@@ -401,7 +422,7 @@ def create_courier_transfer(
         else:
             inventory.pop(index)
 
-    sender["money"] = money - cost - coins
+    _set_wallet(sender, money - cost - coins)
     recalculate_inventory_overflow(sender)
 
     deliver_at = now + timedelta(
@@ -462,7 +483,7 @@ def _refund_sender(
         amount = max(1, safe_int(entry.get("amount"), 1))
         if isinstance(snapshot, dict):
             add_inventory_item(sender, deepcopy(snapshot), amount)
-    sender["money"] = safe_int(sender.get("money"), 0) + safe_int(cost, 0) + safe_int(coins, 0)
+    _set_wallet(sender, _wallet(sender) + safe_int(cost, 0) + safe_int(coins, 0))
     recalculate_inventory_overflow(sender)
 
 
@@ -485,16 +506,28 @@ def _claim_due_transfers(now: datetime) -> list[dict[str, Any]]:
         return due
 
 
-def _deliver_items_to(player: dict[str, Any], transfer: dict[str, Any]) -> None:
+def _deliver_items_to(
+    player: dict[str, Any], transfer: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Кладёт предметы/монеты получателю. Возвращает список НЕвместившихся
+    записей (инвентарь переполнен), чтобы их не потерять, а вернуть отправителю."""
+    undelivered: list[dict[str, Any]] = []
     for entry in transfer.get("items", []):
         snapshot = entry.get("item")
         amount = max(1, safe_int(entry.get("amount"), 1))
-        if isinstance(snapshot, dict):
-            add_inventory_item(player, deepcopy(snapshot), amount)
+        if not isinstance(snapshot, dict):
+            continue
+        result = add_inventory_item(player, deepcopy(snapshot), amount)
+        discarded = max(0, safe_int(getattr(result, "discarded", 0), 0))
+        if discarded > 0:
+            leftover = dict(entry)
+            leftover["amount"] = discarded
+            undelivered.append(leftover)
     coins = safe_int(transfer.get("coins"), 0)
     if coins > 0:
-        player["money"] = safe_int(player.get("money"), 0) + coins
+        _set_wallet(player, _wallet(player) + coins)
     recalculate_inventory_overflow(player)
+    return undelivered
 
 
 def _pick_random_recipient(
@@ -540,9 +573,34 @@ def process_due_transfers(
 
     def _notify(game_id: str, messages: list[str]) -> None:
         # Сообщения доставляем через атомарный outbox, чтобы пересохранение
-        # игрока ботом не затёрло их (lost update).
-        if game_id and callable(enqueue) and messages:
+        # игрока ботом не затёрло их (lost update). Сбой уведомления НЕ должен
+        # инициировать повтор — иначе уже доставленная посылка продублируется.
+        if not (game_id and callable(enqueue) and messages):
+            return
+        try:
             enqueue(game_id, messages)
+        except Exception:
+            pass
+
+    def _return_undelivered(target_id: str, entries: list[dict[str, Any]]) -> None:
+        # Получатель не вместил часть предметов (инвентарь забит) — возвращаем
+        # их отправителю, чтобы они не пропали. Монеты не переполняются.
+        if not entries:
+            return
+        sender = _reload(target_id)
+        if sender is None:
+            return
+        for entry in entries:
+            snapshot = entry.get("item")
+            amount = max(1, safe_int(entry.get("amount"), 1))
+            if isinstance(snapshot, dict):
+                add_inventory_item(sender, deepcopy(snapshot), amount)
+        recalculate_inventory_overflow(sender)
+        try:
+            update_player(sender)
+        except Exception:
+            return
+        _notify(target_id, [SENDER_RETURNED_TEXT])
 
     processed = 0
     requeue: list[dict[str, Any]] = []
@@ -550,6 +608,10 @@ def process_due_transfers(
         roll = rng.random() * 100.0
         sender_id = str(transfer.get("sender_game_id") or "")
         receiver_id = str(transfer.get("receiver_game_id") or "")
+        # Как только мутация получателя зафиксирована (update_player успешен),
+        # посылку НЕЛЬЗЯ возвращать в очередь — иначе предметы/монеты задвоятся.
+        committed = False
+        undelivered: list[dict[str, Any]] = []
         try:
             if roll < STOLEN_CHANCE_PERCENT:
                 _notify(sender_id, [
@@ -560,8 +622,9 @@ def process_due_transfers(
                     storage, {sender_id, receiver_id}, rng
                 )
                 if wrong is not None:
-                    _deliver_items_to(wrong, transfer)
+                    undelivered = _deliver_items_to(wrong, transfer)
                     update_player(wrong)
+                    committed = True
                     _notify(
                         str(wrong.get("game_id") or wrong.get("id") or ""),
                         _receiver_messages(transfer, random_recipient=True),
@@ -572,14 +635,22 @@ def process_due_transfers(
             else:
                 receiver = _reload(receiver_id)
                 if receiver is not None:
-                    _deliver_items_to(receiver, transfer)
+                    undelivered = _deliver_items_to(receiver, transfer)
                     update_player(receiver)
+                    committed = True
                     _notify(receiver_id, _receiver_messages(transfer, random_recipient=False))
             processed += 1
+            if undelivered:
+                _return_undelivered(sender_id, undelivered)
         except Exception:
             # Доставка не должна терять посылку: возвращаем её в очередь на
             # повтор (до MAX_DELIVERY_ATTEMPTS), иначе предметы/монеты отправителя
             # пропали бы навсегда при разовом сбое (например, ошибке БД).
+            # НО только если мутация получателя ещё НЕ зафиксирована — иначе повтор
+            # доставит посылку второй раз (дублирование предметов/монет).
+            if committed:
+                processed += 1
+                continue
             attempts = safe_int(transfer.get("delivery_attempts"), 0) + 1
             if attempts < MAX_DELIVERY_ATTEMPTS:
                 transfer["delivery_attempts"] = attempts
