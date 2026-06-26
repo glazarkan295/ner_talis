@@ -84,3 +84,59 @@ def attach_entity_versioning_routes(
         except EntityError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"ok": True, "item": item}
+
+
+def attach_kinded_versioning_routes(
+    router: APIRouter,
+    *,
+    session_for: Callable[[Request, str | None], dict[str, Any]],
+    require: Callable[[dict[str, Any], str], Any],
+    actor: Callable[[dict[str, Any]], str],
+    store: Callable[[], Any],
+    get_checked: Callable[[str, str], dict[str, Any]],
+    view_perm_for: Callable[[str], str],
+    edit_perm_for: Callable[[str], str],
+    publish_perm_for: Callable[[str], str],
+    target_type_for: Callable[[str], str] | None = None,
+    name_field: str = "",
+    published_status: str = "published",
+) -> None:
+    """Версионирование для multi-kind конструкторов (пути /{kind}/{id}/…).
+
+    get_checked(id, kind) должен вернуть конверт или бросить HTTPException(404),
+    проверив, что stored data._kind == kind (защита от кросс-kind доступа).
+    Права берутся per-kind через *_perm_for(kind)."""
+
+    def _ttype(kind: str) -> str:
+        return target_type_for(kind) if target_type_for else str(kind)
+
+    @router.get("/{kind}/{entity_id}/history")
+    def _history(kind: str, entity_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        require(session_for(request, token), view_perm_for(kind))
+        get_checked(entity_id, kind)
+        return {"ok": True, "history": store().history(entity_id)}
+
+    @router.post("/{kind}/{entity_id}/rollback")
+    def _rollback(kind: str, entity_id: str, payload: _RollbackBody, request: Request) -> dict[str, Any]:
+        session = session_for(request, payload.token)
+        require(session, edit_perm_for(kind))
+        before = get_checked(entity_id, kind)
+        if str(before.get("status") or "") == published_status:
+            require(session, publish_perm_for(kind))
+        name = _entity_name(before.get("data"), entity_id, name_field)
+        try:
+            item = run_admin_operation(
+                session=session,
+                action=f"{_ttype(kind)}.rollback",
+                func=lambda: store().rollback(entity_id, payload.version, actor=actor(session)),
+                target_type=_ttype(kind),
+                target_id=entity_id,
+                target_name=name,
+                before={"version": before.get("version")},
+                after_func=lambda r: {"version": r.get("version")},
+                reason=payload.reason,
+                details={"kind": kind, "rollback_to": payload.version},
+            )
+        except EntityError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "item": item}

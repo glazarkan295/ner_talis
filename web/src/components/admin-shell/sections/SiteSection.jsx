@@ -14,6 +14,7 @@ import {
   SITE_BLOCK_WIDTH, SITE_BLOCK_ALIGN, SITE_RATING_TYPE, SITE_RATING_PERIOD, SITE_LORE_TYPE,
 } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { VersionHistory } from "../VersionHistory.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { ImageUploadField } from "../ImageUploadField.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
@@ -350,6 +351,8 @@ export function SiteSection({ guarded, hasPerm }) {
           {!editing.isNew && can.publish && editing.status === "published" ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Скрыть?", dangerous: true, confirmLabel: "Скрыть", body: <p>Материал будет скрыт с сайта.</p>, run: async (r) => { await guarded(() => siteLifecycle(kind, editing.id, "hide", r), "Скрыто."); await refreshEditing(); } })}>Скрыть</button> : null}
           {!editing.isNew && can.archive ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "В архив?", dangerous: true, confirmLabel: "В архив", body: <p>Материал уйдёт в архив.</p>, run: async (r) => { await guarded(() => siteLifecycle(kind, editing.id, "archive", r), "В архиве."); await refreshEditing(); } })}>В архив</button> : null}
         </div>
+
+        {!editing.isNew ? <VersionHistory base={`site/${kind}`} id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
 
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />

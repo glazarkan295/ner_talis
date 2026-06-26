@@ -158,6 +158,21 @@ class ProfileLayoutApiTest(unittest.TestCase):
         self.assertEqual(self.client.get("/api/admin/v2/profile-layout/profile_tab", headers=self._auth(token)).status_code, 200)
         self.assertEqual(self.client.post("/api/admin/v2/profile-layout/profile_tab", headers=self._auth(token), json={"id": "tx", "data": {"label": "T"}}).status_code, 403)
 
+    def test_history_rollback_kinded(self):
+        # Этап 1: история/откат для multi-kind конструктора (пути /{kind}/{id}/…).
+        token = self._token()
+        self.client.post("/api/admin/v2/profile-layout/profile_tab", headers=self._auth(token), json={"id": "t_h", "data": {"label": "Версия 1"}})
+        self.client.put("/api/admin/v2/profile-layout/profile_tab/t_h", headers=self._auth(token), json={"data": {"label": "Версия 2"}})
+        hist = self.client.get("/api/admin/v2/profile-layout/profile_tab/t_h/history", headers=self._auth(token))
+        self.assertEqual(hist.status_code, 200, hist.text)
+        self.assertIn(1, [h["version"] for h in hist.json()["history"]])
+        rb = self.client.post("/api/admin/v2/profile-layout/profile_tab/t_h/rollback", headers=self._auth(token), json={"version": 1})
+        self.assertEqual(rb.status_code, 200, rb.text)
+        got = self.client.get("/api/admin/v2/profile-layout/profile_tab/t_h", headers=self._auth(token)).json()["item"]
+        self.assertEqual(got["data"]["label"], "Версия 1")
+        # Кросс-kind защита: история по чужому kind → 404.
+        self.assertEqual(self.client.get("/api/admin/v2/profile-layout/profile_block/t_h/history", headers=self._auth(token)).status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -239,6 +239,21 @@ class SiteApiTest(unittest.TestCase):
         self.assertEqual(self.client.post("/api/admin/v2/site/lore", headers=self._auth(token), json={"id": "l1", "data": {"title": "Лор", "text": "История", "lore_type": "history"}}).status_code, 200)
         self.assertEqual(self.client.post("/api/admin/v2/site/rating", headers=self._auth(token), json={"id": "r1", "data": {"title": "Топ", "rating_type": "level", "period": "weekly"}}).status_code, 200)
 
+    def test_history_rollback_kinded(self):
+        # Этап 1: история/откат для multi-kind сайта + кросс-kind защита.
+        token = self._token()
+        self.client.post("/api/admin/v2/site/news", headers=self._auth(token), json={"id": "n_h", "data": {"title": "Заголовок 1", "body": "B"}})
+        self.client.put("/api/admin/v2/site/news/n_h", headers=self._auth(token), json={"data": {"title": "Заголовок 2"}})
+        hist = self.client.get("/api/admin/v2/site/news/n_h/history", headers=self._auth(token))
+        self.assertEqual(hist.status_code, 200, hist.text)
+        self.assertIn(1, [h["version"] for h in hist.json()["history"]])
+        rb = self.client.post("/api/admin/v2/site/news/n_h/rollback", headers=self._auth(token), json={"version": 1})
+        self.assertEqual(rb.status_code, 200, rb.text)
+        got = self.client.get("/api/admin/v2/site/news/n_h", headers=self._auth(token)).json()["item"]
+        self.assertEqual(got["data"]["title"], "Заголовок 1")
+        # Кросс-kind: история по чужому kind → 404.
+        self.assertEqual(self.client.get("/api/admin/v2/site/page/n_h/history", headers=self._auth(token)).status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

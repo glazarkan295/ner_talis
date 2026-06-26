@@ -44,6 +44,7 @@ from services.admin_rbac import (
     require_permission,
 )
 from services import site_content_registry as site
+from services.admin_versioning_routes import attach_kinded_versioning_routes
 
 
 # Конфигурация прав по типу: view/create/edit/publish/archive + семья (для аудита).
@@ -297,4 +298,15 @@ def create_admin_site_router(get_storage) -> APIRouter:
     def schedule(kind: str, content_id: str, payload: ActionRequest, request: Request) -> dict[str, Any]:
         return _lifecycle(kind, content_id, payload, request, perm_key="edit", action_suffix="schedule", target_status=site.STATUS_SCHEDULED)
 
+    attach_kinded_versioning_routes(
+        router,
+        session_for=lambda req, tok: _session(get_storage(), req, tok),
+        require=_require, actor=_actor, store=site.store,
+        get_checked=_get_checked,
+        view_perm_for=lambda k: _cfg(k)["view"],
+        edit_perm_for=lambda k: _cfg(k)["edit"],
+        publish_perm_for=lambda k: _cfg(k)["publish"],
+        target_type_for=lambda k: f"site.{k}",
+        name_field="title",
+    )
     return router
