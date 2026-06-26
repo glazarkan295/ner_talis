@@ -121,6 +121,43 @@ function computeLayout(nodes, edges) {
   return pos;
 }
 
+// Слои по глубине (ТЗ §28): мир → локации → подлокации → события/мобы →
+// награды/предметы → эффекты → системные слои (сайт/профиль/прочее).
+const DEPTH_TIERS = [
+  ["city", "world_event"],
+  ["location", "location_zone", "transition", "button"],
+  ["location_resource", "location_loot", "location_mob_spawn", "location_weekly_limit", "location_weekly_rotation", "location_depletion_rule", "location_empty_event"],
+  ["event", "location_hidden_event", "location_event_answer", "npc", "quest", "raid"],
+  ["mob", "mob_variant", "mob_skill", "mob_passive", "mob_resistance", "mob_effect", "mob_event_link", "mob_zone_link", "mob_phase"],
+  ["item", "recipe"],
+  ["effect", "trait", "blessing", "phase"],
+  ["site_page", "site_page_block", "site_menu_item", "site_news", "site_guide", "site_faq", "site_banner", "site_announcement", "site_post", "site_rating", "site_lore", "site_where_is", "site_theme", "profile_tab", "profile_block", "profile_theme", "achievement", "fine", "level", "exp", "skill", "race", "guild", "registration"],
+];
+const TIER_OF = (() => {
+  const m = {};
+  DEPTH_TIERS.forEach((types, i) => types.forEach((t) => { m[t] = i; }));
+  return m;
+})();
+const DEFAULT_TIER = 3;
+const LAYER_GAP = 240;
+function tierOf(type) {
+  if (type in TIER_OF) return TIER_OF[type];
+  if (type.startsWith("location_")) return 2;
+  if (type.startsWith("mob_")) return 4;
+  if (type.startsWith("site_") || type.startsWith("profile_")) return 7;
+  return DEFAULT_TIER;
+}
+// Проекция точки слоя (x,y в плоскости слоя, z по глубине) на экран —
+// вращение по рысканью/тангажу + ортография (псевдо-3D, §29).
+function project3d(x, y, z, yaw, pitch) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cx = Math.cos(pitch), sx = Math.sin(pitch);
+  const x1 = x * cy + z * sy;
+  const z1 = -x * sy + z * cy;
+  const y1 = y * cx - z1 * sx;
+  const z2 = y * sx + z1 * cx;
+  return { x: x1, y: y1, depth: z2 };
+}
+
 function nodeStroke(node) {
   if (node.has_errors || node.missing) return "#dc2626";
   if (node.status === "draft") return "#a3a3a3";
@@ -153,6 +190,9 @@ export function GraphSection({ guarded, onOpenSection }) {
   const [highlightPath, setHighlightPath] = useState([]);
   const [info, setInfo] = useState("");
   const [forceRender, setForceRender] = useState(false);
+  const [render3d, setRender3d] = useState(false);
+  const [cam, setCam] = useState({ yaw: 0.6, pitch: 0.5 });
+  const [lowDetail, setLowDetail] = useState(false);
   const svgRef = useRef(null);
   const drag = useRef(null);
 
@@ -205,6 +245,36 @@ export function GraphSection({ guarded, onOpenSection }) {
 
   const pathSet = useMemo(() => new Set(highlightPath), [highlightPath]);
 
+  // Экранные координаты узлов: в 2D — как есть, в 3D — проекция по слоям.
+  const midTier = (DEPTH_TIERS.length - 1) / 2;
+  const proj = useMemo(() => {
+    if (!render3d) return positions;
+    const map = {};
+    for (const n of graph.nodes) {
+      const base = positions[n.id];
+      if (!base) continue;
+      const z = (tierOf(n.type) - midTier) * LAYER_GAP;
+      map[n.id] = project3d(base.x, base.y, z, cam.yaw, cam.pitch);
+    }
+    return map;
+  }, [render3d, positions, graph.nodes, cam, midTier]);
+  const depthRange = useMemo(() => {
+    if (!render3d) return null;
+    const ds = visibleNodes.map((n) => proj[n.id]?.depth).filter((d) => d !== undefined);
+    if (!ds.length) return null;
+    const min = Math.min(...ds), max = Math.max(...ds);
+    return { min, max, span: (max - min) || 1 };
+  }, [render3d, proj, visibleNodes]);
+  const depthNorm = (id) => {
+    if (!depthRange) return 0;
+    const d = proj[id]?.depth;
+    return d === undefined ? 0 : (d - depthRange.min) / depthRange.span; // 0 ближе, 1 дальше
+  };
+  const drawOrder = useMemo(() => {
+    if (!render3d) return visibleNodes;
+    return [...visibleNodes].sort((a, b) => (proj[b.id]?.depth || 0) - (proj[a.id]?.depth || 0));
+  }, [render3d, visibleNodes, proj]);
+
   // --- Масштаб/панорама/перетаскивание ---
   const toGraph = (clientX, clientY) => {
     const rect = svgRef.current.getBoundingClientRect();
@@ -222,10 +292,15 @@ export function GraphSection({ guarded, onOpenSection }) {
   };
   const onMouseDown = (e) => {
     if (e.target.dataset?.node) return;
-    drag.current = { type: "pan", sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
+    if (render3d) {
+      drag.current = { type: "rotate", sx: e.clientX, sy: e.clientY, yaw: cam.yaw, pitch: cam.pitch };
+    } else {
+      drag.current = { type: "pan", sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
+    }
   };
   const onNodeDown = (e, id) => {
     e.stopPropagation();
+    if (render3d) return; // в 3D узлы не таскаем — клик открывает карточку
     const gp = toGraph(e.clientX, e.clientY);
     drag.current = { type: "node", id, dx: gp.x - positions[id].x, dy: gp.y - positions[id].y, moved: false };
   };
@@ -234,6 +309,10 @@ export function GraphSection({ guarded, onOpenSection }) {
     if (!d) return;
     if (d.type === "pan") {
       setView((v) => ({ ...v, x: d.ox + (e.clientX - d.sx), y: d.oy + (e.clientY - d.sy) }));
+    } else if (d.type === "rotate") {
+      const yaw = d.yaw + (e.clientX - d.sx) * 0.01;
+      const pitch = Math.max(-1.4, Math.min(1.4, d.pitch + (e.clientY - d.sy) * 0.01));
+      setCam({ yaw, pitch });
     } else if (d.type === "node") {
       const gp = toGraph(e.clientX, e.clientY);
       d.moved = true;
@@ -243,9 +322,9 @@ export function GraphSection({ guarded, onOpenSection }) {
   const onMouseUp = () => { drag.current = null; };
 
   const fitView = () => {
-    const ids = visibleNodes.map((n) => n.id).filter((id) => positions[id]);
+    const ids = visibleNodes.map((n) => n.id).filter((id) => proj[id]);
     if (!ids.length || !svgRef.current) return;
-    const xs = ids.map((id) => positions[id].x), ys = ids.map((id) => positions[id].y);
+    const xs = ids.map((id) => proj[id].x), ys = ids.map((id) => proj[id].y);
     const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
     const rect = svgRef.current.getBoundingClientRect();
     const pad = 80;
@@ -302,6 +381,8 @@ export function GraphSection({ guarded, onOpenSection }) {
           <button type="button" className={`ntv2-btn-mini${mode === "full" ? " active" : ""}`} onClick={loadFull}>Вся карта</button>
           <button type="button" className={`ntv2-btn-mini${mode === "errors" ? " active" : ""}`} onClick={loadErrors}>Только ошибки</button>
           <button type="button" className="ntv2-btn-mini" onClick={checkHealth}>Проверить схему</button>
+          <button type="button" className={`ntv2-btn-mini${render3d ? " active" : ""}`} onClick={() => setRender3d((v) => !v)}>{render3d ? "🧊 3D" : "🗺️ 2D"}</button>
+          <button type="button" className={`ntv2-btn-mini${lowDetail ? " active" : ""}`} onClick={() => setLowDetail((v) => !v)} title="Режим низкой детализации">⚡ Лёгкий</button>
         </div>
         <input className="ntgraph-search" placeholder="🔎 Поиск по названию/ID…" value={query} onChange={(e) => setQuery(e.target.value)} />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
@@ -343,6 +424,20 @@ export function GraphSection({ guarded, onOpenSection }) {
         ))}
       </div>
 
+      {render3d ? (
+        <div className="ntgraph-cambar">
+          <span>Камера:</span>
+          <button type="button" className="ntv2-btn-mini" onClick={() => setCam((c) => ({ ...c, yaw: c.yaw - 0.2 }))}>◄ Поворот</button>
+          <button type="button" className="ntv2-btn-mini" onClick={() => setCam((c) => ({ ...c, yaw: c.yaw + 0.2 }))}>Поворот ►</button>
+          <button type="button" className="ntv2-btn-mini" onClick={() => setCam((c) => ({ ...c, pitch: Math.min(1.4, c.pitch + 0.2) }))}>▲ Наклон</button>
+          <button type="button" className="ntv2-btn-mini" onClick={() => setCam((c) => ({ ...c, pitch: Math.max(-1.4, c.pitch - 0.2) }))}>Наклон ▼</button>
+          <button type="button" className="ntv2-btn-mini" onClick={() => setCam({ yaw: 0, pitch: 1.35 })}>Сверху</button>
+          <button type="button" className="ntv2-btn-mini" onClick={() => setCam({ yaw: 0.9, pitch: 0.05 })}>Сбоку</button>
+          <button type="button" className="ntv2-btn-mini" onClick={() => setCam({ yaw: 0.6, pitch: 0.5 })}>Изометрия</button>
+          <span className="ntgraph-info">Перетаскивание фона — вращение, колесо — масштаб. Глубже = меньше и прозрачнее.</span>
+        </div>
+      ) : null}
+
       <div className="ntgraph-stage">
         {tooBig ? (
           <div className="ntgraph-toobig">
@@ -370,10 +465,11 @@ export function GraphSection({ guarded, onOpenSection }) {
             </defs>
             <g transform={`translate(${view.x},${view.y}) scale(${view.scale})`}>
               {visibleEdges.map((e) => {
-                const a = positions[e.from], b = positions[e.to];
+                const a = proj[e.from], b = proj[e.to];
                 if (!a || !b) return null;
                 const broken = e.broken;
                 const inPath = pathSet.has(e.from) && pathSet.has(e.to);
+                const op = render3d ? 0.25 + 0.55 * (1 - (depthNorm(e.from) + depthNorm(e.to)) / 2) : 0.8;
                 return (
                   <line
                     key={e.id}
@@ -382,21 +478,26 @@ export function GraphSection({ guarded, onOpenSection }) {
                     strokeWidth={inPath ? 2.5 : 1.2}
                     strokeDasharray={broken ? "5 4" : undefined}
                     markerEnd={`url(#ntgraph-arrow${broken ? "-broken" : ""})`}
-                    opacity={0.8}
+                    opacity={op}
                   />
                 );
               })}
-              {visibleNodes.map((n) => {
-                const p = positions[n.id];
+              {drawOrder.map((n) => {
+                const p = proj[n.id];
                 if (!p) return null;
                 const dim = q && !matches(n);
                 const sel = n.id === selected;
                 const inPath = pathSet.has(n.id);
+                const norm = render3d ? depthNorm(n.id) : 0;
+                const depthScale = render3d ? (1.25 - 0.55 * norm) : 1;       // ближе крупнее (§29)
+                const depthOpacity = render3d ? (0.5 + 0.5 * (1 - norm)) : 1; // дальше прозрачнее
+                const r = (sel ? 16 : lowDetail ? 8 : 12) * depthScale;
+                const baseOp = dim ? 0.2 : nodeOpacity(n) * depthOpacity;
                 return (
-                  <g key={n.id} transform={`translate(${p.x},${p.y})`} opacity={dim ? 0.2 : nodeOpacity(n)} style={{ cursor: "pointer" }}>
+                  <g key={n.id} transform={`translate(${p.x},${p.y})`} opacity={baseOp} style={{ cursor: "pointer" }}>
                     <circle
                       data-node="1"
-                      r={sel ? 16 : 12}
+                      r={r}
                       fill={colorFor(n.type)}
                       stroke={inPath ? "#22c55e" : sel ? "#2563eb" : nodeStroke(n)}
                       strokeWidth={inPath || sel ? 3 : (n.has_errors || n.missing ? 2.4 : 1.2)}
@@ -404,9 +505,11 @@ export function GraphSection({ guarded, onOpenSection }) {
                       onMouseDown={(e) => onNodeDown(e, n.id)}
                       onClick={(e) => { e.stopPropagation(); if (!drag.current?.moved) openNode(n); }}
                     />
-                    <text textAnchor="middle" y={26} fontSize={11} fill="#334155" style={{ pointerEvents: "none" }}>
-                      {(n.title || n.entity_id || n.id).slice(0, 22)}
-                    </text>
+                    {lowDetail && !sel ? null : (
+                      <text textAnchor="middle" y={r + 13} fontSize={11} fill="#334155" style={{ pointerEvents: "none" }}>
+                        {(n.title || n.entity_id || n.id).slice(0, 22)}
+                      </text>
+                    )}
                   </g>
                 );
               })}
@@ -471,7 +574,8 @@ export function GraphSection({ guarded, onOpenSection }) {
 }
 
 const GRAPH_CSS = `
-.ntgraph-toolbar,.ntgraph-pathbar,.ntgraph-layers{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+.ntgraph-toolbar,.ntgraph-pathbar,.ntgraph-layers,.ntgraph-cambar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+.ntgraph-cambar{font-size:13px}
 .ntgraph-toolbar .ntgraph-search{flex:1;min-width:180px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px}
 .ntgraph-modes{display:flex;gap:6px}
 .ntv2-btn-mini.active{background:#2563eb;color:#fff;border-color:#2563eb}
