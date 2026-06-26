@@ -266,5 +266,22 @@ class SmallPlateauIntegrationTest(unittest.TestCase):
         self.assertIn("Малое плато", location_text("small_plateau"))
 
 
+class LegacyEffectFlagTest(unittest.TestCase):
+    def test_has_effect_accepts_legacy_key_flag(self):
+        # Codex P2: старые сейвы хранят эффект как ключ-флаг {"ancient_curse":
+        # True}; has_effect должен признавать это активностью, иначе теряется
+        # проклятие/амулет.
+        player = {"effects": {ANCIENT_CURSE_ID: True}}
+        self.assertTrue(has_effect(player, ANCIENT_CURSE_ID))
+
+    def test_has_effect_false_for_falsy_legacy_flag(self):
+        player = {"effects": {ANCIENT_CURSE_ID: False}}
+        self.assertFalse(has_effect(player, ANCIENT_CURSE_ID))
+
+    def test_has_effect_dict_form_still_works(self):
+        player = {"effects": {ANCIENT_CURSE_ID: {"id": ANCIENT_CURSE_ID}}}
+        self.assertTrue(has_effect(player, ANCIENT_CURSE_ID))
+
+
 if __name__ == "__main__":
     unittest.main()
