@@ -436,6 +436,95 @@ def create_admin_world_router(get_storage) -> APIRouter:
         )
         return {"ok": True, "item": item, "validation": result}
 
+    @router.put("/{kind}/{content_id}/draft")
+    def edit_draft(kind: str, content_id: str, payload: WorldUpdateRequest, request: Request) -> dict[str, Any]:
+        # Правка-черновик поверх published (draft-overlay): live и статус не
+        # меняются, изменения копятся в draft_data. Нужны только права edit_draft —
+        # живой контент не трогается, поэтому это безопасно (Этап 1).
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_WORLD_EDIT_DRAFT)
+        _ensure_kind(kind)
+        before = registry.get_content(kind, content_id)
+        if before is None:
+            raise HTTPException(status_code=404, detail="Объект не найден.")
+        try:
+            item = run_admin_operation(
+                session=session,
+                action="world.edit_draft",
+                func=lambda: registry.edit_draft(kind, content_id, payload.data, actor=_actor(session)),
+                target_type=kind,
+                target_id=content_id,
+                target_name=str(before.get("data", {}).get("name") or content_id),
+                before={"status": before.get("status"), "version": before.get("version")},
+                after_func=lambda r: {"status": r.get("status"), "has_draft": bool(r.get("has_draft"))},
+                reason=payload.reason,
+                details={"kind": kind, "overlay": True},
+            )
+        except registry.ContentError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "item": item}
+
+    @router.post("/{kind}/{content_id}/publish-draft")
+    def publish_draft(kind: str, content_id: str, payload: WorldActionRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_WORLD_PUBLISH)
+        _ensure_kind(kind)
+        before = registry.get_content(kind, content_id)
+        if before is None:
+            raise HTTPException(status_code=404, detail="Объект не найден.")
+        if not before.get("has_draft"):
+            raise HTTPException(status_code=400, detail="Нет черновика для публикации.")
+        # Валидируем именно ЧЕРНОВИК перед промоутом в live.
+        draft = registry.draft_envelope(kind, content_id) or before
+        result = registry.validate_envelope(draft)
+        registry.record_validation(kind, content_id, result)
+        if not result["ok"]:
+            raise HTTPException(status_code=400, detail="Проверка черновика не пройдена: " + "; ".join(result["errors"]))
+        try:
+            item = run_admin_operation(
+                session=session,
+                action="world.publish_draft",
+                func=lambda: registry.publish_draft(kind, content_id, actor=_actor(session)),
+                target_type=kind,
+                target_id=content_id,
+                target_name=str((draft.get("data") or {}).get("name") or content_id),
+                before={"version": before.get("version"), "status": before.get("status")},
+                after_func=lambda r: {"version": r.get("version"), "status": r.get("status")},
+                reason=payload.reason,
+                details={"kind": kind, "warnings": result["warnings"]},
+            )
+        except registry.ContentError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "item": item, "validation": result}
+
+    @router.post("/{kind}/{content_id}/discard-draft")
+    def discard_draft(kind: str, content_id: str, payload: WorldActionRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        _require(session, PERM_WORLD_EDIT_DRAFT)
+        _ensure_kind(kind)
+        before = registry.get_content(kind, content_id)
+        if before is None:
+            raise HTTPException(status_code=404, detail="Объект не найден.")
+        try:
+            item = run_admin_operation(
+                session=session,
+                action="world.discard_draft",
+                func=lambda: registry.discard_draft(kind, content_id, actor=_actor(session)),
+                target_type=kind,
+                target_id=content_id,
+                target_name=str(before.get("data", {}).get("name") or content_id),
+                before={"has_draft": bool(before.get("has_draft"))},
+                after_func=lambda r: {"has_draft": bool(r.get("has_draft"))},
+                reason=payload.reason,
+                details={"kind": kind},
+            )
+        except registry.ContentError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "item": item}
+
     @router.post("/{kind}/{content_id}/disable")
     def disable(kind: str, content_id: str, payload: WorldActionRequest, request: Request) -> dict[str, Any]:
         return _lifecycle(get_storage(), request, kind, content_id, payload,

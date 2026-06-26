@@ -484,6 +484,101 @@ def rollback_content(kind: str, content_id: str, version: int, *, actor: str = "
         return dict(envelope)
 
 
+def edit_draft(kind: str, content_id: str, data: dict[str, Any], *, actor: str = "") -> dict[str, Any]:
+    """Правка-черновик (draft-overlay): для ОПУБЛИКОВАННОГО объекта изменения
+    копятся в draft_data, а live (data) и статус published не меняются — объект
+    остаётся в игре. Для черновика — обычная правка (с историей). Так «безобидное»
+    редактирование не убирает живой контент из рантайма до явной публикации."""
+    _ensure_kind(kind)
+    content_id = str(content_id)
+    with _STORE_LOCK, _store_file_lock():
+        store = _load_all()
+        bucket = store.get(kind, {})
+        envelope = bucket.get(content_id)
+        if not isinstance(envelope, dict):
+            raise ContentError(f"Объект {kind}:{content_id} не найден.")
+        if envelope.get("status") == STATUS_ARCHIVED:
+            raise ContentError("Архивный объект редактировать нельзя.")
+        if envelope.get("status") == STATUS_PUBLISHED:
+            base = dict(envelope.get("draft_data") or envelope.get("data") or {})
+            base.update(data if isinstance(data, dict) else {})
+            envelope["draft_data"] = base
+            envelope["has_draft"] = True
+            envelope["draft_updated_at"] = _now_iso()
+            envelope["draft_updated_by"] = str(actor or "")
+        else:
+            _push_content_history(envelope)
+            merged = dict(envelope.get("data") or {})
+            merged.update(data if isinstance(data, dict) else {})
+            envelope["data"] = merged
+            envelope["updated_at"] = _now_iso()
+            envelope["updated_by"] = str(actor or "")
+            envelope["version"] = int(envelope.get("version") or 1) + 1
+            envelope["validation"] = None
+        bucket[content_id] = envelope
+        _save_all(store)
+        return dict(envelope)
+
+
+def draft_envelope(kind: str, content_id: str) -> dict[str, Any] | None:
+    """Конверт с подменённой data на draft_data (для валидации/предпросмотра
+    черновика). Если черновика нет — обычный конверт."""
+    envelope = get_content(kind, str(content_id))
+    if not isinstance(envelope, dict):
+        return None
+    if envelope.get("has_draft") and isinstance(envelope.get("draft_data"), dict):
+        merged = dict(envelope)
+        merged["data"] = envelope["draft_data"]
+        return merged
+    return envelope
+
+
+def publish_draft(kind: str, content_id: str, *, actor: str = "") -> dict[str, Any]:
+    """Опубликовать накопленный черновик: draft_data → live data (старое live в
+    историю), объект остаётся published."""
+    _ensure_kind(kind)
+    content_id = str(content_id)
+    with _STORE_LOCK, _store_file_lock():
+        store = _load_all()
+        bucket = store.get(kind, {})
+        envelope = bucket.get(content_id)
+        if not isinstance(envelope, dict):
+            raise ContentError(f"Объект {kind}:{content_id} не найден.")
+        if not envelope.get("has_draft") or not isinstance(envelope.get("draft_data"), dict):
+            raise ContentError("Нет черновика для публикации.")
+        _push_content_history(envelope)
+        envelope["data"] = deepcopy(envelope.get("draft_data") or {})
+        envelope.pop("draft_data", None)
+        envelope["has_draft"] = False
+        envelope["status"] = STATUS_PUBLISHED
+        envelope["updated_at"] = _now_iso()
+        envelope["updated_by"] = str(actor or "")
+        envelope["version"] = int(envelope.get("version") or 1) + 1
+        envelope["validation"] = None
+        bucket[content_id] = envelope
+        _save_all(store)
+        return dict(envelope)
+
+
+def discard_draft(kind: str, content_id: str, *, actor: str = "") -> dict[str, Any]:
+    """Отбросить накопленный черновик (live остаётся как был)."""
+    _ensure_kind(kind)
+    content_id = str(content_id)
+    with _STORE_LOCK, _store_file_lock():
+        store = _load_all()
+        bucket = store.get(kind, {})
+        envelope = bucket.get(content_id)
+        if not isinstance(envelope, dict):
+            raise ContentError(f"Объект {kind}:{content_id} не найден.")
+        envelope.pop("draft_data", None)
+        envelope["has_draft"] = False
+        envelope["updated_at"] = _now_iso()
+        envelope["updated_by"] = str(actor or "")
+        bucket[content_id] = envelope
+        _save_all(store)
+        return dict(envelope)
+
+
 def record_validation(kind: str, content_id: str, result: dict[str, Any]) -> dict[str, Any]:
     """Сохранить результат валидации в envelope (без смены статуса)."""
     _ensure_kind(kind)
