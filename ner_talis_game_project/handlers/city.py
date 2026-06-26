@@ -5,6 +5,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from keyboards.reply_keyboards import make_keyboard, start_keyboard
+from services.bot_flood_guard import clamp_incoming_text, guard_incoming
 from services.city_service import CITY_BUTTONS, process_world_action, unstuck_player
 from services.chat_log_service import (
     DurableOutboxDelivery,
@@ -95,7 +96,15 @@ async def unstuck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def city_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await send_city_response(update, context, update.message.text)
+    # Защита входящих (ТЗ 08 §7): дедуп события, антифлуд, обрезка длины ДО
+    # игровой логики. Дубликаты/флуд тихо игнорируем (не шлём длинный ответ).
+    user_id = get_external_user_id(update)
+    decision = guard_incoming(TELEGRAM_PLATFORM, user_id, getattr(update, "update_id", None))
+    if not decision["allowed"]:
+        if decision["reason"] == "flood":
+            logger.info("Telegram flood-limit: user=%s", user_id)
+        return
+    await send_city_response(update, context, clamp_incoming_text(update.message.text))
 
 
 async def send_city_response(

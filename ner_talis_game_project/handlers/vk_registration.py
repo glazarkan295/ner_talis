@@ -17,6 +17,7 @@ from keyboards.vk_keyboards import (
     race_keyboard,
     start_keyboard,
 )
+from services.bot_flood_guard import clamp_incoming_text, guard_incoming
 from services.city_service import CITY_BUTTONS, process_world_action, unstuck_player
 from services.chat_log_service import (
     DurableOutboxDelivery,
@@ -126,11 +127,19 @@ class VkRegistrationBot:
                         logger.exception("Failed to send VK group notice: peer_id=%s", peer_id)
                 continue
 
+            # Защита входящих (ТЗ 08 §7): дедуп события + антифлуд + обрезка длины
+            # ДО игровой логики. Дубликаты/флуд тихо пропускаем.
+            decision = guard_incoming(VK_PLATFORM, from_id, message.get("conversation_message_id") or message.get("id"))
+            if not decision["allowed"]:
+                if decision["reason"] == "flood":
+                    logger.info("VK flood-limit: from_id=%s", from_id)
+                continue
+
             try:
                 self.handle_message(
                     external_user_id=str(from_id),
                     peer_id=peer_id,
-                    text=text,
+                    text=clamp_incoming_text(text),
                 )
             except Exception:
                 logger.exception("VK message handling failed: peer_id=%s from_id=%s text=%r", peer_id, from_id, text)
