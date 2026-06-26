@@ -93,6 +93,8 @@ def import_items(*, overwrite: bool = False, actor: str = "import", mode: str | 
     from services.item_registry import load_all_item_definitions
     from services import item_constructor_service as ics
 
+    if _resolve_mode(mode) == "copy":
+        return _copy_unsupported("item")
     overwrite = overwrite or _mode_is_overwrite(mode)
     store = ics.store()
     created = updated = skipped = invalid = 0
@@ -179,6 +181,8 @@ def import_mobs(*, overwrite: bool = False, actor: str = "import", mode: str | N
     from services.pve_battle_service import BATTLE_MOB_CATALOGS
     from services import world_content_registry as wcr
 
+    if _resolve_mode(mode) == "copy":
+        return _copy_unsupported("mob")
     overwrite = overwrite or _mode_is_overwrite(mode)
     created = updated = skipped = invalid = 0
     seen: set[str] = set()
@@ -267,31 +271,51 @@ _EFFECT_SEED = [
 def import_effects(*, overwrite: bool = False, actor: str = "import", mode: str | None = None) -> dict[str, Any]:
     from services import effect_constructor_service as ecs
 
+    if _resolve_mode(mode) == "copy":
+        return _copy_unsupported("effect")
     overwrite = overwrite or _mode_is_overwrite(mode)
     store = ecs.store()
     created = updated = skipped = 0
+    needs_check: list[dict[str, Any]] = []
+
+    def _publish_if_valid(effect_id: str, data: dict[str, Any]) -> bool:
+        # Публикуем ТОЛЬКО валидные сиды: часть состояний/проклятий требует
+        # тип-специфичных полей (stat для stat_modifier, control_kind для
+        # control_effect, resource для регенерации), которых в сиде нет. Раньше
+        # их публиковали force=True → реестр держал эффекты, которые обычный
+        # publish-эндпоинт отверг бы, а рантайм получал бы неполные записи.
+        if not ecs.validate({"data": data})["ok"]:
+            return False
+        try:
+            store.set_status(effect_id, ecs.STATUS_PUBLISHED, actor=actor, force=True)
+        except Exception:
+            pass
+        return True
+
     for effect_id, name, effect_type, negative, source in _EFFECT_SEED:
         data = {
             "effect_name": name, "effect_type": effect_type, "source_type": source,
             "target": "self", "active_when": "always", "stack_rule": "strongest_only",
-            "negative": bool(negative), "show_to_player": True,
+            "negative": bool(negative), "show_to_player": True, "player_text": name,
             "imported": True, "import_source": "effect_seed", "source_id": effect_id,
         }
         existing = store.get(effect_id)
         if existing is not None:
             if overwrite and _was_imported(existing):
                 store.update(effect_id, data, actor=actor)
+                _publish_if_valid(effect_id, data)
                 updated += 1
             else:
                 skipped += 1
             continue
         store.create(effect_id, data, actor=actor)
-        try:
-            store.set_status(effect_id, ecs.STATUS_PUBLISHED, actor=actor, force=True)
-        except Exception:
-            pass
+        if not _publish_if_valid(effect_id, data):
+            needs_check.append({
+                "id": effect_id, "type": "effect",
+                "reason": "Сид без обязательных полей типа (stat/control_kind/resource) — оставлен черновиком, дополните и опубликуйте.",
+            })
         created += 1
-    return {"kind": "effect", "created": created, "updated": updated, "skipped": skipped, "invalid": 0}
+    return {"kind": "effect", "created": created, "updated": updated, "skipped": skipped, "invalid": 0, "needs_check": needs_check}
 
 
 # --- Навыки (импорт каталога путей, ТЗ §7) ---------------------------------
@@ -353,6 +377,8 @@ def import_skills(*, overwrite: bool = False, actor: str = "import", mode: str |
     from services import active_skill_service as ass
     from services import skill_constructor_service as scs
 
+    if _resolve_mode(mode) == "copy":
+        return _copy_unsupported("skill")
     overwrite = overwrite or _mode_is_overwrite(mode)
     store = scs.store()
     created = updated = skipped = invalid = 0
@@ -402,6 +428,22 @@ def _resolve_mode(mode: str | None, overwrite: bool = False) -> str:
 
 def _mode_is_overwrite(mode: str | None) -> bool:
     return _resolve_mode(mode) in ("update", "overwrite")
+
+
+def _copy_unsupported(kind: str) -> dict[str, Any]:
+    """Отчёт-отказ: режим «копии» не поддержан для сид/каталог-импортёров.
+
+    item/mob/effect/skill импортируются из кода/каталогов без отдельных
+    исходных id, поэтому осмысленной «копии» у них нет. Раньше copy молча
+    схлопывался в new и существующие записи просто пропускались — админ видел
+    «успех», но копий не появлялось. Возвращаем явный needs_check."""
+    return {
+        "kind": kind, "created": 0, "updated": 0, "skipped": 0, "invalid": 0,
+        "needs_check": [{
+            "id": kind, "type": kind,
+            "reason": "Режим «Создать копии» не поддерживается для этого импорта. Используйте «Добавить новые» или «Обновить».",
+        }],
+    }
 
 
 def _rich_report(kind: str) -> dict[str, Any]:
@@ -455,6 +497,11 @@ def _apply_record(report, sid, data, mode, *, get_fn, create_fn, update_fn, publ
             report["created"] += 1
             return
         update_fn(sid, data)
+        # ПЕРЕпубликация обязательна: update_content у реестра мира переводит
+        # опубликованный объект обратно в черновик (правится копия), а рантайм
+        # читает только published — без этого обновлённая локация/событие/моб
+        # пропадали бы из игры до ручной повторной публикации.
+        publish_fn(sid)
         report["updated"] += 1
         return
     create_fn(sid, data)
@@ -538,9 +585,19 @@ def import_locations(*, mode: str | None = None, overwrite: bool = False, actor:
             continue
         name = data_raw.get("name") or data_raw.get("name_ru") or sid
         desc = data_raw.get("short_description") or data_raw.get("description") or data_raw.get("entry_text") or data_raw.get("lore_description") or ""
+        desc = str(desc).strip()
+        if not desc:
+            # Источник без описания (например, seldar_city) — валидатор локаций
+            # требует ≥1 описания. Подставляем название как минимальное описание,
+            # чтобы не публиковать невалидный контент, и помечаем на доработку.
+            desc = f"{name}."
+            report["needs_check"].append({
+                "id": sid, "type": "location",
+                "reason": "В источнике нет описания — подставлено название. Добавьте полноценное описание локации.",
+            })
         record = {
             "name": name, "type": default_type,
-            "short_description": str(desc)[:300], "description": str(desc),
+            "short_description": desc[:300], "description": desc,
             "imported": True, "import_source": f"data/{filename}", "source_id": str(raw_id),
         }
         _apply_record(report, sid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
@@ -681,9 +738,13 @@ def import_achievements(*, mode: str | None = None, overwrite: bool = False, act
         src = descriptions.get(aid, {})
         name = src.get("name") or seed["name"]
         desc = src.get("description") or ""
+        # Редкость — из живого источника (small_plateau_mechanics.json), если есть:
+        # там curse_what_curse помечен legendary, а сид по ошибке хранил epic, из-за
+        # чего конструктор расходился с рантаймовым достижением игрока.
+        rarity = src.get("rarity") or seed["rarity"]
         record = {
             "name": name, "short_description": desc[:300], "description": desc,
-            "category": seed["category"], "type": seed["type"], "rarity": seed["rarity"],
+            "category": seed["category"], "type": seed["type"], "rarity": rarity,
             "visibility": seed["visibility"], "progress_type": seed["progress_type"],
             "condition_logic": "all", "conditions": seed["conditions"], "rewards": [],
             "notify_message": {"format": "single", "text": f"Получено достижение: «{name}»."},

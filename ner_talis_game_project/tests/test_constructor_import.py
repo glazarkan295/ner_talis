@@ -276,6 +276,59 @@ class ConstructorImportTest(unittest.TestCase):
         self.assertEqual({r["kind"] for r in result["reports"]}, {"location", "event"})
         self.assertGreaterEqual(result["summary"]["created"], 1)
 
+    # --- Codex import-group P1/P2 -----------------------------------------
+    def test_update_mode_keeps_record_published(self):
+        # Codex P1: повторный импорт в режиме update не должен оставлять
+        # обновлённый объект черновиком (рантайм читает только published).
+        from services import world_content_registry as wcr
+
+        ci.import_locations()
+        before = wcr.get_content(wcr.KIND_LOCATION, "hilly_meadows")
+        self.assertEqual(before["status"], "published")
+        report = ci.import_locations(mode="update")
+        self.assertGreaterEqual(report["updated"], 1)
+        after = wcr.get_content(wcr.KIND_LOCATION, "hilly_meadows")
+        self.assertEqual(after["status"], "published")  # осталась live
+
+    def test_empty_description_location_gets_fallback(self):
+        # Codex P2: seldar_city без описания — не публикуем пустое, подставляем
+        # название и помечаем на проверку (валидный published-контент).
+        from services import world_content_registry as wcr
+
+        report = ci.import_locations()
+        seldar = wcr.get_content(wcr.KIND_LOCATION, "seldar")
+        self.assertIsNotNone(seldar)
+        self.assertTrue(str((seldar.get("data") or {}).get("description") or "").strip())
+        self.assertTrue(any(n["id"] == "seldar" for n in report["needs_check"]))
+
+    def test_achievement_rarity_from_source(self):
+        # Codex P2: curse_what_curse в источнике legendary, а сид хранил epic.
+        from services import achievement_service as ach
+
+        ci.import_achievements()
+        cw = ach.store().get("curse_what_curse")
+        self.assertEqual((cw.get("data") or {}).get("rarity"), "legendary")
+
+    def test_effect_seeds_invalid_left_as_draft(self):
+        # Codex P2: эффекты без обязательных полей типа не публикуются.
+        from services import effect_constructor_service as ecs
+
+        report = ci.import_effects()
+        # stat_modifier без stat (например, slow) остаётся черновиком.
+        slow = ecs.store().get("slow")
+        self.assertIsNotNone(slow)
+        self.assertNotEqual(slow["status"], "published")
+        # А валидные (например, проклятия) — публикуются.
+        self.assertEqual(ecs.store().get("ancient_curse")["status"], "published")
+        self.assertTrue(report.get("needs_check"))
+
+    def test_copy_mode_rejected_for_legacy_importers(self):
+        for kind, fn in (("item", ci.import_items), ("mob", ci.import_mobs),
+                         ("effect", ci.import_effects), ("skill", ci.import_skills)):
+            report = fn(mode="copy")
+            self.assertEqual(report["created"], 0, kind)
+            self.assertTrue(report.get("needs_check"), kind)
+
 
 if __name__ == "__main__":
     unittest.main()
