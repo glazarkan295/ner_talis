@@ -16,9 +16,13 @@ import os
 import re
 import threading
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
+
+# Сколько прошлых версий храним в истории каждого объекта (ТЗ Этап 1: история/откат).
+HISTORY_LIMIT = 20
 
 try:  # POSIX-блокировка (на Windows отсутствует)
     import fcntl
@@ -138,6 +142,26 @@ class EntityStore:
             self._save(store)
             return dict(envelope)
 
+    def _snapshot(self, envelope: dict[str, Any]) -> dict[str, Any]:
+        """Снимок текущего состояния конверта для истории версий."""
+        return {
+            "version": int(envelope.get("version") or 1),
+            "data": deepcopy(envelope.get("data") or {}),
+            "status": envelope.get("status"),
+            "updated_at": envelope.get("updated_at"),
+            "updated_by": envelope.get("updated_by"),
+        }
+
+    def _push_history(self, envelope: dict[str, Any]) -> None:
+        """Положить снимок ТЕКУЩЕГО (до изменения) состояния в историю (с лимитом)."""
+        history = envelope.get("history")
+        if not isinstance(history, list):
+            history = []
+        history.append(self._snapshot(envelope))
+        if len(history) > HISTORY_LIMIT:
+            del history[:-HISTORY_LIMIT]
+        envelope["history"] = history
+
     def update(self, entity_id: str, data: dict[str, Any], *, actor: str = "") -> dict[str, Any]:
         entity_id = str(entity_id)
         with self._lock, self._file_lock():
@@ -145,9 +169,48 @@ class EntityStore:
             envelope = store.get(entity_id)
             if not isinstance(envelope, dict):
                 raise EntityError(f"Объект {entity_id} не найден.")
+            # Сохраняем версию ДО правки в историю — для отката (Этап 1).
+            self._push_history(envelope)
             merged = dict(envelope.get("data") or {})
             merged.update(data if isinstance(data, dict) else {})
             envelope["data"] = merged
+            envelope["updated_at"] = _now_iso()
+            envelope["updated_by"] = str(actor or "")
+            envelope["version"] = int(envelope.get("version") or 1) + 1
+            store[entity_id] = envelope
+            self._save(store)
+            return dict(envelope)
+
+    def history(self, entity_id: str) -> list[dict[str, Any]]:
+        """Список прошлых версий (старые → новые). Пусто, если объекта нет."""
+        envelope = self.get(entity_id)
+        if not isinstance(envelope, dict):
+            return []
+        history = envelope.get("history")
+        return list(history) if isinstance(history, list) else []
+
+    def rollback(self, entity_id: str, version: int, *, actor: str = "") -> dict[str, Any]:
+        """Откатить data к снимку версии ``version`` (как новая версия).
+
+        Текущее состояние тоже уходит в историю, поэтому откат обратим. Статус
+        не меняется — это восстановление данных, а не публикация."""
+        entity_id = str(entity_id)
+        target_version = int(version)
+        with self._lock, self._file_lock():
+            store = self._load()
+            envelope = store.get(entity_id)
+            if not isinstance(envelope, dict):
+                raise EntityError(f"Объект {entity_id} не найден.")
+            history = envelope.get("history")
+            history = history if isinstance(history, list) else []
+            snapshot = next(
+                (h for h in history if int((h or {}).get("version") or 0) == target_version),
+                None,
+            )
+            if snapshot is None:
+                raise EntityError(f"Версия {target_version} не найдена в истории.")
+            self._push_history(envelope)  # текущее состояние — в историю (откат обратим)
+            envelope["data"] = deepcopy(snapshot.get("data") or {})
             envelope["updated_at"] = _now_iso()
             envelope["updated_by"] = str(actor or "")
             envelope["version"] = int(envelope.get("version") or 1) + 1

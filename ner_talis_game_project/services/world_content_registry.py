@@ -24,9 +24,13 @@ import os
 import re
 import threading
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator
+
+# Сколько прошлых версий храним в истории каждого объекта (Этап 1: история/откат).
+HISTORY_LIMIT = 20
 
 try:  # POSIX-блокировка (на Windows отсутствует)
     import fcntl
@@ -363,6 +367,26 @@ def create_content(kind: str, content_id: str, data: dict[str, Any], *, actor: s
         return dict(envelope)
 
 
+def _content_snapshot(envelope: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "version": int(envelope.get("version") or 1),
+        "data": deepcopy(envelope.get("data") or {}),
+        "status": envelope.get("status"),
+        "updated_at": envelope.get("updated_at"),
+        "updated_by": envelope.get("updated_by"),
+    }
+
+
+def _push_content_history(envelope: dict[str, Any]) -> None:
+    history = envelope.get("history")
+    if not isinstance(history, list):
+        history = []
+    history.append(_content_snapshot(envelope))
+    if len(history) > HISTORY_LIMIT:
+        del history[:-HISTORY_LIMIT]
+    envelope["history"] = history
+
+
 def update_content(kind: str, content_id: str, data: dict[str, Any], *, actor: str = "") -> dict[str, Any]:
     _ensure_kind(kind)
     content_id = str(content_id)
@@ -374,6 +398,8 @@ def update_content(kind: str, content_id: str, data: dict[str, Any], *, actor: s
             raise ContentError(f"Объект {kind}:{content_id} не найден.")
         if envelope.get("status") == STATUS_ARCHIVED:
             raise ContentError("Архивный объект редактировать нельзя.")
+        # Версия ДО правки уходит в историю — для отката (Этап 1).
+        _push_content_history(envelope)
         merged = dict(envelope.get("data") or {})
         merged.update(data if isinstance(data, dict) else {})
         envelope["data"] = merged
@@ -410,6 +436,49 @@ def set_status(kind: str, content_id: str, status: str, *, actor: str = "", forc
         envelope["status"] = status
         envelope["updated_at"] = _now_iso()
         envelope["updated_by"] = str(actor or "")
+        bucket[content_id] = envelope
+        _save_all(store)
+        return dict(envelope)
+
+
+def content_history(kind: str, content_id: str) -> list[dict[str, Any]]:
+    """Список прошлых версий объекта (старые → новые)."""
+    _ensure_kind(kind)
+    envelope = get_content(kind, str(content_id))
+    if not isinstance(envelope, dict):
+        return []
+    history = envelope.get("history")
+    return list(history) if isinstance(history, list) else []
+
+
+def rollback_content(kind: str, content_id: str, version: int, *, actor: str = "") -> dict[str, Any]:
+    """Откат data к снимку версии (как новая версия). Статус не меняем; архивный
+    объект откатывать нельзя. Текущее состояние тоже уходит в историю."""
+    _ensure_kind(kind)
+    content_id = str(content_id)
+    target_version = int(version)
+    with _STORE_LOCK, _store_file_lock():
+        store = _load_all()
+        bucket = store.get(kind, {})
+        envelope = bucket.get(content_id)
+        if not isinstance(envelope, dict):
+            raise ContentError(f"Объект {kind}:{content_id} не найден.")
+        if envelope.get("status") == STATUS_ARCHIVED:
+            raise ContentError("Архивный объект откатывать нельзя.")
+        history = envelope.get("history")
+        history = history if isinstance(history, list) else []
+        snapshot = next(
+            (h for h in history if int((h or {}).get("version") or 0) == target_version),
+            None,
+        )
+        if snapshot is None:
+            raise ContentError(f"Версия {target_version} не найдена в истории.")
+        _push_content_history(envelope)
+        envelope["data"] = deepcopy(snapshot.get("data") or {})
+        envelope["updated_at"] = _now_iso()
+        envelope["updated_by"] = str(actor or "")
+        envelope["version"] = int(envelope.get("version") or 1) + 1
+        envelope["validation"] = None
         bucket[content_id] = envelope
         _save_all(store)
         return dict(envelope)

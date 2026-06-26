@@ -54,6 +54,19 @@ class WorldRegistryTest(unittest.TestCase):
         self.assertEqual(env2["version"], 2)
         self.assertEqual(env2["data"]["type"], "wild")
 
+    def test_content_history_and_rollback(self):
+        # Этап 1: правки копятся в историю, откат восстанавливает прошлую версию.
+        registry.create_content("location", "loc_h", {"name": "L1", "type": "wild"})
+        registry.update_content("location", "loc_h", {"name": "L2"})
+        hist = registry.content_history("location", "loc_h")
+        self.assertEqual([h["version"] for h in hist], [1])
+        self.assertEqual(hist[0]["data"]["name"], "L1")
+        env = registry.rollback_content("location", "loc_h", 1)
+        self.assertEqual(env["data"]["name"], "L1")
+        self.assertGreaterEqual(env["version"], 3)
+        with self.assertRaises(registry.ContentError):
+            registry.rollback_content("location", "loc_h", 999)
+
     def test_invalid_status_transition_blocked(self):
         registry.create_content("location", "loc1", {"name": "L"})
         with self.assertRaises(registry.ContentError):
