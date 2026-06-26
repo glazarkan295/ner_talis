@@ -157,3 +157,61 @@ def where_used(item_id: str) -> list[dict[str, Any]]:
         if fields:
             refs.append({"id": env.get("id"), "name": data.get("name") or env.get("id"), "fields": fields})
     return refs
+
+
+def _recipe_view(env: dict[str, Any], *, role: str, amount: Any = None, consumed: bool | None = None) -> dict[str, Any]:
+    data = env.get("data") or {}
+    workshop = str(data.get("workshop") or "")
+    return {
+        "id": env.get("id"), "name": data.get("name") or env.get("id"),
+        "workshop": workshop, "workshop_label": WORKSHOP_LABELS.get(workshop, workshop),
+        "status": env.get("status"), "role": role,
+        "output_item_id": data.get("output_item_id"),
+        "output_amount": data.get("output_amount"),
+        "amount": amount, "consumed": consumed,
+    }
+
+
+def item_craft_usage(item_id: str) -> dict[str, Any]:
+    """Полное использование предмета в ремесле (ТЗ 13 §6): по ролям + цепочка + ошибки."""
+    oid = str(item_id or "").strip()
+    as_result: list[dict[str, Any]] = []
+    as_material: list[dict[str, Any]] = []
+    as_blueprint: list[dict[str, Any]] = []
+    errors: list[str] = []
+    warnings: list[str] = []
+    if not oid:
+        return {"as_result": [], "as_material": [], "as_blueprint": [], "errors": [], "warnings": [], "chain": {}}
+
+    for env in _store.list():
+        data = env.get("data") or {}
+        status = env.get("status")
+        if str(data.get("output_item_id") or "") == oid:
+            as_result.append(_recipe_view(env, role="result"))
+            if status == STATUS_DISABLED:
+                warnings.append(f"Предмет — результат рецепта «{data.get('name') or env.get('id')}», но рецепт отключён.")
+        for row in (data.get("ingredients") or []):
+            if isinstance(row, dict) and str(row.get("item_id") or "") == oid:
+                as_material.append(_recipe_view(env, role="material", amount=row.get("amount"), consumed=True))
+                if status == STATUS_DISABLED:
+                    warnings.append(f"Предмет — материал рецепта «{data.get('name') or env.get('id')}», но рецепт отключён.")
+                break
+        if str(data.get("blueprint_id") or "") == oid:
+            as_blueprint.append(_recipe_view(env, role="blueprint"))
+
+    # §6.7: материал нигде не создаётся (нет рецепта-результата), но используется.
+    if as_material and not as_result:
+        warnings.append("Предмет используется как материал, но ни один рецепт его не создаёт.")
+
+    # Мини-цепочка (§6.5): из чего делается этот предмет и что из него делают.
+    made_from: list[str] = []
+    for r in as_result:
+        env = _store.get(r["id"]) or {}
+        for row in ((env.get("data") or {}).get("ingredients") or []):
+            if isinstance(row, dict) and str(row.get("item_id") or "").strip():
+                made_from.append(str(row["item_id"]).strip())
+    makes = [r.get("output_item_id") for r in as_material if r.get("output_item_id")]
+    chain = {"made_from": sorted(set(made_from)), "makes": sorted(set(filter(None, makes)))}
+
+    return {"as_result": as_result, "as_material": as_material, "as_blueprint": as_blueprint,
+            "errors": errors, "warnings": warnings, "chain": chain}

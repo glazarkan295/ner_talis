@@ -9,6 +9,7 @@ export const fetchItemMeta = () => requestAdminJson(`${base}/meta?_=${t()}`);
 export const fetchItems = (status = "") => requestAdminJson(`${base}?${new URLSearchParams(status ? { status } : {}).toString()}&_=${t()}`);
 export const fetchItem = (id) => requestAdminJson(`${base}/${encodeURIComponent(id)}?_=${t()}`);
 export const fetchItemUsage = (id) => requestAdminJson(`${base}/${encodeURIComponent(id)}/usage?_=${t()}`);
+export const fetchItemCraftUsage = (id) => requestAdminJson(`${base}/${encodeURIComponent(id)}/craft-usage?_=${t()}`);
 export const createItem = (id, data, reason) => post(base, { id, data, reason });
 export const updateItem = (id, data, reason) => requestAdminJson(`${base}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ data, reason }) });
 export const validateItem = (id, reason) => post(`${base}/${encodeURIComponent(id)}/validate`, { reason });

@@ -5,6 +5,7 @@ import {
   fetchItemMeta,
   fetchItems,
   fetchItemUsage,
+  fetchItemCraftUsage,
   hardDeleteItem,
   itemLifecycle,
   updateItem,
@@ -68,6 +69,7 @@ export function ItemsSection({ guarded, hasPerm }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [usage, setUsage] = useState(null);
+  const [craft, setCraft] = useState(null);
   const [confirm, setConfirm] = useState(null);
 
   const can = useMemo(() => ({
@@ -87,9 +89,9 @@ export function ItemsSection({ guarded, hasPerm }) {
 
   async function openItem(id) {
     const p = await guarded(() => fetchItem(id));
-    if (p?.item) { setEditing({ id, data: { ...EMPTY, ...(p.item.data || {}) }, status: p.item.status, validation: p.validation, isNew: false }); setUsage(null); }
+    if (p?.item) { setEditing({ id, data: { ...EMPTY, ...(p.item.data || {}) }, status: p.item.status, validation: p.validation, isNew: false }); setUsage(null); setCraft(null); }
   }
-  function startCreate() { setEditing({ id: "", data: { ...EMPTY }, status: "draft", validation: null, isNew: true }); setUsage(null); }
+  function startCreate() { setEditing({ id: "", data: { ...EMPTY }, status: "draft", validation: null, isNew: true }); setUsage(null); setCraft(null); }
 
   async function save() {
     const e = editing;
@@ -99,6 +101,7 @@ export function ItemsSection({ guarded, hasPerm }) {
   }
   async function runValidate() { const p = await guarded(() => validateItem(editing.id, ""), "Проверка выполнена."); if (p?.validation) setEditing((c) => ({ ...c, validation: p.validation })); }
   async function loadUsage() { const p = await guarded(() => fetchItemUsage(editing.id)); if (p?.usage) setUsage(p.usage); }
+  async function loadCraft() { const p = await guarded(() => fetchItemCraftUsage(editing.id)); if (p?.craft) setCraft(p.craft); }
   async function refreshEditing() { await load(); if (editing) await openItem(editing.id); }
 
   if (!meta) return <section className="ntv2-section"><h2>Конструктор предметов</h2><p className="ntv2-hint">Загрузка…</p></section>;
@@ -216,10 +219,13 @@ export function ItemsSection({ guarded, hasPerm }) {
           </div>
         ) : null}
 
+        {craft ? <CraftUsageBlock craft={craft} /> : null}
+
         <div className="ntv2-form-row" style={{ marginTop: 14 }}>
           {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={editing.isNew && !editing.id.trim()} onClick={save}>{editing.isNew ? "Создать" : "Сохранить"}</button> : null}
           {!editing.isNew && can.validate ? <button type="button" className="ntv2-btn" onClick={runValidate}>Проверить</button> : null}
           {!editing.isNew && can.usage ? <button type="button" className="ntv2-btn" onClick={loadUsage}>Где используется</button> : null}
+          {!editing.isNew && can.usage ? <button type="button" className="ntv2-btn" onClick={loadCraft}>Используется в ремесле</button> : null}
           {!editing.isNew && can.publish ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Опубликовать предмет?", dangerous: true, confirmLabel: "Опубликовать", body: <p>Предмет будет проверен и опубликован.</p>, run: async (r) => { await guarded(() => itemLifecycle(editing.id, "publish", r), "Опубликовано."); await refreshEditing(); } })}>Опубликовать</button> : null}
           {!editing.isNew && can.disable && published ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Отключить?", dangerous: true, confirmLabel: "Отключить", body: <p>Предмет перестанет выпадать/продаваться/создаваться.</p>, run: async (r) => { await guarded(() => itemLifecycle(editing.id, "disable", r), "Отключено."); await refreshEditing(); } })}>Отключить</button> : null}
           {!editing.isNew && can.archive ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "В архив?", dangerous: true, confirmLabel: "В архив", body: <p>Предмет уйдёт в архив.</p>, run: async (r) => { await guarded(() => itemLifecycle(editing.id, "archive", r), "В архиве."); await refreshEditing(); } })}>В архив</button> : null}
@@ -259,5 +265,28 @@ export function ItemsSection({ guarded, hasPerm }) {
         ))}
       </div>
     </section>
+  );
+}
+
+// Блок «Используется в ремесле» (ТЗ 13 §6): рецепты по ролям + цепочка + ошибки.
+function CraftUsageBlock({ craft }) {
+  const recipeLine = (r) => (
+    <li key={r.role + ":" + r.id}>
+      <b>{r.name}</b> <span className="ntv2-hint">({r.workshop_label || r.workshop} · {r.status}{r.amount ? ` · ×${r.amount}` : ""})</span>
+    </li>
+  );
+  const total = (craft.as_result?.length || 0) + (craft.as_material?.length || 0) + (craft.as_blueprint?.length || 0);
+  return (
+    <div className="ntv2-panel">
+      <h4 className="ntv2-subhead">Используется в ремесле ({total})</h4>
+      {total === 0 ? <p className="ntv2-hint">Предмет не участвует в ремесле.</p> : null}
+      {craft.as_result?.length ? <><p className="ntv2-hint">🛠 Создаётся через ремесло:</p><ul className="ntv2-craft-list">{craft.as_result.map(recipeLine)}</ul></> : null}
+      {craft.as_material?.length ? <><p className="ntv2-hint">📦 Используется как материал:</p><ul className="ntv2-craft-list">{craft.as_material.map(recipeLine)}</ul></> : null}
+      {craft.as_blueprint?.length ? <><p className="ntv2-hint">📜 Используется как чертёж:</p><ul className="ntv2-craft-list">{craft.as_blueprint.map(recipeLine)}</ul></> : null}
+      {(craft.chain?.made_from?.length || craft.chain?.makes?.length) ? (
+        <p className="ntv2-hint">🔗 Цепочка: {craft.chain.made_from?.length ? `из [${craft.chain.made_from.join(", ")}]` : ""}{craft.chain.makes?.length ? ` → делает [${craft.chain.makes.join(", ")}]` : ""}</p>
+      ) : null}
+      {(craft.warnings || []).map((w, i) => <p className="ntv2-hint" key={"cw" + i}>⚠️ {w}</p>)}
+    </div>
   );
 }
