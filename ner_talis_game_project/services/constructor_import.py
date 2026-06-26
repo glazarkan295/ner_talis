@@ -471,8 +471,12 @@ def _copy_id(sid: str, exists: Any) -> str:
     return ""
 
 
-def _apply_record(report, sid, data, mode, *, get_fn, create_fn, update_fn, publish_fn) -> None:
-    """Создать/обновить/скопировать/пропустить запись с защитой ручных правок (§9)."""
+def _apply_record(report, sid, data, mode, *, get_fn, create_fn, update_fn, publish_fn, copy_rewrite=None) -> None:
+    """Создать/обновить/скопировать/пропустить запись с защитой ручных правок (§9).
+
+    copy_rewrite(data) -> data — для режима «копия» переписывает ссылки на
+    скопированные записи (например, location/parent_id → их копии), иначе копия
+    оставалась бы привязанной к оригиналам."""
     report["found"] += 1
     existing = get_fn(sid)
     if existing is not None:
@@ -492,7 +496,10 @@ def _apply_record(report, sid, data, mode, *, get_fn, create_fn, update_fn, publ
                 report["invalid"] += 1
                 report["errors"].append({"id": sid, "type": report["kind"], "reason": "Не удалось подобрать id для копии."})
                 return
-            create_fn(new_id, data)
+            copy_data = dict(data)
+            if copy_rewrite is not None:
+                copy_data = copy_rewrite(copy_data)
+            create_fn(new_id, copy_data)
             publish_fn(new_id)
             report["created"] += 1
             return
@@ -610,6 +617,37 @@ _EVENT_TYPE_MAP = {
     "berries": "found_resource", "alchemy_ingredient": "found_resource", "stone_or_ore": "found_resource",
 }
 
+# Спец-типы событий поиска Малого плато → типы конструктора событий.
+_SP_EVENT_TYPE_MAP = {
+    "reward": "rare_find", "item_reward": "rare_find", "empty_atmosphere": "found_resource",
+    "curse_hint": "rare_find", "curse_or_milestone_hint": "rare_find",
+    "milestone_hint": "rare_find", "seeker_hint": "rare_find", "choice_cursed_coins": "rare_find",
+}
+
+
+def _event_type_for(name: str) -> str:
+    """Тип события по имени: ловушки/бои не теряются (например forest_trap→trap)."""
+    n = str(name).lower()
+    if "trap" in n:
+        return "trap"
+    if "battle" in n or "mob" in n:
+        return "met_mob"
+    if "glint" in n:
+        return "rare_find"
+    return _EVENT_TYPE_MAP.get(n, "found_resource")
+
+
+def _event_discovery_text(event_texts: Any, ev_name: str) -> str:
+    """Реальный текст обнаружения из исходных данных (event_texts[name].discovery)."""
+    entry = event_texts.get(ev_name) if isinstance(event_texts, dict) else None
+    if isinstance(entry, dict):
+        disc = entry.get("discovery")
+        if isinstance(disc, list) and disc:
+            return str(disc[0])
+        if isinstance(disc, str) and disc.strip():
+            return disc
+    return ""
+
 
 def import_events(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
     from services import world_content_registry as wcr
@@ -617,6 +655,15 @@ def import_events(*, mode: str | None = None, overwrite: bool = False, actor: st
     report = _rich_report("event")
     mode = _resolve_mode(mode, overwrite)
     get_fn, create_fn, update_fn, publish_fn = _wcr_funcs(wcr.KIND_EVENT, actor)
+
+    def _copy_rewrite_event(data):
+        # При копировании события привязываем его к КОПИИ локации, если та тоже
+        # скопирована, иначе копия осталась бы прикреплённой к оригиналу.
+        loc = str(data.get("location") or "")
+        if loc and wcr.get_content(wcr.KIND_LOCATION, f"{loc}_copy") is not None:
+            data["location"] = f"{loc}_copy"
+        return data
+
     placeholder_text = False
     for filename in ("hilly_meadows.json", "ordinary_forest.json"):
         data_raw = _read_data_json(filename)
@@ -626,6 +673,7 @@ def import_events(*, mode: str | None = None, overwrite: bool = False, actor: st
         events = data_raw.get("events")
         if not isinstance(events, dict):
             continue
+        event_texts = data_raw.get("event_texts") or {}
         for ev_name, chance in events.items():
             evsid = safe_constructor_id(f"{loc_id}_{ev_name}")
             if not evsid:
@@ -635,19 +683,60 @@ def import_events(*, mode: str | None = None, overwrite: bool = False, actor: st
                 ch = float(chance)
             except (TypeError, ValueError):
                 ch = 0.0
+            # Реальный текст обнаружения из источника; заглушка — только если его нет
+            # (например, у trap/battle event_texts отсутствует).
+            text = _event_discovery_text(event_texts, ev_name)
+            has_real_text = bool(text)
+            if not text:
+                text = f"Событие локации: {ev_name}."
             record = {
-                "name": str(ev_name), "type": _EVENT_TYPE_MAP.get(str(ev_name), "found_resource"),
-                "text": f"Событие локации: {ev_name}.", "chance": ch, "location": loc_id,
+                "name": str(ev_name), "type": _event_type_for(ev_name),
+                "text": text, "chance": ch, "location": loc_id,
                 "imported": True, "import_source": f"data/{filename}", "source_id": str(ev_name),
             }
             before = report["created"] + report["updated"]
-            _apply_record(report, evsid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
-            if report["created"] + report["updated"] > before:
+            _apply_record(report, evsid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn, copy_rewrite=_copy_rewrite_event)
+            if report["created"] + report["updated"] > before and not has_real_text:
                 placeholder_text = True
+
+    # Малое плато: 28 событий поиска лежат отдельной list-таблицей, а не в events{}.
+    sp_raw = _read_data_json("small_plateau_search_events.json")
+    sp_events = sp_raw.get("events") if isinstance(sp_raw, dict) else None
+    sp_imported = 0
+    if isinstance(sp_events, list):
+        for ev in sp_events:
+            if not isinstance(ev, dict):
+                report["invalid"] += 1
+                continue
+            ev_id = ev.get("event_id") or ev.get("id")
+            evsid = safe_constructor_id(f"small_plateau_{ev_id}")
+            if not evsid:
+                report["invalid"] += 1
+                continue
+            text = str(ev.get("text") or ev.get("title") or "").strip() or f"Событие: {ev_id}"
+            record = {
+                "name": str(ev.get("title") or ev_id),
+                "type": _SP_EVENT_TYPE_MAP.get(str(ev.get("type")), "rare_find"),
+                "text": text, "result_text": str(ev.get("result_text") or ""),
+                "chance": 0.0, "weight": ev.get("weight") or 0,
+                "source_event_type": str(ev.get("type") or ""), "location": "small_plateau",
+                "imported": True, "import_source": "data/small_plateau_search_events.json",
+                "source_id": str(ev_id),
+            }
+            before = report["created"] + report["updated"]
+            _apply_record(report, evsid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn, copy_rewrite=_copy_rewrite_event)
+            if report["created"] + report["updated"] > before:
+                sp_imported += 1
+
     if placeholder_text:
         report["needs_check"].append({
             "id": "events", "type": "event",
-            "reason": "У событий текст-заглушка (в исходных данных только шанс) — задайте текст/исход вручную.",
+            "reason": "У части событий (ловушки/бои) текст-заглушка — задайте текст/исход вручную.",
+        })
+    if sp_imported:
+        report["needs_check"].append({
+            "id": "small_plateau_events", "type": "event",
+            "reason": "События поиска Малого плато импортированы со спец-типами (подсказки/проклятья/выбор монет) — проверьте сопоставление типов и исходы.",
         })
     return report
 
@@ -659,6 +748,14 @@ def import_city_nodes(*, mode: str | None = None, overwrite: bool = False, actor
     report = _rich_report("city_node")
     mode = _resolve_mode(mode, overwrite)
     get_fn, create_fn, update_fn, publish_fn = _store_funcs(ccs.store(), ccs.STATUS_PUBLISHED, actor)
+
+    def _copy_rewrite_node(data):
+        # Копия квартала должна указывать на КОПИЮ города-родителя, если та есть.
+        parent = str(data.get("parent_id") or "")
+        if parent and get_fn(f"{parent}_copy") is not None:
+            data["parent_id"] = f"{parent}_copy"
+        return data
+
     data_raw = _read_data_json("seldar_city.json")
     if not isinstance(data_raw, dict):
         report["errors"].append({"id": "seldar_city.json", "type": "city_node", "reason": "Файл города отсутствует или повреждён."})
@@ -682,7 +779,7 @@ def import_city_nodes(*, mode: str | None = None, overwrite: bool = False, actor
                 "_kind": ccs.KIND_NODE,
                 "name": zone.get("name") or zid, "node_type": "quarter", "parent_id": city_id, "description": "",
                 "imported": True, "import_source": "data/seldar_city.json", "source_id": str(zid),
-            }, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+            }, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn, copy_rewrite=_copy_rewrite_node)
     return report
 
 
@@ -697,7 +794,7 @@ _ACHIEVEMENT_SEED = {
         "name": "Ищущий", "category": "small_plateau", "type": "exploration",
         "rarity": "legendary", "visibility": "open", "progress_type": "numeric",
         "conditions": [{"type": "discover_location", "amount": 1, "target": "small_plateau"}],
-        "needs_check": "Награда «Ищущего» — игровой доступ к seeker-контенту; задайте при необходимости.",
+        "needs_check": "Рантайм выдаёт «Ищущего» на 1000-м поиске Малого плато (small_plateau_service.apply_search_milestone), а условие сид-определения упрощено (discover_location) — задайте счётчик из 1000 поисков. Награда «Ищущего» — доступ к seeker-контенту.",
     },
     "curse_what_curse": {
         "name": "Проклятье? Какое проклятье?", "category": "small_plateau", "type": "story",

@@ -329,6 +329,58 @@ class ConstructorImportTest(unittest.TestCase):
             self.assertEqual(report["created"], 0, kind)
             self.assertTrue(report.get("needs_check"), kind)
 
+    def test_events_use_real_discovery_text_and_trap_type(self):
+        # Codex P2: события используют реальный текст обнаружения, а forest_trap
+        # классифицируется как trap (а не found_resource).
+        from services import world_content_registry as wcr
+
+        ci.import_locations()
+        ci.import_events()
+        evs = {e["id"]: (e.get("data") or {}) for e in wcr.list_content(wcr.KIND_EVENT)}
+        trap = evs.get("ordinary_forest_forest_trap")
+        self.assertIsNotNone(trap)
+        self.assertEqual(trap["type"], "trap")
+        # У ресурсного события — реальный текст (не заглушка).
+        berries = evs.get("hilly_meadows_berries")
+        self.assertIsNotNone(berries)
+        self.assertNotIn("Событие локации:", berries["text"])
+
+    def test_small_plateau_search_events_imported(self):
+        # Codex P2: 28 событий поиска Малого плато видны в конструкторе событий
+        # и привязаны к существующей локации small_plateau (без сирот).
+        from services import world_content_registry as wcr
+
+        ci.import_locations()
+        report = ci.import_events()
+        sp = [e for e in wcr.list_content(wcr.KIND_EVENT)
+              if (e.get("data") or {}).get("location") == "small_plateau"]
+        self.assertGreaterEqual(len(sp), 20)
+        self.assertTrue(any(n["id"] == "small_plateau_events" for n in report["needs_check"]))
+        self.assertTrue(ci.check_import()["ok"], ci.check_import()["issues"])
+
+    def test_copy_rewrites_event_location_to_copy(self):
+        # Codex P2: при копировании событие привязывается к КОПИИ локации.
+        from services import world_content_registry as wcr
+
+        ci.import_locations()
+        ci.import_events()
+        ci.import_locations(mode="copy")
+        ci.import_events(mode="copy")
+        ev = wcr.get_content(wcr.KIND_EVENT, "hilly_meadows_berries_copy")
+        self.assertIsNotNone(ev)
+        self.assertEqual((ev.get("data") or {}).get("location"), "hilly_meadows_copy")
+
+    def test_copy_rewrites_city_node_parent(self):
+        from services import city_constructor_service as ccs
+
+        ci.import_city_nodes()
+        ci.import_city_nodes(mode="copy")
+        nodes = {i["id"]: (i.get("data") or {}) for i in ccs.store().list()}
+        quarter_copy = next((d for nid, d in nodes.items()
+                             if nid.endswith("_copy") and d.get("node_type") == "quarter"), None)
+        self.assertIsNotNone(quarter_copy)
+        self.assertEqual(quarter_copy.get("parent_id"), "seldar_copy")
+
 
 if __name__ == "__main__":
     unittest.main()
