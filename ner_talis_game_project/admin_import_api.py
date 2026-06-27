@@ -111,6 +111,14 @@ def create_admin_import_router(get_storage) -> APIRouter:
             return {"ok": True, "format": "md", "content": ci.build_import_markdown(last)}
         return {"ok": True, "format": "json", "content": last}
 
+    @router.get("/images")
+    def images(request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        # Аудит изображений (ТЗ §6): какие картинки сущностей отсутствуют/внешние.
+        _require(_session(get_storage(), request, token), PERM_WORLD_VIEW)
+        from services import image_audit_service as ias
+
+        return {"ok": True, **ias.audit()}
+
     @router.post("/run")
     def run(payload: ImportRunRequest, request: Request) -> dict[str, Any]:
         session = _session(get_storage(), request, payload.token)

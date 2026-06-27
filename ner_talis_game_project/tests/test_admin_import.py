@@ -154,6 +154,14 @@ class AdminImportApiTest(unittest.TestCase):
         rb = self.client.post("/api/admin/v2/import/rollback", headers=self._auth(token), json={})
         self.assertEqual(rb.json()["found"], 0)
 
+    def test_image_audit_endpoint(self):
+        token = self._token()
+        r = self.client.get("/api/admin/v2/import/images", headers=self._auth(token))
+        self.assertEqual(r.status_code, 200, r.text)
+        body = r.json()
+        for key in ("total", "ok", "missing", "external", "problems"):
+            self.assertIn(key, body)
+
     def test_report_endpoint_json_and_md(self):
         token = self._token()
         self.client.post("/api/admin/v2/import/run", headers=self._auth(token), json={"kinds": ["fine_def"], "mode": "new"})

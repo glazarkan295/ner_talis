@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchFeatureFlags,
+  fetchImageAudit,
   fetchImportMeta,
   fetchImportReport,
   runImport,
@@ -23,6 +24,7 @@ export function ImportSection({ guarded, hasPerm }) {
   const [result, setResult] = useState(null);
   const [markdown, setMarkdown] = useState("");
   const [check, setCheck] = useState(null);
+  const [images, setImages] = useState(null);
   const [flags, setFlags] = useState(null);
   const [flagMeta, setFlagMeta] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -123,6 +125,19 @@ export function ImportSection({ guarded, hasPerm }) {
     await loadReport();
   };
 
+  const doImageAudit = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await fetchImageAudit();
+      setImages(r);
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const showMarkdown = async () => {
     try {
       const r = await fetchImportReport("md");
@@ -169,6 +184,7 @@ export function ImportSection({ guarded, hasPerm }) {
           {canRun ? <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={busy} onClick={doRun}>Импортировать</button> : null}
           {canRun ? <button type="button" className="ntv2-btn ntv2-btn-danger" disabled={busy} onClick={doRollback}>Откатить последний</button> : null}
           <button type="button" className="ntv2-btn" disabled={busy} onClick={doCheck}>Проверить связи</button>
+          <button type="button" className="ntv2-btn" disabled={busy} onClick={doImageAudit}>🖼 Аудит изображений</button>
           <button type="button" className="ntv2-btn" disabled={busy} onClick={showMarkdown}>Отчёт (markdown)</button>
         </div>
       </div>
@@ -215,6 +231,20 @@ export function ImportSection({ guarded, hasPerm }) {
         <div className="ntv2-panel">
           <h4 className="ntv2-subhead">Отчёт (markdown)</h4>
           <pre className="ntv2-mono" style={{ whiteSpace: "pre-wrap", maxHeight: 360, overflow: "auto" }}>{markdown}</pre>
+        </div>
+      ) : null}
+
+      {images ? (
+        <div className={`ntv2-panel ${images.missing || images.external ? "ntv2-danger-zone" : ""}`}>
+          <h4 className="ntv2-subhead">
+            🖼 Аудит изображений (§6): всего {images.total} · ок {images.ok} · нет файла {images.missing} · внешних {images.external}
+          </h4>
+          {(!images.missing && !images.external) ? <p className="ntv2-hint">Все изображения — локальные файлы и на месте.</p> : null}
+          {(images.problems || []).map((p, i) => (
+            <div className={p.status === "missing" ? "ntv2-error" : "ntv2-hint"} key={i}>
+              {p.status === "missing" ? "❌ нет файла" : "⚠️ внешняя ссылка"}: {p.kind}/{p.id} · {p.field} = <code>{p.value}</code>
+            </div>
+          ))}
         </div>
       ) : null}
 
