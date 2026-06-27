@@ -35,13 +35,13 @@ const TRAIT_CONFIG = {
   newLabel: "Новая черта", nameField: "trait_name",
   importLabel: "Импортировать библиотеку черт?", importText: "50 универсальных черт будут заведены как опубликованные записи (без дублей).",
   fields: [
-    { key: "trait_name", label: "Название", type: "text" },
-    { key: "trait_rank", label: "Ранг", type: "select", metaKey: "traitRanks" },
-    { key: "trigger", label: "Триггер", type: "select", metaKey: "triggers" },
-    { key: "stack_rule", label: "Правило стака", type: "select", metaKey: "stackRules" },
-    { key: "player_text", label: "Текст для игрока", type: "textarea" },
-    { key: "admin_description", label: "Описание для админа", type: "textarea" },
-    { key: "applicable_mob_categories", label: "Категории мобов", type: "multiselect", metaKey: "mobCategories" },
+    { key: "trait_name", label: "Название", type: "text", hint: "Короткое имя черты, видно админу в списках. Обязательное поле." },
+    { key: "trait_rank", label: "Ранг", type: "select", metaKey: "traitRanks", hint: "Особая/элитная/уникальная/мировая — ограничивает, каким мобам по рангу доступна черта." },
+    { key: "trigger", label: "Триггер", type: "select", metaKey: "triggers", hint: "Когда срабатывает: пассивно, при атаке, при получении урона, в начале боя и т.д." },
+    { key: "stack_rule", label: "Правило стака", type: "select", metaKey: "stackRules", hint: "Как складываются несколько одинаковых черт: сильнейшая, обновление, суммирование." },
+    { key: "player_text", label: "Текст для игрока", type: "textarea", hint: "Что увидит игрок в бою. Без формул и технических деталей." },
+    { key: "admin_description", label: "Описание для админа", type: "textarea", hint: "Техническое пояснение механики — игроку не показывается." },
+    { key: "applicable_mob_categories", label: "Категории мобов", type: "multiselect", metaKey: "mobCategories", hint: "К каким категориям мобов применима черта. Пусто = без ограничений." },
   ],
 };
 const BLESSING_CONFIG = {
@@ -79,25 +79,25 @@ const LEVEL_CONFIG = {
   base: "levels", title: "Конструктор уровней", permPrefix: "level",
   newLabel: "Новый уровень", nameField: "title",
   fields: [
-    { key: "title", label: "Заголовок", type: "text" },
-    { key: "level", label: "Уровень", type: "number" },
-    { key: "exp_required", label: "Опыт до уровня", type: "number" },
-    { key: "stat_points", label: "Очки характеристик", type: "number" },
-    { key: "skill_points", label: "Очки навыков", type: "number" },
-    { key: "exp_formula_id", label: "Формула опыта (ТЗ 13 §2.8)", type: "formularef" },
-    { key: "description", label: "Описание", type: "textarea" },
+    { key: "title", label: "Заголовок", type: "text", hint: "Название уровня (например «Уровень 5»). Видно админу." },
+    { key: "level", label: "Уровень", type: "number", hint: "Числовой номер уровня. Должен быть уникальным." },
+    { key: "exp_required", label: "Опыт до уровня", type: "number", hint: "Сколько опыта нужно набрать, чтобы достичь этого уровня. Можно задать формулой ниже." },
+    { key: "stat_points", label: "Очки характеристик", type: "number", hint: "Сколько очков характеристик выдаётся за достижение уровня." },
+    { key: "skill_points", label: "Очки навыков", type: "number", hint: "Сколько очков навыков выдаётся за достижение уровня." },
+    { key: "exp_formula_id", label: "Формула опыта (ТЗ 13 §2.8)", type: "formularef", hint: "Если задана, опыт до уровня считается формулой из конструктора формул, а не фиксированным числом." },
+    { key: "description", label: "Описание", type: "textarea", hint: "Необязательное пояснение для админа." },
   ],
 };
 const EXP_CONFIG = {
   base: "exp", title: "Конструктор опыта", permPrefix: "exp",
   newLabel: "Новый источник опыта", nameField: "name",
   fields: [
-    { key: "name", label: "Название", type: "text" },
-    { key: "source_type", label: "Тип источника", type: "select", metaKey: "sourceTypes" },
-    { key: "base_exp", label: "Базовый опыт", type: "number" },
-    { key: "level_scaling_percent", label: "Масштаб по уровню, %", type: "number" },
-    { key: "formula_id", label: "Формула (ТЗ 13 §2.8)", type: "formularef" },
-    { key: "notes", label: "Заметки", type: "textarea" },
+    { key: "name", label: "Название", type: "text", hint: "Имя источника опыта (например «Победа над мобом»)." },
+    { key: "source_type", label: "Тип источника", type: "select", metaKey: "sourceTypes", hint: "Откуда начисляется опыт: бой, поиск, ремесло, задание и т.д." },
+    { key: "base_exp", label: "Базовый опыт", type: "number", hint: "Базовое количество опыта за событие до масштабирования." },
+    { key: "level_scaling_percent", label: "Масштаб по уровню, %", type: "number", hint: "На сколько % меняется опыт с ростом уровня игрока/цели." },
+    { key: "formula_id", label: "Формула (ТЗ 13 §2.8)", type: "formularef", hint: "Если задана, опыт считается формулой, а базовое значение/масштаб игнорируются." },
+    { key: "notes", label: "Заметки", type: "textarea", hint: "Пояснение для админа, игроку не показывается." },
   ],
 };
 const REGISTRATION_CONFIG = {
@@ -116,13 +116,13 @@ const RACE_CONFIG = {
   newLabel: "Новая раса", nameField: "race_name",
   importLabel: "Импортировать существующие расы?", importText: "Расы из data/races.json будут заведены как опубликованные записи (без дублей).",
   fields: [
-    { key: "race_name", label: "Название", type: "text" },
-    { key: "description", label: "Описание", type: "textarea" },
-    { key: "lore", label: "Лор", type: "textarea" },
-    { key: "model_image", label: "Изображение модели (/assets/…)", type: "text" },
-    { key: "playable", label: "Доступна для игры", type: "checkbox" },
-    { key: "stat_bonuses", label: "Бонусы характеристик", type: "numbergroup", sub: _STAT_SUB },
-    { key: "starting_stats", label: "Стартовые характеристики", type: "numbergroup", sub: _STAT_SUB },
+    { key: "race_name", label: "Название", type: "text", hint: "Имя расы, видно игроку при регистрации. Обязательное поле." },
+    { key: "description", label: "Описание", type: "textarea", hint: "Краткое описание расы для игрока." },
+    { key: "lore", label: "Лор", type: "textarea", hint: "Расширенный лор/история расы (необязательно)." },
+    { key: "model_image", label: "Изображение модели (/assets/…)", type: "text", hint: "Локальный путь к картинке (/assets/…). Внешние ссылки запрещены — загрузите файл." },
+    { key: "playable", label: "Доступна для игры", type: "checkbox", hint: "Если выключено — раса недоступна при регистрации новых игроков." },
+    { key: "stat_bonuses", label: "Бонусы характеристик", type: "numbergroup", sub: _STAT_SUB, hint: "Прибавки к характеристикам от расы (могут быть отрицательными)." },
+    { key: "starting_stats", label: "Стартовые характеристики", type: "numbergroup", sub: _STAT_SUB, hint: "Базовые значения характеристик на старте для этой расы." },
   ],
 };
 const PROFESSION_CONFIG = {
@@ -419,6 +419,7 @@ function GlobalSearch({ guarded, onOpen }) {
 export function AdminShell() {
   const [me, setMe] = useState(null);
   const [active, setActive] = useState("dashboard");
+  const [menuOpen, setMenuOpen] = useState(false); // мобильное off-canvas меню (§12)
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [booting, setBooting] = useState(true);
@@ -475,7 +476,14 @@ export function AdminShell() {
   }
 
   return (
-    <div className="ntv2">
+    <div className={`ntv2${menuOpen ? " ntv2-menu-open" : ""}`}>
+      <button
+        type="button"
+        className="ntv2-menu-toggle"
+        aria-label="Меню"
+        onClick={() => setMenuOpen((o) => !o)}
+      >☰</button>
+      <div className="ntv2-scrim" onClick={() => setMenuOpen(false)} />
       <aside className="ntv2-sidebar">
         <div className="ntv2-brand">
           <div className="ntv2-brand-title">Нер-Талис</div>
@@ -491,7 +499,7 @@ export function AdminShell() {
                   key={item.id}
                   type="button"
                   className={`ntv2-nav-item${active === item.id ? " active" : ""}`}
-                  onClick={() => setActive(item.id)}
+                  onClick={() => { setActive(item.id); setMenuOpen(false); }}
                 >
                   <span className="ntv2-nav-icon">{item.icon}</span>
                   <span>{item.label}</span>

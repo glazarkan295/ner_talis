@@ -14,6 +14,7 @@ import { ConfirmModal } from "../ConfirmModal.jsx";
 import { VersionHistory } from "../VersionHistory.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 import { fetchFormulas } from "../../../api/adminFormulaApi.js";
+import { HintTip, HINT_TIP_CSS } from "../HintTip.jsx";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 
@@ -23,8 +24,8 @@ function options(meta, key) {
   return raw.map((o) => (typeof o === "object" ? o : { value: o, label: o }));
 }
 
-function Field({ label, children }) {
-  return <label className="ntv2-field"><span>{label}</span>{children}</label>;
+function Field({ label, hint, children }) {
+  return <label className="ntv2-field"><span>{label}<HintTip text={hint} /></span>{children}</label>;
 }
 
 // Универсальная секция каталог-конструктора на EntityStore (черты/благословения/
@@ -90,6 +91,7 @@ export function LibrarySection({ guarded, hasPerm, config }) {
     };
     return (
       <section className="ntv2-section">
+        <style>{HINT_TIP_CSS}</style>
         <div className="ntv2-card-head">
           <button type="button" className="ntv2-btn" onClick={() => setEditing(null)}>← К списку</button>
           <h2>{editing.isNew ? newLabel : (d[nameField] || editing.id)}</h2>
@@ -99,18 +101,18 @@ export function LibrarySection({ guarded, hasPerm, config }) {
 
         <div className="ntv2-world-form">
           {fields.map((f) => {
-            if (f.type === "textarea") return <Field key={f.key} label={f.label}><textarea rows={f.rows || 2} value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} /></Field>;
-            if (f.type === "number") return <Field key={f.key} label={f.label}><input type="number" value={d[f.key] ?? 0} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} /></Field>;
-            if (f.type === "checkbox") return <label className="ntv2-check" key={f.key}><input type="checkbox" checked={Boolean(d[f.key])} disabled={disabled} onChange={(e) => set(f.key, e.target.checked)} /> {f.label}</label>;
-            if (f.type === "select") return <Field key={f.key} label={f.label}><select value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)}><option value="">—</option>{options(meta, f.metaKey).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>;
-            if (f.type === "formularef") return <Field key={f.key} label={f.label}><select value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)}><option value="">— без формулы —</option>{formulaOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>;
-            if (f.type === "list") return <Field key={f.key} label={f.label}><textarea rows={f.rows || 2} value={(Array.isArray(d[f.key]) ? d[f.key] : []).join("\n")} disabled={disabled} onChange={(e) => set(f.key, e.target.value.split("\n").map((s) => s.trim()).filter(Boolean))} /></Field>;
+            if (f.type === "textarea") return <Field key={f.key} label={f.label} hint={f.hint}><textarea rows={f.rows || 2} value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} /></Field>;
+            if (f.type === "number") return <Field key={f.key} label={f.label} hint={f.hint}><input type="number" value={d[f.key] ?? 0} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} /></Field>;
+            if (f.type === "checkbox") return <label className="ntv2-check" key={f.key}><input type="checkbox" checked={Boolean(d[f.key])} disabled={disabled} onChange={(e) => set(f.key, e.target.checked)} /> {f.label}<HintTip text={f.hint} /></label>;
+            if (f.type === "select") return <Field key={f.key} label={f.label} hint={f.hint}><select value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)}><option value="">—</option>{options(meta, f.metaKey).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>;
+            if (f.type === "formularef") return <Field key={f.key} label={f.label} hint={f.hint}><select value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)}><option value="">— без формулы —</option>{formulaOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>;
+            if (f.type === "list") return <Field key={f.key} label={f.label} hint={f.hint}><textarea rows={f.rows || 2} value={(Array.isArray(d[f.key]) ? d[f.key] : []).join("\n")} disabled={disabled} onChange={(e) => set(f.key, e.target.value.split("\n").map((s) => s.trim()).filter(Boolean))} /></Field>;
             if (f.type === "objlist") {
               const rows = Array.isArray(d[f.key]) ? d[f.key] : [];
               const upd = (i, c, val) => set(f.key, rows.map((r, idx) => idx === i ? { ...r, [c]: val } : r));
               return (
                 <div className="ntv2-panel" key={f.key}>
-                  <h4 className="ntv2-subhead">{f.label}</h4>
+                  <h4 className="ntv2-subhead">{f.label}<HintTip text={f.hint} /></h4>
                   {rows.map((row, i) => (
                     <div className="ntv2-form-row" key={i} style={{ gap: 6, alignItems: "flex-end" }}>
                       {(f.columns || []).map((c) => <Field key={c.key} label={c.label}><input value={row[c.key] ?? ""} disabled={disabled} onChange={(e) => upd(i, c.key, e.target.value)} /></Field>)}
@@ -123,7 +125,7 @@ export function LibrarySection({ guarded, hasPerm, config }) {
             }
             if (f.type === "multiselect") return (
               <div className="ntv2-panel" key={f.key}>
-                <h4 className="ntv2-subhead">{f.label}</h4>
+                <h4 className="ntv2-subhead">{f.label}<HintTip text={f.hint} /></h4>
                 <div className="ntv2-form-row" style={{ flexWrap: "wrap", gap: 10 }}>
                   {options(meta, f.metaKey).map((o) => <label className="ntv2-check" key={o.value}><input type="checkbox" checked={(d[f.key] || []).includes(o.value)} disabled={disabled} onChange={() => toggleMulti(f.key, o.value)} /> {o.label}</label>)}
                 </div>
@@ -133,14 +135,14 @@ export function LibrarySection({ guarded, hasPerm, config }) {
               const obj = (d[f.key] && typeof d[f.key] === "object") ? d[f.key] : {};
               return (
                 <div className="ntv2-panel" key={f.key}>
-                  <h4 className="ntv2-subhead">{f.label}</h4>
+                  <h4 className="ntv2-subhead">{f.label}<HintTip text={f.hint} /></h4>
                   <div className="ntv2-form-row">
                     {(f.sub || []).map((s) => <Field key={s.key} label={s.label}><input type="number" value={obj[s.key] ?? 0} disabled={disabled} onChange={(e) => set(f.key, { ...obj, [s.key]: e.target.value })} /></Field>)}
                   </div>
                 </div>
               );
             }
-            return <Field key={f.key} label={f.label}><input value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} /></Field>;
+            return <Field key={f.key} label={f.label} hint={f.hint}><input value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} /></Field>;
           })}
         </div>
 
