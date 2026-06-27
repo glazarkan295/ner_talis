@@ -1,0 +1,187 @@
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  fetchImportMeta,
+  fetchImportReport,
+  runImport,
+  runImportCheck,
+  runImportDryRun,
+} from "../../../api/adminImportApi.js";
+
+// Унифицированная панель импорта-миграции (full-import ТЗ §13 Этап 5):
+// выбор типов + режима, dry-run (предпросмотр без записи), реальный импорт,
+// проверка связей, просмотр отчёта (таблица + markdown).
+export function ImportSection({ guarded, hasPerm }) {
+  const canRun = hasPerm("world.publish");
+  const [meta, setMeta] = useState(null);
+  const [kinds, setKinds] = useState([]);
+  const [mode, setMode] = useState("new");
+  const [result, setResult] = useState(null);
+  const [markdown, setMarkdown] = useState("");
+  const [check, setCheck] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadMeta = useCallback(async () => {
+    try {
+      const m = await fetchImportMeta();
+      setMeta(m);
+    } catch (e) {
+      setError(String(e.message || e));
+    }
+  }, []);
+
+  const loadReport = useCallback(async () => {
+    try {
+      const r = await fetchImportReport("json");
+      if (r?.content) setResult(r.content);
+    } catch {
+      /* отчётов ещё нет — не ошибка */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMeta();
+    loadReport();
+  }, [loadMeta, loadReport]);
+
+  const toggleKind = (k) =>
+    setKinds((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]));
+
+  const allKinds = meta?.kinds || [];
+  const selectedLabel = useMemo(
+    () => (kinds.length ? `${kinds.length} выбрано` : "все типы"),
+    [kinds],
+  );
+
+  const doDryRun = async () => {
+    setBusy(true);
+    setError("");
+    setMarkdown("");
+    try {
+      const r = await runImportDryRun(kinds, mode);
+      setResult(r);
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doRun = async () => {
+    setBusy(true);
+    setError("");
+    setMarkdown("");
+    const r = await guarded(() => runImport(kinds, mode), "Импорт выполнен.");
+    if (r) setResult(r);
+    setBusy(false);
+  };
+
+  const doCheck = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await runImportCheck();
+      setCheck(r?.report || null);
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const showMarkdown = async () => {
+    try {
+      const r = await fetchImportReport("md");
+      setMarkdown(r?.content || "");
+    } catch (e) {
+      setError(String(e.message || e));
+    }
+  };
+
+  const summary = result?.summary || null;
+  const reports = result?.reports || [];
+
+  return (
+    <div className="ntv2-section">
+      <h3 className="ntv2-subhead">Импорт контента в админ-панель</h3>
+      <p className="ntv2-hint">
+        Перенос существующего игрового контента из кода/статики в конструкторы.
+        Сначала запустите <b>dry-run</b> (ничего не пишет), затем реальный импорт.
+      </p>
+
+      {error ? <div className="ntv2-error">{error}</div> : null}
+
+      <div className="ntv2-panel">
+        <h4 className="ntv2-subhead">Что импортировать ({selectedLabel})</h4>
+        <div className="ntv2-form-row" style={{ flexWrap: "wrap", gap: 8 }}>
+          {allKinds.map((k) => (
+            <label className="ntv2-check" key={k}>
+              <input type="checkbox" checked={kinds.includes(k)} onChange={() => toggleKind(k)} /> {k}
+            </label>
+          ))}
+        </div>
+        <div className="ntv2-form-row" style={{ gap: 14, marginTop: 8 }}>
+          <label className="ntv2-label">
+            Режим повторного импорта
+            <select value={mode} onChange={(e) => setMode(e.target.value)}>
+              {(meta?.modes || [{ value: "new", label: "Добавить новые" }]).map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="ntv2-form-row" style={{ gap: 10, marginTop: 10 }}>
+          <button type="button" className="ntv2-btn" disabled={busy} onClick={doDryRun}>Dry-run (предпросмотр)</button>
+          {canRun ? <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={busy} onClick={doRun}>Импортировать</button> : null}
+          <button type="button" className="ntv2-btn" disabled={busy} onClick={doCheck}>Проверить связи</button>
+          <button type="button" className="ntv2-btn" disabled={busy} onClick={showMarkdown}>Отчёт (markdown)</button>
+        </div>
+      </div>
+
+      {summary ? (
+        <div className="ntv2-panel">
+          <h4 className="ntv2-subhead">
+            {result?.dry_run ? "Предпросмотр (dry-run)" : "Результат импорта"} — режим {summary.mode}
+          </h4>
+          <p className="ntv2-hint">
+            Найдено {summary.found} · создано {summary.created} · обновлено {summary.updated} ·
+            пропущено {summary.skipped} · некорректных {summary.invalid} ·
+            ошибок {summary.errors} · проверить {summary.needs_check}
+          </p>
+          <table className="ntv2-table">
+            <thead>
+              <tr><th>Тип</th><th>Найдено</th><th>Создано</th><th>Обновлено</th><th>Пропущено</th><th>Некорр.</th><th>Проверить</th></tr>
+            </thead>
+            <tbody>
+              {reports.map((r) => (
+                <tr key={r.kind}>
+                  <td>{r.kind}</td><td>{r.found}</td><td>{r.created}</td><td>{r.updated}</td>
+                  <td>{r.skipped}</td><td>{r.invalid}</td><td>{(r.needs_check || []).length}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {reports.flatMap((r) => (r.needs_check || []).map((nc, i) => (
+            <p className="ntv2-hint" key={`${r.kind}-${i}`}>⚠️ {r.kind}/{nc.id}: {nc.reason}</p>
+          )))}
+        </div>
+      ) : null}
+
+      {check ? (
+        <div className={`ntv2-panel ${check.ok ? "" : "ntv2-danger-zone"}`}>
+          <h4 className="ntv2-subhead">{check.ok ? "✅ Связи целы" : `❌ Проблемы связей (${check.count})`}</h4>
+          {(check.issues || []).map((it, i) => (
+            <div className="ntv2-error" key={i}>{it.type}/{it.id}: {it.reason}</div>
+          ))}
+        </div>
+      ) : null}
+
+      {markdown ? (
+        <div className="ntv2-panel">
+          <h4 className="ntv2-subhead">Отчёт (markdown)</h4>
+          <pre className="ntv2-mono" style={{ whiteSpace: "pre-wrap", maxHeight: 360, overflow: "auto" }}>{markdown}</pre>
+        </div>
+      ) : null}
+    </div>
+  );
+}

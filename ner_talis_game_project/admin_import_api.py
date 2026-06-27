@@ -81,7 +81,35 @@ def create_admin_import_router(get_storage) -> APIRouter:
             "ok": True,
             "kinds": list(ci.IMPORTERS.keys()),
             "modes": [{"value": m, "label": ci.MODE_LABELS.get(m, m)} for m in ci.IMPORT_MODES],
+            "supportsDryRun": True,
+            "reportFormats": ["json", "md"],
         }
+
+    @router.post("/dry-run")
+    def dry_run(payload: ImportRunRequest, request: Request) -> dict[str, Any]:
+        # Dry-run ничего не пишет (ТЗ §3.3, §16) → достаточно права просмотра.
+        session = _session(get_storage(), request, payload.token)
+        _require(session, PERM_WORLD_VIEW)
+        requested = list(payload.kinds or [])
+        kinds = [k for k in requested if k in ci.IMPORTERS]
+        if requested and not kinds:
+            raise HTTPException(status_code=400, detail="Неизвестные типы импорта: " + ", ".join(requested))
+        result = ci.import_all(kinds or None, mode=payload.mode, actor=_actor(session), dry_run=True)
+        record_admin_operation(
+            session=session, action="import.dry_run", target_type="constructor_import",
+            target_id=",".join(kinds or list(ci.IMPORTERS.keys())),
+            after=result.get("summary"), reason=payload.reason,
+        )
+        return result
+
+    @router.get("/report")
+    def report(request: Request, token: str | None = Query(default=None, min_length=16),
+               format: str = Query(default="json")) -> dict[str, Any]:
+        _require(_session(get_storage(), request, token), PERM_WORLD_VIEW)
+        last = ci.load_last_report()
+        if str(format).lower() in ("md", "markdown"):
+            return {"ok": True, "format": "md", "content": ci.build_import_markdown(last)}
+        return {"ok": True, "format": "json", "content": last}
 
     @router.post("/run")
     def run(payload: ImportRunRequest, request: Request) -> dict[str, Any]:

@@ -60,6 +60,31 @@ def _was_imported(existing: dict[str, Any]) -> bool:
     return bool((existing.get("data") or {}).get("imported"))
 
 
+# --- Dry-run (ТЗ §3.3, §16: «нельзя делать импорт без dry-run») -------------
+# Глобальный флаг + контекст-скоуп: на время симуляции все записи в сторы
+# (create/update/publish) подменяются no-op, а счётчики/needs_check заполняются
+# как при реальном импорте. Так dry-run переиспользует ту же логику без дубля.
+_DRY_RUN = {"on": False}
+
+
+def _noop(*_args: Any, **_kwargs: Any) -> None:
+    return None
+
+
+class _dry_run_scope:  # noqa: N801 — контекст-менеджер в стиле snake_case
+    def __init__(self, on: bool) -> None:
+        self._on = bool(on)
+        self._prev = False
+
+    def __enter__(self) -> "_dry_run_scope":
+        self._prev = _DRY_RUN["on"]
+        _DRY_RUN["on"] = self._on
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        _DRY_RUN["on"] = self._prev
+
+
 # --- Предметы --------------------------------------------------------------
 def _map_item(definition: dict[str, Any], source_id: str) -> dict[str, Any]:
     max_stack = definition.get("max_stack")
@@ -107,19 +132,23 @@ def import_items(*, overwrite: bool = False, actor: str = "import", mode: str | 
             invalid += 1
             continue
         data = _map_item(definition, sid)
+        data.setdefault("legacy_id", data.get("source_id") or sid)
+        blocked = _DRY_RUN["on"]
         existing = store.get(sid)
         if existing is not None:
             if overwrite and _was_imported(existing):
-                store.update(sid, data, actor=actor)
+                if not blocked:
+                    store.update(sid, data, actor=actor)
                 updated += 1
             else:
                 skipped += 1
             continue
-        store.create(sid, data, actor=actor)
-        try:
-            store.set_status(sid, ics.STATUS_PUBLISHED, actor=actor, force=True)
-        except Exception:
-            pass
+        if not blocked:
+            store.create(sid, data, actor=actor)
+            try:
+                store.set_status(sid, ics.STATUS_PUBLISHED, actor=actor, force=True)
+            except Exception:
+                pass
         created += 1
     return {"kind": "item", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid}
 
@@ -202,19 +231,23 @@ def import_mobs(*, overwrite: bool = False, actor: str = "import", mode: str | N
                 invalid += 1
                 continue
             data = _map_mob(template, sid)
+            data.setdefault("legacy_id", data.get("source_id") or sid)
+            blocked = _DRY_RUN["on"]
             existing = wcr.get_content(wcr.KIND_MOB, sid)
             if existing is not None:
                 if overwrite and _was_imported(existing):
-                    wcr.update_content(wcr.KIND_MOB, sid, data, actor=actor)
+                    if not blocked:
+                        wcr.update_content(wcr.KIND_MOB, sid, data, actor=actor)
                     updated += 1
                 else:
                     skipped += 1
                 continue
-            wcr.create_content(wcr.KIND_MOB, sid, data, actor=actor)
-            try:
-                wcr.set_status(wcr.KIND_MOB, sid, wcr.STATUS_PUBLISHED, actor=actor, force=True)
-            except Exception:
-                pass
+            if not blocked:
+                wcr.create_content(wcr.KIND_MOB, sid, data, actor=actor)
+                try:
+                    wcr.set_status(wcr.KIND_MOB, sid, wcr.STATUS_PUBLISHED, actor=actor, force=True)
+                except Exception:
+                    pass
             created += 1
     return {"kind": "mob", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid}
 
@@ -286,10 +319,11 @@ def import_effects(*, overwrite: bool = False, actor: str = "import", mode: str 
         # publish-эндпоинт отверг бы, а рантайм получал бы неполные записи.
         if not ecs.validate({"data": data})["ok"]:
             return False
-        try:
-            store.set_status(effect_id, ecs.STATUS_PUBLISHED, actor=actor, force=True)
-        except Exception:
-            pass
+        if not _DRY_RUN["on"]:
+            try:
+                store.set_status(effect_id, ecs.STATUS_PUBLISHED, actor=actor, force=True)
+            except Exception:
+                pass
         return True
 
     for effect_id, name, effect_type, negative, source in _EFFECT_SEED:
@@ -298,17 +332,21 @@ def import_effects(*, overwrite: bool = False, actor: str = "import", mode: str 
             "target": "self", "active_when": "always", "stack_rule": "strongest_only",
             "negative": bool(negative), "show_to_player": True, "player_text": name,
             "imported": True, "import_source": "effect_seed", "source_id": effect_id,
+            "legacy_id": effect_id,
         }
+        blocked = _DRY_RUN["on"]
         existing = store.get(effect_id)
         if existing is not None:
             if overwrite and _was_imported(existing):
-                store.update(effect_id, data, actor=actor)
+                if not blocked:
+                    store.update(effect_id, data, actor=actor)
                 _publish_if_valid(effect_id, data)
                 updated += 1
             else:
                 skipped += 1
             continue
-        store.create(effect_id, data, actor=actor)
+        if not blocked:
+            store.create(effect_id, data, actor=actor)
         if not _publish_if_valid(effect_id, data):
             needs_check.append({
                 "id": effect_id, "type": "effect",
@@ -391,19 +429,23 @@ def import_skills(*, overwrite: bool = False, actor: str = "import", mode: str |
             invalid += 1
             continue
         data = _map_skill(skill, sid)
+        data.setdefault("legacy_id", data.get("source_id") or sid)
+        blocked = _DRY_RUN["on"]
         existing = store.get(sid)
         if existing is not None:
             if overwrite and _was_imported(existing):
-                store.update(sid, data, actor=actor)
+                if not blocked:
+                    store.update(sid, data, actor=actor)
                 updated += 1
             else:
                 skipped += 1
             continue
-        store.create(sid, data, actor=actor)
-        try:
-            store.set_status(sid, scs.STATUS_PUBLISHED, actor=actor, force=True)
-        except Exception:
-            pass
+        if not blocked:
+            store.create(sid, data, actor=actor)
+            try:
+                store.set_status(sid, scs.STATUS_PUBLISHED, actor=actor, force=True)
+            except Exception:
+                pass
         created += 1
     return {"kind": "skill", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid}
 
@@ -476,7 +518,17 @@ def _apply_record(report, sid, data, mode, *, get_fn, create_fn, update_fn, publ
 
     copy_rewrite(data) -> data — для режима «копия» переписывает ссылки на
     скопированные записи (например, location/parent_id → их копии), иначе копия
-    оставалась бы привязанной к оригиналам."""
+    оставалась бы привязанной к оригиналам.
+
+    В dry-run (ТЗ §3.3, §16) запись в сторы подменяется no-op: счётчики и
+    needs_check заполняются как при реальном импорте, но ничего не пишется."""
+    # legacy_id (ТЗ §2/§3, AC#3): стабильный технический id старой сущности рядом
+    # с записью. По умолчанию = source_id (или сам sid, если источника нет).
+    data.setdefault("legacy_id", data.get("source_id") or sid)
+    if _DRY_RUN["on"]:
+        create_fn = _noop
+        update_fn = _noop
+        publish_fn = _noop
     report["found"] += 1
     existing = get_fn(sid)
     if existing is not None:
@@ -1250,9 +1302,10 @@ IMPORTERS = {
 }
 
 
-def import_all(kinds: list[str] | None = None, *, overwrite: bool = False, mode: str | None = None, actor: str = "import") -> dict[str, Any]:
+def import_all(kinds: list[str] | None = None, *, overwrite: bool = False, mode: str | None = None, actor: str = "import", dry_run: bool = False) -> dict[str, Any]:
     selected = [k for k in (kinds or list(IMPORTERS)) if k in IMPORTERS]
-    reports = [_normalize_report(IMPORTERS[k](overwrite=overwrite, mode=mode, actor=actor)) for k in selected]
+    with _dry_run_scope(dry_run):
+        reports = [_normalize_report(IMPORTERS[k](overwrite=overwrite, mode=mode, actor=actor)) for k in selected]
     summary = {
         "found": sum(r["found"] for r in reports),
         "created": sum(r["created"] for r in reports),
@@ -1262,5 +1315,98 @@ def import_all(kinds: list[str] | None = None, *, overwrite: bool = False, mode:
         "errors": sum(len(r["errors"]) for r in reports),
         "needs_check": sum(len(r["needs_check"]) for r in reports),
         "mode": _resolve_mode(mode, overwrite),
+        "dry_run": bool(dry_run),
+        "kinds": selected,
     }
-    return {"ok": True, "reports": reports, "summary": summary}
+    result = {"ok": True, "dry_run": bool(dry_run), "reports": reports, "summary": summary}
+    # Сохраняем отчёт последнего запуска (ТЗ §10, AC#13) — и для dry-run, и для
+    # реального импорта; в админке его можно открыть в JSON или markdown.
+    try:
+        save_last_report(result)
+    except Exception:
+        pass
+    return result
+
+
+# --- Отчёт импорта (ТЗ §10): сохранение последнего + markdown ----------------
+def _report_path():
+    import os
+    from project_paths import project_path
+
+    override = os.environ.get("IMPORT_REPORT_PATH")
+    if override:
+        from pathlib import Path
+
+        return Path(override)
+    return project_path("data", "import_report.json")
+
+
+def save_last_report(result: dict[str, Any]) -> None:
+    import json
+
+    path = _report_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(result, handle, ensure_ascii=False, indent=2)
+
+
+def load_last_report() -> dict[str, Any] | None:
+    import json
+
+    path = _report_path()
+    if not path.exists():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def build_import_markdown(result: dict[str, Any] | None) -> str:
+    """Markdown-отчёт последнего импорта (ТЗ §10)."""
+    if not result:
+        return "# Отчёт импорта\n\nОтчётов пока нет — запустите импорт или dry-run."
+    summary = result.get("summary") or {}
+    lines: list[str] = []
+    title = "Отчёт импорта (dry-run)" if result.get("dry_run") else "Отчёт импорта"
+    lines.append(f"# {title}")
+    lines.append("")
+    lines.append(f"- Режим: **{summary.get('mode', '—')}**")
+    lines.append(f"- Найдено: **{summary.get('found', 0)}**")
+    lines.append(f"- Создано: **{summary.get('created', 0)}**")
+    lines.append(f"- Обновлено: **{summary.get('updated', 0)}**")
+    lines.append(f"- Пропущено: **{summary.get('skipped', 0)}**")
+    lines.append(f"- Некорректных: **{summary.get('invalid', 0)}**")
+    lines.append(f"- Ошибок: **{summary.get('errors', 0)}**")
+    lines.append(f"- Требует проверки: **{summary.get('needs_check', 0)}**")
+    lines.append("")
+    lines.append("| Тип | Найдено | Создано | Обновлено | Пропущено | Некорр. | Ошибки | Проверить |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|")
+    for r in result.get("reports") or []:
+        lines.append(
+            f"| {r.get('kind', '—')} | {r.get('found', 0)} | {r.get('created', 0)} | "
+            f"{r.get('updated', 0)} | {r.get('skipped', 0)} | {r.get('invalid', 0)} | "
+            f"{len(r.get('errors') or [])} | {len(r.get('needs_check') or [])} |"
+        )
+    # Подробности «требует проверки» и ошибок.
+    checks = [(r.get("kind"), nc) for r in (result.get("reports") or []) for nc in (r.get("needs_check") or [])]
+    if checks:
+        lines.append("")
+        lines.append("## Требует ручной проверки")
+        for kind, nc in checks:
+            reason = nc.get("reason") if isinstance(nc, dict) else str(nc)
+            ident = nc.get("id") if isinstance(nc, dict) else ""
+            lines.append(f"- **{kind}/{ident}**: {reason}")
+    errors = [(r.get("kind"), er) for r in (result.get("reports") or []) for er in (r.get("errors") or [])]
+    if errors:
+        lines.append("")
+        lines.append("## Ошибки")
+        for kind, er in errors:
+            reason = er.get("reason") if isinstance(er, dict) else str(er)
+            ident = er.get("id") if isinstance(er, dict) else ""
+            lines.append(f"- **{kind}/{ident}**: {reason}")
+    return "\n".join(lines)
