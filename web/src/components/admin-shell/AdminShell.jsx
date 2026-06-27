@@ -162,6 +162,58 @@ const NPC_ALLY_CONFIG = {
     { key: "restrictions", label: "Штрафы/запреты (по строкам)", type: "list" },
   ],
 };
+const MOLE_CONFIG = {
+  base: "mole", title: "Информатор Крот (криминальный сервис)", permPrefix: "mole",
+  newLabel: "Новый сервис Крота", nameField: "name",
+  fields: [
+    { key: "name", label: "Название", type: "text", hint: "Имя сервиса Крота (видно админу)." },
+    { key: "location_id", label: "Локация (id)", type: "text" },
+    { key: "city_id", label: "Город (id)", type: "text" },
+    { key: "description", label: "Описание", type: "textarea" },
+    { key: "info_search_modes", label: "Режимы поиска информации", type: "multiselect", metaKey: "infoSearchModes", hint: "По нику/ID/уровню/диапазону, регион/точная локация." },
+    { key: "info_cost", label: "Стоимость информации", type: "number" },
+    { key: "info_currency", label: "Валюта информации", type: "select", metaKey: "currencies" },
+    { key: "info_cooldown_seconds", label: "Кулдаун информации (сек)", type: "number" },
+    { key: "info_delay_seconds", label: "Задержка получения (сек)", type: "number" },
+    { key: "info_freshness_seconds", label: "Время актуальности (сек)", type: "number" },
+    { key: "info_error_chance", label: "Шанс ошибки, %", type: "number" },
+    { key: "info_stale_chance", label: "Шанс устаревшей информации, %", type: "number" },
+    { key: "info_protected_by", label: "Защита от поиска (эффект/предмет/статус, по строкам)", type: "list" },
+    { key: "info_banned_targets", label: "Запрет поиска игроков (по строкам)", type: "list" },
+    { key: "compass_enabled", label: "Магический компас включён", type: "checkbox", hint: "Дорогая услуга быстрого перемещения к цели (§3.3)." },
+    { key: "compass_mode", label: "Режим компаса", type: "select", metaKey: "compassModes" },
+    { key: "compass_cost", label: "Стоимость компаса", type: "number" },
+    { key: "compass_currency", label: "Валюта компаса", type: "select", metaKey: "currencies" },
+    { key: "compass_price_by_distance", label: "Цена зависит от расстояния", type: "checkbox" },
+    { key: "compass_price_by_target_level", label: "Цена зависит от уровня цели", type: "checkbox" },
+    { key: "compass_price_by_danger", label: "Цена зависит от опасности локации", type: "checkbox" },
+    { key: "compass_one_time", label: "Одноразовый компас", type: "checkbox" },
+    { key: "compass_duration_seconds", label: "Время действия компаса (сек)", type: "number" },
+    { key: "order_attempts", label: "Количество попыток заказа", type: "number" },
+    { key: "order_attack_cooldown_seconds", label: "Кулдаун между нападениями (сек)", type: "number" },
+    { key: "order_duration_seconds", label: "Срок действия заказа (сек)", type: "number" },
+    { key: "order_notify_orderer", label: "Уведомлять заказчика", type: "checkbox" },
+    { key: "order_notify_target", label: "Уведомлять цель", type: "checkbox" },
+    { key: "order_hide_orderer", label: "Скрывать имя заказчика", type: "checkbox" },
+    { key: "order_drop_on_win", label: "Дроп с убийц при победе цели", type: "checkbox" },
+    { key: "order_refund_policy", label: "Возврат средств при провале", type: "select", metaKey: "refundPolicies" },
+    { key: "ban_max_level_diff", label: "Запрет: макс. разница уровней", type: "number", hint: "Обязательно: нельзя заказать при разнице уровней больше 400 (§3.5)." },
+    { key: "ban_weaker_ratio", label: "Запрет: цель слабее в N раз", type: "number", hint: "Обязательно: нельзя заказать игрока слабее заказчика более чем в 2 раза (§3.5)." },
+    { key: "ban_flags", label: "Доп. запреты заказа (по строкам)", type: "list", hint: "Новичок/под защитой/админ/безопасный статус/обучение/частый заказ/активный штраф." },
+    { key: "assassin_categories", label: "Категории убийц", type: "objlist", columns: [{ key: "category", label: "Категория" }, { key: "price", label: "Цена" }, { key: "level", label: "Уровень" }, { key: "count", label: "Кол-во" }, { key: "success_chance", label: "Шанс %" }, { key: "attempts", label: "Попыток" }], hint: "Дешёвый/обычный/опытный/элитный/маг/отравитель/следопыт/группа/редкий/особый." },
+    { key: "price_base", label: "Базовая цена", type: "number" },
+    { key: "mult_target_level", label: "Множитель по уровню цели", type: "number" },
+    { key: "mult_orderer_level", label: "Множитель по уровню заказчика", type: "number" },
+    { key: "mult_distance", label: "Множитель по расстоянию", type: "number" },
+    { key: "mult_category", label: "Множитель по категории", type: "number" },
+    { key: "mult_urgency", label: "Множитель за срочность", type: "number" },
+    { key: "mult_group", label: "Множитель за группу", type: "number" },
+    { key: "mult_stealth", label: "Множитель за скрытность", type: "number" },
+    { key: "price_min", label: "Минимальная цена", type: "number" },
+    { key: "price_max", label: "Максимальная цена", type: "number" },
+    { key: "mole_commission", label: "Комиссия Крота", type: "number" },
+  ],
+};
 const TRAIT_CONFIG = {
   base: "traits", title: "Конструктор черт мобов", permPrefix: "trait",
   newLabel: "Новая черта", nameField: "trait_name",
@@ -431,6 +483,7 @@ const NAV = [
   { id: "pvp", label: "Конструктор PVP", icon: "⚔️", perm: "pvp.view" },
   { id: "combat", label: "Боевые настройки", icon: "⏱️", perm: "combat.view" },
   { id: "npc-allies", label: "NPC-союзники", icon: "🤝", perm: "npc_ally.view" },
+  { id: "mole", label: "Информатор Крот", icon: "🕵️", perm: "mole.view" },
   { id: "levels", label: "Уровни", icon: "🪜", perm: "level.view" },
   { id: "exp", label: "Опыт", icon: "📈", perm: "exp.view" },
   { id: "registration", label: "Регистрация", icon: "📝", perm: "registration.view" },
@@ -457,7 +510,7 @@ const NAV_GROUP_ORDER = [
 const NAV_GROUP_OF = {
   dashboard: "Главное", overview: "Главное", graph: "Главное", import: "Главное",
   players: "Игроки",
-  world: "Мир", sublocations: "Мир", city: "Мир", camps: "Мир", events: "Мир",
+  world: "Мир", sublocations: "Мир", city: "Мир", camps: "Мир", events: "Мир", mole: "Мир",
   items: "Контент", achievements: "Контент", traits: "Контент",
   blessings: "Контент", phases: "Контент", texts: "Контент",
   effects: "Бой", addictions: "Бой", tolerances: "Бой", skills: "Бой",
@@ -490,7 +543,7 @@ const SEARCH_TYPE_TO_SECTION = {
   item_enchant: "enchants", item_disassemble: "disassembles", reputation: "reputations",
   addiction: "addictions", tolerance: "tolerances", tavern: "taverns",
   sublocation: "sublocations", sublocation_node: "sublocations", sublocation_transition: "sublocations",
-  npc_ally: "npc-allies",
+  npc_ally: "npc-allies", mole: "mole",
 };
 function sectionForSearchType(type) {
   if (type in SEARCH_TYPE_TO_SECTION) return SEARCH_TYPE_TO_SECTION[type];
@@ -688,6 +741,7 @@ export function AdminShell() {
         {active === "pvp" && hasPerm("pvp.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PVP_CONFIG} />}
         {active === "combat" && hasPerm("combat.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={COMBAT_CONFIG} />}
         {active === "npc-allies" && hasPerm("npc_ally.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={NPC_ALLY_CONFIG} />}
+        {active === "mole" && hasPerm("mole.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={MOLE_CONFIG} />}
         {active === "phases" && hasPerm("phase.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PHASE_CONFIG} />}
         {active === "levels" && hasPerm("level.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={LEVEL_CONFIG} />}
         {active === "exp" && hasPerm("exp.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={EXP_CONFIG} />}
