@@ -1350,6 +1350,64 @@ def import_shops(*, mode: str | None = None, overwrite: bool = False, actor: str
     return report
 
 
+# --- Импорт текстов бота (full-import ТЗ §5.18) -----------------------------
+# Тексты бота разбросаны по коду хендлеров/сервисов. Сид заводит ключевые
+# сообщения (системные/ошибки/бой/штрафы/доставка/награды/смерть/проклятия) как
+# опубликованные редактируемые записи. Якорные тексты (поиск §5.10, дар §5.19)
+# перенесены дословно. Рантайм-чтение игрой — text_runtime под use_v2_texts.
+# (text_key, текст, контекст, платформа, [переменные])
+_TEXT_SEED = [
+    ("system.welcome", "Добро пожаловать в Нер-Талис!", "system", "both", []),
+    ("system.help", "Используйте кнопки меню, чтобы играть.", "system", "both", []),
+    ("error.not_enough_energy", "Недостаточно энергии для этого действия.", "error", "both", []),
+    ("error.in_battle", "Сейчас вы в бою — действие недоступно.", "error", "both", []),
+    ("error.move_blocked", "Сейчас вы не можете перемещаться.", "error", "both", []),
+    ("error.inventory_full", "Инвентарь переполнен.", "error", "both", []),
+    ("search.nothing_found", "Вы ничего не нашли — похоже, на этой локации уже всё забрали.", "search", "both", []),
+    ("battle.victory", "Победа! Вы одолели противника.", "battle", "both", []),
+    ("battle.defeat", "Поражение. Вы потерпели неудачу в бою.", "battle", "both", []),
+    ("craft.success", "Изделие готово.", "craft", "both", []),
+    ("craft.fail", "Что-то пошло не так — изделие испорчено.", "craft", "both", []),
+    ("fine.issued", "Вам выписан штраф.", "fine", "both", []),
+    ("fine.paid", "Штраф оплачен.", "fine", "both", []),
+    ("fine.blocked", "Доступ закрыт до оплаты штрафа.", "fine", "both", []),
+    ("delivery.admin_gift", "Вы получили в дар от высших сил: {items}", "delivery", "both", ["items"]),
+    ("reward.received", "Вы получили награду: {reward}", "reward", "both", ["reward"]),
+    ("promo.redeemed", "Промокод активирован: {reward}", "promo", "both", ["reward"]),
+    ("death.generic", "Вы погибли. Придётся восстановиться.", "death", "both", []),
+    ("curse.applied", "На вас наложено проклятье: {curse}", "curse", "both", ["curse"]),
+    ("achievement.earned", "Получено достижение: «{name}».", "achievement", "both", ["name"]),
+    ("transition.moved", "Вы переходите: {destination}", "transition", "both", ["destination"]),
+    ("camp.rest_done", "Отдых завершён. Силы восстановлены.", "camp", "both", []),
+]
+
+
+def import_texts(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import text_constructor_service as tcs
+
+    report = _rich_report("text")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(tcs.store(), tcs.STATUS_PUBLISHED, actor)
+    for key, value, context, platform, variables in _TEXT_SEED:
+        sid = safe_constructor_id(key)
+        if not sid:
+            report["invalid"] += 1
+            continue
+        record = {
+            "text_key": key, "text_value": value, "context": context,
+            "platform": platform, "parse_mode": "none",
+            "variables": list(variables), "fallback_text": value,
+            "entity_type": "none", "entity_id": "",
+            "imported": True, "import_source": "text_seed", "source_id": key,
+        }
+        _apply_record(report, sid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    report["needs_check"].append({
+        "id": "texts", "type": "text",
+        "reason": "Импортирован базовый набор текстов; большинство сообщений бота всё ещё в коде. Добавьте недостающие ключи и включите чтение через feature flag use_v2_texts.",
+    })
+    return report
+
+
 # --- Проверка целостности импорта (ТЗ §10) ----------------------------------
 def check_import() -> dict[str, Any]:
     """Сканирует реестры конструкторов и находит проблемы связей/полей."""
@@ -1401,6 +1459,7 @@ IMPORTERS = {
     "profile_layout": import_profile_layout, "camp": import_camps,
     "trait": import_traits, "blessing": import_blessings, "phase": import_phases,
     "race": import_races, "reputation": import_reputation, "shop": import_shops,
+    "text": import_texts,
 }
 
 
@@ -1538,6 +1597,7 @@ _ENTITY_STORE_KINDS = {
     "race": "race_constructor_service",
     "reputation": "reputation_constructor_service",
     "city_shop_item": "city_constructor_service",
+    "text": "text_constructor_service",
 }
 # kind → имя константы вида реестра мира (world_content_registry без отдельного store()).
 _WCR_KINDS = {"mob": "KIND_MOB", "location": "KIND_LOCATION", "event": "KIND_EVENT"}

@@ -29,9 +29,11 @@ class ConstructorImportTest(unittest.TestCase):
         self._recipes = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._playout = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._rep = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._text = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._report = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._journal = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         os.environ["REPUTATION_CONSTRUCTOR_PATH"] = self._rep
+        os.environ["TEXT_CONSTRUCTOR_PATH"] = self._text
         os.environ["IMPORT_REPORT_PATH"] = self._report
         os.environ["IMPORT_JOURNAL_PATH"] = self._journal
         os.environ["FINE_CONSTRUCTOR_PATH"] = self._fines
@@ -55,9 +57,10 @@ class ConstructorImportTest(unittest.TestCase):
         os.environ.pop("RECIPE_CONSTRUCTOR_PATH", None)
         os.environ.pop("PROFILE_LAYOUT_PATH", None)
         os.environ.pop("REPUTATION_CONSTRUCTOR_PATH", None)
+        os.environ.pop("TEXT_CONSTRUCTOR_PATH", None)
         os.environ.pop("IMPORT_REPORT_PATH", None)
         os.environ.pop("IMPORT_JOURNAL_PATH", None)
-        for base in (self._items, self._world, self._effects, self._city, self._ach, self._achcat, self._fines, self._recipes, self._playout, self._rep, self._report, self._journal):
+        for base in (self._items, self._world, self._effects, self._city, self._ach, self._achcat, self._fines, self._recipes, self._playout, self._rep, self._text, self._report, self._journal):
             for suffix in ("", ".lock", ".tmp"):
                 try:
                     os.unlink(base + suffix)
@@ -325,6 +328,21 @@ class ConstructorImportTest(unittest.TestCase):
         self.assertGreater(rb["deleted"], 0)
         self.assertEqual(rep.store().list(), [])
         self.assertEqual([i for i in ccs.store().list() if (i.get("data") or {}).get("_kind") == ccs.KIND_SHOP_ITEM], [])
+
+    def test_import_texts(self):
+        from services import text_constructor_service as tcs
+
+        report = ci.import_texts()
+        self.assertGreater(report["created"], 0)
+        items = tcs.store().list()
+        self.assertTrue(all(i["status"] == "published" for i in items))
+        for it in items:
+            res = tcs.validate(it)
+            self.assertTrue(res["ok"], (it["id"], res["errors"]))
+        keys = {(i.get("data") or {}).get("text_key") for i in items}
+        self.assertIn("search.nothing_found", keys)  # якорь §5.10
+        self.assertIn("delivery.admin_gift", keys)   # якорь §5.19
+        self.assertEqual(ci.import_texts(mode="new")["created"], 0)
 
     def test_import_all_summary(self):
         result = ci.import_all(["location", "event"])

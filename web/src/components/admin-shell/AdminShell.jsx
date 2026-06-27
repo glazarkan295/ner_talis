@@ -26,6 +26,7 @@ import { WorkshopMessagesSection } from "./sections/WorkshopMessagesSection.jsx"
 import { ReputationSection } from "./sections/ReputationSection.jsx";
 import { TavernSection } from "./sections/TavernSection.jsx";
 import { ImportSection } from "./sections/ImportSection.jsx";
+import { TextsSection } from "./sections/TextsSection.jsx";
 import { LibrarySection } from "./sections/LibrarySection.jsx";
 
 const TRAIT_CONFIG = {
@@ -302,6 +303,7 @@ const NAV = [
   { id: "achievements", label: "Достижения", icon: "🏆", perm: "achievement.view" },
   { id: "messages", label: "Очередь сообщений", icon: "📨", perm: "messages.view_queue" },
   { id: "promos", label: "Промокоды и рассылки", icon: "🎟️", perm: "promos.view" },
+  { id: "texts", label: "Тексты бота", icon: "💬", perm: "text.view" },
   { id: "import", label: "Импорт контента", icon: "📥", perm: "world.view" },
   { id: "reference", label: "Справочник", icon: "📖", perm: null },
   { id: "audit", label: "Аудит", icon: "📜", perm: "audit.view" },
@@ -493,6 +495,7 @@ export function AdminShell() {
         {active === "formulas" && hasPerm("formula.view") && <FormulasSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "camps" && hasPerm("camp.view") && <CampSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "import" && hasPerm("world.view") && <ImportSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "texts" && hasPerm("text.view") && <TextsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "traits" && hasPerm("trait.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={TRAIT_CONFIG} />}
         {active === "blessings" && hasPerm("blessing.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={BLESSING_CONFIG} />}
         {active === "phases" && hasPerm("phase.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PHASE_CONFIG} />}
