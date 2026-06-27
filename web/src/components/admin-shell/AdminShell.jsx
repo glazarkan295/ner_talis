@@ -250,6 +250,33 @@ const CASINO_CONFIG = {
     { key: "text_empty", label: "Текст пустого результата", type: "text" },
   ],
 };
+const HOUSING_CONFIG = {
+  base: "housing", title: "Жилой район / дом игрока", permPrefix: "housing",
+  newLabel: "Новый план жилья", nameField: "name",
+  fields: [
+    { key: "name", label: "Название", type: "text", hint: "Имя плана жилья (видно админу)." },
+    { key: "plot_type", label: "Тип участка", type: "select", metaKey: "plotTypes", hint: "Малый/средний/большой участок (§6.1)." },
+    { key: "house_type", label: "Тип дома", type: "select", metaKey: "houseTypes" },
+    { key: "cooking_tier", label: "Уровень готовки", type: "select", metaKey: "cookingTiers", hint: "Малый — обычные блюда; обычный — необычные эффекты; большой — особые эффекты." },
+    { key: "full_rest_minutes", label: "Отдых до полного восстановления (мин)", type: "number", hint: "Малый 90 / обычный 60 / большой 40 (редактируется)." },
+    { key: "extra_building_slots", label: "Доп. постройки (слотов)", type: "number" },
+    { key: "base_features", label: "Базовые возможности (по строкам)", type: "list", hint: "Почтовый ящик / спец. комната / трофейная и т.д." },
+    { key: "description", label: "Описание", type: "textarea" },
+    { key: "special_rooms", label: "Специальные комнаты (§6.3)", type: "objlist", columns: [{ key: "room_type", label: "Комната" }, { key: "stats", label: "Характеристики (через запятую)" }, { key: "time_minutes", label: "Время (мин)" }, { key: "chance_percent", label: "Шанс %" }, { key: "daily_limit", label: "Лимит/день" }, { key: "success_text", label: "Текст успеха" }, { key: "fail_text", label: "Текст неудачи" }, { key: "cost", label: "Стоимость" }], hint: "Тренажёрный зал/Зал реакции/Комната медитации. По умолчанию 30 мин, 40%, 1 раз в день." },
+    { key: "fixed_buildings", label: "Неулучшаемые постройки (§6.2)", type: "objlist", columns: [{ key: "building_type", label: "Постройка" }, { key: "effect", label: "Эффект" }], hint: "Ювелирный/кожевенный/кузнечный станок, плавильня, почтовый ящик, комната трофеев." },
+    { key: "upgradable_buildings", label: "Улучшаемые постройки (§6.4)", type: "objlist", columns: [{ key: "building_type", label: "Постройка" }, { key: "level", label: "Уровень" }, { key: "max_level", label: "Макс." }, { key: "upgrade_cost", label: "Цена улучш." }, { key: "materials", label: "Материалы" }, { key: "upgrade_time_seconds", label: "Время (сек)" }, { key: "level_effect", label: "Эффект уровня" }], hint: "Склад/Оранжерея/Алтарь/Пруд." },
+    { key: "dishes", label: "Домашняя готовка (§6.5)", type: "objlist", columns: [{ key: "name", label: "Блюдо" }, { key: "dish_type", label: "Тип" }, { key: "required_house", label: "Нужен дом" }, { key: "ingredients", label: "Ингредиенты" }, { key: "cook_time_seconds", label: "Время (сек)" }, { key: "effect", label: "Эффект" }, { key: "effect_duration_seconds", label: "Длит. эффекта" }, { key: "success_chance", label: "Шанс %" }], hint: "Обычные/необычные/особые блюда в зависимости от дома." },
+    { key: "restore_hp_percent", label: "Отдых: восстановление HP, %", type: "number" },
+    { key: "restore_mana_percent", label: "Отдых: восстановление маны, %", type: "number" },
+    { key: "restore_spirit_percent", label: "Отдых: восстановление духа, %", type: "number" },
+    { key: "restore_energy_percent", label: "Отдых: восстановление энергии, %", type: "number" },
+    { key: "rest_room_bonus", label: "Бонусы отдыха от комнат/трофеев/алтаря (по строкам)", type: "list" },
+    { key: "rest_can_interrupt", label: "Можно прервать отдых", type: "checkbox" },
+    { key: "rest_interrupt_text", label: "Текст при прерывании отдыха", type: "text" },
+    { key: "rest_start_text", label: "Текст начала отдыха", type: "text" },
+    { key: "rest_finish_text", label: "Текст завершения отдыха", type: "text" },
+  ],
+};
 const TRAIT_CONFIG = {
   base: "traits", title: "Конструктор черт мобов", permPrefix: "trait",
   newLabel: "Новая черта", nameField: "trait_name",
@@ -521,6 +548,7 @@ const NAV = [
   { id: "npc-allies", label: "NPC-союзники", icon: "🤝", perm: "npc_ally.view" },
   { id: "mole", label: "Информатор Крот", icon: "🕵️", perm: "mole.view" },
   { id: "casino", label: "Подпольное казино", icon: "🎲", perm: "casino.view" },
+  { id: "housing", label: "Жильё / дом игрока", icon: "🏠", perm: "housing.view" },
   { id: "levels", label: "Уровни", icon: "🪜", perm: "level.view" },
   { id: "exp", label: "Опыт", icon: "📈", perm: "exp.view" },
   { id: "registration", label: "Регистрация", icon: "📝", perm: "registration.view" },
@@ -556,7 +584,8 @@ const NAV_GROUP_OF = {
   workshops: "Ремесло и экономика", workshop_messages: "Ремесло и экономика",
   upgrades: "Ремесло и экономика", enchants: "Ремесло и экономика",
   disassembles: "Ремесло и экономика", fines: "Ремесло и экономика",
-  taverns: "Ремесло и экономика", casino: "Ремесло и экономика", promos: "Ремесло и экономика",
+  taverns: "Ремесло и экономика", casino: "Ремесло и экономика",
+  housing: "Ремесло и экономика", promos: "Ремесло и экономика",
   site: "Сайт и профиль", profile_layout: "Сайт и профиль",
   levels: "Прогрессия", exp: "Прогрессия", registration: "Прогрессия", races: "Прогрессия",
   messages: "Система", reference: "Система", audit: "Система",
@@ -580,7 +609,7 @@ const SEARCH_TYPE_TO_SECTION = {
   item_enchant: "enchants", item_disassemble: "disassembles", reputation: "reputations",
   addiction: "addictions", tolerance: "tolerances", tavern: "taverns",
   sublocation: "sublocations", sublocation_node: "sublocations", sublocation_transition: "sublocations",
-  npc_ally: "npc-allies", mole: "mole", casino: "casino",
+  npc_ally: "npc-allies", mole: "mole", casino: "casino", housing: "housing",
 };
 function sectionForSearchType(type) {
   if (type in SEARCH_TYPE_TO_SECTION) return SEARCH_TYPE_TO_SECTION[type];
@@ -780,6 +809,7 @@ export function AdminShell() {
         {active === "npc-allies" && hasPerm("npc_ally.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={NPC_ALLY_CONFIG} />}
         {active === "mole" && hasPerm("mole.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={MOLE_CONFIG} />}
         {active === "casino" && hasPerm("casino.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={CASINO_CONFIG} />}
+        {active === "housing" && hasPerm("housing.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={HOUSING_CONFIG} />}
         {active === "phases" && hasPerm("phase.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PHASE_CONFIG} />}
         {active === "levels" && hasPerm("level.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={LEVEL_CONFIG} />}
         {active === "exp" && hasPerm("exp.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={EXP_CONFIG} />}
