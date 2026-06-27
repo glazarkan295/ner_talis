@@ -38,6 +38,9 @@ def _meta_extra(_svc: Any) -> dict[str, Any]:
         "riskTypes": list(svc.RISK_TYPES),
         "scheduleModes": list(svc.SCHEDULE_MODES),
         "currencies": list(svc.CURRENCIES),
+        "statKeys": [{"value": s, "label": svc.STAT_LABELS.get(s, s)} for s in svc.STAT_KEYS],
+        "foodTypes": [{"value": f, "label": svc.FOOD_TYPE_LABELS.get(f, f)} for f in svc.FOOD_TYPES],
+        "maxWorkReductionPercent": svc.MAX_WORK_REDUCTION_PERCENT,
     }
 
 

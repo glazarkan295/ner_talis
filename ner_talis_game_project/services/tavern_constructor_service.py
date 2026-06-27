@@ -47,6 +47,30 @@ RISK_TYPES = (
 SCHEDULE_MODES = ("always", "day", "night", "weekly", "seasonal", "event", "custom")
 CURRENCIES = ("copper", "silver", "gold", "magic_gold", "ancient_coin")
 
+# --- Расширение таверны (ТЗ 21 §5): работы, типы еды, отдых ------------------
+# Характеристики, которые тренируют работы (§5.2/§5.3).
+STAT_KEYS = ("strength", "endurance", "agility", "perception", "intelligence", "wisdom")
+STAT_LABELS = {
+    "strength": "Сила", "endurance": "Выносливость", "agility": "Ловкость",
+    "perception": "Восприятие", "intelligence": "Интеллект", "wisdom": "Мудрость",
+}
+# Типы еды (§5.4).
+FOOD_TYPES = ("common", "lean", "special", "seasonal", "rare", "festive")
+FOOD_TYPE_LABELS = {
+    "common": "Обычная", "lean": "Постная", "special": "Особая",
+    "seasonal": "Сезонная", "rare": "Редкая", "festive": "Праздничная",
+}
+# Снижение времени и отката от прокачки работы не может превышать 40% (§5.2).
+MAX_WORK_REDUCTION_PERCENT = 40.0
+
+
+def capped_work_reduction(percent: Any) -> float:
+    """Ограничение §5.2: снижение времени/отката от прокачки работы ≤ 40%."""
+    value = _num(percent) or 0.0
+    if value < 0:
+        return 0.0
+    return min(value, MAX_WORK_REDUCTION_PERCENT)
+
 _store = EntityStore(
     env_var="TAVERN_CONSTRUCTOR_PATH",
     default_rel="data/tavern_constructor.json",
@@ -132,6 +156,57 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             if sm and sm != "always" and not str(sc.get("fallback_text") or "").strip():
                 warnings.append(f"Расписание #{i}: нет fallback-текста.")
 
+    # Работы таверны (ТЗ 21 §5.2): тренировка характеристики, уровни, награда,
+    # длительность/откат. Снижение времени/отката от прокачки ≤ 40%.
+    for i, job in enumerate(data.get("jobs") or [], start=1):
+        if not isinstance(job, dict):
+            continue
+        if not str(job.get("name") or "").strip():
+            errors.append(f"Работа #{i}: не заполнено название.")
+        stat = str(job.get("trains_stat") or "").strip()
+        if stat and stat not in STAT_KEYS:
+            warnings.append(f"Работа #{i}: характеристика «{stat}» не из списка.")
+        for fkey, flabel in (("work_level", "уровень работы"), ("max_level", "макс. уровень"),
+                             ("base_duration_seconds", "базовая длительность"),
+                             ("base_cooldown_seconds", "базовый откат"), ("reward", "награда")):
+            if job.get(fkey) not in (None, "") and (_num(job.get(fkey)) is None or _num(job.get(fkey)) < 0):
+                errors.append(f"Работа #{i}: {flabel} — неотрицательное число.")
+        if job.get("stat_raise_chance") not in (None, ""):
+            chance = _num(job.get("stat_raise_chance"))
+            if chance is None or not (0 <= chance <= 100):
+                errors.append(f"Работа #{i}: шанс повышения характеристики должен быть 0–100.")
+        wl = _num(job.get("work_level"))
+        ml = _num(job.get("max_level"))
+        if wl is not None and ml is not None and wl > ml:
+            warnings.append(f"Работа #{i}: уровень работы больше максимального.")
+        # §5.2: снижение времени и отката от прокачки не более 40%.
+        for fkey, flabel in (("time_reduction_percent", "снижение времени"),
+                             ("cooldown_reduction_percent", "снижение отката")):
+            if job.get(fkey) not in (None, ""):
+                red = _num(job.get(fkey))
+                if red is None or red < 0:
+                    errors.append(f"Работа #{i}: {flabel} — неотрицательное число.")
+                elif red > MAX_WORK_REDUCTION_PERCENT:
+                    errors.append(f"Работа #{i}: {flabel} от прокачки не может превышать {MAX_WORK_REDUCTION_PERCENT:g}% (ТЗ §5.2).")
+
+    # Еда (ТЗ 21 §5.4): типы и платность.
+    for i, food in enumerate(data.get("food") or [], start=1):
+        if not isinstance(food, dict):
+            continue
+        ftype = str(food.get("food_type") or "").strip()
+        if ftype and ftype not in FOOD_TYPES:
+            warnings.append(f"Еда #{i}: тип «{ftype}» не из списка.")
+        if not str(food.get("name") or "").strip():
+            errors.append(f"Еда #{i}: не заполнено название.")
+        _check_price(food, f"Еда #{i}")
+
+    # Отдых в таверне (ТЗ 21 §5.5): время/стоимость неотрицательные.
+    for i, rest in enumerate(data.get("rest_options") or [], start=1):
+        if isinstance(rest, dict):
+            for fkey, flabel in (("rest_seconds", "время отдыха"), ("price", "стоимость")):
+                if rest.get(fkey) not in (None, "") and (_num(rest.get(fkey)) is None or _num(rest.get(fkey)) < 0):
+                    errors.append(f"Отдых #{i}: {flabel} — неотрицательное число.")
+
     for key in ("name", "short_name", "description", "short_description",
                 "player_entry_text", "admin_description"):
         value = _str(data, key)
@@ -179,10 +254,20 @@ def preview(data: dict[str, Any], mock: dict[str, Any] | None = None) -> dict[st
     buttons = [str(b.get("text") or "") for b in (data.get("buttons") or []) if isinstance(b, dict) and str(b.get("text") or "").strip()]
     if not buttons:
         buttons = ["Меню", "Отдохнуть", "Спросить слухи", "Назад"]
+    jobs = []
+    for job in (data.get("jobs") or []):
+        if isinstance(job, dict) and str(job.get("name") or "").strip():
+            jobs.append({
+                "name": job.get("name"),
+                "trains_stat": STAT_LABELS.get(str(job.get("trains_stat") or ""), str(job.get("trains_stat") or "")),
+                "level": job.get("work_level"),
+            })
     return {
         "entry_text": data.get("player_entry_text") or data.get("description") or data.get("name") or "Таверна",
         "services": _priced(data.get("services") or []),
         "menu": _priced(data.get("menu") or []),
+        "food": _priced(data.get("food") or []),
+        "jobs": jobs,
         "rest_options": _priced(data.get("rest_options") or []),
         "rumor": (rumors[0].get("rumor_text") if rumors else "Сегодня никто не рассказал вам ничего полезного."),
         "buttons": buttons,

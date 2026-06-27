@@ -15,6 +15,7 @@ const EMPTY = {
   available_in_telegram: true, available_in_vk: true, order: 0,
   services: [], menu: [], rest_options: [], rumors: [], npc_links: [],
   events: [], reputation_rules: [], risks: [], schedule: [], buttons: [],
+  jobs: [], food: [],
 };
 
 function Field({ label, children }) {
@@ -136,6 +137,22 @@ export function TavernSection({ guarded, hasPerm }) {
                   { key: "menu_category", label: "категория" }, { key: "linked_item_id", label: "предмет id" },
                   { key: "price", label: "цена" }, { key: "currency", label: "валюта" },
                 ])}</details>
+                <details className="nttav-panel"><summary>Работы (ТЗ §5.2)</summary>{listEditor("jobs", [
+                  { key: "job_id", label: "id" }, { key: "name", label: "название" },
+                  { key: "trains_stat", label: "характеристика" }, { key: "work_level", label: "уровень" },
+                  { key: "max_level", label: "макс." }, { key: "base_duration_seconds", label: "длит. (сек)" },
+                  { key: "base_cooldown_seconds", label: "откат (сек)" }, { key: "reward", label: "награда" },
+                  { key: "stat_raise_chance", label: "шанс +хар. %" },
+                  { key: "time_reduction_percent", label: "сниж. времени %" },
+                  { key: "cooldown_reduction_percent", label: "сниж. отката %" },
+                  { key: "success_text", label: "текст успеха" }, { key: "fail_text", label: "текст провала" },
+                ])}<div className="ntv2-muted" style={{ fontSize: 11 }}>Характеристики: {(meta?.statKeys || []).map((s) => `${s.value} (${s.label})`).join(", ")}. Снижение времени/отката от прокачки — не более {meta?.maxWorkReductionPercent ?? 40}%.</div></details>
+                <details className="nttav-panel"><summary>Еда (ТЗ §5.4)</summary>{listEditor("food", [
+                  { key: "food_id", label: "id" }, { key: "name", label: "название" },
+                  { key: "food_type", label: "тип" }, { key: "price", label: "цена" },
+                  { key: "currency", label: "валюта" }, { key: "effect", label: "эффект" },
+                  { key: "effect_duration_seconds", label: "длит. эффекта (сек)" }, { key: "cooldown_seconds", label: "кулдаун (сек)" },
+                ])}<div className="ntv2-muted" style={{ fontSize: 11 }}>Типы: {(meta?.foodTypes || []).map((f) => `${f.value} (${f.label})`).join(", ")}</div></details>
                 <details className="nttav-panel"><summary>Отдых</summary>{listEditor("rest_options", [
                   { key: "rest_option_id", label: "id" }, { key: "name", label: "название" },
                   { key: "price", label: "цена" }, { key: "restore_energy_percent", label: "энергия %" },
@@ -190,6 +207,8 @@ export function TavernSection({ guarded, hasPerm }) {
                     <div className="nttav-pv-entry">{preview.entry_text}</div>
                     {preview.services?.length ? <div><b>Услуги:</b><ul>{preview.services.map((s, i) => <li key={i}>{s.name} — {s.price} {s.currency}</li>)}</ul></div> : null}
                     {preview.menu?.length ? <div><b>Меню:</b><ul>{preview.menu.map((s, i) => <li key={i}>{s.name} — {s.price} {s.currency}</li>)}</ul></div> : null}
+                    {preview.food?.length ? <div><b>Еда:</b><ul>{preview.food.map((s, i) => <li key={i}>{s.name} — {s.price} {s.currency}</li>)}</ul></div> : null}
+                    {preview.jobs?.length ? <div><b>Работы:</b><ul>{preview.jobs.map((j, i) => <li key={i}>{j.name}{j.trains_stat ? ` (${j.trains_stat})` : ""}</li>)}</ul></div> : null}
                     <div className="nttav-pv-rumor">💬 {preview.rumor}</div>
                     <div className="nttav-pv-btns">{(preview.buttons || []).map((b, i) => <span key={i}>[ {b} ]</span>)}</div>
                   </div>

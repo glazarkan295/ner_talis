@@ -55,6 +55,42 @@ class ValidateTest(unittest.TestCase):
         r = _v({"name": "X", "location_id": "l", "image_path": "https://evil/x.png"})
         self.assertFalse(r["ok"])
 
+    def test_job_valid(self):
+        r = _v({"name": "T", "location_id": "l", "jobs": [{
+            "name": "Грузчик", "trains_stat": "strength", "work_level": 1, "max_level": 10,
+            "base_duration_seconds": 600, "base_cooldown_seconds": 1200, "reward": 50,
+            "stat_raise_chance": 30, "time_reduction_percent": 40, "cooldown_reduction_percent": 40,
+        }]})
+        self.assertTrue(r["ok"], r["errors"])
+
+    def test_job_reduction_cap_40(self):
+        # §5.2: снижение времени/отката от прокачки не может превышать 40%.
+        r = _v({"name": "T", "location_id": "l", "jobs": [{
+            "name": "Грузчик", "time_reduction_percent": 50,
+        }]})
+        self.assertFalse(r["ok"])
+        self.assertTrue(any("40" in e and "снижение времени" in e.lower() for e in r["errors"]), r["errors"])
+
+    def test_job_without_name_error(self):
+        r = _v({"name": "T", "location_id": "l", "jobs": [{"trains_stat": "strength"}]})
+        self.assertFalse(r["ok"])
+
+    def test_capped_work_reduction_helper(self):
+        self.assertEqual(tav.capped_work_reduction(80), 40.0)
+        self.assertEqual(tav.capped_work_reduction(25), 25.0)
+        self.assertEqual(tav.capped_work_reduction(-5), 0.0)
+
+    def test_food_type_and_name(self):
+        bad = _v({"name": "T", "location_id": "l", "food": [{"food_type": "common", "price": 5}]})
+        self.assertFalse(bad["ok"])  # нет названия
+        ok = _v({"name": "T", "location_id": "l", "food": [{"food_type": "festive", "name": "Праздничный пирог", "price": 5, "currency": "gold"}]})
+        self.assertTrue(ok["ok"], ok["errors"])
+
+    def test_preview_includes_jobs(self):
+        p = tav.preview({"name": "T", "jobs": [{"name": "Грузчик", "trains_stat": "strength", "work_level": 2}]})
+        self.assertEqual(p["jobs"][0]["name"], "Грузчик")
+        self.assertEqual(p["jobs"][0]["trains_stat"], "Сила")
+
 
 class PriceTest(unittest.TestCase):
     def test_final_price(self):
