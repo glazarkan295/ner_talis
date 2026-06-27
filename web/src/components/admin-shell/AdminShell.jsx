@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "./AdminShell.css";
 import { fetchMe, getAdminSessionToken } from "../../api/adminV2Api.js";
+import { globalSearch } from "../../api/adminSearchApi.js";
 import { OverviewSection } from "./sections/OverviewSection.jsx";
 import { PlayersSection } from "./sections/PlayersSection.jsx";
 import { WorldSection } from "./sections/WorldSection.jsx";
@@ -255,6 +256,77 @@ function makeHasPerm(me) {
   return (perm) => !perm || owner || perms.has("*") || perms.has(perm);
 }
 
+// Тип сущности → раздел админки (для перехода из глобального поиска, ТЗ 11 §4.2).
+const SEARCH_TYPE_TO_SECTION = {
+  item: "items", effect: "effects", recipe: "recipes", trait: "traits",
+  blessing: "blessings", phase: "phases", level: "levels", exp: "exp",
+  registration: "registration", race: "races", fine: "fines", camp: "camps",
+  city: "city", achievement: "achievements", world_event: "events", guild: "guilds",
+  formula: "formulas", profession: "professions", workshop: "workshops",
+  workshop_message: "workshop_messages", item_upgrade: "upgrades",
+  item_enchant: "enchants", item_disassemble: "disassembles",
+  sublocation: "sublocations", sublocation_node: "sublocations", sublocation_transition: "sublocations",
+};
+function sectionForSearchType(type) {
+  if (type in SEARCH_TYPE_TO_SECTION) return SEARCH_TYPE_TO_SECTION[type];
+  if (type.startsWith("site_")) return "site";
+  if (type.startsWith("profile_")) return "profile_layout";
+  return "world"; // локации/мобы/события/переходы/кнопки/npc/квесты/рейды/под-объекты
+}
+
+function GlobalSearch({ guarded, onOpen }) {
+  const [q, setQ] = useState("");
+  const [res, setRes] = useState(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setRes(null); return; }
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      const p = await guarded(() => globalSearch(term));
+      if (!cancelled && p) { setRes(p); setOpen(true); }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [q, guarded]);
+
+  return (
+    <div className="ntv2-gsearch">
+      <input
+        className="ntv2-gsearch-input"
+        placeholder="🔎 Глобальный поиск…"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        onFocus={() => res && setOpen(true)}
+      />
+      {open && res ? (
+        <div className="ntv2-gsearch-drop">
+          <div className="ntv2-gsearch-head">
+            <span>Найдено: {res.total}</span>
+            <button type="button" onClick={() => setOpen(false)}>✕</button>
+          </div>
+          {!res.groups.length ? <div className="ntv2-gsearch-empty">Ничего не найдено.</div> : null}
+          {res.groups.map((g) => (
+            <div className="ntv2-gsearch-group" key={g.type}>
+              <div className="ntv2-gsearch-gtitle">{g.label}{g.truncated ? " …" : ""}</div>
+              {g.items.map((it) => (
+                <button
+                  type="button"
+                  className="ntv2-gsearch-item"
+                  key={it.id}
+                  onClick={() => { onOpen(sectionForSearchType(it.type)); setOpen(false); setQ(""); }}
+                >
+                  <b>{it.title}</b> <code>{it.entity_id}</code>
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function AdminShell() {
   const [me, setMe] = useState(null);
   const [active, setActive] = useState("overview");
@@ -311,6 +383,7 @@ export function AdminShell() {
           <div className="ntv2-brand-title">Нер-Талис</div>
           <div className="ntv2-brand-sub">Админ-консоль V2</div>
         </div>
+        <GlobalSearch guarded={guarded} onOpen={setActive} />
         <nav className="ntv2-nav">
           {visibleNav.map((item) => (
             <button

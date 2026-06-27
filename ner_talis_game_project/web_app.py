@@ -49,6 +49,7 @@ from admin_workshop_message_api import create_admin_workshop_message_router
 from admin_item_action_api import (
     create_admin_upgrade_router, create_admin_enchant_router, create_admin_disassemble_router,
 )
+from admin_search_api import create_admin_search_router
 from admin_trait_api import create_admin_trait_router
 from admin_blessing_api import create_admin_blessing_router
 from admin_phase_api import create_admin_phase_router
@@ -399,6 +400,7 @@ def create_app() -> FastAPI:
     app.include_router(create_admin_upgrade_router(storage))
     app.include_router(create_admin_enchant_router(storage))
     app.include_router(create_admin_disassemble_router(storage))
+    app.include_router(create_admin_search_router(storage))
     app.include_router(create_public_site_router())
 
     # Очередь сообщений читает/пишет ту же БД, что и боты (SQLite/Postgres),
