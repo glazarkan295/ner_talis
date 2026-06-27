@@ -1,32 +1,35 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import "./AdminShell.css";
+
+// Ленивая загрузка тяжёлых разделов (16-TZ §8): не тянуть их в initial bundle.
+const lazyNamed = (factory, name) => lazy(() => factory().then((m) => ({ default: m[name] })));
 import { fetchMe, getAdminSessionToken } from "../../api/adminV2Api.js";
 import { globalSearch } from "../../api/adminSearchApi.js";
 import { OverviewSection } from "./sections/OverviewSection.jsx";
 import { PlayersSection } from "./sections/PlayersSection.jsx";
-import { WorldSection } from "./sections/WorldSection.jsx";
+const WorldSection = lazyNamed(() => import("./sections/WorldSection.jsx"), "WorldSection");
 import { GuildsSection } from "./sections/GuildsSection.jsx";
 import { EventsSection } from "./sections/EventsSection.jsx";
-import { AchievementsSection } from "./sections/AchievementsSection.jsx";
+const AchievementsSection = lazyNamed(() => import("./sections/AchievementsSection.jsx"), "AchievementsSection");
 import { MessagesSection } from "./sections/MessagesSection.jsx";
 import { PromosSection } from "./sections/PromosSection.jsx";
-import { ItemsSection } from "./sections/ItemsSection.jsx";
-import { EffectsSection } from "./sections/EffectsSection.jsx";
+const ItemsSection = lazyNamed(() => import("./sections/ItemsSection.jsx"), "ItemsSection");
+const EffectsSection = lazyNamed(() => import("./sections/EffectsSection.jsx"), "EffectsSection");
 import { FinesSection } from "./sections/FinesSection.jsx";
 import { SkillsSection } from "./sections/SkillsSection.jsx";
-import { SiteSection } from "./sections/SiteSection.jsx";
-import { ProfileLayoutSection } from "./sections/ProfileLayoutSection.jsx";
-import { CitySection } from "./sections/CitySection.jsx";
-import { RecipesSection } from "./sections/RecipesSection.jsx";
+const SiteSection = lazyNamed(() => import("./sections/SiteSection.jsx"), "SiteSection");
+const ProfileLayoutSection = lazyNamed(() => import("./sections/ProfileLayoutSection.jsx"), "ProfileLayoutSection");
+const CitySection = lazyNamed(() => import("./sections/CitySection.jsx"), "CitySection");
+const RecipesSection = lazyNamed(() => import("./sections/RecipesSection.jsx"), "RecipesSection");
 import { CampSection } from "./sections/CampSection.jsx";
-import { GraphSection } from "./sections/GraphSection.jsx";
-import { SublocationsSection } from "./sections/SublocationsSection.jsx";
-import { FormulasSection } from "./sections/FormulasSection.jsx";
-import { WorkshopMessagesSection } from "./sections/WorkshopMessagesSection.jsx";
+const GraphSection = lazyNamed(() => import("./sections/GraphSection.jsx"), "GraphSection");
+const SublocationsSection = lazyNamed(() => import("./sections/SublocationsSection.jsx"), "SublocationsSection");
+const FormulasSection = lazyNamed(() => import("./sections/FormulasSection.jsx"), "FormulasSection");
+const WorkshopMessagesSection = lazyNamed(() => import("./sections/WorkshopMessagesSection.jsx"), "WorkshopMessagesSection");
 import { ReputationSection } from "./sections/ReputationSection.jsx";
-import { TavernSection } from "./sections/TavernSection.jsx";
-import { ImportSection } from "./sections/ImportSection.jsx";
-import { TextsSection } from "./sections/TextsSection.jsx";
+const TavernSection = lazyNamed(() => import("./sections/TavernSection.jsx"), "TavernSection");
+const ImportSection = lazyNamed(() => import("./sections/ImportSection.jsx"), "ImportSection");
+const TextsSection = lazyNamed(() => import("./sections/TextsSection.jsx"), "TextsSection");
 import { DashboardSection } from "./sections/DashboardSection.jsx";
 import { LibrarySection } from "./sections/LibrarySection.jsx";
 
@@ -518,6 +521,7 @@ export function AdminShell() {
         {error ? <div className="ntv2-banner ntv2-error">{error}</div> : null}
         {ok ? <div className="ntv2-banner ntv2-ok">{ok}</div> : null}
 
+        <Suspense fallback={<div className="ntv2-boot">Загрузка раздела…</div>}>
         {active === "dashboard" && <DashboardSection guarded={guarded} onOpenSection={setActive} />}
         {active === "overview" && <OverviewSection me={me} />}
         {active === "players" && hasPerm("players.view") && <PlayersSection guarded={guarded} hasPerm={hasPerm} />}
@@ -564,6 +568,7 @@ export function AdminShell() {
           <SessionsSection guarded={guarded} canRevoke={hasPerm("system.manage")} />
         )}
         {active === "roles" && hasPerm("roles.manage") && <RolesSection guarded={guarded} />}
+        </Suspense>
       </main>
     </div>
   );
