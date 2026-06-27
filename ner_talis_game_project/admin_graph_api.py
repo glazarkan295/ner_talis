@@ -142,6 +142,16 @@ def create_admin_graph_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=404, detail="Объект схемы не найден.")
         return {"ok": True, **detail}
 
+    @router.get("/relations/{node_type}/{entity_id}")
+    def relations(node_type: str, entity_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        # Реестр связей сущности (full-import ТЗ §7, AC#6): нормализованная
+        # «таблица связей» from/relation_type/to поверх рёбер графа.
+        _guard(get_storage(), request, token)
+        result = graph.relations_for(node_type, entity_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Объект схемы не найден.")
+        return {"ok": True, **result}
+
     @router.get("/export")
     def export(
         request: Request,

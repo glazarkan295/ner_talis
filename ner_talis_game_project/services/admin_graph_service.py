@@ -805,6 +805,48 @@ def node_detail(target: str) -> dict[str, Any] | None:
     }
 
 
+def _split_node_id(nid: str) -> tuple[str, str]:
+    node_type, _, entity_id = str(nid).partition(":")
+    return node_type, entity_id
+
+
+def relations_for(entity_type: str, entity_id: str) -> dict[str, Any] | None:
+    """Реестр связей одной сущности (full-import ТЗ §7, AC#6).
+
+    Нормализует рёбра графа (входящие+исходящие) в форму
+    from_entity_type/from_entity_id/relation_type/to_entity_type/to_entity_id —
+    «таблицу связей» из ТЗ. None — если сущности нет в графе."""
+    target = node_id(entity_type, entity_id)
+    detail = node_detail(target)
+    if detail is None:
+        return None
+
+    def _shape(edge: dict[str, Any], direction: str) -> dict[str, Any]:
+        ft, fid = _split_node_id(edge["from"])
+        tt, tid = _split_node_id(edge["to"])
+        return {
+            "from_entity_type": ft, "from_entity_id": fid,
+            "relation_type": edge.get("type"),
+            "label": edge.get("label"),
+            "to_entity_type": tt, "to_entity_id": tid,
+            "direction": direction, "broken": bool(edge.get("broken")),
+        }
+
+    relations = [_shape(e, "outgoing") for e in detail["outgoing"]]
+    relations += [_shape(e, "incoming") for e in detail["incoming"]]
+    node = detail["node"]
+    return {
+        "entity": {
+            "type": entity_type, "id": entity_id,
+            "name": node.get("name") or node.get("title") or entity_id,
+            "status": node.get("status"),
+            "has_errors": bool(node.get("has_errors")),
+        },
+        "count": len(relations),
+        "relations": relations,
+    }
+
+
 def validate_graph() -> dict[str, Any]:
     nodes, edges = _build_all()
     broken = [e for e in edges if e.get("broken")]

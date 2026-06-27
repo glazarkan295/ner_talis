@@ -175,6 +175,15 @@ class GraphServiceTest(GraphTestBase):
         self.assertIn(("item:amulet", "effect:fire_buff", "applies_effect"), pairs)
         self.assertIn(("item:amulet", "reputation:guild_rep", "depends_on_reputation"), pairs)
 
+    def test_relations_for_entity(self):
+        rel = graph.relations_for("item", "sword")
+        self.assertIsNotNone(rel)
+        self.assertEqual(rel["entity"]["id"], "sword")
+        pairs = {(r["from_entity_type"], r["from_entity_id"], r["relation_type"],
+                  r["to_entity_type"], r["to_entity_id"]) for r in rel["relations"]}
+        self.assertIn(("event", "ev_find", "gives_item", "item", "sword"), pairs)
+        self.assertIsNone(graph.relations_for("item", "ghost_zzz"))
+
     def test_export_markdown(self):
         g = graph.full_graph()
         md = graph.export_markdown(g)
@@ -245,6 +254,16 @@ class GraphApiTest(GraphTestBase):
         r = self.client.get("/api/admin/v2/graph/node/location/forest", headers=self._auth(token))
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()["node"]["id"], "location:forest")
+
+    def test_relations_endpoint(self):
+        token = self._token()
+        r = self.client.get("/api/admin/v2/graph/relations/location/forest", headers=self._auth(token))
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["entity"]["id"], "forest")
+        self.assertGreater(r.json()["count"], 0)
+        self.assertTrue(all("relation_type" in rel for rel in r.json()["relations"]))
+        nf = self.client.get("/api/admin/v2/graph/relations/item/ghost_zzz", headers=self._auth(token))
+        self.assertEqual(nf.status_code, 404)
 
     def test_export_endpoint(self):
         token = self._token()

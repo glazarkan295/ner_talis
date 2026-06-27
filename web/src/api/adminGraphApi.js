@@ -17,6 +17,8 @@ export const fetchGraphPath = (source, target) =>
   requestAdminJson(`${base}/path?${new URLSearchParams({ source, target }).toString()}&_=${t()}`);
 export const fetchGraphNode = (nodeType, entityId) =>
   requestAdminJson(`${base}/node/${encodeURIComponent(nodeType)}/${encodeURIComponent(entityId)}?_=${t()}`);
+export const fetchEntityRelations = (nodeType, entityId) =>
+  requestAdminJson(`${base}/relations/${encodeURIComponent(nodeType)}/${encodeURIComponent(entityId)}?_=${t()}`);
 export const runGraphSandbox = (node, values, target) =>
   requestAdminJson(`${base}/sandbox`, { method: "POST", body: JSON.stringify({ node, values, target }) });
 export const fetchEditableEdges = () => requestAdminJson(`${base}/editable-edges?_=${t()}`);

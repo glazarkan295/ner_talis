@@ -6,6 +6,7 @@ import {
   fetchGraphAround,
   fetchGraphPath,
   fetchGraphNode,
+  fetchEntityRelations,
   fetchGraphValidation,
   fetchEditableEdges,
   editGraphEdge,
@@ -199,6 +200,7 @@ export function GraphSection({ guarded, hasPerm, onOpenSection }) {
   const [editSpecs, setEditSpecs] = useState([]);
   const [newEdge, setNewEdge] = useState({ edge_type: "", to: "" });
   const [sandbox, setSandbox] = useState(null);
+  const [relations, setRelations] = useState(null);
   const canEditEdges = hasPerm ? hasPerm("graph.edit") : false;
   const svgRef = useRef(null);
   const drag = useRef(null);
@@ -344,9 +346,15 @@ export function GraphSection({ guarded, hasPerm, onOpenSection }) {
   async function openNode(node) {
     setSelected(node.id);
     setSandbox(null);
+    setRelations(null);
     const [type, ...rest] = node.id.split(":");
     const d = await guarded(() => fetchGraphNode(type, rest.join(":")));
     if (d) setDetail(d);
+  }
+  async function loadRelations() {
+    if (!selectedNode) return;
+    const r = await guarded(() => fetchEntityRelations(selectedNode.type, selectedNode.entity_id));
+    if (r) setRelations(r);
   }
   async function runSandboxUi() {
     if (!selected) return;
@@ -578,6 +586,7 @@ export function GraphSection({ guarded, hasPerm, onOpenSection }) {
             ) : null}
             <div className="ntgraph-card-actions">
               <button type="button" className="ntv2-btn-mini" onClick={() => focusNode(selectedNode.id)}>Показать связи</button>
+              <button type="button" className="ntv2-btn-mini" onClick={loadRelations}>📋 Реестр связей §7</button>
               <button type="button" className="ntv2-btn-mini" onClick={runSandboxUi}>🧪 Тест в песочнице</button>
               {onOpenSection ? (
                 <button type="button" className="ntv2-btn-mini" onClick={() => onOpenSection(sectionForType(selectedNode.type))}>Открыть в конструкторе</button>
@@ -586,6 +595,26 @@ export function GraphSection({ guarded, hasPerm, onOpenSection }) {
               <button type="button" className="ntv2-btn-mini" onClick={() => { setPathInputs((p) => ({ ...p, target: selectedNode.id })); }}>В путь: цель</button>
               <button type="button" className="ntv2-btn-mini" onClick={() => { try { navigator.clipboard?.writeText(selectedNode.id); setInfo("ID скопирован: " + selectedNode.id); } catch { /* noop */ } }}>Скопировать ID</button>
             </div>
+            {relations ? (
+              <div className="ntgraph-card-list">
+                <b>📋 Реестр связей §7 ({relations.count})</b>
+                {relations.count === 0 ? <p className="ntv2-hint">Связей нет.</p> : null}
+                <ul>{relations.relations.map((r, i) => {
+                  const other = r.direction === "outgoing"
+                    ? `${r.to_entity_type}:${r.to_entity_id}`
+                    : `${r.from_entity_type}:${r.from_entity_id}`;
+                  return (
+                    <li key={i}>
+                      <span>{r.direction === "outgoing" ? "→" : "←"} {r.label || r.relation_type}: </span>
+                      <button type="button" className="ntgraph-rel-link" onClick={() => openNode({ id: other })}>
+                        <code>{other}</code>
+                      </button>
+                      {r.broken ? " ⚠️" : ""}
+                    </li>
+                  );
+                })}</ul>
+              </div>
+            ) : null}
             {sandbox ? (
               <div className={`ntgraph-sandbox ${sandbox.ok ? "ok" : "bad"}`}>
                 <b>🧪 Песочница: {sandbox.ok ? "проблем нет" : "есть проблемы"}</b>
@@ -657,6 +686,8 @@ const GRAPH_CSS = `
 .ntgraph-card-errors ul,.ntgraph-card-list ul{margin:4px 0 0;padding-left:18px}
 .ntgraph-card-warn{font-size:12px;color:#b45309;margin:4px 0}
 .ntgraph-card-list{margin:6px 0;font-size:12px}
+.ntgraph-rel-link{background:none;border:none;padding:0;color:#2563eb;cursor:pointer;font:inherit}
+.ntgraph-rel-link:hover{text-decoration:underline}
 .ntgraph-card-list code,.ntgraph-card-meta code,.ntgraph-card-row code{font-size:11px}
 .ntgraph-card-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .ntgraph-sandbox{margin-top:10px;border-radius:8px;padding:8px;font-size:12px}
