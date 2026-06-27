@@ -244,6 +244,20 @@ class GraphApiTest(GraphTestBase):
                              json={"from": "location:forest", "edge_type": "in_location", "to": "location:cave"})
         self.assertEqual(r.status_code, 403, r.text)
 
+    def test_edge_edit_on_published_recipe_requires_recipe_publish(self):
+        # 17-CODEX §3: content (graph.edit, recipe.edit, но без recipe.publish) не
+        # может править связь опубликованного рецепта через схему.
+        from services import recipe_constructor_service as rcs
+
+        rcs.store().create("r1", {"name": "Рецепт", "workshop": "forge", "output_item_id": "x",
+                                  "ingredients": [{"item_id": "a", "amount": 1}]})
+        rcs.store().set_status("r1", rcs.STATUS_PUBLISHED, actor="t", force=True)
+        rbac.set_role_override("telegram", "999", rbac.CONTENT)
+        token = self._token()
+        r = self.client.post("/api/admin/v2/graph/edge", headers=self._auth(token),
+                             json={"from": "recipe:r1", "edge_type": "uses_profession", "to": "profession:p1"})
+        self.assertEqual(r.status_code, 403, r.text)
+
     def test_full_and_legend(self):
         token = self._token()
         full = self.client.get("/api/admin/v2/graph", headers=self._auth(token))

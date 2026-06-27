@@ -237,6 +237,7 @@ def import_mobs(*, overwrite: bool = False, actor: str = "import", mode: str | N
         return _copy_unsupported("mob")
     overwrite = overwrite or _mode_is_overwrite(mode)
     created = updated = skipped = invalid = 0
+    needs_check: list[dict[str, Any]] = []
     seen: set[str] = set()
     for catalog in BATTLE_MOB_CATALOGS.values():
         if not isinstance(catalog, dict):
@@ -259,8 +260,25 @@ def import_mobs(*, overwrite: bool = False, actor: str = "import", mode: str | N
             existing = wcr.get_content(wcr.KIND_MOB, sid)
             if existing is not None:
                 if overwrite and _was_imported(existing):
+                    # 17-CODEX §2: update_content переводит published-моба в draft.
+                    # Если он был опубликован и данные валидны — публикуем заново,
+                    # иначе оставляем черновиком и помечаем needs_check (не теряем
+                    # моба из live и не публикуем невалидное).
+                    was_published = existing.get("status") == wcr.STATUS_PUBLISHED
                     if not blocked:
                         wcr.update_content(wcr.KIND_MOB, sid, data, actor=actor)
+                        if was_published:
+                            valid = wcr.validate_envelope({"kind": wcr.KIND_MOB, "data": data})["ok"]
+                            if valid:
+                                try:
+                                    wcr.set_status(wcr.KIND_MOB, sid, wcr.STATUS_PUBLISHED, actor=actor, force=True)
+                                except Exception:
+                                    pass
+                            else:
+                                needs_check.append({
+                                    "id": sid, "type": "mob",
+                                    "reason": "После обновления моб не прошёл валидацию — оставлен черновиком, опубликуйте после правки.",
+                                })
                     updated += 1
                 else:
                     skipped += 1
@@ -273,7 +291,7 @@ def import_mobs(*, overwrite: bool = False, actor: str = "import", mode: str | N
                     pass
             _record_created("mob", sid)
             created += 1
-    return {"kind": "mob", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid}
+    return {"kind": "mob", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid, "needs_check": needs_check}
 
 
 # --- Эффекты / состояния / проклятия (сид существующих, ТЗ §6/§7) ----------
@@ -364,7 +382,18 @@ def import_effects(*, overwrite: bool = False, actor: str = "import", mode: str 
             if overwrite and _was_imported(existing):
                 if not blocked:
                     store.update(effect_id, data, actor=actor)
-                _publish_if_valid(effect_id, data)
+                    # 17-CODEX §4: если после overwrite сид невалиден — он НЕ должен
+                    # остаться published (update сохраняет статус). Понижаем в
+                    # черновик и помечаем needs_check; валидный — (пере)публикуем.
+                    if not _publish_if_valid(effect_id, data):
+                        try:
+                            store.set_status(effect_id, ecs.STATUS_DRAFT, actor=actor, force=True)
+                        except Exception:
+                            pass
+                        needs_check.append({
+                            "id": effect_id, "type": "effect",
+                            "reason": "После обновления сид-эффект не прошёл валидацию — снят с публикации (черновик), дополните обязательные поля типа.",
+                        })
                 updated += 1
             else:
                 skipped += 1

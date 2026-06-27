@@ -1000,6 +1000,41 @@ def edge_source_is_published_world(from_id: str) -> bool:
     return bool(env) and env.get("status") == wcr.STATUS_PUBLISHED
 
 
+# EntityStore-источники связей: тип узла → нужное *.publish право (17-CODEX §3).
+# Правка связи опубликованного объекта меняет live (EntityStore.update сохраняет
+# статус), поэтому требует соответствующего publish-права, а не только graph.edit.
+_ENTITY_PUBLISH_PERM: dict[str, str] = {
+    "recipe": "recipe.publish",
+    "workshop": "workshop.publish",
+    "workshop_message": "workshop_message.publish",
+    "formula": "formula.publish",
+    "race": "race.publish",
+    "profession": "profession.publish",
+}
+
+
+def edge_source_publish_perm(from_id: str) -> str | None:
+    """Если источник связи — ОПУБЛИКОВАННЫЙ EntityStore-объект, вернуть нужное
+    *.publish право (17-CODEX §3); иначе None. World-узлы обрабатываются отдельно
+    через edge_source_is_published_world (→ world.publish)."""
+    from_type, eid = _split_node_id(from_id)
+    perm = _ENTITY_PUBLISH_PERM.get(from_type)
+    if not perm:
+        return None
+    for nt, module_name, _ in CONSTRUCTOR_SOURCES:
+        if nt == from_type:
+            svc = _import_service(module_name)
+            if svc is None or not hasattr(svc, "store"):
+                return None
+            try:
+                env = svc.store().get(eid)
+            except Exception:
+                return None
+            published = getattr(svc, "STATUS_PUBLISHED", "published")
+            return perm if (env is not None and env.get("status") == published) else None
+    return None
+
+
 def set_edge(from_id: str, edge_type: str, to_id: str, *, actor: str = "") -> dict[str, Any]:
     """Создать/изменить связь: записать целевой id в FK-поле источника (§34)."""
     from_type, from_eid = _split_node_id(from_id)

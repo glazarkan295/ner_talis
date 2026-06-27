@@ -472,6 +472,18 @@ class WorldApiTest(unittest.TestCase):
         self.assertEqual(publish.status_code, 200, publish.text)
         self.assertEqual(publish.json()["item"]["status"], "published")
 
+    def test_import_disallowed_kind_returns_400(self):
+        # 17-CODEX §1: переданы только не-world типы → 400, а НЕ импорт всего.
+        token = self._token("999")
+        r = self.client.post("/api/admin/v2/world/import", headers=self._auth(token), json={"kinds": ["achievement"]})
+        self.assertEqual(r.status_code, 400, r.text)
+
+    def test_import_misspelled_kind_returns_400(self):
+        # 17-CODEX §1: опечатка в типе → 400 (не запускаем все импортеры).
+        token = self._token("999")
+        r = self.client.post("/api/admin/v2/world/import", headers=self._auth(token), json={"kinds": ["achievment"]})
+        self.assertEqual(r.status_code, 400, r.text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -380,6 +380,35 @@ class ConstructorImportTest(unittest.TestCase):
         kinds = {k for k, _ in journal.get("created", [])}
         self.assertNotIn("fine_def", kinds)
 
+    def test_mob_overwrite_stays_published(self):
+        # 17-CODEX §2: re-import (overwrite) опубликованного моба не должен снимать
+        # его с публикации — иначе моб исчезает из live runtime.
+        from services import world_content_registry as wcr
+
+        ci.import_mobs()
+        pub_before = sum(1 for m in wcr.list_content(wcr.KIND_MOB) if m["status"] == "published")
+        self.assertGreater(pub_before, 0)
+        r2 = ci.import_mobs(overwrite=True)
+        self.assertGreater(r2["updated"], 0)
+        pub_after = sum(1 for m in wcr.list_content(wcr.KIND_MOB) if m["status"] == "published")
+        self.assertGreater(pub_after, 0)  # мобы остались в live после re-import
+
+    def test_invalid_effect_seed_overwrite_demoted_from_published(self):
+        # 17-CODEX §4: ранее опубликованный невалидный сид после overwrite не
+        # должен оставаться published — уходит в черновик + needs_check.
+        from services import effect_constructor_service as ecs
+
+        ci.import_effects()
+        # «slow» (stat_modifier без stat) невалиден → при create остался черновиком.
+        # Симулируем «ранее опубликованный невалидный сид».
+        ecs.store().set_status("slow", ecs.STATUS_PUBLISHED, actor="t", force=True)
+        self.assertEqual(ecs.store().get("slow")["status"], "published")
+        report = ci.import_effects(overwrite=True)
+        self.assertNotEqual(ecs.store().get("slow")["status"], "published")  # снят с live
+        self.assertTrue(any(nc["id"] == "slow" for nc in report.get("needs_check", [])))
+        # Валидный сид (проклятие) остаётся опубликованным.
+        self.assertEqual(ecs.store().get("ancient_curse")["status"], "published")
+
     def test_import_all_summary(self):
         result = ci.import_all(["location", "event"])
         self.assertIn("summary", result)

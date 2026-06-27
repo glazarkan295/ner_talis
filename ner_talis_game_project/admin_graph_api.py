@@ -205,6 +205,14 @@ def create_admin_graph_router(get_storage) -> APIRouter:
                 require_permission(session, PERM_WORLD_PUBLISH)
             except PermissionError as exc:
                 raise HTTPException(status_code=403, detail=str(exc)) from exc
+        # 17-CODEX §3: то же для опубликованных EntityStore-источников
+        # (recipe/workshop/…): правка меняет live → требуем их *.publish.
+        entity_perm = graph.edge_source_publish_perm(payload.from_)
+        if entity_perm:
+            try:
+                require_permission(session, entity_perm)
+            except PermissionError as exc:
+                raise HTTPException(status_code=403, detail=str(exc)) from exc
         actor = identity_key(session.get("platform"), session.get("admin_user_id"))
         try:
             if payload.action == "clear":

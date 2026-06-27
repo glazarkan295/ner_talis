@@ -179,8 +179,20 @@ def create_admin_world_router(get_storage) -> APIRouter:
 
         # Этот legacy-эндпоинт ограничен МИР-типами (Codex P2): город/достижения/
         # штрафы импортируются только через единый /api/admin/v2/import/run.
+        # 17-CODEX §1: пустой kinds → дефолт world-типов; если же типы переданы,
+        # но ВСЕ отфильтрованы — это ошибка, а не «импортировать всё» (import_all
+        # трактует [] как отсутствие фильтра).
         world_kinds = ("item", "mob", "location", "event")
-        selected = [k for k in (payload.kinds or world_kinds) if k in world_kinds]
+        requested = payload.kinds
+        if not requested:
+            selected = list(world_kinds)
+        else:
+            selected = [k for k in requested if k in world_kinds]
+            if not selected:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Legacy world import поддерживает только: item, mob, location, event.",
+                )
         result = run_admin_operation(
             session=session,
             action="world.import_existing",
