@@ -133,7 +133,7 @@ const DEPTH_TIERS = [
   ["sublocation_node", "sublocation_transition", "event", "location_hidden_event", "location_event_answer", "npc", "quest", "raid"],
   ["mob", "mob_variant", "mob_skill", "mob_passive", "mob_resistance", "mob_effect", "mob_event_link", "mob_zone_link", "mob_phase"],
   ["item", "recipe", "profession", "workshop", "item_upgrade", "item_enchant", "item_disassemble"],
-  ["effect", "trait", "blessing", "phase", "formula", "reputation"],
+  ["effect", "trait", "blessing", "phase", "formula", "reputation", "addiction", "tolerance"],
   ["site_page", "site_page_block", "site_menu_item", "site_news", "site_guide", "site_faq", "site_banner", "site_announcement", "site_post", "site_rating", "site_lore", "site_where_is", "site_theme", "profile_tab", "profile_block", "profile_theme", "achievement", "fine", "level", "exp", "skill", "race", "guild", "registration", "workshop_message"],
 ];
 const TIER_OF = (() => {

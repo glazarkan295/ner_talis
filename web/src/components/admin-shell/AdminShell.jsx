@@ -204,6 +204,57 @@ const DISASSEMBLE_CONFIG = {
     { key: "fail_text", label: "Текст провала", type: "textarea" },
   ],
 };
+const ADDICTION_CONFIG = {
+  base: "addictions", title: "Конструктор зависимости", permPrefix: "effect",
+  newLabel: "Новая зависимость", nameField: "name_admin",
+  fields: [
+    { key: "name_admin", label: "Название (админ)", type: "text" },
+    { key: "name_player", label: "Название (игрок)", type: "text" },
+    { key: "player_text", label: "Текст игроку", type: "textarea" },
+    { key: "description_admin", label: "Описание (админ)", type: "textarea" },
+    { key: "addiction_scope", label: "Область", type: "select", metaKey: "scopes" },
+    { key: "addiction_value_min", label: "Мин. значение", type: "number" },
+    { key: "addiction_value_max", label: "Макс. значение", type: "number" },
+    { key: "default_value", label: "Старт", type: "number" },
+    { key: "gain_per_use", label: "Прирост за использование", type: "number" },
+    { key: "decay_enabled", label: "Спад включён", type: "checkbox" },
+    { key: "decay_per_day", label: "Спад в день", type: "number" },
+    { key: "withdrawal_enabled", label: "Ломка включена", type: "checkbox" },
+    { key: "withdrawal_delay_seconds", label: "Задержка ломки (сек)", type: "number" },
+    { key: "treatment_enabled", label: "Лечение включено", type: "checkbox" },
+    { key: "source_tags", label: "Теги источника (по строкам)", type: "list" },
+    { key: "source_item_ids", label: "Предметы-источники (id по строкам)", type: "list" },
+    { key: "stages", label: "Стадии", type: "objlist", columns: [
+      { key: "stage_id", label: "id" }, { key: "name_player", label: "название" },
+      { key: "min_value", label: "от" }, { key: "max_value", label: "до" },
+      { key: "player_text", label: "текст игроку" },
+    ] },
+  ],
+};
+const TOLERANCE_CONFIG = {
+  base: "tolerances", title: "Конструктор привыкания", permPrefix: "effect",
+  newLabel: "Новое привыкание", nameField: "name_admin",
+  fields: [
+    { key: "name_admin", label: "Название (админ)", type: "text" },
+    { key: "name_player", label: "Название (игрок)", type: "text" },
+    { key: "player_text", label: "Текст игроку", type: "textarea" },
+    { key: "tolerance_scope", label: "Область", type: "select", metaKey: "scopes" },
+    { key: "value_min", label: "Мин. значение", type: "number" },
+    { key: "value_max", label: "Макс. значение", type: "number" },
+    { key: "gain_per_use", label: "Прирост за использование", type: "number" },
+    { key: "gain_per_repeated_use", label: "Прирост за повтор", type: "number" },
+    { key: "effectiveness_loss_per_value", label: "Потеря эффективности за ед.", type: "number" },
+    { key: "min_effectiveness_percent", label: "Мин. эффективность %", type: "number" },
+    { key: "max_penalty_percent", label: "Макс. штраф %", type: "number" },
+    { key: "decay_enabled", label: "Спад включён", type: "checkbox" },
+    { key: "decay_per_hour", label: "Спад в час", type: "number" },
+    { key: "source_tags", label: "Теги источника (по строкам)", type: "list" },
+    { key: "stages", label: "Стадии", type: "objlist", columns: [
+      { key: "stage_id", label: "id" }, { key: "name_player", label: "название" },
+      { key: "min_value", label: "от" }, { key: "max_value", label: "до" },
+    ] },
+  ],
+};
 import { AuditSection } from "./sections/AuditSection.jsx";
 import { ReferenceSection } from "./sections/ReferenceSection.jsx";
 import { RolesSection } from "./sections/RolesSection.jsx";
@@ -220,6 +271,8 @@ const NAV = [
   { id: "items", label: "Конструктор предметов", icon: "📦", perm: "item.view" },
   { id: "effects", label: "Конструктор эффектов", icon: "✨", perm: "effect.view" },
   { id: "reputations", label: "Конструктор репутации", icon: "🎖️", perm: "reputation.view" },
+  { id: "addictions", label: "Зависимости", icon: "🧪", perm: "effect.view" },
+  { id: "tolerances", label: "Привыкание", icon: "🔁", perm: "effect.view" },
   { id: "fines", label: "Конструктор штрафов", icon: "⚖️", perm: "fine_def.view" },
   { id: "skills", label: "Конструктор навыков", icon: "🌀", perm: "skill_def.view" },
   { id: "site", label: "Конструктор сайта", icon: "🌐", perm: "site.view" },
@@ -267,6 +320,7 @@ const SEARCH_TYPE_TO_SECTION = {
   formula: "formulas", profession: "professions", workshop: "workshops",
   workshop_message: "workshop_messages", item_upgrade: "upgrades",
   item_enchant: "enchants", item_disassemble: "disassembles", reputation: "reputations",
+  addiction: "addictions", tolerance: "tolerances",
   sublocation: "sublocations", sublocation_node: "sublocations", sublocation_transition: "sublocations",
 };
 function sectionForSearchType(type) {
@@ -417,6 +471,8 @@ export function AdminShell() {
         {active === "items" && hasPerm("item.view") && <ItemsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "effects" && hasPerm("effect.view") && <EffectsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "reputations" && hasPerm("reputation.view") && <ReputationSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "addictions" && hasPerm("effect.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={ADDICTION_CONFIG} />}
+        {active === "tolerances" && hasPerm("effect.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={TOLERANCE_CONFIG} />}
         {active === "fines" && hasPerm("fine_def.view") && <FinesSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "skills" && hasPerm("skill_def.view") && <SkillsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "site" && hasPerm("site.view") && <SiteSection guarded={guarded} hasPerm={hasPerm} />}

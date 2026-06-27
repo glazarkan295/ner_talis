@@ -44,6 +44,7 @@ NODE_TYPE_LABELS: dict[str, str] = {
     "workshop_message": "Сообщение мастерской",
     "item_upgrade": "Улучшение", "item_enchant": "Зачарование",
     "item_disassemble": "Разборка", "reputation": "Репутация",
+    "addiction": "Зависимость", "tolerance": "Привыкание",
     # Сайт (ТЗ §16) и профиль — из своих реестров с тегом _kind.
     "site_page": "Страница сайта", "site_page_block": "Блок страницы",
     "site_menu_item": "Пункт меню", "site_news": "Новость", "site_guide": "Гайд",
@@ -214,6 +215,8 @@ CONSTRUCTOR_SOURCES: list[tuple[str, str, str]] = [
     ("item_enchant", "enchant_constructor_service", "name"),
     ("item_disassemble", "disassemble_constructor_service", "name"),
     ("reputation", "reputation_constructor_service", "name_ru"),
+    ("addiction", "addiction_constructor_service", "name_admin"),
+    ("tolerance", "tolerance_constructor_service", "name_admin"),
 ]
 
 # Реестры с тегом _kind в data (сайт/профиль): один стор — много типов узлов.
