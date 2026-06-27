@@ -921,13 +921,21 @@ def import_achievements(*, mode: str | None = None, overwrite: bool = False, act
     mode = _resolve_mode(mode, overwrite)
 
     # Гарантируем категорию для импортированных достижений.
+    # 19-CODEX §2: в dry-run НИЧЕГО не пишем (категорию не создаём/не публикуем) —
+    # только показываем планируемое действие в needs_check.
     cats = ach.categories()
     if cats.get("small_plateau") is None:
-        try:
-            cats.create("small_plateau", {"name": "Малое плато"}, actor=actor)
-            cats.set_status("small_plateau", ach.STATUS_PUBLISHED, actor=actor, force=True)
-        except Exception:
-            pass
+        if _dry_on():
+            report["needs_check"].append({
+                "id": "small_plateau", "type": "achievement_category",
+                "reason": "Будет создана и опубликована категория «Малое плато» (план; в dry-run не создаётся).",
+            })
+        else:
+            try:
+                cats.create("small_plateau", {"name": "Малое плато"}, actor=actor)
+                cats.set_status("small_plateau", ach.STATUS_PUBLISHED, actor=actor, force=True)
+            except Exception:
+                pass
 
     # Имена/описания из данных (приоритет), структура — из сид-таблицы.
     descriptions: dict[str, dict[str, Any]] = {}
@@ -1510,9 +1518,12 @@ def _run_selected(selected, overwrite, mode, actor, dry_run):
     with _dry_run_scope(dry_run):
         reports = [_normalize_report(IMPORTERS[k](overwrite=overwrite, mode=mode, actor=actor)) for k in selected]
     # Журнал созданных записей — только для реального импорта (ТЗ §4.1, откат).
+    # 19-CODEX §5: фиксируем версию каждой записи сразу после импорта — при откате
+    # сравним с текущей и НЕ удалим запись, изменённую админом (версия выросла).
     if not dry_run:
         try:
-            save_import_journal(list(_batch()))
+            enriched = [{"kind": k, "id": s, "version": _record_version(k, s)} for k, s in _batch()]
+            save_import_journal(enriched)
         except Exception:
             pass
     return reports
@@ -1668,6 +1679,17 @@ def _journal_path():
     return project_path("data", "import_journal.json")
 
 
+def _normalize_journal_entry(entry: Any) -> dict[str, Any] | None:
+    """Запись журнала → {kind,id,version}. Поддержка старого формата [kind,id]."""
+    if isinstance(entry, dict):
+        if not entry.get("kind") or not entry.get("id"):
+            return None
+        return {"kind": str(entry["kind"]), "id": str(entry["id"]), "version": entry.get("version")}
+    if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+        return {"kind": str(entry[0]), "id": str(entry[1]), "version": (entry[2] if len(entry) > 2 else None)}
+    return None
+
+
 def save_import_journal(batch) -> None:
     import json
 
@@ -1676,7 +1698,8 @@ def save_import_journal(batch) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
     except Exception:
         pass
-    payload = {"created": [[str(k), str(s)] for k, s in batch], "count": len(list(batch))}
+    entries = [e for e in (_normalize_journal_entry(x) for x in batch) if e]
+    payload = {"created": entries, "count": len(entries)}
     with path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
 
@@ -1694,55 +1717,77 @@ def load_import_journal():
         return None
 
 
-def _delete_imported(kind: str, sid: str) -> str:
-    """Удалить одну запись отката. Статус: deleted/kept/missing/unknown.
-
-    kept — запись больше не помечена imported (админ взял её под контроль, §11):
-    откат её НЕ трогает."""
+def _record_envelope(kind: str, sid: str) -> dict[str, Any] | None:
+    """Текущий envelope записи (для отката): из реестра мира или EntityStore."""
     if kind in _WCR_KINDS:
         from services import world_content_registry as wcr
 
-        kconst = getattr(wcr, _WCR_KINDS[kind])
-        env = wcr.get_content(kconst, sid)
-        if env is None:
-            return "missing"
-        if not (env.get("data") or {}).get("imported"):
-            return "kept"
-        wcr.delete_content(kconst, sid)
-        return "deleted"
+        try:
+            return wcr.get_content(getattr(wcr, _WCR_KINDS[kind]), sid)
+        except Exception:
+            return None
     module_name = _ENTITY_STORE_KINDS.get(kind)
     if not module_name:
-        return "unknown"
+        return None
     import importlib
 
-    module = importlib.import_module(f"services.{module_name}")
-    store = module.store()
-    env = store.get(sid)
+    try:
+        return importlib.import_module(f"services.{module_name}").store().get(sid)
+    except Exception:
+        return None
+
+
+def _record_version(kind: str, sid: str) -> Any:
+    env = _record_envelope(kind, sid)
+    return env.get("version") if isinstance(env, dict) else None
+
+
+def _delete_imported(kind: str, sid: str, expected_version: Any = None) -> str:
+    """Удалить одну запись отката. Статус: deleted/kept/missing/unknown/manual_changed.
+
+    kept — запись больше не помечена imported (админ снял метку, §11).
+    manual_changed (19-CODEX §5) — запись изменена после импорта (версия выросла),
+    т.е. админ её правил → откат её НЕ удаляет, чтобы не потерять ручные правки."""
+    if kind not in _WCR_KINDS and kind not in _ENTITY_STORE_KINDS:
+        return "unknown"
+    env = _record_envelope(kind, sid)
     if env is None:
         return "missing"
     if not (env.get("data") or {}).get("imported"):
         return "kept"
-    store.delete(sid)
+    if expected_version is not None and env.get("version") != expected_version:
+        return "manual_changed"
+    if kind in _WCR_KINDS:
+        from services import world_content_registry as wcr
+
+        wcr.delete_content(getattr(wcr, _WCR_KINDS[kind]), sid)
+        return "deleted"
+    import importlib
+
+    importlib.import_module(f"services.{_ENTITY_STORE_KINDS[kind]}").store().delete(sid)
     return "deleted"
 
 
 def rollback_last(*, actor: str = "import") -> dict[str, Any]:
     """Откатить последний реальный импорт: удалить созданные им записи (§4.1).
 
-    Удаляются только записи, всё ещё помеченные imported (рукотворные/взятые
-    админом под контроль — сохраняются). Журнал после отката очищается."""
+    Удаляются только записи, всё ещё помеченные imported И не изменённые админом
+    после импорта (19-CODEX §5: ручные правки сохраняются → skipped_manual_changed).
+    Журнал после отката очищается."""
     journal = load_import_journal()
     created = (journal or {}).get("created") or []
-    counts = {"deleted": 0, "kept": 0, "missing": 0, "unknown": 0}
+    counts = {"deleted": 0, "kept": 0, "missing": 0, "unknown": 0, "manual_changed": 0}
     details: list[dict[str, Any]] = []
     for entry in created:
-        if not isinstance(entry, (list, tuple)) or len(entry) < 2:
+        norm = _normalize_journal_entry(entry)
+        if norm is None:
             continue
-        kind, sid = str(entry[0]), str(entry[1])
-        status = _delete_imported(kind, sid)
+        kind, sid, ver = norm["kind"], norm["id"], norm.get("version")
+        status = _delete_imported(kind, sid, expected_version=ver)
         counts[status] = counts.get(status, 0) + 1
-        if status in ("kept", "unknown"):
+        if status in ("kept", "unknown", "manual_changed"):
             details.append({"kind": kind, "id": sid, "status": status})
     save_import_journal([])  # журнал израсходован — повторный откат ничего не делает
     _TL.batch = []
-    return {"ok": True, "found": len(created), **counts, "details": details}
+    return {"ok": True, "found": len(created),
+            "skipped_manual_changed": counts["manual_changed"], **counts, "details": details}

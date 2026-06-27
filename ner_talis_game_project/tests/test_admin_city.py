@@ -150,6 +150,28 @@ class CityServiceTest(unittest.TestCase):
             else:
                 os.environ["CITY_CONSTRUCTOR_LIVE"] = saved
 
+    def test_child_node_resolved_within_parent(self):
+        # 19-CODEX §3: одинаковые названия дочерних узлов у разных родителей не
+        # конфликтуют — клик «Таверна» открывает таверну текущего родителя.
+        from services import city_runtime
+        for nid, name, parent in (("district_a", "Район A", None), ("district_b", "Район B", None),
+                                  ("tavern_a", "Таверна", "district_a"), ("tavern_b", "Таверна", "district_b")):
+            data = {"_kind": "city_node", "name": name, "node_type": "quarter"}
+            if parent:
+                data["parent_id"] = parent
+            city.store().create(nid, data)
+            city.store().set_status(nid, city.STATUS_PUBLISHED, force=True)
+        saved = os.environ.get("CITY_CONSTRUCTOR_LIVE")
+        try:
+            os.environ["CITY_CONSTRUCTOR_LIVE"] = "1"
+            self.assertEqual(city_runtime.try_handle("Таверна", current_node_id="district_a")["node_id"], "tavern_a")
+            self.assertEqual(city_runtime.try_handle("Таверна", current_node_id="district_b")["node_id"], "tavern_b")
+        finally:
+            if saved is None:
+                os.environ.pop("CITY_CONSTRUCTOR_LIVE", None)
+            else:
+                os.environ["CITY_CONSTRUCTOR_LIVE"] = saved
+
     def test_try_handle_respects_flag_and_matches_published(self):
         from services import city_runtime
         city.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city", "description": "Столица."})
@@ -274,6 +296,17 @@ class CityApiTest(unittest.TestCase):
         token = self._token()
         self.assertEqual(self.client.get("/api/admin/v2/city/city_node", headers=self._auth(token)).status_code, 200)
         self.assertEqual(self.client.post("/api/admin/v2/city/city_node", headers=self._auth(token), json={"id": "nx", "data": {"name": "X", "node_type": "city"}}).status_code, 403)
+
+    def test_published_city_update_requires_publish(self):
+        # 19-CODEX §1: published city-объект нельзя править без city.publish; черновик — можно.
+        token = self._token()  # owner
+        self.client.post("/api/admin/v2/city/city_node", headers=self._auth(token), json={"id": "sq", "data": {"name": "Площадь", "node_type": "square"}})
+        self.assertEqual(self.client.post("/api/admin/v2/city/city_node/sq/publish", headers=self._auth(token), json={}).status_code, 200)
+        self.client.post("/api/admin/v2/city/city_node", headers=self._auth(token), json={"id": "dn", "data": {"name": "Черновик", "node_type": "quarter"}})
+        rbac.set_role_override("telegram", "999", rbac.CONTENT)
+        ct = self._token()
+        self.assertEqual(self.client.put("/api/admin/v2/city/city_node/dn", headers=self._auth(ct), json={"data": {"name": "Ч2"}}).status_code, 200)
+        self.assertEqual(self.client.put("/api/admin/v2/city/city_node/sq", headers=self._auth(ct), json={"data": {"name": "X"}}).status_code, 403)
 
 
 if __name__ == "__main__":

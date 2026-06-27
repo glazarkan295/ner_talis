@@ -37,6 +37,9 @@ NODE_TYPE_LABELS: dict[str, str] = {
     "blessing": "Благословение", "phase": "Фаза боя", "level": "Уровень",
     "skill": "Навык", "race": "Раса", "fine": "Штраф", "camp": "Лагерь",
     "city": "Город", "achievement": "Достижение",
+    "city_node": "Узел города", "city_button": "Кнопка города",
+    "city_shop_item": "Товар города", "city_service": "Сервис города",
+    "criminal_zone": "Криминальная зона",
     "world_event": "Мировое событие", "guild": "Гильдия",
     "sublocation": "Подлокация", "sublocation_node": "Узел подлокации",
     "sublocation_transition": "Переход подлокации", "formula": "Формула",
@@ -66,7 +69,7 @@ EDGE_TYPE_LABELS: dict[str, str] = {
     "produces": "создаёт", "ingredient": "ингредиент", "blueprint": "по чертежу",
     "rewards_item": "награждает предметом", "in_category": "в категории",
     "in_zone": "в зоне", "in_page": "в странице", "child_of": "вложен в",
-    "in_tab": "во вкладке", "uses_formula": "использует формулу",
+    "in_tab": "во вкладке", "in_node": "в узле", "uses_formula": "использует формулу",
     "uses_profession": "требует профессию", "in_workshop": "в мастерской",
     "disassembles": "разбирает", "enchants": "зачаровывает",
     "depends_on_reputation": "зависит от репутации",
@@ -203,7 +206,8 @@ CONSTRUCTOR_SOURCES: list[tuple[str, str, str]] = [
     ("race", "race_constructor_service", "race_name"),
     ("fine", "fine_constructor_service", "name"),
     ("camp", "camp_constructor_service", "name"),
-    ("city", "city_constructor_service", "city_name"),
+    # city вынесен в KINDED_SOURCES (19-CODEX §4): один стор — разные _kind
+    # (city_node/city_button/city_shop_item/…), их нельзя схлопывать в один «city».
     ("achievement", "achievement_service", "name"),
     ("world_event", "world_event_service", "name"),
     ("guild", "guild_service", "name"),
@@ -225,6 +229,7 @@ CONSTRUCTOR_SOURCES: list[tuple[str, str, str]] = [
 KINDED_SOURCES: list[tuple[str, str, bool]] = [
     ("site_", "site_content_registry", False),  # _kind="page" → site_page
     ("", "profile_layout_service", True),       # _kind="profile_tab" уже с префиксом
+    ("", "city_constructor_service", True),     # _kind="city_node"/"city_button"/… (19-CODEX §4)
 ]
 
 
@@ -352,6 +357,13 @@ KINDED_EDGE_SPECS: list[tuple[str, str, str, str]] = [
     ("site_menu_item", "page_id", "site_page", "leads_to"),
     ("site_menu_item", "parent_id", "site_menu_item", "child_of"),
     ("profile_block", "tab", "profile_tab", "in_tab"),
+    # Город V2 (19-CODEX §4): дерево узлов + кнопки/товары/сервисы/криминал → узлы.
+    ("city_node", "parent_id", "city_node", "in_node"),
+    ("city_button", "node_id", "city_node", "in_node"),
+    ("city_button", "target_node_id", "city_node", "leads_to"),
+    ("city_shop_item", "node_id", "city_node", "in_node"),
+    ("city_service", "node_id", "city_node", "in_node"),
+    ("criminal_zone", "node_id", "city_node", "in_node"),
 ]
 
 

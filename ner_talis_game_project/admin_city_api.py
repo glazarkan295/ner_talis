@@ -184,6 +184,10 @@ def create_admin_city_router(get_storage) -> APIRouter:
         before = city.store().get(object_id)
         if before is None:
             raise HTTPException(status_code=404, detail="Объект не найден.")
+        # 19-CODEX §1: правка ОПУБЛИКОВАННОГО city-объекта меняет live (update
+        # сохраняет статус) → требует city.publish (draft-overlay пока нет).
+        if before.get("status") == city.STATUS_PUBLISHED:
+            _require(session, PERM_CITY_PUBLISH)
         try:
             item = run_admin_operation(
                 session=session, action="city.edit",

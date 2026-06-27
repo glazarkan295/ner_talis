@@ -187,6 +187,19 @@ def _button_target_on_node(node_id: str, action: str) -> str | None:
     return None
 
 
+def _child_node_by_name(parent_id: str, label: str) -> str | None:
+    """ID дочернего узла с заданным display name В КОНТЕКСТЕ текущего родителя
+    (19-CODEX §3): одинаковые названия дочерних узлов у разных родителей не должны
+    конфликтовать — клик «Таверна» в районе A открывает таверну именно района A."""
+    if not parent_id or not label:
+        return None
+    for n in _of_kind(_published(), city.KIND_NODE):
+        d = n.get("data") or {}
+        if str(d.get("parent_id") or "") == parent_id and str(d.get("name") or "").strip() == label:
+            return n.get("id")
+    return None
+
+
 def try_handle(action: str, current_node_id: str | None = None) -> dict[str, Any] | None:
     """«Живая» навигация по опубликованным узлам (ТЗ §4). Сначала — кнопка-переход
     с этой подписью НА ТЕКУЩЕМ узле, затем — узел по имени. Иначе None → легаси.
@@ -197,13 +210,16 @@ def try_handle(action: str, current_node_id: str | None = None) -> dict[str, Any
     if not act:
         return None
     # 1) Кнопка-переход на текущем узле (контекстно — без коллизий подписей).
-    target = _button_target_on_node(str(current_node_id or ""), act)
-    node_id = target
-    # 2) Имя узла (вход в узел по его названию).
+    node_id = _button_target_on_node(str(current_node_id or ""), act)
+    # 2) Дочерний узел ТЕКУЩЕГО родителя по display name (19-CODEX §3) — раньше
+    #    глобального поиска, чтобы одинаковые названия детей не конфликтовали.
+    if not node_id and current_node_id:
+        node_id = _child_node_by_name(str(current_node_id), act)
+    # 3) Имя узла глобально (вход в узел по его названию).
     if not node_id:
         node_by_name, button_to_target = _published_label_index()
         node_id = node_by_name.get(act)
-        # 3) Глобальный фолбэк по подписи кнопки — только если текущий узел неизвестен.
+        # 4) Глобальный фолбэк по подписи кнопки — только если текущий узел неизвестен.
         if not node_id and not current_node_id:
             node_id = button_to_target.get(act)
     if not node_id:

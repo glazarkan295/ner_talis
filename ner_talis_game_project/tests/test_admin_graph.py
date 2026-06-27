@@ -191,6 +191,24 @@ class GraphServiceTest(GraphTestBase):
         self.assertIn(("event", "ev_find", "gives_item", "item", "sword"), pairs)
         self.assertIsNone(graph.relations_for("item", "ghost_zzz"))
 
+    def test_city_kinds_preserved_in_graph(self):
+        # 19-CODEX §4: разные _kind города не схлопываются в один тип «city».
+        from services import city_constructor_service as ccs
+        ccs.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city"})
+        ccs.store().create("market", {"_kind": "city_node", "name": "Рынок", "node_type": "market", "parent_id": "seldar"})
+        ccs.store().create("to_market", {"_kind": "city_button", "label": "На рынок", "action": "goto_node", "node_id": "seldar", "target_node_id": "market"})
+        ccs.store().create("sword", {"_kind": "city_shop_item", "item_id": "iron_sword", "node_id": "market"})
+        g = graph.full_graph()
+        ids = {n["id"] for n in g["nodes"]}
+        self.assertIn("city_node:seldar", ids)
+        self.assertIn("city_button:to_market", ids)
+        self.assertIn("city_shop_item:sword", ids)
+        self.assertNotIn("city:seldar", ids)  # не схлопнуто в «city»
+        pairs = {(e["from"], e["to"], e["type"]) for e in g["edges"]}
+        self.assertIn(("city_node:market", "city_node:seldar", "in_node"), pairs)  # parent-child
+        self.assertIn(("city_button:to_market", "city_node:market", "leads_to"), pairs)  # кнопка → цель
+        self.assertIn(("city_shop_item:sword", "city_node:market", "in_node"), pairs)  # товар в узле
+
     def test_export_markdown(self):
         g = graph.full_graph()
         md = graph.export_markdown(g)

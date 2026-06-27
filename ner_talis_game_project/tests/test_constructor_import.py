@@ -377,7 +377,7 @@ class ConstructorImportTest(unittest.TestCase):
         self.assertTrue(rep.store().list())
         # Журнал отката принадлежит только реальному прогону (репутация), без штрафов.
         journal = ci.load_import_journal() or {}
-        kinds = {k for k, _ in journal.get("created", [])}
+        kinds = {e["kind"] for e in journal.get("created", [])}
         self.assertNotIn("fine_def", kinds)
 
     def test_mob_overwrite_stays_published(self):
@@ -408,6 +408,29 @@ class ConstructorImportTest(unittest.TestCase):
         self.assertTrue(any(nc["id"] == "slow" for nc in report.get("needs_check", [])))
         # Валидный сид (проклятие) остаётся опубликованным.
         self.assertEqual(ecs.store().get("ancient_curse")["status"], "published")
+
+    def test_achievement_dry_run_does_not_create_category(self):
+        # 19-CODEX §2: dry-run импорта достижений не создаёт/не публикует категорию.
+        from services import achievement_service as ach
+
+        ci.import_all(["achievement"], dry_run=True)
+        self.assertIsNone(ach.categories().get("small_plateau"))
+        # Реальный прогон — создаёт.
+        ci.import_all(["achievement"], dry_run=False)
+        self.assertIsNotNone(ach.categories().get("small_plateau"))
+
+    def test_rollback_skips_manual_changed(self):
+        # 19-CODEX §5: запись, изменённая админом после импорта, не удаляется откатом.
+        from services import fine_constructor_service as fc
+
+        ci.import_all(["fine_def"], mode="new")
+        ids = [i["id"] for i in fc.store().list()]
+        self.assertGreater(len(ids), 1)
+        fc.store().update(ids[0], {"name": "Изменено вручную"}, actor="admin")  # версия растёт
+        rb = ci.rollback_last()
+        self.assertGreaterEqual(rb["skipped_manual_changed"], 1)
+        self.assertIsNotNone(fc.store().get(ids[0]))  # ручная правка сохранена
+        self.assertIsNone(fc.store().get(ids[1]))     # нетронутая запись удалена
 
     def test_import_all_summary(self):
         result = ci.import_all(["location", "event"])
