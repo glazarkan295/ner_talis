@@ -211,4 +211,6 @@ def try_handle(action: str, current_node_id: str | None = None) -> dict[str, Any
     view = node_runtime_view(node_id)
     if view is None:
         return None
-    return render_node(view)
+    # node_id возвращаем, чтобы вызывающий сохранил текущий V2-узел на игроке
+    # (15-CODEX §1) — иначе следующая кнопка («Назад») потеряет контекст.
+    return {**render_node(view), "node_id": node_id}

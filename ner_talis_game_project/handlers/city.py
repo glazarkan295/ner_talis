@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes
 
 from keyboards.reply_keyboards import make_keyboard, start_keyboard
 from services.bot_flood_guard import clamp_incoming_text, guard_incoming
-from services.city_service import CITY_BUTTONS, process_world_action, unstuck_player
+from services.city_service import CITY_BUTTONS, looks_like_game_action, process_world_action, unstuck_player
 from services.chat_log_service import (
     DurableOutboxDelivery,
     append_player_chat_log,
@@ -104,7 +104,13 @@ async def city_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if decision["reason"] == "flood":
             logger.info("Telegram flood-limit: user=%s", user_id)
         return
-    await send_city_response(update, context, clamp_incoming_text(update.message.text))
+    text = clamp_incoming_text(update.message.text)
+    # 16-TZ §4: свободный текст (длинный/многострочный) не гоняем через городскую
+    # игровую логику — это снижает нагрузку от случайных сообщений. Подписи
+    # кнопок короткие и однострочные, поэтому реальные действия проходят.
+    if not looks_like_game_action(text):
+        return
+    await send_city_response(update, context, text)
 
 
 async def send_city_response(

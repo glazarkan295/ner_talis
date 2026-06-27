@@ -98,6 +98,16 @@ class CityServiceTest(unittest.TestCase):
         from services import city_runtime
         self.assertFalse(city_runtime.live_enabled())
 
+    def test_looks_like_game_action(self):
+        # 16-TZ §4: короткие однострочные подписи кнопок — игровые действия,
+        # длинный/многострочный свободный текст — нет (не грузит city runtime).
+        from services import city_service
+        self.assertTrue(city_service.looks_like_game_action("В город"))
+        self.assertTrue(city_service.looks_like_game_action("🏪 На рынок"))
+        self.assertFalse(city_service.looks_like_game_action(""))
+        self.assertFalse(city_service.looks_like_game_action("строка\nещё строка"))
+        self.assertFalse(city_service.looks_like_game_action("привет " * 30))
+
     def test_try_handle_button_scoped_by_node(self):
         # Codex P2: одинаковая подпись «Назад» на разных узлах ведёт в разные места.
         from services import city_runtime
@@ -112,8 +122,13 @@ class CityServiceTest(unittest.TestCase):
         try:
             os.environ["CITY_CONSTRUCTOR_LIVE"] = "1"
             # «Назад» на рынке → hub; «Назад» в таверне → market (разные цели).
-            self.assertIn("Hub", city_runtime.try_handle("Назад", current_node_id="market")["text"])
-            self.assertIn("Market", city_runtime.try_handle("Назад", current_node_id="tavern")["text"])
+            back_market = city_runtime.try_handle("Назад", current_node_id="market")
+            back_tavern = city_runtime.try_handle("Назад", current_node_id="tavern")
+            self.assertIn("Hub", back_market["text"])
+            self.assertIn("Market", back_tavern["text"])
+            # 15-CODEX §1: возвращается node_id целевого узла (для сохранения контекста).
+            self.assertEqual(back_market["node_id"], "hub")
+            self.assertEqual(back_tavern["node_id"], "market")
         finally:
             if saved is None:
                 os.environ.pop("CITY_CONSTRUCTOR_LIVE", None)
