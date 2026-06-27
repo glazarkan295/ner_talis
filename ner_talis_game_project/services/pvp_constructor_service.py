@@ -19,17 +19,32 @@ from services.constructor_status import *  # noqa: F401,F403 - статусы к
 
 _HTML_RE = re.compile(r"<[^>]+>")
 
-# Типы PVP (§1.3).
+# Типы PVP (§1.3 + ТЗ 20 §5.2).
 PVP_TYPES = (
-    "duel", "free", "pvp_zone", "arena", "group", "siege",
-    "raid", "contract", "revenge", "event", "tournament",
+    "duel", "group_duel", "team_vs_team", "free", "pvp_zone", "arena",
+    "group", "siege", "raid", "contract", "bounty", "revenge", "clan",
+    "guild", "location_defense", "caravan_attack", "event", "sublocation",
+    "point_capture", "tournament", "special",
 )
 PVP_TYPE_LABELS = {
-    "duel": "Дуэль", "free": "Свободный PVP", "pvp_zone": "PVP-зона",
-    "arena": "Арена", "group": "Групповой бой", "siege": "Осада",
-    "raid": "Рейдовый PVP", "contract": "Заказ на игрока", "revenge": "Месть",
-    "event": "Событийный PVP", "tournament": "Турнирный PVP",
+    "duel": "Дуэль 1 на 1", "group_duel": "Групповая дуэль",
+    "team_vs_team": "Команда против команды", "free": "Свободный PVP",
+    "pvp_zone": "PVP-зона", "arena": "Арена", "group": "Групповой бой",
+    "siege": "Осада", "raid": "Рейдовый PVP", "contract": "Заказ на игрока",
+    "bounty": "Охота за наградой", "revenge": "Месть", "clan": "Клановый бой",
+    "guild": "Гильдейский бой", "location_defense": "Оборона локации",
+    "caravan_attack": "Нападение на караван", "event": "Событийный PVP",
+    "sublocation": "Бой в подлокации", "point_capture": "Бой за точку",
+    "tournament": "Турнирный PVP", "special": "Особый сюжетный PVP",
 }
+# Таймер: действие при пропуске (ТЗ 20 §5.5), порядок ходов (§6.1), режим лога (§6.3).
+PVP_TIMEOUT_ACTIONS = ("skip", "defend", "auto", "kick", "tech_defeat", "penalty")
+ACTION_ORDER_TYPES = (
+    "sequential", "by_initiative", "by_speed", "by_level", "random",
+    "simultaneous", "side_a_first", "alternate_sides", "npc_after_owner",
+    "npc_end_of_round", "npc_by_initiative", "event_special",
+)
+LOG_MODES = ("full_all", "per_side", "hide_enemy")
 # Кнопки PVP-боя (§1.5).
 PVP_BUTTON_ACTIONS = (
     "attack", "skills", "use_item", "pouch", "defend", "flee", "surrender", "enemy_info",
@@ -131,6 +146,52 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             ctype = str(cond.get("type") or "").strip()
             if ctype and ctype not in CONDITION_TYPES:
                 warnings.append(f"Условие {i}: тип «{ctype}» не из списка.")
+
+    # --- ТЗ 20: таймер хода / порядок действий / стороны / лог / антиабуз ---
+    # Таймер в PVP включён по умолчанию (§5.5). turn_seconds по умолчанию 100.
+    turn = _num(data.get("turn_seconds"))
+    if data.get("turn_seconds") not in (None, ""):
+        if turn is None or turn < 0:
+            errors.append("Время на ход — неотрицательное число.")
+        warn = _num(data.get("warn_before_seconds"))
+        if warn is not None and turn is not None and warn > turn:
+            errors.append("Предупреждение не может быть позже самого таймера.")
+    elif data.get("timer_enabled", True) is False:
+        warnings.append("Таймер хода в PVP обычно включён (по умолчанию 100 секунд, ТЗ §5.5).")
+
+    on_timeout = str(data.get("on_timeout") or "").strip()
+    if on_timeout and on_timeout not in PVP_TIMEOUT_ACTIONS:
+        warnings.append(f"Действие при пропуске «{on_timeout}» не из списка PVP.")
+    if data.get("max_skips") not in (None, "") and (_num(data.get("max_skips")) is None or _num(data.get("max_skips")) < 0):
+        errors.append("Допустимое число пропусков — неотрицательное число.")
+
+    order = str(data.get("action_order") or "").strip()
+    if order and order not in ACTION_ORDER_TYPES:
+        warnings.append(f"Порядок действий «{order}» не из списка.")
+    log_mode = str(data.get("log_mode") or "").strip()
+    if log_mode and log_mode not in LOG_MODES:
+        warnings.append(f"Режим лога «{log_mode}» не из списка.")
+
+    # Стороны боя (§5.3): каждая сторона — с названием; сторона без участников — warning.
+    sides = data.get("sides") or []
+    for i, side in enumerate(sides, start=1):
+        if not isinstance(side, dict):
+            continue
+        if not str(side.get("name") or "").strip():
+            warnings.append(f"Сторона {i}: не задано название.")
+        has_players = bool(str(side.get("players") or "").strip())
+        has_npc = bool(str(side.get("npc") or "").strip())
+        if not has_players and not has_npc:
+            warnings.append(f"Сторона {i}: нет ни игроков, ни NPC (ТЗ §14).")
+    if pvp_type in ("team_vs_team", "group_duel", "clan", "guild") and len(sides) < 2:
+        warnings.append("Командному PVP нужно минимум 2 стороны (ТЗ §5.3).")
+
+    # NPC-союзники (§5.4): лимиты неотрицательные.
+    for key, label in (("npc_limit_per_side", "Лимит NPC на сторону"),
+                       ("npc_limit_per_player", "Лимит NPC на игрока"),
+                       ("npc_hire_cost", "Стоимость найма NPC")):
+        if data.get(key) not in (None, "") and (_num(data.get(key)) is None or _num(data.get(key)) < 0):
+            errors.append(f"{label}: неотрицательное число.")
 
     # Тексты игроку: без HTML, плюс предупреждение про §1.6 достижение.
     for key in ("name", "description"):

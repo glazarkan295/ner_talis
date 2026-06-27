@@ -58,6 +58,28 @@ class PvpServiceTest(unittest.TestCase):
         self.assertIn("тип pvp", joined)
         self.assertIn("шанс посмертного", joined)
 
+    def test_tz20_timer_and_sides(self):
+        # ТЗ 20: предупреждение позже таймера — ошибка; командному PVP нужно 2 стороны.
+        bad_timer = pvp.store().create("tt", {
+            "name": "T", "pvp_type": "arena", "turn_seconds": 30, "warn_before_seconds": 60,
+        })
+        self.assertFalse(pvp.validate(bad_timer)["ok"])
+        team = pvp.store().create("team", {
+            "name": "Команды", "pvp_type": "team_vs_team",
+            "sides": [{"name": "A", "players": "p1"}],  # только одна сторона
+        })
+        res = pvp.validate(team)
+        self.assertTrue(res["ok"])  # это предупреждение, не ошибка
+        self.assertTrue(any("сторон" in w.lower() for w in res["warnings"]))
+
+    def test_tz20_side_without_participants_warns(self):
+        env = pvp.store().create("sd", {
+            "name": "Бой", "pvp_type": "team_vs_team",
+            "sides": [{"name": "A", "players": "p1"}, {"name": "B"}],  # B пустая
+        })
+        res = pvp.validate(env)
+        self.assertTrue(any("нет ни игроков" in w.lower() for w in res["warnings"]))
+
     def test_preview_steps(self):
         data = {
             "pvp_type": "duel", "enabled": True,
@@ -65,7 +87,7 @@ class PvpServiceTest(unittest.TestCase):
             "texts": [{"key": "invite", "text": "Вызов на дуэль!"}, {"key": "victory", "text": "Вы победили."}],
         }
         prev = pvp.preview(data)
-        self.assertEqual(prev["pvp_type"], "Дуэль")
+        self.assertEqual(prev["pvp_type"], "Дуэль 1 на 1")
         self.assertIn("Атаковать", prev["buttons"])
         titles = {s["step"] for s in prev["steps"]}
         self.assertIn("Приглашение", titles)
@@ -133,7 +155,7 @@ class PvpApiTest(unittest.TestCase):
         self._create(token, pid="dl", data={"name": "Д", "pvp_type": "duel", "texts": [{"key": "victory", "text": "Победа!"}]})
         pv = self.client.post("/api/admin/v2/pvp/dl/preview", headers=self._auth(token), json={})
         self.assertEqual(pv.status_code, 200, pv.text)
-        self.assertEqual(pv.json()["preview"]["pvp_type"], "Дуэль")
+        self.assertEqual(pv.json()["preview"]["pvp_type"], "Дуэль 1 на 1")
 
     def test_content_cannot_publish_readonly_cannot_create(self):
         rbac.set_role_override("telegram", "999", rbac.CONTENT)

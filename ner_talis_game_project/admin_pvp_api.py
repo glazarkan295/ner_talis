@@ -35,6 +35,9 @@ def _meta_extra(_svc: Any) -> dict[str, Any]:
         "buttonActions": [{"value": a, "label": svc.PVP_BUTTON_LABELS.get(a, a)} for a in svc.PVP_BUTTON_ACTIONS],
         "conditionTypes": list(svc.CONDITION_TYPES),
         "textKeys": list(svc.TEXT_KEYS),
+        "timeoutActions": list(svc.PVP_TIMEOUT_ACTIONS),
+        "actionOrderTypes": list(svc.ACTION_ORDER_TYPES),
+        "logModes": list(svc.LOG_MODES),
     }
 
 
