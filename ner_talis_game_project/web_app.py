@@ -330,30 +330,19 @@ def create_app() -> FastAPI:
             max_requests = 0
 
         if max_requests > 0:
+            # Общий лимитер (16-TZ §6): через Redis — единый для всех процессов;
+            # без Redis — in-memory fallback (поведение как раньше для dev).
+            from services import shared_rate_limit
             client_ip = _client_ip_for_rate_limit(request)
-            bucket_key = (client_ip, request.method.upper(), path.rsplit("/", 1)[0] if "/" in path else path)
-            buckets = app.state.rate_limit_hits
-            hits = buckets[bucket_key]
-            while hits and now - hits[0] > window_seconds:
-                hits.popleft()
-            if len(hits) >= max_requests:
+            scope = path.rsplit("/", 1)[0] if "/" in path else path
+            limit_key = f"web:{request.method.upper()}:{scope}:{client_ip}"
+            if not shared_rate_limit.allow(limit_key, max_requests, window_seconds, now=now):
                 response = JSONResponse(
                     {"detail": "Слишком много запросов. Подождите немного и повторите действие."},
                     status_code=429,
                 )
             else:
-                hits.append(now)
                 response = await call_next(request)
-            # Periodically drop empty/stale buckets so per-IP keys do not pile up
-            # forever (slow memory growth over weeks of uptime).
-            app.state.rate_limit_sweep_counter = getattr(app.state, "rate_limit_sweep_counter", 0) + 1
-            if app.state.rate_limit_sweep_counter >= int(os.getenv("RATE_LIMIT_SWEEP_EVERY", "500") or "500"):
-                app.state.rate_limit_sweep_counter = 0
-                for stale_key, stale_hits in list(buckets.items()):
-                    while stale_hits and now - stale_hits[0] > window_seconds:
-                        stale_hits.popleft()
-                    if not stale_hits:
-                        buckets.pop(stale_key, None)
         else:
             response = await call_next(request)
 

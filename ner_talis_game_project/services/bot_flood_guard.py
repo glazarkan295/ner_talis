@@ -103,6 +103,17 @@ def guard_incoming(platform: str, user_id: Any, event_id: Any = "", *, now: floa
         return {"allowed": False, "reason": "duplicate"}
     if not allow_message(platform, user_id, now=now):
         return {"allowed": False, "reason": "flood"}
+    # 16-TZ §3: при общем backend (Redis) дополнительно применяем кросс-процессный
+    # пер-пользовательский лимит, чтобы флуд нельзя было размазать по воркерам.
+    # Без Redis (dev) ветка не входит — поведение прежнее, процесс-локальное.
+    try:
+        from services import shared_rate_limit
+
+        if shared_rate_limit.shared_active():
+            if not shared_rate_limit.allow(f"bot:{platform}:{user_id}", PER_USER_LIMIT, PER_USER_WINDOW):
+                return {"allowed": False, "reason": "flood"}
+    except Exception:
+        pass
     return {"allowed": True, "reason": None}
 
 
