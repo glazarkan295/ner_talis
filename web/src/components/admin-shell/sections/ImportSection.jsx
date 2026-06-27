@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  fetchFeatureFlags,
   fetchImportMeta,
   fetchImportReport,
   runImport,
   runImportCheck,
   runImportDryRun,
+  setFeatureFlag,
 } from "../../../api/adminImportApi.js";
 
 // Унифицированная панель импорта-миграции (full-import ТЗ §13 Этап 5):
@@ -12,12 +14,16 @@ import {
 // проверка связей, просмотр отчёта (таблица + markdown).
 export function ImportSection({ guarded, hasPerm }) {
   const canRun = hasPerm("world.publish");
+  const canViewFlags = hasPerm("system.view");
+  const canToggleFlags = hasPerm("system.manage");
   const [meta, setMeta] = useState(null);
   const [kinds, setKinds] = useState([]);
   const [mode, setMode] = useState("new");
   const [result, setResult] = useState(null);
   const [markdown, setMarkdown] = useState("");
   const [check, setCheck] = useState(null);
+  const [flags, setFlags] = useState(null);
+  const [flagMeta, setFlagMeta] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -39,10 +45,27 @@ export function ImportSection({ guarded, hasPerm }) {
     }
   }, []);
 
+  const loadFlags = useCallback(async () => {
+    if (!canViewFlags) return;
+    try {
+      const r = await fetchFeatureFlags();
+      setFlags(r?.flags || {});
+      setFlagMeta(r?.meta || []);
+    } catch (e) {
+      setError(String(e.message || e));
+    }
+  }, [canViewFlags]);
+
   useEffect(() => {
     loadMeta();
     loadReport();
-  }, [loadMeta, loadReport]);
+    loadFlags();
+  }, [loadMeta, loadReport, loadFlags]);
+
+  const toggleFlag = async (name, enabled) => {
+    const r = await guarded(() => setFeatureFlag(name, enabled), "Флаг обновлён.");
+    if (r?.flags) setFlags(r.flags);
+  };
 
   const toggleKind = (k) =>
     setKinds((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]));
@@ -180,6 +203,28 @@ export function ImportSection({ guarded, hasPerm }) {
         <div className="ntv2-panel">
           <h4 className="ntv2-subhead">Отчёт (markdown)</h4>
           <pre className="ntv2-mono" style={{ whiteSpace: "pre-wrap", maxHeight: 360, overflow: "auto" }}>{markdown}</pre>
+        </div>
+      ) : null}
+
+      {canViewFlags && flags ? (
+        <div className="ntv2-panel">
+          <h4 className="ntv2-subhead">Источники данных игры (V2)</h4>
+          <p className="ntv2-hint">
+            Включает чтение игрой данных из конструкторов V2 по доменам. По умолчанию
+            всё ВЫКЛ — игра работает по старому коду (fallback), пока вы не включите.
+          </p>
+          <div className="ntv2-form-row" style={{ flexWrap: "wrap", gap: 10 }}>
+            {flagMeta.map((f) => (
+              <label className="ntv2-check" key={f.name} title={f.name}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(flags[f.name])}
+                  disabled={!canToggleFlags}
+                  onChange={(e) => toggleFlag(f.name, e.target.checked)}
+                /> {f.label}
+              </label>
+            ))}
+          </div>
         </div>
       ) : null}
     </div>

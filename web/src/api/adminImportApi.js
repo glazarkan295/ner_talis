@@ -24,3 +24,13 @@ export const runImportCheck = (reason = "") =>
 
 export const fetchImportReport = (format = "json") =>
   requestAdminJson(`/api/admin/v2/import/report?format=${format}&_=${Date.now()}`);
+
+// Feature flags (use_v2_*) — постепенный переход игры на V2-данные (ТЗ §14).
+export const fetchFeatureFlags = () =>
+  requestAdminJson(`/api/admin/v2/feature-flags?_=${Date.now()}`);
+
+export const setFeatureFlag = (name, enabled, reason = "") =>
+  requestAdminJson("/api/admin/v2/feature-flags", {
+    method: "PUT",
+    body: JSON.stringify({ name, enabled, reason }),
+  });
