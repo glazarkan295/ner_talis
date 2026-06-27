@@ -9,6 +9,7 @@ import {
   fetchGraphValidation,
   fetchEditableEdges,
   editGraphEdge,
+  runGraphSandbox,
 } from "../../../api/adminGraphApi.js";
 
 // Интерактивная схема / карта связей (ТЗ 12). Чистый SVG без сторонних
@@ -197,6 +198,7 @@ export function GraphSection({ guarded, hasPerm, onOpenSection }) {
   const [lowDetail, setLowDetail] = useState(false);
   const [editSpecs, setEditSpecs] = useState([]);
   const [newEdge, setNewEdge] = useState({ edge_type: "", to: "" });
+  const [sandbox, setSandbox] = useState(null);
   const canEditEdges = hasPerm ? hasPerm("graph.edit") : false;
   const svgRef = useRef(null);
   const drag = useRef(null);
@@ -341,9 +343,15 @@ export function GraphSection({ guarded, hasPerm, onOpenSection }) {
   // --- Действия ---
   async function openNode(node) {
     setSelected(node.id);
+    setSandbox(null);
     const [type, ...rest] = node.id.split(":");
     const d = await guarded(() => fetchGraphNode(type, rest.join(":")));
     if (d) setDetail(d);
+  }
+  async function runSandboxUi() {
+    if (!selected) return;
+    const r = await guarded(() => runGraphSandbox(selected, null, null));
+    if (r) setSandbox(r.result);
   }
   async function focusNode(nodeId) {
     const [type, ...rest] = nodeId.split(":");
@@ -570,6 +578,7 @@ export function GraphSection({ guarded, hasPerm, onOpenSection }) {
             ) : null}
             <div className="ntgraph-card-actions">
               <button type="button" className="ntv2-btn-mini" onClick={() => focusNode(selectedNode.id)}>Показать связи</button>
+              <button type="button" className="ntv2-btn-mini" onClick={runSandboxUi}>🧪 Тест в песочнице</button>
               {onOpenSection ? (
                 <button type="button" className="ntv2-btn-mini" onClick={() => onOpenSection(sectionForType(selectedNode.type))}>Открыть в конструкторе</button>
               ) : null}
@@ -577,6 +586,14 @@ export function GraphSection({ guarded, hasPerm, onOpenSection }) {
               <button type="button" className="ntv2-btn-mini" onClick={() => { setPathInputs((p) => ({ ...p, target: selectedNode.id })); }}>В путь: цель</button>
               <button type="button" className="ntv2-btn-mini" onClick={() => { try { navigator.clipboard?.writeText(selectedNode.id); setInfo("ID скопирован: " + selectedNode.id); } catch { /* noop */ } }}>Скопировать ID</button>
             </div>
+            {sandbox ? (
+              <div className={`ntgraph-sandbox ${sandbox.ok ? "ok" : "bad"}`}>
+                <b>🧪 Песочница: {sandbox.ok ? "проблем нет" : "есть проблемы"}</b>
+                <ul>{(sandbox.steps || []).map((s, i) => (
+                  <li key={i} className={`st-${s.status}`}>{s.status === "ok" ? "✅" : s.status === "error" ? "❌" : s.status === "warn" ? "⚠️" : "ℹ️"} <b>{s.title}</b>{s.detail ? `: ${s.detail}` : ""}</li>
+                ))}</ul>
+              </div>
+            ) : null}
             {canEditEdges ? (() => {
               const typeSpecs = editSpecs.filter((s) => s.from_type === selectedNode.type);
               const editableTypes = new Set(typeSpecs.map((s) => s.edge_type));
@@ -642,6 +659,12 @@ const GRAPH_CSS = `
 .ntgraph-card-list{margin:6px 0;font-size:12px}
 .ntgraph-card-list code,.ntgraph-card-meta code,.ntgraph-card-row code{font-size:11px}
 .ntgraph-card-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.ntgraph-sandbox{margin-top:10px;border-radius:8px;padding:8px;font-size:12px}
+.ntgraph-sandbox.ok{background:#f0fdf4;border:1px solid #bbf7d0}
+.ntgraph-sandbox.bad{background:#fef2f2;border:1px solid #fecaca}
+.ntgraph-sandbox ul{margin:4px 0 0;padding-left:16px}
+.ntgraph-sandbox li.st-error{color:#b91c1c}
+.ntgraph-sandbox li.st-warn{color:#b45309}
 .ntgraph-edit{margin-top:10px;border-top:1px solid #e2e8f0;padding-top:8px;font-size:12px}
 .ntgraph-edit-row{display:flex;justify-content:space-between;align-items:center;gap:6px;margin:4px 0}
 .ntgraph-edit-add{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}

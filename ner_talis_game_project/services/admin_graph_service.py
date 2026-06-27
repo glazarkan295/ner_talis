@@ -939,3 +939,85 @@ def clear_edge(from_id: str, edge_type: str, *, actor: str = "") -> dict[str, An
         raise ValueError("Эта связь не редактируется на схеме.")
     _write_node_field(from_type, from_eid, spec["field"], "", actor)
     return {"from": from_id, "edge_type": edge_type, "cleared": True}
+
+
+# --- Тестовая песочница из схемы (ТЗ 12 §19) -------------------------------
+def sandbox_run(node_id: str, *, values: dict[str, Any] | None = None,
+                target: str | None = None) -> dict[str, Any]:
+    """Сухой прогон объекта без изменения реального игрока: валидация, тип-
+    специфичная проверка, битые связи, какие сообщения/награды были бы выданы,
+    и (если задан target) проходимость пути."""
+    nodes, edges = _build_all()
+    node = nodes.get(node_id)
+    if node is None:
+        return {"ok": False, "error": f"Объект {node_id} не найден.", "steps": []}
+    ntype, eid = _split_node_id(node_id)
+    data = _node_data(node) or {}
+    steps: list[dict[str, Any]] = []
+
+    def _step(title: str, status: str, detail: str = "") -> None:
+        steps.append({"title": title, "status": status, "detail": detail})
+
+    _step("Проверка объекта", "error" if node.get("has_errors") else "ok",
+          "; ".join(node.get("errors") or []) or "без ошибок")
+    for w in (node.get("warnings") or []):
+        _step("Предупреждение", "warn", w)
+
+    # Тип-специфичный сухой прогон.
+    if ntype == "formula":
+        svc = _import_service("formula_constructor_service")
+        if svc:
+            res = svc.test_formula(data, values or {})
+            if res.get("ok"):
+                _step("Расчёт формулы", "ok", f"Результат: {res.get('result')}")
+            else:
+                _step("Расчёт формулы", "error", "; ".join(res.get("errors") or []))
+    elif ntype in wcr.KINDS:
+        try:
+            tr = wcr.test_run(ntype, eid)
+            if tr:
+                for c in tr.get("checks", []):
+                    _step(f"Связанный: {c.get('title')}", "ok" if c.get("ok") else "error",
+                          "; ".join(c.get("errors") or []))
+        except Exception:
+            pass
+    if ntype == "sublocation":
+        try:
+            sch = wcr.validate_sublocation_schema(eid)
+            _step("Схема подлокации", "ok" if sch.get("ok") else "error",
+                  "; ".join(sch.get("errors") or []) or f"узлов {sch.get('node_count')}")
+        except Exception:
+            pass
+
+    # Битые исходящие связи блокируют путь.
+    broken = [e for e in edges if e["from"] == node_id and e.get("broken")]
+    for e in broken:
+        _step("Битая связь", "error", f"{e['label']} → {e['to']}")
+
+    # Что было бы выдано/отправлено (без выполнения).
+    if any(data.get(k) for k in ("player_message", "scene_message", "notify_message")):
+        _step("Сообщение игроку", "info", "Будет показано сообщение игроку.")
+    rewards = data.get("rewards")
+    if isinstance(rewards, list) and rewards:
+        _step("Награды", "info", f"Будут выданы награды: {len(rewards)}.")
+    if str(data.get("given_item") or data.get("output_item_id") or "").strip():
+        _step("Выдача предмета", "info",
+              f"Будет выдан предмет: {data.get('given_item') or data.get('output_item_id')}.")
+
+    out: dict[str, Any] = {"node": node, "steps": steps}
+    # Режим пути (§10/§19): проходимость от node к target.
+    if target:
+        pg = path_graph(node_id, target)
+        if pg.get("found"):
+            path = pg.get("path", [])
+            blocked = [e for e in pg.get("edges", []) if e.get("broken")]
+            out["path"] = path
+            if blocked:
+                _step("Путь", "error", "Путь содержит битые связи — заблокирован.")
+            else:
+                _step("Путь", "ok", " → ".join(path))
+        else:
+            _step("Путь", "error", pg.get("error") or "Путь не найден.")
+
+    out["ok"] = not any(s["status"] == "error" for s in steps)
+    return out

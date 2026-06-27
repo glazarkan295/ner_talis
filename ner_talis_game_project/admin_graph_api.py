@@ -30,6 +30,13 @@ from services.admin_rbac import (
 )
 
 
+class _SandboxBody(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    node: str = Field(min_length=3)
+    values: dict[str, Any] | None = None
+    target: str | None = None
+
+
 class _EdgeBody(BaseModel):
     token: str | None = Field(default=None, min_length=16)
     action: str = "set"  # set | clear
@@ -166,6 +173,11 @@ def create_admin_graph_router(get_storage) -> APIRouter:
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         return session
+
+    @router.post("/sandbox")
+    def sandbox(payload: _SandboxBody, request: Request) -> dict[str, Any]:
+        _guard(get_storage(), request, payload.token)
+        return {"ok": True, "result": graph.sandbox_run(payload.node, values=payload.values, target=payload.target)}
 
     @router.get("/editable-edges")
     def editable_edges(request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:

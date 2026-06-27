@@ -138,6 +138,20 @@ class GraphServiceTest(GraphTestBase):
         self.assertGreaterEqual(v["node_count"], 7)
         self.assertGreaterEqual(len(v["broken_edges"]), 1)
 
+    def test_sandbox_location(self):
+        r = graph.sandbox_run("location:forest")
+        self.assertTrue(r["steps"])
+        self.assertEqual(r["steps"][0]["title"], "Проверка объекта")
+
+    def test_sandbox_event_broken_link(self):
+        r = graph.sandbox_run("event:ev_find")  # required_item=ghost_item (битая)
+        self.assertTrue(any(s["status"] == "error" and "связь" in s["title"].lower() for s in r["steps"]))
+
+    def test_sandbox_path(self):
+        r = graph.sandbox_run("location:forest", target="mob:wolf")
+        self.assertIn("path", r)
+        self.assertTrue(any(s["title"] == "Путь" for s in r["steps"]))
+
     def test_site_and_profile_nodes_and_edges(self):
         g = graph.full_graph()
         ids = {n["id"] for n in g["nodes"]}
