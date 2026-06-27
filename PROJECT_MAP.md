@@ -136,7 +136,7 @@
 
 ## Тесты и запуск
 - Тесты: `./.venv/Scripts/python.exe -m pytest -p no:cacheprovider -q ner_talis_game_project/tests` — **запускать из КОРНЯ репо** (часть тестов проверяет `web/public/...` относительно корня).
-- venv: `.venv/Scripts/python.exe`. Сборка SPA: `cd web && npm run build`.
+- venv: `.venv/Scripts/python.exe`. Сборка SPA: `cd web && npm run build`. На Windows, если `node` не в PATH — `cd web; ./build.ps1` (helper подставит C:\Program Files\nodejs в PATH на время сборки, 16-TZ §2). Лучшее решение — добавить Node.js в системный PATH.
 - Стиль E501/F401 — историческая норма проекта, игнорируется.
 
 ## Где что лежит (быстрый индекс фич)
