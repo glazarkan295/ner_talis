@@ -129,7 +129,7 @@ function computeLayout(nodes, edges) {
 const DEPTH_TIERS = [
   ["city", "world_event"],
   ["location", "location_zone", "transition", "button"],
-  ["sublocation", "location_resource", "location_loot", "location_mob_spawn", "location_weekly_limit", "location_weekly_rotation", "location_depletion_rule", "location_empty_event"],
+  ["sublocation", "tavern", "location_resource", "location_loot", "location_mob_spawn", "location_weekly_limit", "location_weekly_rotation", "location_depletion_rule", "location_empty_event"],
   ["sublocation_node", "sublocation_transition", "event", "location_hidden_event", "location_event_answer", "npc", "quest", "raid"],
   ["mob", "mob_variant", "mob_skill", "mob_passive", "mob_resistance", "mob_effect", "mob_event_link", "mob_zone_link", "mob_phase"],
   ["item", "recipe", "profession", "workshop", "item_upgrade", "item_enchant", "item_disassemble"],

@@ -44,7 +44,7 @@ NODE_TYPE_LABELS: dict[str, str] = {
     "workshop_message": "Сообщение мастерской",
     "item_upgrade": "Улучшение", "item_enchant": "Зачарование",
     "item_disassemble": "Разборка", "reputation": "Репутация",
-    "addiction": "Зависимость", "tolerance": "Привыкание",
+    "addiction": "Зависимость", "tolerance": "Привыкание", "tavern": "Таверна",
     # Сайт (ТЗ §16) и профиль — из своих реестров с тегом _kind.
     "site_page": "Страница сайта", "site_page_block": "Блок страницы",
     "site_menu_item": "Пункт меню", "site_news": "Новость", "site_guide": "Гайд",
@@ -217,6 +217,7 @@ CONSTRUCTOR_SOURCES: list[tuple[str, str, str]] = [
     ("reputation", "reputation_constructor_service", "name_ru"),
     ("addiction", "addiction_constructor_service", "name_admin"),
     ("tolerance", "tolerance_constructor_service", "name_admin"),
+    ("tavern", "tavern_constructor_service", "name"),
 ]
 
 # Реестры с тегом _kind в data (сайт/профиль): один стор — много типов узлов.
@@ -615,6 +616,10 @@ def _constructor_edges(nodes: dict[str, dict[str, Any]], seen: set[str]) -> list
             if str(data.get("linked_hidden_reputation_id") or "").strip():
                 _add_typed(nid, str(data["linked_hidden_reputation_id"]).strip(),
                            "reputation", "depends_on_reputation")
+        elif node["type"] == "tavern":
+            data = _node_data(node) or {}
+            if str(data.get("location_id") or "").strip():
+                _add_typed(nid, str(data["location_id"]).strip(), "location", "in_location")
     return edges
 
 

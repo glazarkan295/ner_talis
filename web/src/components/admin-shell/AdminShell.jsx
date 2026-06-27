@@ -24,6 +24,7 @@ import { SublocationsSection } from "./sections/SublocationsSection.jsx";
 import { FormulasSection } from "./sections/FormulasSection.jsx";
 import { WorkshopMessagesSection } from "./sections/WorkshopMessagesSection.jsx";
 import { ReputationSection } from "./sections/ReputationSection.jsx";
+import { TavernSection } from "./sections/TavernSection.jsx";
 import { LibrarySection } from "./sections/LibrarySection.jsx";
 
 const TRAIT_CONFIG = {
@@ -278,6 +279,7 @@ const NAV = [
   { id: "site", label: "Конструктор сайта", icon: "🌐", perm: "site.view" },
   { id: "profile_layout", label: "Раскладка профиля", icon: "🪪", perm: "profile_layout.view" },
   { id: "city", label: "Город и крепость", icon: "🏙️", perm: "city.view" },
+  { id: "taverns", label: "Конструктор таверны", icon: "🍺", perm: "tavern.view" },
   { id: "recipes", label: "Конструктор ремесла", icon: "⚒️", perm: "recipe.view" },
   { id: "professions", label: "Профессии ремесла", icon: "🛠️", perm: "profession.view" },
   { id: "workshops", label: "Мастерские", icon: "🏭", perm: "workshop.view" },
@@ -320,7 +322,7 @@ const SEARCH_TYPE_TO_SECTION = {
   formula: "formulas", profession: "professions", workshop: "workshops",
   workshop_message: "workshop_messages", item_upgrade: "upgrades",
   item_enchant: "enchants", item_disassemble: "disassembles", reputation: "reputations",
-  addiction: "addictions", tolerance: "tolerances",
+  addiction: "addictions", tolerance: "tolerances", tavern: "taverns",
   sublocation: "sublocations", sublocation_node: "sublocations", sublocation_transition: "sublocations",
 };
 function sectionForSearchType(type) {
@@ -478,6 +480,7 @@ export function AdminShell() {
         {active === "site" && hasPerm("site.view") && <SiteSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "profile_layout" && hasPerm("profile_layout.view") && <ProfileLayoutSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "city" && hasPerm("city.view") && <CitySection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "taverns" && hasPerm("tavern.view") && <TavernSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "recipes" && hasPerm("recipe.view") && <RecipesSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "professions" && hasPerm("profession.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PROFESSION_CONFIG} />}
         {active === "workshops" && hasPerm("workshop.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={WORKSHOP_CONFIG} />}
