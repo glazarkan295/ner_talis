@@ -105,6 +105,63 @@ const PVP_CONFIG = {
     { key: "description", label: "Описание (для админа)", type: "textarea" },
   ],
 };
+const NPC_ALLY_CONFIG = {
+  base: "npc-allies", title: "Конструктор NPC-союзников", permPrefix: "npc_ally",
+  newLabel: "Новый NPC-союзник", nameField: "name",
+  fields: [
+    { key: "name", label: "Имя", type: "text", hint: "Имя NPC-союзника, видно админу и игроку." },
+    { key: "ally_type", label: "Тип", type: "select", metaKey: "allyTypes", hint: "Боевой/лекарь/защитник/разведчик/носильщик/ремесленник/наёмник/спутник и т.д." },
+    { key: "description", label: "Описание", type: "textarea" },
+    { key: "image_path", label: "Изображение", type: "text", hint: "Локальный путь /assets/…" },
+    { key: "acquire_method", label: "Как получить", type: "select", metaKey: "acquireMethods", hint: "Нанять/задание/достижение/событие/таверна/гильдия/дом/предмет/навык/админ." },
+    { key: "cost", label: "Стоимость", type: "number" },
+    { key: "currency", label: "Валюта", type: "select", metaKey: "currencies" },
+    { key: "duration_seconds", label: "Длительность (сек)", type: "number", hint: "Для временных союзников/наёмников." },
+    { key: "battles_limit", label: "Количество боёв/действий", type: "number" },
+    { key: "time_limit_seconds", label: "Лимит времени (сек)", type: "number" },
+    { key: "cooldown_seconds", label: "Кулдаун (сек)", type: "number" },
+    { key: "required_level", label: "Требуемый уровень игрока", type: "number" },
+    { key: "required_reputation", label: "Требуемая репутация", type: "number" },
+    { key: "access_item_id", label: "Предмет доступа (id)", type: "text" },
+    { key: "level", label: "Уровень", type: "number" },
+    { key: "rank", label: "Ранг", type: "number" },
+    { key: "hp", label: "Здоровье", type: "number" },
+    { key: "mana", label: "Мана", type: "number" },
+    { key: "spirit", label: "Дух", type: "number" },
+    { key: "energy", label: "Энергия", type: "number" },
+    { key: "armor", label: "Броня", type: "number" },
+    { key: "phys_defense", label: "Физическая защита", type: "number" },
+    { key: "magic_defense", label: "Магическая защита", type: "number" },
+    { key: "accuracy", label: "Точность, %", type: "number" },
+    { key: "dodge", label: "Уклонение, %", type: "number" },
+    { key: "crit_chance", label: "Критический шанс, %", type: "number" },
+    { key: "crit_damage", label: "Урон крита, %", type: "number" },
+    { key: "speed", label: "Скорость/инициатива", type: "number" },
+    { key: "abilities", label: "Способности", type: "multiselect", metaKey: "abilities", hint: "Атака/защита/лечение/поиск ресурсов/ремесло/сопровождение/PVE/PVP и т.д." },
+    { key: "skills", label: "Навыки (id по строкам)", type: "list" },
+    { key: "effects", label: "Эффекты (id по строкам)", type: "list" },
+    { key: "resistances", label: "Сопротивления (по строкам)", type: "list" },
+    { key: "weaknesses", label: "Слабости (по строкам)", type: "list" },
+    { key: "combat_turn_mode", label: "Поведение хода в бою", type: "select", metaKey: "combatTurnModes" },
+    { key: "target_mode", label: "Выбор цели", type: "select", metaKey: "targetModes" },
+    { key: "target_priority", label: "Приоритет целей (по строкам)", type: "list" },
+    { key: "protect_owner", label: "Защищает владельца", type: "checkbox" },
+    { key: "heal_low_hp_ally", label: "Лечит союзника с низким HP", type: "checkbox" },
+    { key: "can_die", label: "Может погибнуть", type: "checkbox" },
+    { key: "can_revive", label: "Можно воскресить", type: "checkbox" },
+    { key: "lost_after_battle", label: "Теряется после боя", type: "checkbox" },
+    { key: "out_of_battle_behavior", label: "Поведение вне боя", type: "textarea" },
+    { key: "gets_loot_share", label: "Получает долю добычи", type: "checkbox" },
+    { key: "loot_share_percent", label: "Доля добычи, %", type: "number" },
+    { key: "find_bonus_percent", label: "Бонус к шансу находки, %", type: "number" },
+    { key: "owner_reward_penalty_percent", label: "Снижение награды игрока, %", type: "number" },
+    { key: "own_resources", label: "Приносит ресурсы (id по строкам)", type: "list" },
+    { key: "affects_player_exp", label: "Влияет на опыт игрока", type: "checkbox" },
+    { key: "has_progress", label: "Имеет собственный прогресс", type: "checkbox" },
+    { key: "can_level_up", label: "Повышает уровень", type: "checkbox" },
+    { key: "restrictions", label: "Штрафы/запреты (по строкам)", type: "list" },
+  ],
+};
 const TRAIT_CONFIG = {
   base: "traits", title: "Конструктор черт мобов", permPrefix: "trait",
   newLabel: "Новая черта", nameField: "trait_name",
@@ -373,6 +430,7 @@ const NAV = [
   { id: "phases", label: "Фазы боссов", icon: "🌀", perm: "phase.view" },
   { id: "pvp", label: "Конструктор PVP", icon: "⚔️", perm: "pvp.view" },
   { id: "combat", label: "Боевые настройки", icon: "⏱️", perm: "combat.view" },
+  { id: "npc-allies", label: "NPC-союзники", icon: "🤝", perm: "npc_ally.view" },
   { id: "levels", label: "Уровни", icon: "🪜", perm: "level.view" },
   { id: "exp", label: "Опыт", icon: "📈", perm: "exp.view" },
   { id: "registration", label: "Регистрация", icon: "📝", perm: "registration.view" },
@@ -403,7 +461,7 @@ const NAV_GROUP_OF = {
   items: "Контент", achievements: "Контент", traits: "Контент",
   blessings: "Контент", phases: "Контент", texts: "Контент",
   effects: "Бой", addictions: "Бой", tolerances: "Бой", skills: "Бой",
-  formulas: "Бой", reputations: "Бой", pvp: "Бой", combat: "Бой",
+  formulas: "Бой", reputations: "Бой", pvp: "Бой", combat: "Бой", "npc-allies": "Бой",
   recipes: "Ремесло и экономика", professions: "Ремесло и экономика",
   workshops: "Ремесло и экономика", workshop_messages: "Ремесло и экономика",
   upgrades: "Ремесло и экономика", enchants: "Ремесло и экономика",
@@ -432,6 +490,7 @@ const SEARCH_TYPE_TO_SECTION = {
   item_enchant: "enchants", item_disassemble: "disassembles", reputation: "reputations",
   addiction: "addictions", tolerance: "tolerances", tavern: "taverns",
   sublocation: "sublocations", sublocation_node: "sublocations", sublocation_transition: "sublocations",
+  npc_ally: "npc-allies",
 };
 function sectionForSearchType(type) {
   if (type in SEARCH_TYPE_TO_SECTION) return SEARCH_TYPE_TO_SECTION[type];
@@ -628,6 +687,7 @@ export function AdminShell() {
         {active === "blessings" && hasPerm("blessing.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={BLESSING_CONFIG} />}
         {active === "pvp" && hasPerm("pvp.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PVP_CONFIG} />}
         {active === "combat" && hasPerm("combat.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={COMBAT_CONFIG} />}
+        {active === "npc-allies" && hasPerm("npc_ally.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={NPC_ALLY_CONFIG} />}
         {active === "phases" && hasPerm("phase.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PHASE_CONFIG} />}
         {active === "levels" && hasPerm("level.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={LEVEL_CONFIG} />}
         {active === "exp" && hasPerm("exp.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={EXP_CONFIG} />}
