@@ -24,6 +24,7 @@ _STORE_ENVS = (
     "ITEM_CONSTRUCTOR_PATH", "WORLD_CONTENT_PATH", "EFFECT_CONSTRUCTOR_PATH",
     "CITY_CONSTRUCTOR_PATH", "ACHIEVEMENTS_PATH", "ACHIEVEMENT_CATEGORIES_PATH",
     "FINE_CONSTRUCTOR_PATH", "SKILL_CONSTRUCTOR_PATH", "IMPORT_REPORT_PATH",
+    "IMPORT_JOURNAL_PATH",
 )
 
 
@@ -105,6 +106,53 @@ class AdminImportApiTest(unittest.TestCase):
         dry = self.client.post("/api/admin/v2/import/dry-run", headers=self._auth(token), json={"kinds": ["fine_def"], "mode": "new"})
         self.assertEqual(dry.json()["summary"]["created"], 0)
         self.assertGreater(dry.json()["summary"]["skipped"], 0)
+
+    def test_rollback_removes_created(self):
+        from services import fine_constructor_service as fc
+
+        token = self._token()
+        self.client.post("/api/admin/v2/import/run", headers=self._auth(token), json={"kinds": ["fine_def"], "mode": "new"})
+        self.assertGreater(len(fc.store().list()), 0)
+        rb = self.client.post("/api/admin/v2/import/rollback", headers=self._auth(token), json={"reason": "откат"})
+        self.assertEqual(rb.status_code, 200, rb.text)
+        self.assertGreater(rb.json()["deleted"], 0)
+        self.assertEqual(fc.store().list(), [])
+        # Повторный откат — журнал израсходован, удалять нечего.
+        rb2 = self.client.post("/api/admin/v2/import/rollback", headers=self._auth(token), json={})
+        self.assertEqual(rb2.json()["found"], 0)
+
+    def test_rollback_keeps_admin_owned(self):
+        from services import fine_constructor_service as fc
+
+        token = self._token()
+        self.client.post("/api/admin/v2/import/run", headers=self._auth(token), json={"kinds": ["fine_def"], "mode": "new"})
+        ids = [i["id"] for i in fc.store().list()]
+        self.assertGreater(len(ids), 1)
+        # Админ «забирает» одну запись под контроль (снимает метку imported).
+        fc.store().update(ids[0], {"imported": False}, actor="admin")
+        rb = self.client.post("/api/admin/v2/import/rollback", headers=self._auth(token), json={})
+        self.assertEqual(rb.status_code, 200, rb.text)
+        self.assertEqual(rb.json()["kept"], 1)
+        remaining = [i["id"] for i in fc.store().list()]
+        self.assertEqual(remaining, [ids[0]])
+
+    def test_rollback_world_registry_kind(self):
+        # Откат вида из реестра мира (location) — путь wcr.delete_content.
+        from services import constructor_import as ci
+        from services import world_content_registry as wcr
+
+        ci.import_all(["location"], mode="new")
+        self.assertGreater(len(wcr.list_content(wcr.KIND_LOCATION)), 0)
+        rb = ci.rollback_last()
+        self.assertGreater(rb["deleted"], 0)
+        self.assertEqual(wcr.list_content(wcr.KIND_LOCATION), [])
+
+    def test_dry_run_does_not_journal(self):
+        token = self._token()
+        # dry-run не должен оставлять журнал для отката.
+        self.client.post("/api/admin/v2/import/dry-run", headers=self._auth(token), json={"kinds": ["fine_def"], "mode": "new"})
+        rb = self.client.post("/api/admin/v2/import/rollback", headers=self._auth(token), json={})
+        self.assertEqual(rb.json()["found"], 0)
 
     def test_report_endpoint_json_and_md(self):
         token = self._token()

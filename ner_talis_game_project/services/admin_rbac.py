@@ -574,6 +574,7 @@ DANGEROUS_ACTIONS = frozenset({
     "camp.delete",
     # Импорт-миграция — массовая публикация существующего контента в конструкторы.
     "import.run",
+    "import.rollback",
     "guild.disable",
     "world_event.start",
     "world_event.stop",

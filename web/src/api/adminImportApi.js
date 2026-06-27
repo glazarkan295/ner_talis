@@ -22,6 +22,12 @@ export const runImportCheck = (reason = "") =>
     body: JSON.stringify({ reason }),
   });
 
+export const runImportRollback = (reason = "") =>
+  requestAdminJson("/api/admin/v2/import/rollback", {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+
 export const fetchImportReport = (format = "json") =>
   requestAdminJson(`/api/admin/v2/import/report?format=${format}&_=${Date.now()}`);
 

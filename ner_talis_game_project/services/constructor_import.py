@@ -66,6 +66,16 @@ def _was_imported(existing: dict[str, Any]) -> bool:
 # как при реальном импорте. Так dry-run переиспользует ту же логику без дубля.
 _DRY_RUN = {"on": False}
 
+# Журнал созданных записей последнего РЕАЛЬНОГО импорта (ТЗ §4.1: откат
+# последнего импорта). Заполняется в момент создания записи; import_all
+# сбрасывает его в начале и сохраняет в файл по завершении реального прогона.
+_BATCH: list[tuple[str, str]] = []
+
+
+def _record_created(kind: str, sid: str) -> None:
+    if not _DRY_RUN["on"]:
+        _BATCH.append((str(kind), str(sid)))
+
 
 def _noop(*_args: Any, **_kwargs: Any) -> None:
     return None
@@ -149,6 +159,7 @@ def import_items(*, overwrite: bool = False, actor: str = "import", mode: str | 
                 store.set_status(sid, ics.STATUS_PUBLISHED, actor=actor, force=True)
             except Exception:
                 pass
+        _record_created("item", sid)
         created += 1
     return {"kind": "item", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid}
 
@@ -248,6 +259,7 @@ def import_mobs(*, overwrite: bool = False, actor: str = "import", mode: str | N
                     wcr.set_status(wcr.KIND_MOB, sid, wcr.STATUS_PUBLISHED, actor=actor, force=True)
                 except Exception:
                     pass
+            _record_created("mob", sid)
             created += 1
     return {"kind": "mob", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid}
 
@@ -352,6 +364,7 @@ def import_effects(*, overwrite: bool = False, actor: str = "import", mode: str 
                 "id": effect_id, "type": "effect",
                 "reason": "Сид без обязательных полей типа (stat/control_kind/resource) — оставлен черновиком, дополните и опубликуйте.",
             })
+        _record_created("effect", effect_id)
         created += 1
     return {"kind": "effect", "created": created, "updated": updated, "skipped": skipped, "invalid": 0, "needs_check": needs_check}
 
@@ -446,6 +459,7 @@ def import_skills(*, overwrite: bool = False, actor: str = "import", mode: str |
                 store.set_status(sid, scs.STATUS_PUBLISHED, actor=actor, force=True)
             except Exception:
                 pass
+        _record_created("skill", sid)
         created += 1
     return {"kind": "skill", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid}
 
@@ -553,6 +567,7 @@ def _apply_record(report, sid, data, mode, *, get_fn, create_fn, update_fn, publ
                 copy_data = copy_rewrite(copy_data)
             create_fn(new_id, copy_data)
             publish_fn(new_id)
+            _record_created(report["kind"], new_id)
             report["created"] += 1
             return
         update_fn(sid, data)
@@ -565,6 +580,7 @@ def _apply_record(report, sid, data, mode, *, get_fn, create_fn, update_fn, publ
         return
     create_fn(sid, data)
     publish_fn(sid)
+    _record_created(report["kind"], sid)
     report["created"] += 1
 
 
@@ -1304,8 +1320,15 @@ IMPORTERS = {
 
 def import_all(kinds: list[str] | None = None, *, overwrite: bool = False, mode: str | None = None, actor: str = "import", dry_run: bool = False) -> dict[str, Any]:
     selected = [k for k in (kinds or list(IMPORTERS)) if k in IMPORTERS]
+    _BATCH.clear()
     with _dry_run_scope(dry_run):
         reports = [_normalize_report(IMPORTERS[k](overwrite=overwrite, mode=mode, actor=actor)) for k in selected]
+    # Журнал созданных записей — только для реального импорта (ТЗ §4.1, откат).
+    if not dry_run:
+        try:
+            save_import_journal(list(_BATCH))
+        except Exception:
+            pass
     summary = {
         "found": sum(r["found"] for r in reports),
         "created": sum(r["created"] for r in reports),
@@ -1410,3 +1433,115 @@ def build_import_markdown(result: dict[str, Any] | None) -> str:
             ident = er.get("id") if isinstance(er, dict) else ""
             lines.append(f"- **{kind}/{ident}**: {reason}")
     return "\n".join(lines)
+
+
+# --- Откат последнего импорта (ТЗ §4.1) -------------------------------------
+# kind → имя модуля сервиса с EntityStore (store() + get/delete).
+_ENTITY_STORE_KINDS = {
+    "item": "item_constructor_service",
+    "effect": "effect_constructor_service",
+    "skill": "skill_constructor_service",
+    "fine_def": "fine_constructor_service",
+    "recipe": "recipe_constructor_service",
+    "achievement": "achievement_service",
+    "profile_layout": "profile_layout_service",
+    "city_node": "city_constructor_service",
+    "trait": "trait_constructor_service",
+    "blessing": "blessing_constructor_service",
+    "phase": "phase_constructor_service",
+    "race": "race_constructor_service",
+}
+# kind → имя константы вида реестра мира (world_content_registry без отдельного store()).
+_WCR_KINDS = {"mob": "KIND_MOB", "location": "KIND_LOCATION", "event": "KIND_EVENT"}
+
+
+def _journal_path():
+    import os
+    from project_paths import project_path
+
+    override = os.environ.get("IMPORT_JOURNAL_PATH")
+    if override:
+        from pathlib import Path
+
+        return Path(override)
+    return project_path("data", "import_journal.json")
+
+
+def save_import_journal(batch) -> None:
+    import json
+
+    path = _journal_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    payload = {"created": [[str(k), str(s)] for k, s in batch], "count": len(list(batch))}
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+
+
+def load_import_journal():
+    import json
+
+    path = _journal_path()
+    if not path.exists():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _delete_imported(kind: str, sid: str) -> str:
+    """Удалить одну запись отката. Статус: deleted/kept/missing/unknown.
+
+    kept — запись больше не помечена imported (админ взял её под контроль, §11):
+    откат её НЕ трогает."""
+    if kind in _WCR_KINDS:
+        from services import world_content_registry as wcr
+
+        kconst = getattr(wcr, _WCR_KINDS[kind])
+        env = wcr.get_content(kconst, sid)
+        if env is None:
+            return "missing"
+        if not (env.get("data") or {}).get("imported"):
+            return "kept"
+        wcr.delete_content(kconst, sid)
+        return "deleted"
+    module_name = _ENTITY_STORE_KINDS.get(kind)
+    if not module_name:
+        return "unknown"
+    import importlib
+
+    module = importlib.import_module(f"services.{module_name}")
+    store = module.store()
+    env = store.get(sid)
+    if env is None:
+        return "missing"
+    if not (env.get("data") or {}).get("imported"):
+        return "kept"
+    store.delete(sid)
+    return "deleted"
+
+
+def rollback_last(*, actor: str = "import") -> dict[str, Any]:
+    """Откатить последний реальный импорт: удалить созданные им записи (§4.1).
+
+    Удаляются только записи, всё ещё помеченные imported (рукотворные/взятые
+    админом под контроль — сохраняются). Журнал после отката очищается."""
+    journal = load_import_journal()
+    created = (journal or {}).get("created") or []
+    counts = {"deleted": 0, "kept": 0, "missing": 0, "unknown": 0}
+    details: list[dict[str, Any]] = []
+    for entry in created:
+        if not isinstance(entry, (list, tuple)) or len(entry) < 2:
+            continue
+        kind, sid = str(entry[0]), str(entry[1])
+        status = _delete_imported(kind, sid)
+        counts[status] = counts.get(status, 0) + 1
+        if status in ("kept", "unknown"):
+            details.append({"kind": kind, "id": sid, "status": status})
+    save_import_journal([])  # журнал израсходован — повторный откат ничего не делает
+    _BATCH.clear()
+    return {"ok": True, "found": len(created), **counts, "details": details}

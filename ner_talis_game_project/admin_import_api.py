@@ -130,6 +130,20 @@ def create_admin_import_router(get_storage) -> APIRouter:
         )
         return result
 
+    @router.post("/rollback")
+    def rollback(payload: ActionRequest, request: Request) -> dict[str, Any]:
+        # Откат удаляет записи из живых конструкторов → publish-level, опасное.
+        session = _session(get_storage(), request, payload.token)
+        _require(session, PERM_WORLD_PUBLISH)
+        result = run_admin_operation(
+            session=session, action="import.rollback",
+            func=lambda: ci.rollback_last(actor=_actor(session)),
+            target_type="constructor_import", target_id="last",
+            after_func=lambda r: {"deleted": r.get("deleted"), "kept": r.get("kept")},
+            reason=payload.reason,
+        )
+        return result
+
     @router.post("/check")
     def check(payload: ActionRequest, request: Request) -> dict[str, Any]:
         session = _session(get_storage(), request, payload.token)

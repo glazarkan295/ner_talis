@@ -6,6 +6,7 @@ import {
   runImport,
   runImportCheck,
   runImportDryRun,
+  runImportRollback,
   setFeatureFlag,
 } from "../../../api/adminImportApi.js";
 
@@ -112,6 +113,16 @@ export function ImportSection({ guarded, hasPerm }) {
     }
   };
 
+  const doRollback = async () => {
+    if (!window.confirm("Откатить последний импорт? Будут удалены записи, созданные последним импортом (правки админа сохранятся).")) return;
+    setBusy(true);
+    setError("");
+    const r = await guarded(() => runImportRollback(), "Откат выполнен.");
+    if (r) setCheck(null), setResult(null);
+    setBusy(false);
+    await loadReport();
+  };
+
   const showMarkdown = async () => {
     try {
       const r = await fetchImportReport("md");
@@ -156,6 +167,7 @@ export function ImportSection({ guarded, hasPerm }) {
         <div className="ntv2-form-row" style={{ gap: 10, marginTop: 10 }}>
           <button type="button" className="ntv2-btn" disabled={busy} onClick={doDryRun}>Dry-run (предпросмотр)</button>
           {canRun ? <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={busy} onClick={doRun}>Импортировать</button> : null}
+          {canRun ? <button type="button" className="ntv2-btn ntv2-btn-danger" disabled={busy} onClick={doRollback}>Откатить последний</button> : null}
           <button type="button" className="ntv2-btn" disabled={busy} onClick={doCheck}>Проверить связи</button>
           <button type="button" className="ntv2-btn" disabled={busy} onClick={showMarkdown}>Отчёт (markdown)</button>
         </div>

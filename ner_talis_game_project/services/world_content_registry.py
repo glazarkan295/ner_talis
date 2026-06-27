@@ -386,6 +386,24 @@ def create_content(kind: str, content_id: str, data: dict[str, Any], *, actor: s
         return dict(envelope)
 
 
+def delete_content(kind: str, content_id: str) -> bool:
+    """Удалить запись реестра. True — удалено, False — не было.
+
+    Используется откатом импорта (full-import ТЗ §4.1): импорт-журнал удаляет
+    ровно те записи, которые создал последний импорт. Прямой жёсткой команды
+    удаления у реестра больше нет — это намеренно узкий путь."""
+    _ensure_kind(kind)
+    content_id = str(content_id or "").strip()
+    with _STORE_LOCK, _store_file_lock():
+        store = _load_all()
+        bucket = store.get(kind) or {}
+        if content_id not in bucket:
+            return False
+        del bucket[content_id]
+        _save_all(store)
+        return True
+
+
 def _content_snapshot(envelope: dict[str, Any]) -> dict[str, Any]:
     return {
         "version": int(envelope.get("version") or 1),
