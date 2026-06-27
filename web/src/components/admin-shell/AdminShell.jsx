@@ -33,6 +33,35 @@ const TextsSection = lazyNamed(() => import("./sections/TextsSection.jsx"), "Tex
 import { DashboardSection } from "./sections/DashboardSection.jsx";
 import { LibrarySection } from "./sections/LibrarySection.jsx";
 
+const PVP_CONFIG = {
+  base: "pvp", title: "Конструктор PVP (будущий)", permPrefix: "pvp",
+  newLabel: "Новое PVP-правило", nameField: "name",
+  fields: [
+    { key: "name", label: "Название", type: "text", hint: "Имя правила/пресета PVP." },
+    { key: "pvp_type", label: "Тип PVP", type: "select", metaKey: "pvpTypes", hint: "Дуэль/арена/осада/заказ/… — задаёт смысл боя." },
+    { key: "enabled", label: "Включён", type: "checkbox", hint: "Правило активно. PVP-боёв в игре пока нет — рантайм на вырост." },
+    { key: "min_level", label: "Мин. уровень", type: "number", hint: "С какого уровня доступно PVP." },
+    { key: "max_level_diff", label: "Макс. разница уровней", type: "number", hint: "Ограничение разницы уровней соперников (0 = без ограничения)." },
+    { key: "cooldown_seconds", label: "Кулдаун между боями (сек)", type: "number" },
+    { key: "accept_seconds", label: "Время на принятие (сек, дуэль)", type: "number" },
+    { key: "require_consent", label: "Только по согласию", type: "checkbox" },
+    { key: "attack_without_consent", label: "Нападение без согласия (свободный PVP)", type: "checkbox" },
+    { key: "death_on_loss", label: "Поражение со смертью", type: "checkbox" },
+    { key: "newbie_protection", label: "Защита новичков", type: "checkbox" },
+    { key: "allowed_locations", label: "Разрешённые локации (id по строкам)", type: "list" },
+    { key: "forbidden_locations", label: "Запрещённые локации (id по строкам)", type: "list" },
+    { key: "conditions", label: "Условия входа в бой", type: "objlist", columns: [{ key: "type", label: "Тип" }, { key: "value", label: "Значение" }], hint: "Уровень/локация/событие/штраф/предмет/статус и т.д." },
+    { key: "rewards", label: "Награды за победу", type: "objlist", columns: [{ key: "type", label: "Тип" }, { key: "value", label: "Значение" }] },
+    { key: "penalties", label: "Штрафы и последствия поражения", type: "objlist", columns: [{ key: "type", label: "Тип" }, { key: "value", label: "Значение" }] },
+    { key: "buttons", label: "Кнопки боя", type: "objlist", columns: [{ key: "action", label: "Действие" }, { key: "text", label: "Текст" }, { key: "resource_cost", label: "Расход" }], hint: "attack/skills/use_item/pouch/defend/flee/surrender/enemy_info." },
+    { key: "postdeath_curse_enabled", label: "Посмертные PVP-проклятья", type: "checkbox", hint: "Учитываются достижением «Проклятье? Какое проклятье?» (только PVP-смерть, ТЗ §1.6)." },
+    { key: "postdeath_curse_chance", label: "Шанс проклятья, %", type: "number" },
+    { key: "postdeath_curses", label: "Доступные проклятья (id по строкам)", type: "list" },
+    { key: "curse_duration", label: "Длительность проклятья (сек)", type: "number" },
+    { key: "texts", label: "Тексты игроку", type: "objlist", columns: [{ key: "key", label: "Ключ" }, { key: "text", label: "Текст" }], hint: "invite/confirm/decline/turn_player/victory/defeat/death/curse/reward/penalty." },
+    { key: "description", label: "Описание (для админа)", type: "textarea" },
+  ],
+};
 const TRAIT_CONFIG = {
   base: "traits", title: "Конструктор черт мобов", permPrefix: "trait",
   newLabel: "Новая черта", nameField: "trait_name",
@@ -299,6 +328,7 @@ const NAV = [
   { id: "traits", label: "Черты мобов", icon: "🧬", perm: "trait.view" },
   { id: "blessings", label: "Благословения", icon: "🌟", perm: "blessing.view" },
   { id: "phases", label: "Фазы боссов", icon: "🌀", perm: "phase.view" },
+  { id: "pvp", label: "Конструктор PVP", icon: "⚔️", perm: "pvp.view" },
   { id: "levels", label: "Уровни", icon: "🪜", perm: "level.view" },
   { id: "exp", label: "Опыт", icon: "📈", perm: "exp.view" },
   { id: "registration", label: "Регистрация", icon: "📝", perm: "registration.view" },
@@ -329,7 +359,7 @@ const NAV_GROUP_OF = {
   items: "Контент", achievements: "Контент", traits: "Контент",
   blessings: "Контент", phases: "Контент", texts: "Контент",
   effects: "Бой", addictions: "Бой", tolerances: "Бой", skills: "Бой",
-  formulas: "Бой", reputations: "Бой",
+  formulas: "Бой", reputations: "Бой", pvp: "Бой",
   recipes: "Ремесло и экономика", professions: "Ремесло и экономика",
   workshops: "Ремесло и экономика", workshop_messages: "Ремесло и экономика",
   upgrades: "Ремесло и экономика", enchants: "Ремесло и экономика",
@@ -552,6 +582,7 @@ export function AdminShell() {
         {active === "texts" && hasPerm("text.view") && <TextsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "traits" && hasPerm("trait.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={TRAIT_CONFIG} />}
         {active === "blessings" && hasPerm("blessing.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={BLESSING_CONFIG} />}
+        {active === "pvp" && hasPerm("pvp.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PVP_CONFIG} />}
         {active === "phases" && hasPerm("phase.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PHASE_CONFIG} />}
         {active === "levels" && hasPerm("level.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={LEVEL_CONFIG} />}
         {active === "exp" && hasPerm("exp.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={EXP_CONFIG} />}
