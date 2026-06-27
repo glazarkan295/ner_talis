@@ -147,6 +147,9 @@ def create_admin_trait_router(get_storage) -> APIRouter:
         before = traits.store().get(trait_id)
         if before is None:
             raise HTTPException(status_code=404, detail="Черта не найдена.")
+        # 18-CODEX §2: правка опубликованной черты меняет live → нужно publish-право.
+        if before.get("status") == traits.STATUS_PUBLISHED:
+            _require(session, PERM_TRAIT_PUBLISH)
         try:
             item = run_admin_operation(
                 session=session, action="trait.edit",

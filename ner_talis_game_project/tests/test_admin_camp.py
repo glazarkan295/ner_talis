@@ -118,6 +118,17 @@ class CampApiTest(unittest.TestCase):
         self.assertEqual(self._create(token).status_code, 200)
         self.assertEqual(self.client.post("/api/admin/v2/camps/safe_glade/publish", headers=self._auth(token), json={}).status_code, 403)
 
+    def test_published_edit_requires_publish(self):
+        # 18-CODEX §2: published лагерь нельзя править без camp.publish; черновик — можно.
+        token = self._token()  # owner
+        self.assertEqual(self._create(token).status_code, 200)
+        self.assertEqual(self.client.post("/api/admin/v2/camps/safe_glade/publish", headers=self._auth(token), json={}).status_code, 200)
+        self._create(token, cid="cdrft")  # черновик
+        rbac.set_role_override("telegram", "999", rbac.CONTENT)
+        ct = self._token()
+        self.assertEqual(self.client.put("/api/admin/v2/camps/cdrft", headers=self._auth(ct), json={"data": {"name": "Черновик 2"}}).status_code, 200)
+        self.assertEqual(self.client.put("/api/admin/v2/camps/safe_glade", headers=self._auth(ct), json={"data": {"name": "X"}}).status_code, 403)
+
 
 if __name__ == "__main__":
     unittest.main()

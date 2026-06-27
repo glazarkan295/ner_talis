@@ -90,8 +90,32 @@ class TraitConstructorTest(_Base):
         ct = self._token()
         self.assertEqual(self.client.post("/api/admin/v2/traits/tt/publish", headers=self._auth(ct), json={}).status_code, 403)
 
+    def test_published_edit_requires_publish(self):
+        # 18-CODEX §2: published черту нельзя править без trait.publish; черновик — можно.
+        token = self._token()  # owner
+        self.client.post("/api/admin/v2/traits/import", headers=self._auth(token), json={})
+        # owner (есть publish) правит published — можно.
+        self.assertEqual(self.client.put("/api/admin/v2/traits/tough_hide", headers=self._auth(token), json={"data": {"trait_name": "Крепкая шкура+"}}).status_code, 200)
+        self.client.post("/api/admin/v2/traits", headers=self._auth(token), json={"id": "drft", "data": {"trait_name": "D", "trait_rank": "special", "trigger": "passive"}})
+        rbac.set_role_override("telegram", "999", rbac.CONTENT)
+        ct = self._token()
+        # content правит ЧЕРНОВИК — можно.
+        self.assertEqual(self.client.put("/api/admin/v2/traits/drft", headers=self._auth(ct), json={"data": {"trait_name": "D2"}}).status_code, 200)
+        # content правит PUBLISHED — 403.
+        self.assertEqual(self.client.put("/api/admin/v2/traits/tough_hide", headers=self._auth(ct), json={"data": {"trait_name": "X"}}).status_code, 403)
+
 
 class BlessingConstructorTest(_Base):
+    def test_published_edit_requires_publish(self):
+        # 18-CODEX §2: published благословение нельзя править без blessing.publish.
+        token = self._token()
+        self.client.post("/api/admin/v2/blessings/import", headers=self._auth(token), json={})
+        self.client.post("/api/admin/v2/blessings", headers=self._auth(token), json={"id": "bdrft", "data": {"blessing_name": "B", "source_type": "item", "allowed_targets": ["player"], "player_text": "x"}})
+        rbac.set_role_override("telegram", "999", rbac.CONTENT)
+        ct = self._token()
+        self.assertEqual(self.client.put("/api/admin/v2/blessings/bdrft", headers=self._auth(ct), json={"data": {"player_text": "y"}}).status_code, 200)
+        self.assertEqual(self.client.put("/api/admin/v2/blessings/blessing_strength", headers=self._auth(ct), json={"data": {"player_text": "z"}}).status_code, 403)
+
     def test_import_seeds_and_meta(self):
         token = self._token()
         meta = self.client.get("/api/admin/v2/blessings/meta", headers=self._auth(token)).json()
@@ -105,6 +129,16 @@ class PhaseConstructorTest(_Base):
     def test_validate_hp_trigger_range(self):
         bad = phases.store().create("p_bad", {"phase_name": "X", "trigger_type": "hp_percent", "trigger_value": 250})
         self.assertFalse(phases.validate(bad)["ok"])
+
+    def test_published_edit_requires_publish(self):
+        # 18-CODEX §2: published фазу нельзя править без phase.publish.
+        token = self._token()
+        self.client.post("/api/admin/v2/phases/import", headers=self._auth(token), json={})
+        self.client.post("/api/admin/v2/phases", headers=self._auth(token), json={"id": "pdrft", "data": {"phase_name": "P", "trigger_type": "manual", "trigger_value": 0}})
+        rbac.set_role_override("telegram", "999", rbac.CONTENT)
+        ct = self._token()
+        self.assertEqual(self.client.put("/api/admin/v2/phases/pdrft", headers=self._auth(ct), json={"data": {"phase_name": "P2"}}).status_code, 200)
+        self.assertEqual(self.client.put("/api/admin/v2/phases/phase_rage", headers=self._auth(ct), json={"data": {"phase_name": "X"}}).status_code, 403)
 
     def test_import_seeds_and_rollback(self):
         token = self._token()

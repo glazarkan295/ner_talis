@@ -146,6 +146,10 @@ def create_admin_blessing_router(get_storage) -> APIRouter:
         before = blessings.store().get(blessing_id)
         if before is None:
             raise HTTPException(status_code=404, detail="Благословение не найдено.")
+        # 18-CODEX §2: правка ОПУБЛИКОВАННОГО благословения меняет live (update
+        # сохраняет статус) → требует publish-права (draft-overlay пока нет).
+        if before.get("status") == blessings.STATUS_PUBLISHED:
+            _require(session, PERM_BLESSING_PUBLISH)
         try:
             item = run_admin_operation(
                 session=session, action="blessing.edit",

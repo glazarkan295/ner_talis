@@ -154,6 +154,9 @@ def create_admin_camp_router(get_storage) -> APIRouter:
         before = camps.store().get(camp_id)
         if before is None:
             raise HTTPException(status_code=404, detail="Лагерь не найден.")
+        # 18-CODEX §2: правка опубликованного лагеря меняет live → нужно publish-право.
+        if before.get("status") == camps.STATUS_PUBLISHED:
+            _require(session, PERM_CAMP_PUBLISH)
         try:
             item = run_admin_operation(
                 session=session, action="camp.edit",

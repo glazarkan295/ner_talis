@@ -1,6 +1,8 @@
 """Глубина поиска (ТЗ 09 §19): чистый слой счётчика + валидация полей локации."""
 
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -90,6 +92,43 @@ class SearchDepthLocationValidationTest(unittest.TestCase):
                                     "search_depth_start": 1, "search_depth_max": 5,
                                     "search_depth_thresholds": [{"min_depth": 1, "max_depth": 3}]})
         self.assertEqual([e for e in errors if "глубин" in e.lower()], [])
+
+
+class SearchDepthRuntimeGateTest(unittest.TestCase):
+    """18-CODEX §3: cap глубины из V2-конструктора применяется только при включённом
+    живом слое локаций; при выключенном — legacy-поиск его игнорирует."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        base = Path(self._tmp.name)
+        keys = ("WORLD_CONTENT_PATH", "FEATURE_FLAGS_PATH", "WORLD_CONSTRUCTOR_LIVE")
+        self._saved = {k: os.environ.get(k) for k in keys}
+        os.environ["WORLD_CONTENT_PATH"] = str(base / "world.json")
+        os.environ["FEATURE_FLAGS_PATH"] = str(base / "flags.json")
+        os.environ.pop("WORLD_CONSTRUCTOR_LIVE", None)
+        self.addCleanup(self._restore)
+        wcr.create_content(wcr.KIND_LOCATION, "hilly_meadows", {
+            "name": "Луга", "type": "wild", "description": "x",
+            "search_depth_enabled": True, "search_depth_max": 3,
+        })
+        wcr.set_status(wcr.KIND_LOCATION, "hilly_meadows", wcr.STATUS_PUBLISHED, force=True)
+
+    def _restore(self):
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_cap_ignored_when_v2_off(self):
+        from services import external_location_service as els
+        self.assertEqual(els._search_depth_max("hilly_meadows"), 0)
+
+    def test_cap_applied_when_v2_on(self):
+        os.environ["WORLD_CONSTRUCTOR_LIVE"] = "1"
+        from services import external_location_service as els
+        self.assertEqual(els._search_depth_max("hilly_meadows"), 3)
 
 
 if __name__ == "__main__":

@@ -98,6 +98,21 @@ class CityServiceTest(unittest.TestCase):
         from services import city_runtime
         self.assertFalse(city_runtime.live_enabled())
 
+    def test_resolve_v2_context_ignores_non_v2_legacy_zone(self):
+        # 18-CODEX §1: legacy zone не передаётся как V2-контекст, если это не
+        # реальный опубликованный V2-узел — иначе ломается V2 entry у старых игроков.
+        from services import city_service
+        city.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city", "description": "x"})
+        city.store().set_status("seldar", city.STATUS_PUBLISHED, force=True)
+        # legacy zone не V2 → контекст пустой (глобальный fallback не подавляется).
+        self.assertEqual(city_service._resolve_v2_city_context({"current_zone": "outside_city_crossroads"}), "")
+        # сохранённый current_city_node на опубликованный узел → он и есть контекст.
+        self.assertEqual(city_service._resolve_v2_city_context({"current_city_node": "seldar"}), "seldar")
+        # legacy zone, который РЕАЛЬНО V2-узел → используется.
+        self.assertEqual(city_service._resolve_v2_city_context({"current_zone": "seldar"}), "seldar")
+        # сохранённый узел больше не опубликован → сброс.
+        self.assertEqual(city_service._resolve_v2_city_context({"current_city_node": "ghost"}), "")
+
     def test_looks_like_game_action(self):
         # 16-TZ §4: короткие однострочные подписи кнопок — игровые действия,
         # длинный/многострочный свободный текст — нет (не грузит city runtime).

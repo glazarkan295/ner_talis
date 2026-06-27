@@ -145,6 +145,9 @@ def create_admin_phase_router(get_storage) -> APIRouter:
         before = phases.store().get(phase_id)
         if before is None:
             raise HTTPException(status_code=404, detail="Фаза не найдена.")
+        # 18-CODEX §2: правка опубликованной фазы меняет live → нужно publish-право.
+        if before.get("status") == phases.STATUS_PUBLISHED:
+            _require(session, PERM_PHASE_PUBLISH)
         try:
             item = run_admin_operation(
                 session=session, action="phase.edit",

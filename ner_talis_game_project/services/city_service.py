@@ -123,6 +123,25 @@ def looks_like_game_action(action: Any) -> bool:
     return len(s) <= _MAX_ACTION_LEN
 
 
+def _resolve_v2_city_context(player: dict[str, Any]) -> str:
+    """Текущий V2-узел игрока для навигации (18-CODEX §1).
+
+    Берём сохранённый current_city_node (если он всё ещё опубликован). Legacy
+    current_zone/location_id используем как контекст ТОЛЬКО если это реальный
+    опубликованный V2 city node — иначе ложный legacy zone подавил бы глобальный
+    fallback по подписи кнопки и V2 entry-кнопка не сработала бы у старых игроков."""
+    from services import city_runtime
+
+    current_node = str(player.get("current_city_node") or "")
+    if current_node and city_runtime.node_runtime_view(current_node) is None:
+        current_node = ""
+    if not current_node:
+        legacy = str(player.get("current_zone") or player.get("location_id") or "")
+        if legacy and city_runtime.node_runtime_view(legacy) is not None:
+            current_node = legacy
+    return current_node
+
+
 @dataclass(frozen=True)
 class CityResponse:
     text: str
@@ -1092,11 +1111,9 @@ def process_world_action(
         # 15-CODEX §1: текущий V2-узел берём из состояния игрока (а не из legacy
         # zone), чтобы одинаковые кнопки («Назад») резолвились в контексте именно
         # текущего узла. Если сохранённый узел больше не опубликован — сбрасываем.
-        current_node = str(player.get("current_city_node") or "")
-        if current_node and city_runtime.node_runtime_view(current_node) is None:
-            current_node = ""
-        if not current_node:
-            current_node = str(player.get("current_zone") or player.get("location_id") or "")
+        # 18-CODEX §1: legacy zone передаётся как V2-контекст только если это
+        # реальный опубликованный V2-узел (см. _resolve_v2_city_context).
+        current_node = _resolve_v2_city_context(player)
         node_response = city_runtime.try_handle(action, current_node_id=current_node)
         if node_response is not None:
             # Сохраняем текущий V2-узел на игроке (handler сохранит его после

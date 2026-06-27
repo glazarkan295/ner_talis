@@ -1205,8 +1205,16 @@ def return_to_gates(storage: Any, player: dict[str, Any]) -> LocationResponse:
 
 
 def _search_depth_max(location_id: str) -> int:
-    """Потолок глубины поиска из карточки локации конструктора (0 = без лимита)."""
+    """Потолок глубины поиска из карточки локации конструктора (0 = без лимита).
+
+    18-CODEX §3: настройки V2-конструктора применяются ТОЛЬКО при включённом
+    живом слое локаций (location_runtime.live_enabled = env WORLD_CONSTRUCTOR_LIVE
+    или флаг use_v2_locations). При выключенном V2 legacy-поиск не читает реестр и
+    не ограничивается опубликованными V2-настройками."""
     try:
+        from services import location_runtime
+        if not location_runtime.live_enabled():
+            return 0
         from services import world_content_registry as wcr
         env = wcr.get_content(wcr.KIND_LOCATION, str(location_id))
         if isinstance(env, dict) and env.get("status") == "published":
