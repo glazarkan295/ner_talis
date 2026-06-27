@@ -114,6 +114,9 @@ def create_admin_item_router(get_storage) -> APIRouter:
             "usagePlaces": list(items.USAGE_PLACES),
             "requirementTypes": list(items.REQUIREMENT_TYPES),
             "effectLinkTriggers": list(items.EFFECT_LINK_TRIGGERS),
+            "openPlaces": list(items.OPEN_PLACES),
+            "openBehaviors": [{"value": b, "label": items.OPEN_BEHAVIOR_LABELS.get(b, b)} for b in items.OPEN_BEHAVIORS],
+            "inventoryFullBehaviors": list(items.INVENTORY_FULL_BEHAVIORS),
             "statuses": [{"value": s, "label": items.STATUS_LABELS.get(s, s)} for s in items.STATUSES],
         }
 

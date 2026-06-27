@@ -250,6 +250,34 @@ export function ItemsSection({ guarded, hasPerm }) {
           </div>
         </div>
 
+        <div className="ntv2-panel">
+          <h4 className="ntv2-subhead">Открываемый предмет (ТЗ 21 §1)</h4>
+          {flag("openable", "Можно открыть")}
+          {d.openable ? (<>
+            <div className="ntv2-form-row" style={{ gap: 14 }}>
+              <Field label="Где можно открыть"><select value={d.open_where || ""} disabled={disabled} onChange={(e) => set("open_where", e.target.value)}><option value="">—</option>{(meta.openPlaces || []).map((p) => <option key={p} value={p}>{p}</option>)}</select></Field>
+              <Field label="Поведение после открытия"><select value={d.open_behavior || ""} disabled={disabled} onChange={(e) => set("open_behavior", e.target.value)}><option value="">—</option>{(meta.openBehaviors || []).map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}</select></Field>
+            </div>
+            {d.open_behavior === "replace" ? <Field label="Предмет-замена (id)"><input className="ntv2-mono" value={d.open_replace_item_id || ""} disabled={disabled} onChange={(e) => set("open_replace_item_id", e.target.value)} /></Field> : null}
+            <div className="ntv2-form-row" style={{ gap: 14 }}>
+              {flag("open_requires_key", "Нужен ключ")}
+              {d.open_requires_key ? <Field label="Предмет-ключ (id)"><input className="ntv2-mono" value={d.open_key_item_id || ""} disabled={disabled} onChange={(e) => set("open_key_item_id", e.target.value)} /></Field> : null}
+              {d.open_requires_key ? <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.open_key_consumed)} disabled={disabled} onChange={(e) => set("open_key_consumed", e.target.checked)} /> Ключ расходуется</label> : null}
+            </div>
+            <Field label="При нехватке места"><select value={d.open_inventory_full_behavior || ""} disabled={disabled} onChange={(e) => set("open_inventory_full_behavior", e.target.value)}><option value="">—</option>{(meta.inventoryFullBehaviors || []).map((b) => <option key={b} value={b}>{b}</option>)}</select></Field>
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.open_show_contents)} disabled={disabled} onChange={(e) => set("open_show_contents", e.target.checked)} /> Показывать содержимое заранее</label>
+            <Field label="Текст успешного открытия"><input value={d.open_text_ok || ""} disabled={disabled} onChange={(e) => set("open_text_ok", e.target.value)} /></Field>
+            <Field label="Текст ошибки открытия"><input value={d.open_text_error || ""} disabled={disabled} onChange={(e) => set("open_text_error", e.target.value)} /></Field>
+            <RowEditor title="Содержимое" rows={d.open_contents} disabled={disabled} onChange={(rows) => set("open_contents", rows)} blank={{ item_id: "", chance: 100, min_count: 1, max_count: 1 }}
+              render={(row, setRow) => (<>
+                <input className="ntv2-mono" placeholder="item_id/валюта" value={row.item_id || ""} disabled={disabled} onChange={(e) => setRow({ item_id: e.target.value })} />
+                <input type="number" style={{ width: 70 }} placeholder="шанс%" value={row.chance ?? ""} disabled={disabled} onChange={(e) => setRow({ chance: e.target.value })} />
+                <input type="number" style={{ width: 60 }} placeholder="min" value={row.min_count ?? ""} disabled={disabled} onChange={(e) => setRow({ min_count: e.target.value })} />
+                <input type="number" style={{ width: 60 }} placeholder="max" value={row.max_count ?? ""} disabled={disabled} onChange={(e) => setRow({ max_count: e.target.value })} />
+              </>)} />
+          </>) : null}
+        </div>
+
         {v ? (
           <div className={`ntv2-panel ${v.ok ? "" : "ntv2-danger-zone"}`}>
             <h4 className="ntv2-subhead">{v.ok ? "✅ Готов к публикации" : "❌ Проверка не пройдена"}</h4>

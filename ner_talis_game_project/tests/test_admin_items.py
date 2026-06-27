@@ -94,6 +94,30 @@ class ItemServiceTest(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertTrue(any("effect_id" in e for e in result["errors"]), result["errors"])
 
+    def test_openable_valid(self):
+        env = items.store().create("chest", {
+            "name": "Сундук", "description": "x", "category": "Контейнер", "stackable": False,
+            "openable": True, "open_where": "anywhere", "open_behavior": "disappear",
+            "open_contents": [{"item_id": "gold", "chance": 100, "min_count": 10, "max_count": 20}],
+        })
+        result = items.validate(env)
+        self.assertTrue(result["ok"], result["errors"])
+
+    def test_openable_errors(self):
+        env = items.store().create("badchest", {
+            "name": "Сундук", "description": "x", "category": "Контейнер", "stackable": False,
+            "openable": True, "open_requires_key": True,  # ключ не указан
+            "open_behavior": "replace",  # предмет-замена не указан
+            "open_contents": [{"item_id": "x", "chance": 150, "min_count": 5, "max_count": 1}],  # шанс>100, min>max
+        })
+        result = items.validate(env)
+        self.assertFalse(result["ok"])
+        joined = " ".join(result["errors"]).lower()
+        self.assertIn("ключ", joined)
+        self.assertIn("замен", joined)
+        self.assertIn("шанс", joined)
+        self.assertIn("min больше max", joined)
+
     def test_charges_and_currency_warnings(self):
         env = items.store().create("wand", {
             "name": "Жезл", "description": "x", "category": "Оружие", "stackable": False,

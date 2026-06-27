@@ -115,6 +115,21 @@ EFFECT_LINK_TRIGGERS = (
 )
 PRICE_SELL_CAP = 1_000_000_000_000  # 1e12 меди — мягкий предупредительный лимит
 
+# --- Открываемые предметы (ТЗ 21 §1): сундуки/мешки/коробки/подарки/контейнеры.
+OPEN_PLACES = (
+    "anywhere", "city", "out_of_battle", "in_battle", "location",
+    "sublocation", "npc",
+)
+OPEN_BEHAVIORS = ("disappear", "replace", "stay", "become_empty")
+OPEN_BEHAVIOR_LABELS = {
+    "disappear": "Исчезает", "replace": "Заменяется другим предметом",
+    "stay": "Остаётся", "become_empty": "Становится пустым",
+}
+# Поведение при нехватке места в инвентаре (§1.5).
+INVENTORY_FULL_BEHAVIORS = (
+    "deny", "partial", "to_mailbox", "to_delivery", "keep_unopened", "temp_parcel",
+)
+
 _store = EntityStore(
     env_var="ITEM_CONSTRUCTOR_PATH",
     default_rel="data/item_constructor.json",
@@ -262,6 +277,36 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             trig = str(link.get("trigger") or "").strip()
             if trig and trig not in EFFECT_LINK_TRIGGERS:
                 warnings.append(f"Связь с эффектом {i}: триггер «{trig}» не из списка.")
+
+    # --- Открываемый предмет (ТЗ 21 §1) ------------------------------------
+    if data.get("openable"):
+        where = str(data.get("open_where") or "").strip()
+        if where and where not in OPEN_PLACES:
+            warnings.append(f"Открытие: место «{where}» не из списка.")
+        if data.get("open_requires_key") and not str(data.get("open_key_item_id") or "").strip():
+            errors.append("Открытие требует ключ, но предмет-ключ не указан.")
+        behavior = str(data.get("open_behavior") or "").strip()
+        if behavior and behavior not in OPEN_BEHAVIORS:
+            errors.append(f"Неизвестное поведение после открытия: {behavior}.")
+        if behavior == "replace" and not str(data.get("open_replace_item_id") or "").strip():
+            errors.append("Поведение «заменяется», но не указан предмет-замена.")
+        full = str(data.get("open_inventory_full_behavior") or "").strip()
+        if full and full not in INVENTORY_FULL_BEHAVIORS:
+            warnings.append(f"Поведение при нехватке места «{full}» не из списка.")
+        # Содержимое: каждая строка — предмет/валюта с шансом 0–100 и кол-вом min≤max.
+        has_content = False
+        for i, row in enumerate(data.get("open_contents") or [], start=1):
+            if not isinstance(row, dict):
+                continue
+            has_content = True
+            chance = row.get("chance")
+            if chance not in (None, "") and (_num(chance) is None or not (0 <= _num(chance) <= 100)):
+                errors.append(f"Содержимое {i}: шанс должен быть 0–100.")
+            mn, mx = _num(row.get("min_count")), _num(row.get("max_count"))
+            if mn is not None and mx is not None and mn > mx:
+                errors.append(f"Содержимое {i}: min больше max.")
+        if not has_content and behavior != "stay":
+            warnings.append("Предмет открываемый, но содержимое не задано.")
 
     for key in ("name", "short_description", "description"):
         value = str(data.get(key) or "").strip()
