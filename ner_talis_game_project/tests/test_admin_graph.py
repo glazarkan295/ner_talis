@@ -175,6 +175,13 @@ class GraphServiceTest(GraphTestBase):
         self.assertIn(("item:amulet", "effect:fire_buff", "applies_effect"), pairs)
         self.assertIn(("item:amulet", "reputation:guild_rep", "depends_on_reputation"), pairs)
 
+    def test_edge_source_published_world(self):
+        # 15-CODEX §4: распознаём опубликованный world-узел как источник связи.
+        self.assertFalse(graph.edge_source_is_published_world("location:forest"))  # черновик
+        wcr.set_status(wcr.KIND_LOCATION, "forest", wcr.STATUS_PUBLISHED, actor="t", force=True)
+        self.assertTrue(graph.edge_source_is_published_world("location:forest"))
+        self.assertFalse(graph.edge_source_is_published_world("recipe:r1"))  # не world-вид
+
     def test_relations_for_entity(self):
         rel = graph.relations_for("item", "sword")
         self.assertIsNotNone(rel)
@@ -226,6 +233,16 @@ class GraphApiTest(GraphTestBase):
     def test_edit_edge_requires_auth(self):
         r = self.client.post("/api/admin/v2/graph/edge", json={"from": "recipe:r1", "edge_type": "uses_profession", "to": "profession:p"})
         self.assertEqual(r.status_code, 401)
+
+    def test_edge_edit_on_published_world_requires_publish(self):
+        # 15-CODEX §4: content (graph.edit, но без world.publish) не может править
+        # связь опубликованного world-узла (иначе снимет его с live).
+        wcr.set_status(wcr.KIND_LOCATION, "forest", wcr.STATUS_PUBLISHED, actor="t", force=True)
+        rbac.set_role_override("telegram", "999", rbac.CONTENT)
+        token = self._token()
+        r = self.client.post("/api/admin/v2/graph/edge", headers=self._auth(token),
+                             json={"from": "location:forest", "edge_type": "in_location", "to": "location:cave"})
+        self.assertEqual(r.status_code, 403, r.text)
 
     def test_full_and_legend(self):
         token = self._token()

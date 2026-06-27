@@ -45,31 +45,45 @@ def build_telegram_link(player: dict[str, Any] | None) -> str:
     return f"https://t.me/{bot}?start={REF_PREFIX}{code}"
 
 
-def attach_referral(storage: Any, new_player: dict[str, Any], code: Any) -> bool:
-    """Привязать нового игрока к рефереру. Идемпотентно, не самому себе.
+def mark_referred_by(new_player: dict[str, Any], code: Any) -> str | None:
+    """Пометить новичка как приглашённого (локально, ДО save_new_player).
 
-    Меняет new_player на месте (referred_by) — вызывать ДО save_new_player —
-    и обновляет запись реферера (referral_count + список referrals)."""
+    Только ставит ``referred_by`` на самого новичка — без побочек на реферера.
+    Возвращает нормализованный код реферера или None, если привязки нет."""
     code = parse_referral_code(code)
     if not code or not isinstance(new_player, dict):
-        return False
+        return None
     new_id = referral_code_for(new_player)
     if not new_id or code == new_id:
-        return False
+        return None
     if new_player.get("referred_by"):
+        return None
+    new_player["referred_by"] = code
+    return code
+
+
+def credit_referrer(storage: Any, new_player: dict[str, Any]) -> bool:
+    """Начислить рефереру приглашённого — вызывать ТОЛЬКО ПОСЛЕ успешного
+    создания новичка (15-CODEX §6). Идемпотентно: повторный вызов или повторное
+    подтверждение регистрации не создаёт дубль и не увеличивает счётчик дважды
+    (счётчик завязан на добавление в список referrals — единый источник истины)."""
+    if not isinstance(new_player, dict):
+        return False
+    code = str(new_player.get("referred_by") or "").strip()
+    new_id = referral_code_for(new_player)
+    if not code or not new_id or code == new_id:
         return False
     get_player = getattr(storage, "get_player_by_game_id", None)
     referrer = get_player(code) if callable(get_player) else None
     if not isinstance(referrer, dict):
         return False
-
-    new_player["referred_by"] = code
-    referrer["referral_count"] = int(referrer.get("referral_count") or 0) + 1
     refs = referrer.get("referrals")
     refs = refs if isinstance(refs, list) else []
-    if new_id not in refs:
-        refs.append(new_id)
+    if new_id in refs:
+        return False  # уже учтён — идемпотентно, без повторного инкремента
+    refs.append(new_id)
     referrer["referrals"] = refs
+    referrer["referral_count"] = int(referrer.get("referral_count") or 0) + 1
     update_player = getattr(storage, "update_player", None)
     if callable(update_player):
         try:
@@ -77,6 +91,18 @@ def attach_referral(storage: Any, new_player: dict[str, Any], code: Any) -> bool
         except Exception:
             pass
     return True
+
+
+def attach_referral(storage: Any, new_player: dict[str, Any], code: Any) -> bool:
+    """Совместимость: пометить новичка и сразу начислить рефереру.
+
+    ВАЖНО (15-CODEX §6): начисление здесь происходит немедленно, поэтому в потоке
+    регистрации используйте раздельно mark_referred_by (до save_new_player) и
+    credit_referrer (после успешного сохранения), чтобы при сбое создания игрока
+    реферер не получил фиктивного приглашённого."""
+    if mark_referred_by(new_player, code) is None:
+        return False
+    return credit_referrer(storage, new_player)
 
 
 def referral_summary(player: dict[str, Any] | None) -> dict[str, Any]:

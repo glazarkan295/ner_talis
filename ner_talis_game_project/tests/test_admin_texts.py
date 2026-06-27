@@ -200,6 +200,19 @@ class TextApiTest(unittest.TestCase):
         self.assertEqual(self.client.get("/api/admin/v2/texts", headers=self._auth(token)).status_code, 200)
         self.assertEqual(self._create(token).status_code, 403)
 
+    def test_content_cannot_edit_published(self):
+        # 15-CODEX §3: content (edit, без publish) не может править live-объект.
+        token = self._token()  # owner
+        self._create(token, tid="pub")
+        self.assertEqual(self.client.post("/api/admin/v2/texts/pub/publish", headers=self._auth(token), json={}).status_code, 200)
+        rbac.set_role_override("telegram", "999", rbac.CONTENT)
+        upd = self.client.put("/api/admin/v2/texts/pub", headers=self._auth(token), json={"data": {"text_value": "правка"}})
+        self.assertEqual(upd.status_code, 403, upd.text)
+        # Черновик content править может.
+        self.assertEqual(self._create(token, tid="drf").status_code, 200)
+        ok = self.client.put("/api/admin/v2/texts/drf", headers=self._auth(token), json={"data": {"text_value": "ок"}})
+        self.assertEqual(ok.status_code, 200, ok.text)
+
 
 if __name__ == "__main__":
     unittest.main()

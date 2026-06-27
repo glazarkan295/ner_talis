@@ -17,8 +17,19 @@ from services import city_constructor_service as city
 
 
 def live_enabled() -> bool:
-    """«Живой» город включён? (ENV CITY_CONSTRUCTOR_LIVE, по умолчанию выкл.)"""
-    return str(os.getenv("CITY_CONSTRUCTOR_LIVE", "")).strip().lower() in {"1", "true", "yes", "on"}
+    """«Живой» город включён?
+
+    Источники (15-CODEX §5): env ``CITY_CONSTRUCTOR_LIVE`` (аварийный override)
+    ИЛИ feature flag ``use_v2_buttons`` из админ-панели (городская навигация —
+    кнопочная). По умолчанию ВЫКЛ — игра работает 1:1 как раньше."""
+    if str(os.getenv("CITY_CONSTRUCTOR_LIVE", "")).strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+    try:
+        from services import feature_flags_service as ff
+
+        return ff.is_enabled("use_v2_buttons")
+    except Exception:
+        return False
 
 
 def _published() -> list[dict[str, Any]]:

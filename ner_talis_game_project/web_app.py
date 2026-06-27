@@ -14,6 +14,7 @@ import html
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -278,17 +279,22 @@ def create_app() -> FastAPI:
     # раскрывают все admin/profile-ручки и схемы. Включаются осознанно для
     # разработки флагом ENABLE_API_DOCS=true.
     docs_enabled = _truthy_env("ENABLE_API_DOCS", "false")
+
+    # Современный lifespan вместо устаревшего @app.on_event("startup") (16-TZ §7):
+    # фоновые воркеры стартуют при запуске приложения, shutdown — no-op.
+    @asynccontextmanager
+    async def _lifespan(_app: FastAPI):
+        _start_web_background_workers()
+        yield
+
     app = FastAPI(
         title="Ner-Talis",
         version="0.4.2",
         docs_url="/docs" if docs_enabled else None,
         redoc_url="/redoc" if docs_enabled else None,
         openapi_url="/openapi.json" if docs_enabled else None,
+        lifespan=_lifespan,
     )
-
-    @app.on_event("startup")
-    def _on_startup() -> None:
-        _start_web_background_workers()
 
     app.add_middleware(
         TrustedHostMiddleware,

@@ -26,7 +26,8 @@ from services import admin_graph_service as graph
 from services.admin_operation import run_admin_operation
 from services.admin_panel_service import require_admin_session
 from services.admin_rbac import (
-    PERM_GRAPH_EDIT, PERM_GRAPH_VIEW, identity_key, require_permission,
+    PERM_GRAPH_EDIT, PERM_GRAPH_VIEW, PERM_WORLD_PUBLISH,
+    identity_key, require_permission,
 )
 
 
@@ -197,6 +198,13 @@ def create_admin_graph_router(get_storage) -> APIRouter:
     @router.post("/edge")
     def edit_edge(payload: _EdgeBody, request: Request) -> dict[str, Any]:
         session = _guard_edit(request, payload.token)
+        # 15-CODEX §4: если источник связи — опубликованный world-узел, правка FK
+        # снимет его с live (update_content → черновик) → требуем world.publish.
+        if graph.edge_source_is_published_world(payload.from_):
+            try:
+                require_permission(session, PERM_WORLD_PUBLISH)
+            except PermissionError as exc:
+                raise HTTPException(status_code=403, detail=str(exc)) from exc
         actor = identity_key(session.get("platform"), session.get("admin_user_id"))
         try:
             if payload.action == "clear":

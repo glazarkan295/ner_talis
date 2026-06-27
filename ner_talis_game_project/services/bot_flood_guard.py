@@ -55,12 +55,18 @@ def _purge_seen(now: float) -> None:
             _seen_events.pop(key, None)
 
 
-def is_duplicate_event(platform: str, event_id: Any, *, now: float | None = None) -> bool:
-    """True, если событие с таким id уже встречалось в окне DEDUP_TTL."""
+def is_duplicate_event(platform: str, event_id: Any, *, scope: Any = None, now: float | None = None) -> bool:
+    """True, если событие с таким id уже встречалось в окне DEDUP_TTL.
+
+    scope — peer/user (15-CODEX §2): id события у некоторых платформ уникален
+    только внутри диалога (VK conversation_message_id), поэтому ключ должен
+    включать peer, иначе событие одного пользователя «съест» событие другого с
+    тем же id. Без scope — старое поведение (глобально по платформе)."""
     eid = str(event_id or "").strip()
     if not eid:
         return False
-    key = f"{platform}:{eid}"
+    scope_s = str(scope or "").strip()
+    key = f"{platform}:{scope_s}:{eid}" if scope_s else f"{platform}:{eid}"
     now = _now() if now is None else now
     with _lock:
         _purge_seen(now)
@@ -89,8 +95,11 @@ def allow_message(platform: str, user_id: Any, *, now: float | None = None) -> b
 
 
 def guard_incoming(platform: str, user_id: Any, event_id: Any = "", *, now: float | None = None) -> dict[str, Any]:
-    """Единая проверка входящего: дубликат → тихо отклонить; флуд → мягкий отказ."""
-    if is_duplicate_event(platform, event_id, now=now):
+    """Единая проверка входящего: дубликат → тихо отклонить; флуд → мягкий отказ.
+
+    Дедуп скоупится по user_id/peer (15-CODEX §2): разные пользователи с
+    одинаковым id события (VK) не конфликтуют."""
+    if is_duplicate_event(platform, event_id, scope=user_id, now=now):
         return {"allowed": False, "reason": "duplicate"}
     if not allow_message(platform, user_id, now=now):
         return {"allowed": False, "reason": "flood"}

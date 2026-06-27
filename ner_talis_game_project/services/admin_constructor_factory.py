@@ -140,6 +140,13 @@ def create_entity_constructor_router(
         before = svc.store().get(item_id)
         if before is None:
             raise HTTPException(status_code=404, detail=not_found)
+        # 15-CODEX §3: правка ОПУБЛИКОВАННОГО объекта меняет live-версию (update
+        # сохраняет статус), поэтому требует publish-права. У EntityStore нет
+        # draft-overlay, поэтому используем строгую проверку (Вариант A): сначала
+        # сними с публикации/получи publish-право.
+        published = getattr(svc, "STATUS_PUBLISHED", "published")
+        if before.get("status") == published:
+            _require(session, perms["publish"])
         try:
             item = run_admin_operation(
                 session=session, action=f"{target_type}.edit",

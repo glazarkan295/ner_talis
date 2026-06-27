@@ -985,6 +985,21 @@ def _split_node_id(node_id: str) -> tuple[str, str]:
     return ntype, eid
 
 
+def edge_source_is_published_world(from_id: str) -> bool:
+    """True, если источник связи — ОПУБЛИКОВАННЫЙ объект реестра мира (15-CODEX §4).
+
+    Правка FK такого объекта через update_content переводит его обратно в
+    черновик и убирает из live-runtime → должна требовать publish-право."""
+    from_type, eid = _split_node_id(from_id)
+    if from_type not in wcr.KINDS:
+        return False
+    try:
+        env = wcr.get_content(from_type, eid)
+    except Exception:
+        return False
+    return bool(env) and env.get("status") == wcr.STATUS_PUBLISHED
+
+
 def set_edge(from_id: str, edge_type: str, to_id: str, *, actor: str = "") -> dict[str, Any]:
     """Создать/изменить связь: записать целевой id в FK-поле источника (§34)."""
     from_type, from_eid = _split_node_id(from_id)

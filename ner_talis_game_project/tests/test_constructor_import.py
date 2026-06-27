@@ -344,6 +344,42 @@ class ConstructorImportTest(unittest.TestCase):
         self.assertIn("delivery.admin_gift", keys)   # якорь §5.19
         self.assertEqual(ci.import_texts(mode="new")["created"], 0)
 
+    def test_dry_run_and_real_run_isolated_across_threads(self):
+        # 15-CODEX §7: dry-run и реальный run не должны делить глобальное
+        # состояние. Гоняем их параллельно в разных потоках.
+        import threading
+        from services import fine_constructor_service as fc
+        from services import reputation_constructor_service as rep
+
+        errors = []
+
+        def dry():
+            try:
+                for _ in range(8):
+                    r = ci.import_all(["fine_def"], dry_run=True)
+                    assert r["summary"]["dry_run"] is True
+                    assert r["summary"]["created"] > 0  # dry «создаёт» в отчёте
+            except Exception as e:  # noqa: BLE001
+                errors.append(e)
+
+        def real():
+            try:
+                ci.import_all(["reputation"], dry_run=False)
+            except Exception as e:  # noqa: BLE001
+                errors.append(e)
+
+        t1, t2 = threading.Thread(target=dry), threading.Thread(target=real)
+        t1.start(); t2.start(); t1.join(); t2.join()
+        self.assertFalse(errors, errors)
+        # dry-run для штрафов НЕ записал ничего в стор.
+        self.assertEqual(fc.store().list(), [])
+        # Реальный импорт репутации записал записи.
+        self.assertTrue(rep.store().list())
+        # Журнал отката принадлежит только реальному прогону (репутация), без штрафов.
+        journal = ci.load_import_journal() or {}
+        kinds = {k for k, _ in journal.get("created", [])}
+        self.assertNotIn("fine_def", kinds)
+
     def test_import_all_summary(self):
         result = ci.import_all(["location", "event"])
         self.assertIn("summary", result)

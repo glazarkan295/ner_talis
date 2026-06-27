@@ -68,6 +68,31 @@ class ReferralServiceTest(unittest.TestCase):
         newbie = {"game_id": "NT-C", "referred_by": "NT-A"}
         self.assertFalse(rs.attach_referral(storage, newbie, "NT-A"))
 
+    def test_mark_then_save_failure_no_phantom_referral(self):
+        # 15-CODEX §6: при сбое создания игрока реферер НЕ получает приглашённого.
+        storage = _FakeStorage()
+        storage.add({"game_id": "NT-R", "referral_count": 0})
+        newbie = {"game_id": "NT-NEW"}
+        # шаг 1: пометить (до сохранения) — реферер ещё не тронут
+        self.assertEqual(rs.mark_referred_by(newbie, "ref_NT-R"), "NT-R")
+        self.assertEqual(newbie["referred_by"], "NT-R")
+        ref = storage.get_player_by_game_id("NT-R")
+        self.assertEqual(ref.get("referral_count", 0), 0)
+        self.assertNotIn("NT-NEW", ref.get("referrals") or [])
+        # шаг 2 (credit) НЕ вызывается, т.к. сохранение упало → фантома нет.
+
+    def test_credit_is_idempotent(self):
+        # 15-CODEX §6: повторное подтверждение не двоит счётчик.
+        storage = _FakeStorage()
+        storage.add({"game_id": "NT-R", "referral_count": 0})
+        newbie = {"game_id": "NT-NEW"}
+        rs.mark_referred_by(newbie, "NT-R")
+        self.assertTrue(rs.credit_referrer(storage, newbie))
+        self.assertFalse(rs.credit_referrer(storage, newbie))  # второй раз — no-op
+        ref = storage.get_player_by_game_id("NT-R")
+        self.assertEqual(ref["referral_count"], 1)
+        self.assertEqual(ref["referrals"].count("NT-NEW"), 1)
+
     def test_referral_summary_shape(self):
         s = rs.referral_summary({"game_id": "NT-9", "referral_count": 3, "referred_by": "NT-1"})
         self.assertEqual(s["code"], "NT-9")

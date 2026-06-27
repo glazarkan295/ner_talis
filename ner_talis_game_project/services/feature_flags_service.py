@@ -42,6 +42,14 @@ FLAG_SPECS: tuple[tuple[str, str], ...] = (
 FLAGS: tuple[str, ...] = tuple(name for name, _ in FLAG_SPECS)
 FLAG_LABELS: dict[str, str] = {name: label for name, label in FLAG_SPECS}
 
+# Флаги, которые РЕАЛЬНО читаются runtime'ом (15-CODEX §5.4): остальные пока
+# только в админке и не меняют gameplay — UI обязан это показывать, чтобы не
+# вводить администратора в заблуждение.
+RUNTIME_WIRED: frozenset[str] = frozenset({
+    "use_v2_locations",  # location_runtime.live_enabled (поиск/бой/лимиты)
+    "use_v2_buttons",    # city_runtime.live_enabled (навигация города)
+})
+
 _LOCK = threading.Lock()
 
 
@@ -105,4 +113,7 @@ def set_flag(name: str, value: bool) -> dict[str, bool]:
 
 
 def meta() -> dict[str, Any]:
-    return {"flags": [{"name": n, "label": FLAG_LABELS[n]} for n in FLAGS]}
+    return {"flags": [
+        {"name": n, "label": FLAG_LABELS[n], "wired": n in RUNTIME_WIRED}
+        for n in FLAGS
+    ]}

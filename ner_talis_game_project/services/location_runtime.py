@@ -380,12 +380,21 @@ def rolled_rotation(location_id: str, rotation: dict[str, Any], *, week: str | N
 
 # --- Подключение к живой игре (флаг + overlay пустой локации) ---------------
 def live_enabled() -> bool:
-    """Включён ли живой слой конструктора (env WORLD_CONSTRUCTOR_LIVE).
+    """Включён ли живой слой конструктора локаций/мира.
 
-    По умолчанию ВЫКЛ — игра работает строго по старой логике, конструктор не
-    влияет на поиск/бой. Включается осознанно после наполнения контента.
+    Источники (15-CODEX §5): env ``WORLD_CONSTRUCTOR_LIVE`` (аварийный override)
+    ИЛИ feature flag ``use_v2_locations`` из админ-панели. По умолчанию ВЫКЛ —
+    игра работает строго по старой логике. Так переключатель V2 в админке реально
+    влияет на runtime, а env остаётся быстрым аварийным выключателем.
     """
-    return _truthy(os.getenv("WORLD_CONSTRUCTOR_LIVE"))
+    if _truthy(os.getenv("WORLD_CONSTRUCTOR_LIVE")):
+        return True
+    try:
+        from services import feature_flags_service as ff
+
+        return ff.is_enabled("use_v2_locations")
+    except Exception:
+        return False
 
 
 def published_empty_events(location_id: str) -> list[dict[str, Any]]:

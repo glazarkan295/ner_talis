@@ -257,13 +257,13 @@ export function ImportSection({ guarded, hasPerm }) {
           </p>
           <div className="ntv2-form-row" style={{ flexWrap: "wrap", gap: 10 }}>
             {flagMeta.map((f) => (
-              <label className="ntv2-check" key={f.name} title={f.name}>
+              <label className="ntv2-check" key={f.name} title={f.wired ? `${f.name} — влияет на runtime` : `${f.name} — пока только в админке, gameplay не меняет`}>
                 <input
                   type="checkbox"
                   checked={Boolean(flags[f.name])}
                   disabled={!canToggleFlags}
                   onChange={(e) => toggleFlag(f.name, e.target.checked)}
-                /> {f.label}
+                /> {f.label} {f.wired ? "✅" : <span style={{ opacity: 0.5 }}>(не подключено)</span>}
               </label>
             ))}
           </div>

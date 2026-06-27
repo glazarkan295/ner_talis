@@ -57,6 +57,35 @@ class FeatureFlagServiceTest(unittest.TestCase):
             ff.set_flag("use_v2_bogus", True)
         self.assertFalse(ff.is_enabled("use_v2_bogus"))
 
+    def test_meta_marks_runtime_wired(self):
+        wired = {f["name"]: f["wired"] for f in ff.meta()["flags"]}
+        self.assertTrue(wired["use_v2_locations"])
+        self.assertTrue(wired["use_v2_buttons"])
+        self.assertFalse(wired["use_v2_texts"])
+
+    def test_flag_drives_world_runtime(self):
+        # 15-CODEX §5: use_v2_locations реально включает live-слой локаций.
+        from services import location_runtime
+        saved = os.environ.pop("WORLD_CONSTRUCTOR_LIVE", None)
+        try:
+            self.assertFalse(location_runtime.live_enabled())
+            ff.set_flag("use_v2_locations", True)
+            self.assertTrue(location_runtime.live_enabled())
+        finally:
+            if saved is not None:
+                os.environ["WORLD_CONSTRUCTOR_LIVE"] = saved
+
+    def test_flag_drives_city_runtime(self):
+        from services import city_runtime
+        saved = os.environ.pop("CITY_CONSTRUCTOR_LIVE", None)
+        try:
+            self.assertFalse(city_runtime.live_enabled())
+            ff.set_flag("use_v2_buttons", True)
+            self.assertTrue(city_runtime.live_enabled())
+        finally:
+            if saved is not None:
+                os.environ["CITY_CONSTRUCTOR_LIVE"] = saved
+
 
 class FeatureFlagApiTest(unittest.TestCase):
     def setUp(self):

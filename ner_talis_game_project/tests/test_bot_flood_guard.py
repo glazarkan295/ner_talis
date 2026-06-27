@@ -48,6 +48,21 @@ class BotFloodGuardTest(unittest.TestCase):
         reasons = [guard.guard_incoming("vk", "a", 100 + i, now=now)["reason"] for i in range(20)]
         self.assertIn("flood", reasons)
 
+    def test_dedup_scoped_by_peer(self):
+        # 15-CODEX §2: разные VK-пользователи с одинаковым conversation_message_id
+        # не должны конфликтовать.
+        guard.reset()
+        now = 0.0
+        self.assertFalse(guard.is_duplicate_event("vk", 5, scope="peerA", now=now))
+        # Тот же id события, но другой peer — НЕ дубль.
+        self.assertFalse(guard.is_duplicate_event("vk", 5, scope="peerB", now=now))
+        # Повтор у того же peer — дубль.
+        self.assertTrue(guard.is_duplicate_event("vk", 5, scope="peerA", now=now + 0.1))
+        # guard_incoming скоупит по user_id: одинаковый event_id у разных пользователей — оба проходят.
+        guard.reset()
+        self.assertEqual(guard.guard_incoming("vk", "userA", 7, now=now)["reason"], None)
+        self.assertEqual(guard.guard_incoming("vk", "userB", 7, now=now)["reason"], None)
+
 
 if __name__ == "__main__":
     unittest.main()
