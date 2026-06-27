@@ -19,7 +19,7 @@ const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", 
 const EMPTY = {
   name: "", short_description: "", description: "", category: "", type: "normal",
   rarity: "common", visibility: "open", icon: "", progress_type: "numeric",
-  condition_logic: "all", condition_n: "", conditions: [], rewards: [],
+  condition_logic: "all", condition_n: "", conditions: [], rewards: [], effects: [],
   repeatable: false, repeat_period: "", start_date: "", end_date: "", repeat_yearly: false,
   stages: [],
 };
@@ -155,8 +155,11 @@ export function AchievementsSection({ guarded, hasPerm }) {
             <select value={row.type} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{meta.rewardTypes.map((x) => <option key={x} value={x}>{tr(ACH_REWARD_TYPE, x)}</option>)}</select>
             {(row.type === "item" || row.type === "unique_item") ? <input className="ntv2-mono" placeholder="item_id" value={row.item_id || ""} disabled={disabled} onChange={(e) => setRow({ item_id: e.target.value })} /> : null}
             {row.type === "title" ? <input placeholder="title_id" value={row.title_id || ""} disabled={disabled} onChange={(e) => setRow({ title_id: e.target.value })} /> : null}
+            {row.type === "effect" ? <input className="ntv2-mono" placeholder="effect_id" value={row.effect_id || ""} disabled={disabled} onChange={(e) => setRow({ effect_id: e.target.value })} /> : null}
             <input type="number" title="кол-во" style={{ width: 90 }} value={row.amount} disabled={disabled} onChange={(e) => setRow({ amount: e.target.value })} />
           </>)} />
+
+        <Field label="Эффекты достижения (effect_id по строкам, ТЗ 09 §17)"><textarea rows={2} value={(Array.isArray(d.effects) ? d.effects : []).join("\n")} disabled={disabled} onChange={(e) => set("effects", e.target.value.split("\n").map((s) => s.trim()).filter(Boolean))} /></Field>
 
         <RowEditor title="Ступени (многоступенчатое)" rows={d.stages} disabled={disabled} onChange={(rows) => set("stages", rows)} blank={{ name: "", required_progress: 0 }}
           render={(row, setRow) => (<>

@@ -139,7 +139,30 @@ def where_used(effect_id: str) -> list[dict[str, Any]]:
     for env in wcr.list_content(wcr.KIND_EVENT):
         if str((env.get("data") or {}).get("effect") or "") == eid:
             used.append({"kind": "event", "id": env.get("id"), "name": _name(env)})
+
+    # Источник-достижение (ТЗ 09 §17.2): достижения, выдающие этот эффект.
+    try:
+        from services import achievement_service
+        for env in achievement_service.store().list():
+            data = env.get("data") or {}
+            effects = data.get("effects")
+            in_list = isinstance(effects, list) and any(_effect_ref(e) == eid for e in effects)
+            in_rewards = isinstance(data.get("rewards"), list) and any(
+                isinstance(r, dict) and str(r.get("type") or "") == "effect"
+                and str(r.get("effect_id") or "") == eid for r in data["rewards"])
+            if in_list or in_rewards:
+                used.append({"kind": "achievement", "id": env.get("id"),
+                             "name": str(data.get("name") or env.get("id"))})
+    except Exception:
+        pass
     return used
+
+
+def _effect_ref(entry: Any) -> str:
+    """Ссылка на эффект из элемента списка effects: id-строка или {effect_id}."""
+    if isinstance(entry, dict):
+        return str(entry.get("effect_id") or entry.get("id") or "").strip()
+    return str(entry or "").strip()
 
 
 def validate(envelope: dict[str, Any]) -> dict[str, Any]:

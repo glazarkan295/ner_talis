@@ -568,6 +568,13 @@ def _constructor_edges(nodes: dict[str, dict[str, Any]], seen: set[str]) -> list
                 if isinstance(row, dict) and str(row.get("type") or "") in ("item", "unique_item"):
                     if str(row.get("item_id") or "").strip():
                         _add(nid, str(row["item_id"]).strip(), "rewards_item")
+                if isinstance(row, dict) and str(row.get("type") or "") == "effect" and str(row.get("effect_id") or "").strip():
+                    _add_typed(nid, str(row["effect_id"]).strip(), "effect", "applies_effect")
+            # Эффекты достижения (ТЗ 09 §17): список effects (id или {effect_id}).
+            for entry in (data.get("effects") or []):
+                ref = entry.get("effect_id") if isinstance(entry, dict) else entry
+                if str(ref or "").strip():
+                    _add_typed(nid, str(ref).strip(), "effect", "applies_effect")
         elif node["type"] == "workshop":
             data = _node_data(node) or {}
             loc = str(data.get("location") or "").strip()
