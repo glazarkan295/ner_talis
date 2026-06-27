@@ -46,7 +46,7 @@ TRANSITIONS: dict[str, set[str]] = {
     STATUS_ERROR: {STATUS_DRAFT, STATUS_REVIEW, STATUS_ARCHIVE},
 }
 
-# --- Справочники (ТЗ §1.1, §9) ----------------------------------------------
+# --- Справочники (ТЗ §1.1, §9 + расширение §2) ------------------------------
 EFFECT_TYPES = (
     "stat_modifier", "resource_regeneration", "max_resource_modifier",
     "periodic_damage", "control_effect", "damage_response", "absorb_effect",
@@ -55,14 +55,82 @@ EFFECT_TYPES = (
     "crit_damage_modifier", "crit_chance_modifier", "accuracy_modifier",
     "dodge_modifier", "physical_defense_modifier", "magic_defense_modifier",
     "inventory_slot_bonus", "bonus_action_modifier", "encounter_chance_modifier",
+    # Расширение (ТЗ §2.3).
+    "resource_modifier", "instant_heal", "instant_resource_restore",
+    "damage_modifier", "damage_taken_modifier", "defense_modifier", "shield",
+    "barrier", "action_block", "slot_block", "cooldown_modifier",
+    "event_chance_modifier", "loot_modifier", "craft_modifier", "trade_modifier",
+    "quest_modifier", "achievement_passive", "reputation_modifier",
+    "hidden_reputation_modifier", "mark_effect", "addiction_effect",
+    "tolerance_effect", "item_charge_effect", "item_durability_effect",
+    "item_binding_effect", "conditional_unlock", "notification_effect",
+    "scripted_effect",
 )
-SOURCE_TYPES = ("item", "skill", "mob", "trap", "event", "zone", "curse", "admin")
+# Категории эффектов (ТЗ §2.2).
+EFFECT_CATEGORIES = (
+    "combat", "resource", "stat", "defense", "damage", "control", "trauma",
+    "curse", "zone", "zone_protection", "craft", "alchemy", "gathering",
+    "fishing", "trade", "quest", "achievement", "reputation",
+    "hidden_reputation", "mark", "addiction", "tolerance", "social",
+    "item_lifecycle", "summon", "boss_phase", "technical", "custom",
+)
+SOURCE_TYPES = (
+    "item", "equipped_item", "inventory_item", "special_slot_item", "pouch_item",
+    "consumable", "potion", "food", "skill", "passive_skill", "mob_skill",
+    "mob_trait", "boss_phase", "curse", "trauma", "zone", "location", "city",
+    "region", "world_event", "quest", "achievement", "reputation",
+    "hidden_reputation", "mark", "addiction", "tolerance", "admin", "system",
+    "moderation", "home", "guild", "faction", "mob", "trap", "event", "custom",
+)
 TARGETS = ("self", "wearer", "enemy", "ally", "party", "raid", "all_battle", "random")
+# Полный список целей (ТЗ §2.5) — поле target_type.
+TARGET_TYPES = (
+    "self", "enemy", "ally", "party", "raid", "all_enemies", "all_allies",
+    "all_participants", "random_enemy", "random_ally", "player", "mob", "boss",
+    "location", "city", "region", "item", "skill", "service", "inventory_slot",
+    "weapon_slot_1", "weapon_slot_2", "pouch", "home", "quest", "faction", "custom",
+)
 ACTIVE_WHEN = (
     "equipped", "in_inventory", "in_battle", "on_enter_location", "on_death",
     "on_attack", "on_receive_damage", "on_deal_damage", "always",
+    # Расширение (ТЗ §2.6).
+    "in_special_slot", "in_pouch", "consumed", "activated", "outside_battle",
+    "in_city", "in_region", "in_zone", "during_world_event", "during_quest",
+    "after_quest_completed", "after_achievement_unlocked", "while_mark_active",
+    "while_addiction_active", "while_tolerance_active",
+    "while_hidden_reputation_stage_active", "on_low_hp", "after_death",
+    "on_use_skill", "on_use_item", "on_trade", "on_craft", "on_gather",
+    "on_fishing", "on_rest", "on_home_rest", "on_admin_apply", "custom_condition",
 )
-STACK_RULES = ("refresh", "strongest_only", "stack_limited", "unique_only")
+# Триггеры (ТЗ §2.7).
+TRIGGER_TYPES = (
+    "manual", "automatic", "on_apply", "on_remove", "on_tick", "each_turn",
+    "each_action", "each_search", "each_minute", "each_hour", "battle_start",
+    "turn_start", "turn_end", "before_attack", "after_attack", "before_damage",
+    "after_damage", "before_heal", "after_heal", "on_resource_change",
+    "on_reputation_change", "on_hidden_reputation_change", "on_mark_stage_change",
+    "on_addiction_stage_change", "on_tolerance_stage_change", "on_level_up",
+    "on_quest_start", "on_quest_complete", "on_quest_fail", "on_item_equip",
+    "on_item_unequip", "on_item_consume", "on_location_enter", "on_location_leave",
+    "on_service_use", "custom",
+)
+# Способы длительности (ТЗ §2.8).
+DURATION_MODES = (
+    "instant", "turns", "seconds", "minutes", "hours", "days", "until_battle_end",
+    "until_location_leave", "until_zone_leave", "until_item_removed",
+    "while_condition_true", "permanent", "until_cleansed", "until_stage_changed",
+    "until_admin_remove", "custom",
+)
+STACK_RULES = (
+    "none", "refresh", "strongest_only", "newest_only", "oldest_only",
+    "stack_limited", "additive_limited", "multiplicative_limited", "unique_only",
+    "per_source", "per_tag", "replace_same_source", "separate_instances", "custom",
+)
+# Видимость игроку (ТЗ §2.10 / §6.8).
+VISIBILITY_MODES = (
+    "hidden", "name_only", "name_and_description", "stage_only", "exact_values",
+    "warning_only", "after_triggered",
+)
 RESOURCES = ("hp", "mana", "spirit")
 STATS = ("strength", "wisdom", "endurance", "agility", "perception", "intelligence")
 CONTROL_KINDS = ("stun", "confusion", "panic", "freeze", "root")
@@ -228,7 +296,40 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         if _truthy(data.get("can_be_reflected")):
             warnings.append("Для этого типа can_be_reflected должно быть выключено.")
 
-    for key in ("effect_name", "player_text", "admin_description"):
+    # Расширение конструктора (ТЗ §2): новые справочные поля — мягкая проверка.
+    category = str(data.get("effect_category") or "").strip()
+    if category and category not in EFFECT_CATEGORIES:
+        warnings.append(f"Категория «{category}» не из стандартного списка.")
+    target_type = str(data.get("target_type") or "").strip()
+    if target_type and target_type not in TARGET_TYPES:
+        warnings.append(f"Цель «{target_type}» не из стандартного списка.")
+    active_when = str(data.get("active_when") or "").strip()
+    if active_when and active_when not in ACTIVE_WHEN:
+        warnings.append(f"Режим «когда работает» «{active_when}» не из списка.")
+    trigger_type = str(data.get("trigger_type") or "").strip()
+    if trigger_type and trigger_type not in TRIGGER_TYPES:
+        warnings.append(f"Триггер «{trigger_type}» не из списка.")
+    duration_mode = str(data.get("duration_mode") or "").strip()
+    if duration_mode and duration_mode not in DURATION_MODES:
+        warnings.append(f"Способ длительности «{duration_mode}» не из списка.")
+    visibility = str(data.get("visibility_mode") or "").strip()
+    if visibility and visibility not in VISIBILITY_MODES:
+        warnings.append(f"Режим видимости «{visibility}» не из списка.")
+    priority = _num(data.get("priority"))
+    if data.get("priority") not in (None, "") and priority is None:
+        errors.append("Приоритет должен быть числом.")
+    # §8.3: постоянный эффект должен иметь способ снятия/пересчёта.
+    if duration_mode == "permanent" and not (
+        _truthy(data.get("can_be_cleansed")) or _truthy(data.get("can_be_dispelled"))
+        or _truthy(data.get("recalculate_on_hidden_reputation_change"))
+        or str(data.get("linked_hidden_reputation_id") or "").strip()
+    ):
+        warnings.append("Постоянный эффект без способа снятия или условия пересчёта (ТЗ §8.3).")
+    # §8.3: метка должна ссылаться на скрытую репутацию.
+    if etype == "mark_effect" and not str(data.get("linked_hidden_reputation_id") or "").strip():
+        warnings.append("Эффект-метка должен иметь linked_hidden_reputation_id (ТЗ §8.3).")
+
+    for key in ("effect_name", "player_name", "player_text", "admin_description"):
         value = str(data.get(key) or "").strip()
         if value and _has_markup(value):
             errors.append(f"В поле «{key}» недопустимая разметка/HTML.")

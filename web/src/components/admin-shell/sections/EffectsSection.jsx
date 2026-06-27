@@ -28,6 +28,10 @@ const EMPTY = {
   // common numeric values
   flat_bonus: "", percent_bonus: "", value_percent: "", percent_max_hp_damage: "",
   reflect_percent: "", absorb_percent_from_damage: "",
+  // Расширение (ТЗ §2): мета-поля.
+  player_name: "", effect_category: "", target_type: "", trigger_type: "",
+  duration_mode: "", visibility_mode: "", priority: "", tags: "",
+  log_event: false, linked_hidden_reputation_id: "",
 };
 
 function Field({ label, children }) {
@@ -112,8 +116,28 @@ export function EffectsSection({ guarded, hasPerm }) {
             {et === "zone_effect" ? <Field label="Стихия зоны"><select value={d.zone_element} disabled={disabled} onChange={(e) => set("zone_element", e.target.value)}>{meta.zoneElements.map((x) => <option key={x} value={x}>{tr(ZONE_ELEMENT, x)}</option>)}</select></Field> : null}
           </div>
 
+          <div className="ntv2-form-row">
+            <Field label="Название для игрока"><input value={d.player_name} disabled={disabled} onChange={(e) => set("player_name", e.target.value)} /></Field>
+            <Field label="Категория"><select value={d.effect_category} disabled={disabled} onChange={(e) => set("effect_category", e.target.value)}><option value="">—</option>{(meta.categories || []).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+            <Field label="Приоритет"><input type="number" value={d.priority} disabled={disabled} onChange={(e) => set("priority", e.target.value)} /></Field>
+          </div>
           <Field label="Текст для игрока (без формул)"><textarea rows={2} value={d.player_text} disabled={disabled} onChange={(e) => set("player_text", e.target.value)} /></Field>
           <Field label="Описание для админа (можно формулы)"><textarea rows={2} value={d.admin_description} disabled={disabled} onChange={(e) => set("admin_description", e.target.value)} /></Field>
+
+          <details className="ntv2-panel">
+            <summary className="ntv2-subhead">Расширенные настройки (ТЗ §2)</summary>
+            <div className="ntv2-form-row">
+              <Field label="Цель (расш.)"><select value={d.target_type} disabled={disabled} onChange={(e) => set("target_type", e.target.value)}><option value="">—</option>{(meta.targetTypes || []).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+              <Field label="Триггер"><select value={d.trigger_type} disabled={disabled} onChange={(e) => set("trigger_type", e.target.value)}><option value="">—</option>{(meta.triggerTypes || []).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+              <Field label="Длительность (режим)"><select value={d.duration_mode} disabled={disabled} onChange={(e) => set("duration_mode", e.target.value)}><option value="">—</option>{(meta.durationModes || []).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+            </div>
+            <div className="ntv2-form-row">
+              <Field label="Видимость игроку"><select value={d.visibility_mode} disabled={disabled} onChange={(e) => set("visibility_mode", e.target.value)}><option value="">—</option>{(meta.visibilityModes || []).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+              <Field label="Теги (через запятую)"><input className="ntv2-mono" value={d.tags} disabled={disabled} onChange={(e) => set("tags", e.target.value)} /></Field>
+              <Field label="Скрытая репутация (id, для метки)"><input className="ntv2-mono" value={d.linked_hidden_reputation_id} disabled={disabled} onChange={(e) => set("linked_hidden_reputation_id", e.target.value)} /></Field>
+            </div>
+            <div className="ntv2-form-row" style={{ gap: 14 }}>{flag("log_event", "Логировать срабатывания")}</div>
+          </details>
 
           <div className="ntv2-form-row">
             {num("apply_chance_percent", "Шанс %")}{num("duration_turns", "Длит. (ходы)")}{num("duration_seconds", "Длит. (сек)")}{num("max_stacks", "Макс. стаков")}
