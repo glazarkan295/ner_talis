@@ -37,6 +37,12 @@
 .ntv2-brand-title { color: var(--gold); font-size: 20px; }
 .ntv2-brand-sub { font-size: 12px; opacity: .7; }
 .ntv2-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.ntv2-nav-group { display: flex; flex-direction: column; gap: 4px; }
+.ntv2-nav-group + .ntv2-nav-group { margin-top: 10px; }
+.ntv2-nav-group-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--parch); opacity: .5; padding: 2px 12px; margin-bottom: 2px;
+}
 .ntv2-nav-item {
   display: flex; align-items: center; gap: 10px;
   text-align: left; cursor: pointer;

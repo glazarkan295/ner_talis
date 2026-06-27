@@ -27,6 +27,7 @@ import { ReputationSection } from "./sections/ReputationSection.jsx";
 import { TavernSection } from "./sections/TavernSection.jsx";
 import { ImportSection } from "./sections/ImportSection.jsx";
 import { TextsSection } from "./sections/TextsSection.jsx";
+import { DashboardSection } from "./sections/DashboardSection.jsx";
 import { LibrarySection } from "./sections/LibrarySection.jsx";
 
 const TRAIT_CONFIG = {
@@ -266,6 +267,7 @@ import { SessionsSection } from "./sections/SessionsSection.jsx";
 // Permission constants mirror services/admin_rbac.py. The owner sentinel "*"
 // is handled by hasPerm below, so listing the concrete permission is enough.
 const NAV = [
+  { id: "dashboard", label: "Панель состояния", icon: "📊", perm: null },
   { id: "overview", label: "Обзор", icon: "🏠", perm: null },
   { id: "graph", label: "Интерактивная схема", icon: "🕸️", perm: "graph.view" },
   { id: "players", label: "Игроки", icon: "👤", perm: "players.view" },
@@ -310,6 +312,31 @@ const NAV = [
   { id: "sessions", label: "Сессии", icon: "🔑", perm: "system.view" },
   { id: "roles", label: "Роли и доступ", icon: "🛡️", perm: "roles.manage" },
 ];
+
+// Группировка бокового меню (ТЗ 11 §4.1). Порядок групп фиксирован; раздел без
+// явной группы попадает в «Прочее».
+const NAV_GROUP_ORDER = [
+  "Главное", "Игроки", "Мир", "Контент", "Бой",
+  "Ремесло и экономика", "Сайт и профиль", "Прогрессия", "Система", "Прочее",
+];
+const NAV_GROUP_OF = {
+  dashboard: "Главное", overview: "Главное", graph: "Главное", import: "Главное",
+  players: "Игроки",
+  world: "Мир", sublocations: "Мир", city: "Мир", camps: "Мир", events: "Мир",
+  items: "Контент", achievements: "Контент", traits: "Контент",
+  blessings: "Контент", phases: "Контент", texts: "Контент",
+  effects: "Бой", addictions: "Бой", tolerances: "Бой", skills: "Бой",
+  formulas: "Бой", reputations: "Бой",
+  recipes: "Ремесло и экономика", professions: "Ремесло и экономика",
+  workshops: "Ремесло и экономика", workshop_messages: "Ремесло и экономика",
+  upgrades: "Ремесло и экономика", enchants: "Ремесло и экономика",
+  disassembles: "Ремесло и экономика", fines: "Ремесло и экономика",
+  taverns: "Ремесло и экономика", promos: "Ремесло и экономика",
+  site: "Сайт и профиль", profile_layout: "Сайт и профиль",
+  levels: "Прогрессия", exp: "Прогрессия", registration: "Прогрессия", races: "Прогрессия",
+  messages: "Система", reference: "Система", audit: "Система",
+  sessions: "Система", roles: "Система",
+};
 
 function makeHasPerm(me) {
   const perms = new Set(me?.permissions || []);
@@ -391,7 +418,7 @@ function GlobalSearch({ guarded, onOpen }) {
 
 export function AdminShell() {
   const [me, setMe] = useState(null);
-  const [active, setActive] = useState("overview");
+  const [active, setActive] = useState("dashboard");
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [booting, setBooting] = useState(true);
@@ -425,10 +452,19 @@ export function AdminShell() {
 
   const hasPerm = useMemo(() => makeHasPerm(me), [me]);
   const visibleNav = useMemo(() => NAV.filter((item) => hasPerm(item.perm)), [hasPerm]);
+  const groupedNav = useMemo(() => {
+    const byGroup = new Map();
+    for (const item of visibleNav) {
+      const g = NAV_GROUP_OF[item.id] || "Прочее";
+      if (!byGroup.has(g)) byGroup.set(g, []);
+      byGroup.get(g).push(item);
+    }
+    return NAV_GROUP_ORDER.filter((g) => byGroup.has(g)).map((g) => ({ group: g, items: byGroup.get(g) }));
+  }, [visibleNav]);
 
   // If the active tab becomes unavailable (role downgraded), fall back to overview.
   useEffect(() => {
-    if (!visibleNav.some((item) => item.id === active)) setActive("overview");
+    if (!visibleNav.some((item) => item.id === active)) setActive("dashboard");
   }, [visibleNav, active]);
 
   if (booting) {
@@ -447,16 +483,21 @@ export function AdminShell() {
         </div>
         <GlobalSearch guarded={guarded} onOpen={setActive} />
         <nav className="ntv2-nav">
-          {visibleNav.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`ntv2-nav-item${active === item.id ? " active" : ""}`}
-              onClick={() => setActive(item.id)}
-            >
-              <span className="ntv2-nav-icon">{item.icon}</span>
-              <span>{item.label}</span>
-            </button>
+          {groupedNav.map(({ group, items }) => (
+            <div className="ntv2-nav-group" key={group}>
+              <div className="ntv2-nav-group-title">{group}</div>
+              {items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`ntv2-nav-item${active === item.id ? " active" : ""}`}
+                  onClick={() => setActive(item.id)}
+                >
+                  <span className="ntv2-nav-icon">{item.icon}</span>
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="ntv2-sidebar-foot">
@@ -469,6 +510,7 @@ export function AdminShell() {
         {error ? <div className="ntv2-banner ntv2-error">{error}</div> : null}
         {ok ? <div className="ntv2-banner ntv2-ok">{ok}</div> : null}
 
+        {active === "dashboard" && <DashboardSection guarded={guarded} onOpenSection={setActive} />}
         {active === "overview" && <OverviewSection me={me} />}
         {active === "players" && hasPerm("players.view") && <PlayersSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "graph" && hasPerm("graph.view") && <GraphSection guarded={guarded} hasPerm={hasPerm} onOpenSection={setActive} />}
