@@ -110,6 +110,10 @@ def create_admin_item_router(get_storage) -> APIRouter:
             "tags": list(items.TAGS),
             "propertyTypes": list(items.PROPERTY_TYPES),
             "effectTypes": list(items.EFFECT_TYPES),
+            "currencies": list(items.CURRENCIES),
+            "usagePlaces": list(items.USAGE_PLACES),
+            "requirementTypes": list(items.REQUIREMENT_TYPES),
+            "effectLinkTriggers": list(items.EFFECT_LINK_TRIGGERS),
             "statuses": [{"value": s, "label": items.STATUS_LABELS.get(s, s)} for s in items.STATUSES],
         }
 

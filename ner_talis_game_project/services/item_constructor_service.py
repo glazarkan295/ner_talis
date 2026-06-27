@@ -90,6 +90,29 @@ EFFECT_TYPES = (
     "reflect", "thorns", "vampirism", "burn", "poison", "stun", "bleed",
     "cleanse", "regen",
 )
+# Расширение конструктора предметов (item-reputation §2).
+CURRENCIES = ("copper", "silver", "gold", "magic_gold", "ancient_coin")
+USAGE_PLACES = (
+    "inventory", "pouch", "equipment", "special_slot", "weapon_slot_1",
+    "weapon_slot_2", "quiver", "location", "city", "district", "home",
+    "library", "collection", "battle", "craft", "alchemy", "smeltery",
+    "forge", "leatherwork", "jewelry", "enchanting", "quest", "achievement",
+    "npc_dialogue", "hidden_event", "market", "pavilion", "transfer",
+    "delivery", "promo", "admin_only", "technical",
+)
+REQUIREMENT_TYPES = (
+    "level", "stat", "race", "achievement", "reputation", "hidden_reputation",
+    "faction_mark", "quest_active", "quest_done", "location", "city", "season",
+    "event", "weapon_type", "slot", "no_curse", "has_effect", "no_fine",
+    "admin", "custom",
+)
+# Связь предмета с эффектом из конструктора эффектов (§2.7).
+EFFECT_LINK_TRIGGERS = (
+    "passive", "active", "on_equip", "on_unequip", "on_use", "on_attack",
+    "on_receive_damage", "on_death", "after_battle", "on_enter_location",
+    "on_search", "on_craft", "on_trade", "on_transfer", "on_rest",
+    "on_hidden_event",
+)
 PRICE_SELL_CAP = 1_000_000_000_000  # 1e12 меди — мягкий предупредительный лимит
 
 _store = EntityStore(
@@ -197,6 +220,48 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             etype = str((eff or {}).get("type") or "").strip() if isinstance(eff, dict) else ""
             if etype and etype not in EFFECT_TYPES:
                 warnings.append(f"Эффект {i}: тип «{etype}» не из стандартного набора движка.")
+
+    # --- Расширение (item-reputation §2, проверки §6.1) ---------------------
+    is_unique = bool(data.get("is_unique") or item_type == "unique")
+    is_quest = bool(data.get("is_quest") or item_type == "quest")
+    is_bound = bool(data.get("bound") or data.get("bound_on_pickup") or data.get("bound_on_equip"))
+    if is_unique and stackable:
+        errors.append("Уникальный предмет не может стакаться (ТЗ §6.1).")
+    if is_quest and (data.get("can_sell") or data.get("sellable")):
+        warnings.append("Квестовый предмет помечен продаваемым (ТЗ §6.1).")
+    if is_bound and (data.get("can_transfer") or data.get("transferable")):
+        warnings.append("Привязанный предмет помечен передаваемым (ТЗ §6.1).")
+
+    if data.get("has_charges"):
+        if _num(data.get("max_charges")) is None:
+            warnings.append("У предмета есть заряды, но не задан max_charges (ТЗ §6.1).")
+        if not data.get("restore_charges_over_time") and not data.get("restore_on_battle_end") \
+                and not data.get("restore_on_day_start"):
+            warnings.append("У предмета есть заряды, но нет способа восстановления (ТЗ §6.1).")
+    if data.get("has_durability") and _num(data.get("max_durability")) is None:
+        warnings.append("У предмета есть прочность, но не задан max_durability.")
+
+    currency = str(data.get("currency_type") or "").strip()
+    if currency and currency not in CURRENCIES:
+        warnings.append(f"Валюта «{currency}» не из стандартного списка.")
+
+    for i, place in enumerate(data.get("usage_places") or [], start=1):
+        if str(place).strip() and str(place).strip() not in USAGE_PLACES:
+            warnings.append(f"Место использования «{place}» не из списка.")
+
+    for i, req in enumerate(data.get("requirements") or [], start=1):
+        if isinstance(req, dict):
+            rt = str(req.get("type") or "").strip()
+            if rt and rt not in REQUIREMENT_TYPES:
+                warnings.append(f"Требование {i}: тип «{rt}» не из списка.")
+
+    for i, link in enumerate(data.get("effect_links") or [], start=1):
+        if isinstance(link, dict):
+            if not str(link.get("effect_id") or "").strip():
+                errors.append(f"Связь с эффектом {i}: не указан effect_id.")
+            trig = str(link.get("trigger") or "").strip()
+            if trig and trig not in EFFECT_LINK_TRIGGERS:
+                warnings.append(f"Связь с эффектом {i}: триггер «{trig}» не из списка.")
 
     for key in ("name", "short_description", "description"):
         value = str(data.get(key) or "").strip()

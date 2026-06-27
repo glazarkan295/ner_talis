@@ -34,6 +34,7 @@ _STORE_ENVS = (
     "RACE_CONSTRUCTOR_PATH", "FINE_CONSTRUCTOR_PATH", "CAMP_CONSTRUCTOR_PATH",
     "CITY_CONSTRUCTOR_PATH", "ACHIEVEMENTS_PATH", "ACHIEVEMENT_CATEGORIES_PATH",
     "WORLD_EVENTS_PATH", "GUILDS_PATH", "SITE_CONTENT_PATH", "PROFILE_LAYOUT_PATH",
+    "REPUTATION_CONSTRUCTOR_PATH",
 )
 
 
@@ -162,6 +163,17 @@ class GraphServiceTest(GraphTestBase):
         pairs = {(e["from"], e["to"], e["type"]) for e in g["edges"]}
         self.assertIn(("site_page_block:blk_news", "site_page:home", "in_page"), pairs)
         self.assertIn(("profile_block:hp_block", "profile_tab:char_tab", "in_tab"), pairs)
+
+    def test_item_effect_and_reputation_edges(self):
+        items.store().create("amulet", {
+            "name": "Амулет",
+            "effect_links": [{"effect_id": "fire_buff", "trigger": "on_equip"}],
+            "requirements": [{"type": "reputation", "value": "guild_rep"}],
+        })
+        g = graph.full_graph()
+        pairs = {(e["from"], e["to"], e["type"]) for e in g["edges"]}
+        self.assertIn(("item:amulet", "effect:fire_buff", "applies_effect"), pairs)
+        self.assertIn(("item:amulet", "reputation:guild_rep", "depends_on_reputation"), pairs)
 
     def test_export_markdown(self):
         g = graph.full_graph()

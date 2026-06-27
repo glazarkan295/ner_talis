@@ -203,6 +203,53 @@ export function ItemsSection({ guarded, hasPerm }) {
             <input placeholder="параметр" value={row.value || ""} disabled={disabled} onChange={(e) => setRow({ value: e.target.value })} />
           </>)} />
 
+        <RowEditor title="Связи с эффектами (ТЗ §2.7)" rows={d.effect_links} disabled={disabled} onChange={(rows) => set("effect_links", rows)} blank={{ effect_id: "", trigger: (meta.effectLinkTriggers || ["passive"])[0] }}
+          render={(row, setRow) => (<>
+            <input className="ntv2-mono" placeholder="effect_id" value={row.effect_id || ""} disabled={disabled} onChange={(e) => setRow({ effect_id: e.target.value })} />
+            <select value={row.trigger || ""} disabled={disabled} onChange={(e) => setRow({ trigger: e.target.value })}>{(meta.effectLinkTriggers || []).map((x) => <option key={x} value={x}>{x}</option>)}</select>
+          </>)} />
+
+        <RowEditor title="Требования (ТЗ §2.8)" rows={d.requirements} disabled={disabled} onChange={(rows) => set("requirements", rows)} blank={{ type: (meta.requirementTypes || ["level"])[0], operator: ">=", value: "" }}
+          render={(row, setRow) => (<>
+            <select value={row.type || ""} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{(meta.requirementTypes || []).map((x) => <option key={x} value={x}>{x}</option>)}</select>
+            <input style={{ width: 60 }} placeholder="оп." value={row.operator || ""} disabled={disabled} onChange={(e) => setRow({ operator: e.target.value })} />
+            <input placeholder="значение" value={row.value ?? ""} disabled={disabled} onChange={(e) => setRow({ value: e.target.value })} />
+          </>)} />
+
+        <div className="ntv2-panel">
+          <h4 className="ntv2-subhead">Прочность, заряды, валюта (ТЗ §2.10–§2.11)</h4>
+          <div className="ntv2-form-row" style={{ gap: 14 }}>
+            {flag("is_unique", "Уникальный")}{flag("is_quest", "Квестовый")}{flag("bound", "Привязанный")}
+            {flag("can_sell", "Можно продать")}{flag("can_transfer", "Можно передать")}
+          </div>
+          <div className="ntv2-form-row" style={{ gap: 14 }}>
+            {flag("has_durability", "Есть прочность")}
+            {d.has_durability ? <Field label="Макс. прочность"><input type="number" value={d.max_durability || ""} disabled={disabled} onChange={(e) => set("max_durability", e.target.value)} /></Field> : null}
+            {flag("can_be_repaired", "Ремонтируется")}
+          </div>
+          <div className="ntv2-form-row" style={{ gap: 14 }}>
+            {flag("has_charges", "Есть заряды")}
+            {d.has_charges ? <Field label="Макс. зарядов"><input type="number" value={d.max_charges || ""} disabled={disabled} onChange={(e) => set("max_charges", e.target.value)} /></Field> : null}
+            {d.has_charges ? <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.restore_charges_over_time)} disabled={disabled} onChange={(e) => set("restore_charges_over_time", e.target.checked)} /> Восстанавливаются</label> : null}
+          </div>
+          <Field label="Валюта"><select value={d.currency_type || ""} disabled={disabled} onChange={(e) => set("currency_type", e.target.value)}><option value="">—</option>{(meta.currencies || []).map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
+          <div className="ntv2-field">
+            <label className="ntv2-label">Места использования (ТЗ §2.9)</label>
+            <div className="ntv2-form-row" style={{ flexWrap: "wrap", gap: 8 }}>
+              {(meta.usagePlaces || []).map((p) => {
+                const cur = Array.isArray(d.usage_places) ? d.usage_places : [];
+                const on = cur.includes(p);
+                return (
+                  <label className="ntv2-check" key={p}>
+                    <input type="checkbox" checked={on} disabled={disabled}
+                      onChange={(e) => set("usage_places", e.target.checked ? [...cur, p] : cur.filter((x) => x !== p))} /> {p}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
         {v ? (
           <div className={`ntv2-panel ${v.ok ? "" : "ntv2-danger-zone"}`}>
             <h4 className="ntv2-subhead">{v.ok ? "✅ Готов к публикации" : "❌ Проверка не пройдена"}</h4>

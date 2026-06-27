@@ -620,6 +620,16 @@ def _constructor_edges(nodes: dict[str, dict[str, Any]], seen: set[str]) -> list
             data = _node_data(node) or {}
             if str(data.get("location_id") or "").strip():
                 _add_typed(nid, str(data["location_id"]).strip(), "location", "in_location")
+        elif node["type"] == "item":
+            data = _node_data(node) or {}
+            for link in (data.get("effect_links") or []):
+                if isinstance(link, dict) and str(link.get("effect_id") or "").strip():
+                    _add_typed(nid, str(link["effect_id"]).strip(), "effect", "applies_effect")
+            for req in (data.get("requirements") or []):
+                if isinstance(req, dict) and str(req.get("type") or "") in ("reputation", "hidden_reputation"):
+                    rid = str(req.get("value") or req.get("reputation_id") or "").strip()
+                    if rid:
+                        _add_typed(nid, rid, "reputation", "depends_on_reputation")
     return edges
 
 
