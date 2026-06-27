@@ -33,6 +33,37 @@ const TextsSection = lazyNamed(() => import("./sections/TextsSection.jsx"), "Tex
 import { DashboardSection } from "./sections/DashboardSection.jsx";
 import { LibrarySection } from "./sections/LibrarySection.jsx";
 
+const COMBAT_CONFIG = {
+  base: "combat", title: "Боевые настройки (таймер/порядок)", permPrefix: "combat",
+  newLabel: "Новый профиль боя", nameField: "name",
+  fields: [
+    { key: "name", label: "Название", type: "text", hint: "Имя профиля боевых настроек." },
+    { key: "scope", label: "Область применения", type: "select", metaKey: "scopes", hint: "Глобально / PVE / PVP / моб / событие / подлокация / данж / мировой босс / режим PVP / особый бой." },
+    { key: "timer_enabled", label: "Включить таймер хода", type: "checkbox", hint: "В групповых боях по умолчанию 100 секунд на ход." },
+    { key: "turn_seconds", label: "Время на ход (сек)", type: "number", hint: "По умолчанию 100. Одиночный PVE — обычно без таймера." },
+    { key: "only_group_battles", label: "Только в групповых боях", type: "checkbox" },
+    { key: "apply_single_pve", label: "Применять в одиночном PVE", type: "checkbox", hint: "Для боссов/данжей/событий и т.п. (точечно)." },
+    { key: "apply_to_players", label: "Таймер для игроков", type: "checkbox" },
+    { key: "apply_to_npc", label: "Таймер для NPC", type: "checkbox" },
+    { key: "on_timeout", label: "Действие при истечении", type: "select", metaKey: "timeoutActions", hint: "Для PVP безопаснее: пропуск хода или базовая защита." },
+    { key: "warn_before_seconds", label: "Предупредить за N сек", type: "number" },
+    { key: "warn_text", label: "Текст предупреждения", type: "text" },
+    { key: "skip_text", label: "Текст пропуска хода", type: "text" },
+    { key: "can_extend", label: "Можно продлить ход", type: "checkbox" },
+    { key: "max_extensions", label: "Макс. продлений", type: "number" },
+    { key: "ally_order_type", label: "Порядок союзников-NPC", type: "select", metaKey: "allyOrderTypes", hint: "player_first/npc_first/by_initiative/…" },
+    { key: "player_order_type", label: "Порядок игроков-союзников", type: "select", metaKey: "playerOrderTypes" },
+    { key: "mixed_order_type", label: "Смешанный порядок (NPC+игроки)", type: "select", metaKey: "mixedOrderTypes" },
+    { key: "enemy_order_type", label: "Порядок противников", type: "select", metaKey: "enemyOrderTypes" },
+    { key: "enemy_target_rule", label: "Выбор цели противников", type: "select", metaKey: "enemyTargetRules", hint: "random/aggro/weakest/most_dangerous." },
+    { key: "group_npc_actions", label: "Объединять действия NPC в одно сообщение", type: "checkbox" },
+    { key: "show_npc_actions", label: "Показывать действия NPC игроку", type: "checkbox" },
+    { key: "max_players", label: "Лимит игроков (группа)", type: "number" },
+    { key: "max_npc", label: "Лимит NPC (сторона)", type: "number" },
+    { key: "texts", label: "Тексты боя", type: "objlist", columns: [{ key: "key", label: "Ключ" }, { key: "text", label: "Текст" }] },
+    { key: "description", label: "Описание (для админа)", type: "textarea" },
+  ],
+};
 const PVP_CONFIG = {
   base: "pvp", title: "Конструктор PVP (будущий)", permPrefix: "pvp",
   newLabel: "Новое PVP-правило", nameField: "name",
@@ -329,6 +360,7 @@ const NAV = [
   { id: "blessings", label: "Благословения", icon: "🌟", perm: "blessing.view" },
   { id: "phases", label: "Фазы боссов", icon: "🌀", perm: "phase.view" },
   { id: "pvp", label: "Конструктор PVP", icon: "⚔️", perm: "pvp.view" },
+  { id: "combat", label: "Боевые настройки", icon: "⏱️", perm: "combat.view" },
   { id: "levels", label: "Уровни", icon: "🪜", perm: "level.view" },
   { id: "exp", label: "Опыт", icon: "📈", perm: "exp.view" },
   { id: "registration", label: "Регистрация", icon: "📝", perm: "registration.view" },
@@ -359,7 +391,7 @@ const NAV_GROUP_OF = {
   items: "Контент", achievements: "Контент", traits: "Контент",
   blessings: "Контент", phases: "Контент", texts: "Контент",
   effects: "Бой", addictions: "Бой", tolerances: "Бой", skills: "Бой",
-  formulas: "Бой", reputations: "Бой", pvp: "Бой",
+  formulas: "Бой", reputations: "Бой", pvp: "Бой", combat: "Бой",
   recipes: "Ремесло и экономика", professions: "Ремесло и экономика",
   workshops: "Ремесло и экономика", workshop_messages: "Ремесло и экономика",
   upgrades: "Ремесло и экономика", enchants: "Ремесло и экономика",
@@ -583,6 +615,7 @@ export function AdminShell() {
         {active === "traits" && hasPerm("trait.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={TRAIT_CONFIG} />}
         {active === "blessings" && hasPerm("blessing.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={BLESSING_CONFIG} />}
         {active === "pvp" && hasPerm("pvp.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PVP_CONFIG} />}
+        {active === "combat" && hasPerm("combat.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={COMBAT_CONFIG} />}
         {active === "phases" && hasPerm("phase.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PHASE_CONFIG} />}
         {active === "levels" && hasPerm("level.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={LEVEL_CONFIG} />}
         {active === "exp" && hasPerm("exp.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={EXP_CONFIG} />}
