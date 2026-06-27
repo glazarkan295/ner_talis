@@ -32,10 +32,13 @@ def _safe(fn) -> Any:
 def _constructor_stats() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
 
+    from services import constructor_live_status as cls
+
     def add(key: str, label: str, section: str, records: list[dict[str, Any]] | None) -> None:
         if records is None:
             return
-        out.append({"key": key, "label": label, "section": section, **_entity_stats(records)})
+        out.append({"key": key, "label": label, "section": section,
+                    "live": cls.status_for(key), **_entity_stats(records)})
 
     def _store_list(module_name: str) -> list[dict[str, Any]] | None:
         import importlib

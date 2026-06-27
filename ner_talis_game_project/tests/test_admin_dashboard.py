@@ -70,6 +70,20 @@ class DashboardTest(unittest.TestCase):
         self.assertGreaterEqual(item_stat["total"], 1)
         self.assertGreaterEqual(report["totals"]["objects"], 1)
 
+    def test_constructors_have_live_status(self):
+        from services import constructor_live_status as cls
+
+        ics.store().create("sword", {"name": "Меч", "category": "Оружие"})
+        report = dash.summary(self.storage)
+        item = next((c for c in report["constructors"] if c["key"] == "item"), None)
+        self.assertIsNotNone(item)
+        self.assertIn("live", item)
+        self.assertIn(item["live"]["category"], cls.CATEGORY_LABELS)
+        # Текстовый конструктор — flag-gated (use_v2_texts).
+        self.assertEqual(cls.status_for("text")["flag"], "use_v2_texts")
+        # Предметы — пока справочник для рантайма.
+        self.assertEqual(cls.status_for("item")["category"], "reference")
+
     def test_requires_auth(self):
         self.assertEqual(self.client.get("/api/admin/v2/dashboard").status_code, 401)
 

@@ -67,16 +67,18 @@ export function DashboardSection({ guarded, onOpenSection }) {
             <div className="ntv2-panel">
               <h4 className="ntv2-subhead">Контент по конструкторам</h4>
               <table className="ntdash-table">
-                <thead><tr><th>Конструктор</th><th>Всего</th><th>Опубл.</th><th>Черн.</th><th>Ошибки</th></tr></thead>
+                <thead><tr><th>Конструктор</th><th>Всего</th><th>Опубл.</th><th>Ошибки</th><th>Статус в игре</th></tr></thead>
                 <tbody>
                   {(data.constructors || []).map((c) => (
                     <tr key={c.key} className={c.section && onOpenSection ? "ntdash-row-link" : ""} onClick={() => c.section && onOpenSection && onOpenSection(c.section)}>
-                      <td>{c.label}</td><td>{c.total}</td><td>{c.published}</td><td>{c.drafts}</td>
+                      <td>{c.label}</td><td>{c.total}</td><td>{c.published}</td>
                       <td className={c.errors ? "ntdash-bad" : ""}>{c.errors}</td>
+                      <td><span className={`ntdash-live ntdash-live-${c.live?.category || "reference"}`} title={c.live?.note || ""}>{c.live?.category_label || "—"}</span></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <p className="ntv2-hint" style={{ marginTop: 6 }}>«Статус в игре» показывает, влияет ли опубликованный объект на runtime (16-TZ §10). Наведите для деталей.</p>
             </div>
 
             <div className="ntv2-panel">
@@ -133,6 +135,12 @@ const DASH_CSS = `
 .ntdash-row-link{cursor:pointer}
 .ntdash-row-link:hover{background:rgba(255,255,255,.05)}
 .ntdash-bad{color:#dc2626;font-weight:600}
+.ntdash-live{font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap;border:1px solid transparent}
+.ntdash-live-live{background:rgba(34,197,94,.15);color:#16a34a;border-color:rgba(34,197,94,.4)}
+.ntdash-live-partial{background:rgba(217,119,6,.15);color:#d97706;border-color:rgba(217,119,6,.4)}
+.ntdash-live-flag{background:rgba(37,99,235,.15);color:#2563eb;border-color:rgba(37,99,235,.4)}
+.ntdash-live-reference{background:rgba(148,163,184,.18);color:#64748b;border-color:rgba(148,163,184,.4)}
+.ntdash-live-disabled{background:rgba(148,163,184,.12);color:#94a3b8}
 .ntdash-feed{list-style:none;margin:0;padding:0;max-height:320px;overflow:auto}
 .ntdash-feed li{padding:6px 4px;border-bottom:1px solid #f1f5f9;font-size:13px;display:flex;flex-direction:column}
 .ntdash-feed li small{color:#94a3b8}
