@@ -20,10 +20,25 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 
 from services import admin_graph_service as graph
+from services.admin_operation import run_admin_operation
 from services.admin_panel_service import require_admin_session
-from services.admin_rbac import PERM_GRAPH_VIEW, require_permission
+from services.admin_rbac import (
+    PERM_GRAPH_EDIT, PERM_GRAPH_VIEW, identity_key, require_permission,
+)
+
+
+class _EdgeBody(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    action: str = "set"  # set | clear
+    from_: str = Field(alias="from", min_length=3)
+    edge_type: str = Field(min_length=2)
+    to: str = ""
+    reason: str = ""
+
+    model_config = {"populate_by_name": True}
 
 
 def _bearer_token(request: Request | None) -> str:
@@ -139,5 +154,45 @@ def create_admin_graph_router(get_storage) -> APIRouter:
             source=source, target=target, types=_split(types), statuses=_split(statuses),
         )
         return {"ok": True, **result}
+
+    # --- Редактирование связей (ТЗ 12 §34) ---------------------------------
+    def _guard_edit(request: Request, token: str | None) -> dict[str, Any]:
+        effective = _bearer_token(request) or str(token or "").strip()
+        if not effective:
+            raise HTTPException(status_code=401, detail="Админ-сессия не передана.")
+        try:
+            session = require_admin_session(get_storage(), effective)
+            require_permission(session, PERM_GRAPH_EDIT)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        return session
+
+    @router.get("/editable-edges")
+    def editable_edges(request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        _guard(get_storage(), request, token)
+        return {"ok": True, "specs": graph.editable_edge_specs()}
+
+    @router.post("/edge")
+    def edit_edge(payload: _EdgeBody, request: Request) -> dict[str, Any]:
+        session = _guard_edit(request, payload.token)
+        actor = identity_key(session.get("platform"), session.get("admin_user_id"))
+        try:
+            if payload.action == "clear":
+                result = run_admin_operation(
+                    session=session, action="graph.edge_clear",
+                    func=lambda: graph.clear_edge(payload.from_, payload.edge_type, actor=actor),
+                    target_type="graph_edge", target_id=f"{payload.from_}|{payload.edge_type}",
+                    reason=payload.reason or "graph edge clear",
+                )
+            else:
+                result = run_admin_operation(
+                    session=session, action="graph.edge_set",
+                    func=lambda: graph.set_edge(payload.from_, payload.edge_type, payload.to, actor=actor),
+                    target_type="graph_edge", target_id=f"{payload.from_}|{payload.edge_type}",
+                    reason=payload.reason or "graph edge set",
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "result": result}
 
     return router

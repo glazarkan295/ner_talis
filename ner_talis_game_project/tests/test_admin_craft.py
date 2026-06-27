@@ -118,6 +118,36 @@ class RecipeExtensionTest(_Base):
         self.assertIn(("recipe:forge_sword", "formula:time_fx", "uses_formula"), pairs)
 
 
+class EdgeEditTest(_Base):
+    """Редактирование связей на схеме (ТЗ 12 §34): set_edge / clear_edge."""
+
+    def test_set_and_clear_recipe_profession(self):
+        from services import recipe_constructor_service as recipes
+        from services import admin_graph_service as graph
+        professions.store().create("smithing", {"name": "Кузнечное", "max_level": 50})
+        recipes.store().create("r1", {"name": "Меч", "workshop": "forge", "output_item_id": "iron_sword"})
+        # Создаём связь рецепт→профессия.
+        graph.set_edge("recipe:r1", "uses_profession", "profession:smithing", actor="t")
+        pairs = {(e["from"], e["to"], e["type"]) for e in graph.full_graph()["edges"]}
+        self.assertIn(("recipe:r1", "profession:smithing", "uses_profession"), pairs)
+        # Удаляем связь.
+        graph.clear_edge("recipe:r1", "uses_profession", actor="t")
+        pairs2 = {(e["from"], e["to"], e["type"]) for e in graph.full_graph()["edges"]}
+        self.assertNotIn(("recipe:r1", "profession:smithing", "uses_profession"), pairs2)
+
+    def test_set_edge_rejects_wrong_target_type(self):
+        from services import recipe_constructor_service as recipes
+        from services import admin_graph_service as graph
+        recipes.store().create("r2", {"name": "X", "workshop": "forge", "output_item_id": "i"})
+        with self.assertRaises(ValueError):
+            graph.set_edge("recipe:r2", "uses_profession", "workshop:forge1", actor="t")
+
+    def test_non_editable_edge_rejected(self):
+        from services import admin_graph_service as graph
+        with self.assertRaises(ValueError):
+            graph.set_edge("recipe:r2", "produces", "item:x", actor="t")
+
+
 class ApiTest(_Base):
     def setUp(self):
         super().setUp()

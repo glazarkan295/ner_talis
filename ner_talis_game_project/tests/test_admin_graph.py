@@ -181,6 +181,17 @@ class GraphApiTest(GraphTestBase):
     def test_requires_auth(self):
         self.assertEqual(self.client.get("/api/admin/v2/graph").status_code, 401)
 
+    def test_editable_edges_listed(self):
+        token = self._token()
+        r = self.client.get("/api/admin/v2/graph/editable-edges", headers=self._auth(token))
+        self.assertEqual(r.status_code, 200, r.text)
+        specs = r.json()["specs"]
+        self.assertTrue(any(s["from_type"] == "recipe" and s["edge_type"] == "uses_profession" for s in specs))
+
+    def test_edit_edge_requires_auth(self):
+        r = self.client.post("/api/admin/v2/graph/edge", json={"from": "recipe:r1", "edge_type": "uses_profession", "to": "profession:p"})
+        self.assertEqual(r.status_code, 401)
+
     def test_full_and_legend(self):
         token = self._token()
         full = self.client.get("/api/admin/v2/graph", headers=self._auth(token))

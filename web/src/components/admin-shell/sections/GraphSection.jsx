@@ -7,6 +7,8 @@ import {
   fetchGraphPath,
   fetchGraphNode,
   fetchGraphValidation,
+  fetchEditableEdges,
+  editGraphEdge,
 } from "../../../api/adminGraphApi.js";
 
 // Интерактивная схема / карта связей (ТЗ 12). Чистый SVG без сторонних
@@ -175,7 +177,7 @@ function nodeOpacity(node) {
   return 1;
 }
 
-export function GraphSection({ guarded, onOpenSection }) {
+export function GraphSection({ guarded, hasPerm, onOpenSection }) {
   const [legend, setLegend] = useState(null);
   const [graph, setGraph] = useState({ nodes: [], edges: [] });
   const [positions, setPositions] = useState({});
@@ -193,6 +195,9 @@ export function GraphSection({ guarded, onOpenSection }) {
   const [render3d, setRender3d] = useState(false);
   const [cam, setCam] = useState({ yaw: 0.6, pitch: 0.5 });
   const [lowDetail, setLowDetail] = useState(false);
+  const [editSpecs, setEditSpecs] = useState([]);
+  const [newEdge, setNewEdge] = useState({ edge_type: "", to: "" });
+  const canEditEdges = hasPerm ? hasPerm("graph.edit") : false;
   const svgRef = useRef(null);
   const drag = useRef(null);
 
@@ -214,7 +219,8 @@ export function GraphSection({ guarded, onOpenSection }) {
   useEffect(() => { (async () => {
     const l = await guarded(() => fetchGraphLegend());
     if (l) setLegend(l);
-  })(); }, [guarded]);
+    if (canEditEdges) { const e = await guarded(() => fetchEditableEdges()); if (e) setEditSpecs(e.specs || []); }
+  })(); }, [guarded, canEditEdges]);
   useEffect(() => { loadFull(); }, [loadFull]);
 
   const typeLabel = useCallback((t) => legend?.nodeTypes?.find((x) => x.value === t)?.label || t, [legend]);
@@ -343,6 +349,16 @@ export function GraphSection({ guarded, onOpenSection }) {
     const [type, ...rest] = nodeId.split(":");
     const g = await guarded(() => fetchGraphAround(type, rest.join(":"), 2));
     if (g) { setMode("focus"); applyGraph(g); setInfo(`Фокус вокруг: ${nodeId}`); }
+  }
+  async function clearEdgeUi(edge) {
+    if (!window.confirm(`Удалить связь «${edge.label}» → ${edge.to}? Объект может стать недоступным.`)) return;
+    const r = await guarded(() => editGraphEdge("clear", edge.from, edge.type, "", "схема: удаление связи"));
+    if (r) { setInfo("Связь удалена."); await focusNode(selected); const [tp, ...rest] = selected.split(":"); const d = await guarded(() => fetchGraphNode(tp, rest.join(":"))); if (d) setDetail(d); }
+  }
+  async function addEdgeUi() {
+    if (!newEdge.edge_type || !newEdge.to.trim()) return;
+    const r = await guarded(() => editGraphEdge("set", selected, newEdge.edge_type, newEdge.to.trim(), "схема: добавление связи"));
+    if (r) { setInfo("Связь добавлена."); setNewEdge({ edge_type: "", to: "" }); await focusNode(selected); const [tp, ...rest] = selected.split(":"); const d = await guarded(() => fetchGraphNode(tp, rest.join(":"))); if (d) setDetail(d); }
   }
   async function loadErrors() {
     setHighlightPath([]);
@@ -561,6 +577,31 @@ export function GraphSection({ guarded, onOpenSection }) {
               <button type="button" className="ntv2-btn-mini" onClick={() => { setPathInputs((p) => ({ ...p, target: selectedNode.id })); }}>В путь: цель</button>
               <button type="button" className="ntv2-btn-mini" onClick={() => { try { navigator.clipboard?.writeText(selectedNode.id); setInfo("ID скопирован: " + selectedNode.id); } catch { /* noop */ } }}>Скопировать ID</button>
             </div>
+            {canEditEdges ? (() => {
+              const typeSpecs = editSpecs.filter((s) => s.from_type === selectedNode.type);
+              const editableTypes = new Set(typeSpecs.map((s) => s.edge_type));
+              const editableOut = (detail?.outgoing || []).filter((e) => editableTypes.has(e.type));
+              if (!typeSpecs.length) return null;
+              return (
+                <div className="ntgraph-edit">
+                  <b>Редактирование связей (§34)</b>
+                  {editableOut.map((e) => (
+                    <div className="ntgraph-edit-row" key={e.id}>
+                      <span>{e.label}: <code>{e.to}</code></span>
+                      <button type="button" className="ntv2-btn-mini" onClick={() => clearEdgeUi(e)}>✕ удалить</button>
+                    </div>
+                  ))}
+                  <div className="ntgraph-edit-add">
+                    <select value={newEdge.edge_type} onChange={(ev) => setNewEdge((n) => ({ ...n, edge_type: ev.target.value }))}>
+                      <option value="">связь…</option>
+                      {typeSpecs.map((s) => <option key={s.edge_type} value={s.edge_type}>{s.edge_label} → {s.target_label}</option>)}
+                    </select>
+                    <input placeholder="цель (type:id)" value={newEdge.to} onChange={(ev) => setNewEdge((n) => ({ ...n, to: ev.target.value }))} />
+                    <button type="button" className="ntv2-btn-mini" onClick={addEdgeUi}>＋ связь</button>
+                  </div>
+                </div>
+              );
+            })() : null}
           </aside>
         ) : null}
       </div>
@@ -601,5 +642,9 @@ const GRAPH_CSS = `
 .ntgraph-card-list{margin:6px 0;font-size:12px}
 .ntgraph-card-list code,.ntgraph-card-meta code,.ntgraph-card-row code{font-size:11px}
 .ntgraph-card-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.ntgraph-edit{margin-top:10px;border-top:1px solid #e2e8f0;padding-top:8px;font-size:12px}
+.ntgraph-edit-row{display:flex;justify-content:space-between;align-items:center;gap:6px;margin:4px 0}
+.ntgraph-edit-add{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+.ntgraph-edit-add select,.ntgraph-edit-add input{padding:4px 6px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px}
 .ntgraph-foot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12px;color:#64748b;margin-top:8px}
 `;

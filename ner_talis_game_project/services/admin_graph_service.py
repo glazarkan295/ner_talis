@@ -862,3 +862,80 @@ def export(mode: str = "full", fmt: str = "json", **params: Any) -> dict[str, An
         return {"format": "md", "filename": f"graph_{mode}.md",
                 "content": export_markdown(graph)}
     return {"format": "json", "filename": f"graph_{mode}.json", "content": graph}
+
+
+# --- Редактирование связей на схеме (ТЗ 12 §34) ----------------------------
+# Только безопасные FK-связи: одно скалярное поле на объекте-источнике.
+# (from_type, edge_type) → {field, target}.
+EDITABLE_EDGES: dict[tuple[str, str], dict[str, str]] = {
+    ("recipe", "uses_profession"): {"field": "profession", "target": "profession"},
+    ("recipe", "in_workshop"): {"field": "workshop_id", "target": "workshop"},
+    ("workshop", "in_location"): {"field": "location", "target": "location"},
+    ("workshop_message", "in_workshop"): {"field": "workshop_id", "target": "workshop"},
+    ("sublocation", "in_location"): {"field": "parent_location", "target": "location"},
+}
+
+
+def editable_edge_specs() -> list[dict[str, Any]]:
+    """Описание редактируемых связей для UI (тип источника/ребра/цели + подписи)."""
+    out: list[dict[str, Any]] = []
+    for (from_type, edge_type), spec in EDITABLE_EDGES.items():
+        out.append({
+            "from_type": from_type, "from_label": NODE_TYPE_LABELS.get(from_type, from_type),
+            "edge_type": edge_type, "edge_label": EDGE_TYPE_LABELS.get(edge_type, edge_type),
+            "target_type": spec["target"],
+            "target_label": NODE_TYPE_LABELS.get(spec["target"], spec["target"]),
+        })
+    return out
+
+
+def _write_node_field(node_type: str, entity_id: str, field: str, value: str, actor: str) -> None:
+    if node_type in wcr.KINDS:
+        env = wcr.get_content(node_type, entity_id)
+        if env is None:
+            raise ValueError(f"Объект {node_type}:{entity_id} не найден.")
+        data = dict(env.get("data") or {})
+        data[field] = value
+        wcr.update_content(node_type, entity_id, data, actor=actor)
+        return
+    for nt, module_name, _ in CONSTRUCTOR_SOURCES:
+        if nt == node_type:
+            svc = _import_service(module_name)
+            if svc is None or not hasattr(svc, "store"):
+                raise ValueError("Хранилище недоступно.")
+            env = svc.store().get(entity_id)
+            if env is None:
+                raise ValueError(f"Объект {node_type}:{entity_id} не найден.")
+            data = dict(env.get("data") or {})
+            data[field] = value
+            svc.store().update(entity_id, data, actor=actor)
+            return
+    raise ValueError(f"Тип {node_type} не поддерживает редактирование связей.")
+
+
+def _split_node_id(node_id: str) -> tuple[str, str]:
+    ntype, _, eid = str(node_id or "").partition(":")
+    return ntype, eid
+
+
+def set_edge(from_id: str, edge_type: str, to_id: str, *, actor: str = "") -> dict[str, Any]:
+    """Создать/изменить связь: записать целевой id в FK-поле источника (§34)."""
+    from_type, from_eid = _split_node_id(from_id)
+    spec = EDITABLE_EDGES.get((from_type, edge_type))
+    if not spec:
+        raise ValueError("Эта связь не редактируется на схеме.")
+    to_type, to_eid = _split_node_id(to_id)
+    if to_type and to_type != spec["target"]:
+        raise ValueError(f"Цель должна быть типа «{NODE_TYPE_LABELS.get(spec['target'], spec['target'])}».")
+    _write_node_field(from_type, from_eid, spec["field"], to_eid, actor)
+    return {"from": from_id, "edge_type": edge_type, "to": f"{spec['target']}:{to_eid}"}
+
+
+def clear_edge(from_id: str, edge_type: str, *, actor: str = "") -> dict[str, Any]:
+    """Удалить связь: очистить FK-поле источника (§34, опасное действие)."""
+    from_type, from_eid = _split_node_id(from_id)
+    spec = EDITABLE_EDGES.get((from_type, edge_type))
+    if not spec:
+        raise ValueError("Эта связь не редактируется на схеме.")
+    _write_node_field(from_type, from_eid, spec["field"], "", actor)
+    return {"from": from_id, "edge_type": edge_type, "cleared": True}
