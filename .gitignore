@@ -36,6 +36,11 @@ data/port_market_state.json
 
 # Courier transfers runtime queue
 data/courier_transfers.json
+
+# Import-migration runtime artifacts (last report/journal) + feature flags
+data/import_report.json
+data/import_journal.json
+data/feature_flags.json
 data/courier_transfers.json.lock
 data/courier_transfers.json.tmp
 

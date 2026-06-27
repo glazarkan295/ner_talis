@@ -1264,6 +1264,92 @@ def import_races(*, mode: str | None = None, overwrite: bool = False, actor: str
     return report
 
 
+# --- Импорт репутаций (full-import ТЗ §5.17) --------------------------------
+# Репутации заданы в коде/механиках (стража, торговцы, ремесленники, Чёрный
+# рынок, информатор Крот, гильдия, арена). Заводим их как опубликованные
+# определения, чтобы админ мог править пороги/эффекты/тексты. Скрытые репутации
+# (crime/informer) не показывают игроку точное значение (§6.2).
+# (id, название, видимость, область, режим отображения)
+_REPUTATION_SEED = [
+    ("rep_seldar_city", "Репутация Селдара", "visible", "city", "stage"),
+    ("rep_city_guards", "Репутация у городской стражи", "visible", "guards", "stage"),
+    ("rep_traders", "Репутация у торговцев", "visible", "traders", "stage"),
+    ("rep_crafters", "Репутация у ремесленников", "visible", "crafters", "stage"),
+    ("rep_black_market", "Репутация на Чёрном рынке", "hidden", "crime_group", "stage"),
+    ("rep_informer_mole", "Доверие информатора Крота", "hidden", "npc", "stage"),
+    ("rep_guild", "Репутация в гильдии", "visible", "guild", "stage"),
+    ("rep_arena", "Репутация на арене (PvP)", "visible", "world_event", "stage"),
+]
+
+
+def import_reputation(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import reputation_constructor_service as rep
+
+    report = _rich_report("reputation")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(rep.store(), rep.STATUS_PUBLISHED, actor)
+    for rid, name, visibility, scope, display in _REPUTATION_SEED:
+        hidden = visibility == "hidden"
+        record = {
+            "name_ru": name, "visibility": visibility, "scope_type": scope,
+            "display_mode": display, "min_value": -1000, "max_value": 1000,
+            "default_value": 0, "show_to_player": True,
+            "show_exact_value": not hidden,
+            "description_player": name, "description_admin": name,
+            "imported": True, "import_source": "reputation_seed", "source_id": rid,
+        }
+        _apply_record(report, rid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    report["needs_check"].append({
+        "id": "reputation", "type": "reputation",
+        "reason": "Диапазоны/стадии/правила изменения — типовые; уточните пороги и последствия под каждую фракцию. Рантайм-применение репутации — на вырост.",
+    })
+    return report
+
+
+# --- Импорт товаров рынка (full-import ТЗ §5.15) ----------------------------
+def import_shops(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    """Товары рынка Селдара (data/seldar_market.json) → city_shop_item."""
+    from services import city_constructor_service as ccs
+
+    report = _rich_report("city_shop_item")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(ccs.store(), ccs.STATUS_PUBLISHED, actor)
+    data_raw = _read_data_json("seldar_market.json")
+    items = data_raw.get("items") if isinstance(data_raw, dict) else None
+    if not isinstance(items, list):
+        report["errors"].append({"id": "seldar_market.json", "type": "city_shop_item", "reason": "Файл рынка отсутствует или повреждён."})
+        return report
+    currency = str((data_raw or {}).get("currency") or "copper")
+    if currency not in ccs.CURRENCIES:
+        currency = "copper"
+    for raw in items:
+        if not isinstance(raw, dict):
+            report["invalid"] += 1
+            continue
+        item_id = str(raw.get("item_id") or "").strip()
+        sid = safe_constructor_id(f"market_{item_id}")
+        if not item_id or not sid:
+            report["invalid"] += 1
+            continue
+        record = {
+            "_kind": ccs.KIND_SHOP_ITEM,
+            "item_id": item_id,
+            "display_name": str(raw.get("display_name") or item_id),
+            "shop_kind": "trade_quarter", "node_id": "trade_quarter",
+            "currency": currency, "price_buy": raw.get("buy_price_copper") or 0,
+            "can_buy": True, "can_sell": False, "stock_type": "always",
+            "category": str(raw.get("category") or ""),
+            "description": str(raw.get("description") or ""),
+            "imported": True, "import_source": "data/seldar_market.json", "source_id": item_id,
+        }
+        _apply_record(report, sid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    report["needs_check"].append({
+        "id": "shops", "type": "city_shop_item",
+        "reason": "Товары привязаны к узлу «trade_quarter» с продажей за медь; проверьте привязку к узлу города, цены продажи и лимиты/ротацию.",
+    })
+    return report
+
+
 # --- Проверка целостности импорта (ТЗ §10) ----------------------------------
 def check_import() -> dict[str, Any]:
     """Сканирует реестры конструкторов и находит проблемы связей/полей."""
@@ -1314,7 +1400,7 @@ IMPORTERS = {
     "achievement": import_achievements, "fine_def": import_fines, "recipe": import_recipes,
     "profile_layout": import_profile_layout, "camp": import_camps,
     "trait": import_traits, "blessing": import_blessings, "phase": import_phases,
-    "race": import_races,
+    "race": import_races, "reputation": import_reputation, "shop": import_shops,
 }
 
 
@@ -1450,6 +1536,8 @@ _ENTITY_STORE_KINDS = {
     "blessing": "blessing_constructor_service",
     "phase": "phase_constructor_service",
     "race": "race_constructor_service",
+    "reputation": "reputation_constructor_service",
+    "city_shop_item": "city_constructor_service",
 }
 # kind → имя константы вида реестра мира (world_content_registry без отдельного store()).
 _WCR_KINDS = {"mob": "KIND_MOB", "location": "KIND_LOCATION", "event": "KIND_EVENT"}

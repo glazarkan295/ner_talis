@@ -28,6 +28,12 @@ class ConstructorImportTest(unittest.TestCase):
         self._fines = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._recipes = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._playout = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._rep = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._report = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._journal = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        os.environ["REPUTATION_CONSTRUCTOR_PATH"] = self._rep
+        os.environ["IMPORT_REPORT_PATH"] = self._report
+        os.environ["IMPORT_JOURNAL_PATH"] = self._journal
         os.environ["FINE_CONSTRUCTOR_PATH"] = self._fines
         os.environ["RECIPE_CONSTRUCTOR_PATH"] = self._recipes
         os.environ["PROFILE_LAYOUT_PATH"] = self._playout
@@ -48,7 +54,10 @@ class ConstructorImportTest(unittest.TestCase):
         os.environ.pop("FINE_CONSTRUCTOR_PATH", None)
         os.environ.pop("RECIPE_CONSTRUCTOR_PATH", None)
         os.environ.pop("PROFILE_LAYOUT_PATH", None)
-        for base in (self._items, self._world, self._effects, self._city, self._ach, self._achcat, self._fines, self._recipes, self._playout):
+        os.environ.pop("REPUTATION_CONSTRUCTOR_PATH", None)
+        os.environ.pop("IMPORT_REPORT_PATH", None)
+        os.environ.pop("IMPORT_JOURNAL_PATH", None)
+        for base in (self._items, self._world, self._effects, self._city, self._ach, self._achcat, self._fines, self._recipes, self._playout, self._rep, self._report, self._journal):
             for suffix in ("", ".lock", ".tmp"):
                 try:
                     os.unlink(base + suffix)
@@ -269,6 +278,53 @@ class ConstructorImportTest(unittest.TestCase):
         char = next(t for t in layout["tabs"] if t["key"] == "character")
         self.assertTrue(any(b["type"] == "main_info" for b in char["blocks"]))
         self.assertEqual(ci.import_profile_layout(mode="new")["created"], 0)
+
+    def test_import_reputation(self):
+        from services import reputation_constructor_service as rep
+
+        report = ci.import_reputation()
+        self.assertGreaterEqual(report["created"], 6)
+        items = rep.store().list()
+        ids = {i["id"] for i in items}
+        self.assertIn("rep_black_market", ids)
+        self.assertTrue(all(i["status"] == "published" for i in items))
+        # Импортированные репутации проходят валидацию конструктора.
+        for it in items:
+            res = rep.validate(it)
+            self.assertTrue(res["ok"], (it["id"], res["errors"]))
+        # Скрытая репутация не показывает точное значение игроку (§6.2).
+        bm = rep.store().get("rep_black_market")
+        self.assertEqual((bm.get("data") or {}).get("visibility"), "hidden")
+        self.assertFalse((bm.get("data") or {}).get("show_exact_value"))
+        self.assertEqual(ci.import_reputation(mode="new")["created"], 0)
+
+    def test_import_shops(self):
+        from services import city_constructor_service as ccs
+
+        report = ci.import_shops()
+        self.assertGreater(report["created"], 0)
+        items = [i for i in ccs.store().list() if (i.get("data") or {}).get("_kind") == ccs.KIND_SHOP_ITEM]
+        self.assertTrue(items)
+        self.assertTrue(all(i["status"] == "published" for i in items))
+        for it in items:
+            res = ccs.validate(ccs.KIND_SHOP_ITEM, it)
+            self.assertTrue(res["ok"], (it["id"], res["errors"]))
+        # Цена покупки перенесена из источника.
+        sample = next(i for i in items if (i.get("data") or {}).get("item_id") == "simple_healing_potion")
+        self.assertEqual((sample.get("data") or {}).get("price_buy"), 70)
+        self.assertEqual(ci.import_shops(mode="new")["created"], 0)
+
+    def test_rollback_reputation_and_shops(self):
+        from services import reputation_constructor_service as rep
+        from services import city_constructor_service as ccs
+
+        ci.import_all(["reputation", "shop"], mode="new")
+        self.assertTrue(rep.store().list())
+        self.assertTrue([i for i in ccs.store().list() if (i.get("data") or {}).get("_kind") == ccs.KIND_SHOP_ITEM])
+        rb = ci.rollback_last()
+        self.assertGreater(rb["deleted"], 0)
+        self.assertEqual(rep.store().list(), [])
+        self.assertEqual([i for i in ccs.store().list() if (i.get("data") or {}).get("_kind") == ccs.KIND_SHOP_ITEM], [])
 
     def test_import_all_summary(self):
         result = ci.import_all(["location", "event"])
