@@ -23,6 +23,7 @@ import { GraphSection } from "./sections/GraphSection.jsx";
 import { SublocationsSection } from "./sections/SublocationsSection.jsx";
 import { FormulasSection } from "./sections/FormulasSection.jsx";
 import { WorkshopMessagesSection } from "./sections/WorkshopMessagesSection.jsx";
+import { ReputationSection } from "./sections/ReputationSection.jsx";
 import { LibrarySection } from "./sections/LibrarySection.jsx";
 
 const TRAIT_CONFIG = {
@@ -218,6 +219,7 @@ const NAV = [
   { id: "sublocations", label: "Конструктор подлокаций", icon: "🕳️", perm: "world.view" },
   { id: "items", label: "Конструктор предметов", icon: "📦", perm: "item.view" },
   { id: "effects", label: "Конструктор эффектов", icon: "✨", perm: "effect.view" },
+  { id: "reputations", label: "Конструктор репутации", icon: "🎖️", perm: "reputation.view" },
   { id: "fines", label: "Конструктор штрафов", icon: "⚖️", perm: "fine_def.view" },
   { id: "skills", label: "Конструктор навыков", icon: "🌀", perm: "skill_def.view" },
   { id: "site", label: "Конструктор сайта", icon: "🌐", perm: "site.view" },
@@ -264,7 +266,7 @@ const SEARCH_TYPE_TO_SECTION = {
   city: "city", achievement: "achievements", world_event: "events", guild: "guilds",
   formula: "formulas", profession: "professions", workshop: "workshops",
   workshop_message: "workshop_messages", item_upgrade: "upgrades",
-  item_enchant: "enchants", item_disassemble: "disassembles",
+  item_enchant: "enchants", item_disassemble: "disassembles", reputation: "reputations",
   sublocation: "sublocations", sublocation_node: "sublocations", sublocation_transition: "sublocations",
 };
 function sectionForSearchType(type) {
@@ -414,6 +416,7 @@ export function AdminShell() {
         {active === "sublocations" && hasPerm("world.view") && <SublocationsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "items" && hasPerm("item.view") && <ItemsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "effects" && hasPerm("effect.view") && <EffectsSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "reputations" && hasPerm("reputation.view") && <ReputationSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "fines" && hasPerm("fine_def.view") && <FinesSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "skills" && hasPerm("skill_def.view") && <SkillsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "site" && hasPerm("site.view") && <SiteSection guarded={guarded} hasPerm={hasPerm} />}
