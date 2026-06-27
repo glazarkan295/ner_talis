@@ -214,6 +214,42 @@ const MOLE_CONFIG = {
     { key: "mole_commission", label: "Комиссия Крота", type: "number" },
   ],
 };
+const CASINO_CONFIG = {
+  base: "casino", title: "Подпольное казино", permPrefix: "casino",
+  newLabel: "Новое казино", nameField: "name",
+  fields: [
+    { key: "name", label: "Название", type: "text", hint: "Имя казино (видно админу)." },
+    { key: "enabled", label: "Включено", type: "checkbox" },
+    { key: "location_id", label: "Локация (id)", type: "text" },
+    { key: "city_id", label: "Город (id)", type: "text" },
+    { key: "owner_npc", label: "NPC/владелец", type: "text" },
+    { key: "description", label: "Описание", type: "textarea" },
+    { key: "min_level", label: "Минимальный уровень", type: "number" },
+    { key: "min_bet", label: "Минимальная ставка", type: "number" },
+    { key: "max_bet", label: "Максимальная ставка", type: "number" },
+    { key: "currency", label: "Валюта", type: "select", metaKey: "currencies" },
+    { key: "games_per_day", label: "Лимит игр в день", type: "number" },
+    { key: "win_per_day", label: "Лимит выигрыша в день", type: "number" },
+    { key: "cooldown_seconds", label: "Кулдаун (сек)", type: "number" },
+    { key: "raid_risk_percent", label: "Риск облавы, %", type: "number" },
+    { key: "depends_world_event", label: "Зависит от мировых событий", type: "checkbox" },
+    { key: "depends_effects", label: "Зависит от эффектов", type: "checkbox" },
+    { key: "depends_achievements", label: "Зависит от достижений", type: "checkbox" },
+    { key: "depends_fines", label: "Зависит от штрафов", type: "checkbox" },
+    { key: "games", label: "Игры и баланс", type: "objlist", columns: [{ key: "game_type", label: "Игра" }, { key: "win_chance", label: "Шанс выигрыша %" }, { key: "loss_chance", label: "Шанс проигрыша %" }, { key: "coefficient", label: "Коэффициент" }, { key: "commission", label: "Комиссия %" }, { key: "min_loss_chance", label: "Мин. проигрыш %" }, { key: "max_win_chance", label: "Макс. выигрыш %" }], hint: "Шанс проигрыша должен быть выше шанса выигрыша. Чем выше коэффициент — тем ниже шанс победы (Кости<Напёрстки<Очко)." },
+    { key: "wheel_enabled", label: "Колесо Удачи включено", type: "checkbox" },
+    { key: "wheel_prizes", label: "Призы колеса (5–10)", type: "objlist", columns: [{ key: "prize_type", label: "Тип" }, { key: "name", label: "Название" }, { key: "item_id", label: "Предмет/валюта" }, { key: "count", label: "Кол-во" }, { key: "chance", label: "Шанс %" }], hint: "Монеты/предмет/ингредиент. От 5 до 10 призов. При выпадении приза его шанс уходит в пустой результат." },
+    { key: "wheel_empty_chance", label: "Шанс пустого результата, %", type: "number" },
+    { key: "wheel_show_chances", label: "Показывать шансы игроку", type: "checkbox" },
+    { key: "wheel_show_prizes", label: "Показывать список призов игроку", type: "checkbox" },
+    { key: "wheel_spin_cost", label: "Стоимость прокрутки", type: "number" },
+    { key: "wheel_refresh_paid", label: "Обновление призов за плату", type: "checkbox" },
+    { key: "wheel_refresh_auto_24h", label: "Авто-обновление каждые 24ч", type: "checkbox" },
+    { key: "text_spin", label: "Текст прокрутки", type: "text" },
+    { key: "text_win", label: "Текст выигрыша", type: "text" },
+    { key: "text_empty", label: "Текст пустого результата", type: "text" },
+  ],
+};
 const TRAIT_CONFIG = {
   base: "traits", title: "Конструктор черт мобов", permPrefix: "trait",
   newLabel: "Новая черта", nameField: "trait_name",
@@ -484,6 +520,7 @@ const NAV = [
   { id: "combat", label: "Боевые настройки", icon: "⏱️", perm: "combat.view" },
   { id: "npc-allies", label: "NPC-союзники", icon: "🤝", perm: "npc_ally.view" },
   { id: "mole", label: "Информатор Крот", icon: "🕵️", perm: "mole.view" },
+  { id: "casino", label: "Подпольное казино", icon: "🎲", perm: "casino.view" },
   { id: "levels", label: "Уровни", icon: "🪜", perm: "level.view" },
   { id: "exp", label: "Опыт", icon: "📈", perm: "exp.view" },
   { id: "registration", label: "Регистрация", icon: "📝", perm: "registration.view" },
@@ -519,7 +556,7 @@ const NAV_GROUP_OF = {
   workshops: "Ремесло и экономика", workshop_messages: "Ремесло и экономика",
   upgrades: "Ремесло и экономика", enchants: "Ремесло и экономика",
   disassembles: "Ремесло и экономика", fines: "Ремесло и экономика",
-  taverns: "Ремесло и экономика", promos: "Ремесло и экономика",
+  taverns: "Ремесло и экономика", casino: "Ремесло и экономика", promos: "Ремесло и экономика",
   site: "Сайт и профиль", profile_layout: "Сайт и профиль",
   levels: "Прогрессия", exp: "Прогрессия", registration: "Прогрессия", races: "Прогрессия",
   messages: "Система", reference: "Система", audit: "Система",
@@ -543,7 +580,7 @@ const SEARCH_TYPE_TO_SECTION = {
   item_enchant: "enchants", item_disassemble: "disassembles", reputation: "reputations",
   addiction: "addictions", tolerance: "tolerances", tavern: "taverns",
   sublocation: "sublocations", sublocation_node: "sublocations", sublocation_transition: "sublocations",
-  npc_ally: "npc-allies", mole: "mole",
+  npc_ally: "npc-allies", mole: "mole", casino: "casino",
 };
 function sectionForSearchType(type) {
   if (type in SEARCH_TYPE_TO_SECTION) return SEARCH_TYPE_TO_SECTION[type];
@@ -742,6 +779,7 @@ export function AdminShell() {
         {active === "combat" && hasPerm("combat.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={COMBAT_CONFIG} />}
         {active === "npc-allies" && hasPerm("npc_ally.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={NPC_ALLY_CONFIG} />}
         {active === "mole" && hasPerm("mole.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={MOLE_CONFIG} />}
+        {active === "casino" && hasPerm("casino.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={CASINO_CONFIG} />}
         {active === "phases" && hasPerm("phase.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PHASE_CONFIG} />}
         {active === "levels" && hasPerm("level.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={LEVEL_CONFIG} />}
         {active === "exp" && hasPerm("exp.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={EXP_CONFIG} />}
