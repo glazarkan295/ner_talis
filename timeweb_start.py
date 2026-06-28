@@ -156,6 +156,13 @@ def start_fastapi_site() -> threading.Thread:
                 port=get_app_port(),
                 log_level=os.getenv("UVICORN_LOG_LEVEL", "info").lower(),
                 access_log=os.getenv("UVICORN_ACCESS_LOG", "false").casefold() in {"1", "true", "yes", "on"},
+                # За reverse proxy Timeweb/балансировщиком TLS терминируется на
+                # прокси, до Uvicorn запрос доходит как HTTP. С proxy_headers
+                # Uvicorn доверяет X-Forwarded-Proto/For от forwarded_allow_ips и
+                # переписывает scheme на https — иначе FORCE_HTTPS даёт
+                # «HTTPS required». Значения читаются из env (без правки кода).
+                proxy_headers=get_bool_env("UVICORN_PROXY_HEADERS", True),
+                forwarded_allow_ips=os.getenv("UVICORN_FORWARDED_ALLOW_IPS", "*"),
             )
         except Exception:
             APP_STATE["status"] = "error"
