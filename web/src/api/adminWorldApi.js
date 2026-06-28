@@ -63,6 +63,28 @@ export const publishWorldItem = (kind, id, reason) => lifecycle(kind, id, "publi
 export const disableWorldItem = (kind, id, reason) => lifecycle(kind, id, "disable", reason);
 export const archiveWorldItem = (kind, id, reason) => lifecycle(kind, id, "archive", reason);
 
+// --- Версионирование (Этап 1): история/откат и draft-overlay ---------------
+export function fetchWorldHistory(kind, id) {
+  return requestAdminJson(`/api/admin/v2/world/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/history?_=${Date.now()}`);
+}
+
+export function rollbackWorldItem(kind, id, version, reason) {
+  return requestAdminJson(`/api/admin/v2/world/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/rollback`, {
+    method: "POST",
+    body: JSON.stringify({ version, reason }),
+  });
+}
+
+export function editWorldDraft(kind, id, data, reason) {
+  return requestAdminJson(`/api/admin/v2/world/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/draft`, {
+    method: "PUT",
+    body: JSON.stringify({ data, reason }),
+  });
+}
+
+export const publishWorldDraft = (kind, id, reason) => lifecycle(kind, id, "publish-draft", reason);
+export const discardWorldDraft = (kind, id, reason) => lifecycle(kind, id, "discard-draft", reason);
+
 export function previewWorldItem(kind, id) {
   return requestAdminJson(`/api/admin/v2/world/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/preview?_=${Date.now()}`);
 }

@@ -76,6 +76,63 @@ class ItemServiceTest(unittest.TestCase):
         self.assertEqual(usage["total"], 1)
         self.assertTrue(any(m["id"] == "wolf" for m in usage["mob_drops"]))
 
+    def test_unique_stackable_conflict_is_error(self):
+        env = items.store().create("amulet", {
+            "name": "Амулет", "description": "x", "category": "Артефакт",
+            "is_unique": True, "stackable": True, "max_stack": 5,
+        })
+        result = items.validate(env)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("уникальн" in e.lower() for e in result["errors"]), result["errors"])
+
+    def test_effect_link_without_id_is_error(self):
+        env = items.store().create("ring", {
+            "name": "Кольцо", "description": "x", "category": "Украшение", "stackable": False,
+            "effect_links": [{"effect_id": "", "trigger": "on_equip"}],
+        })
+        result = items.validate(env)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("effect_id" in e for e in result["errors"]), result["errors"])
+
+    def test_openable_valid(self):
+        env = items.store().create("chest", {
+            "name": "Сундук", "description": "x", "category": "Контейнер", "stackable": False,
+            "openable": True, "open_where": "anywhere", "open_behavior": "disappear",
+            "open_contents": [{"item_id": "gold", "chance": 100, "min_count": 10, "max_count": 20}],
+        })
+        result = items.validate(env)
+        self.assertTrue(result["ok"], result["errors"])
+
+    def test_openable_errors(self):
+        env = items.store().create("badchest", {
+            "name": "Сундук", "description": "x", "category": "Контейнер", "stackable": False,
+            "openable": True, "open_requires_key": True,  # ключ не указан
+            "open_behavior": "replace",  # предмет-замена не указан
+            "open_contents": [{"item_id": "x", "chance": 150, "min_count": 5, "max_count": 1}],  # шанс>100, min>max
+        })
+        result = items.validate(env)
+        self.assertFalse(result["ok"])
+        joined = " ".join(result["errors"]).lower()
+        self.assertIn("ключ", joined)
+        self.assertIn("замен", joined)
+        self.assertIn("шанс", joined)
+        self.assertIn("min больше max", joined)
+
+    def test_charges_and_currency_warnings(self):
+        env = items.store().create("wand", {
+            "name": "Жезл", "description": "x", "category": "Оружие", "stackable": False,
+            "has_charges": True, "has_durability": True,
+            "currency_type": "doubloon",
+            "usage_places": ["nowhere"],
+            "requirements": [{"type": "level", "value": 5}, {"type": "weird", "value": 1}],
+        })
+        result = items.validate(env)
+        joined = " ".join(result["warnings"]).lower()
+        self.assertIn("max_charges", joined)
+        self.assertIn("max_durability", joined)
+        self.assertIn("валюта", joined)
+        self.assertIn("место использования", joined)
+
 
 class ItemApiTest(unittest.TestCase):
     def setUp(self):
@@ -164,6 +221,15 @@ class ItemApiTest(unittest.TestCase):
         token = self._token("999")
         self.assertEqual(self.client.get("/api/admin/v2/items", headers=self._auth(token)).status_code, 200)
         self.assertEqual(self._create(token).status_code, 403)
+
+    def test_meta_exposes_expansion_vocabularies(self):
+        token = self._token("999")
+        meta = self.client.get("/api/admin/v2/items/meta", headers=self._auth(token))
+        self.assertEqual(meta.status_code, 200, meta.text)
+        body = meta.json()
+        for key in ("currencies", "usagePlaces", "requirementTypes", "effectLinkTriggers"):
+            self.assertIn(key, body)
+            self.assertTrue(body[key])
 
 
 if __name__ == "__main__":

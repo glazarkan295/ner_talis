@@ -93,6 +93,17 @@ class RepairFinesTest(unittest.TestCase):
         self.assertEqual(report["state"], "active_ok")
         self.assertEqual(report["active_count"], 1)
 
+    def test_repair_preserves_active_legacy_only_fine(self):
+        # Codex P2: legacy-форма — активный штраф ТОЛЬКО в active_fine, списка
+        # нет. Repair не должен тихо снять долг, а перенести его в active_fines.
+        player = {"active_fine": _fine("legacy1", fs.FINE_STATUS_FORCED)}
+        report = fs.repair_player_fines(player)
+        self.assertEqual(report["state"], "forced_active")
+        self.assertEqual(report["active_count"], 1)
+        self.assertIn("migrated_legacy_fine", report["issues"])
+        self.assertEqual([f["id"] for f in fs.active_fines(player)], ["legacy1"])
+        self.assertEqual(player["active_fine"]["id"], "legacy1")
+
 
 if __name__ == "__main__":
     unittest.main()

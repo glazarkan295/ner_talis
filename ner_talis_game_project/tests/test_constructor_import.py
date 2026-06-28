@@ -28,6 +28,14 @@ class ConstructorImportTest(unittest.TestCase):
         self._fines = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._recipes = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
         self._playout = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._rep = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._text = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._report = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        self._journal = tempfile.NamedTemporaryFile(suffix=".json", delete=False).name
+        os.environ["REPUTATION_CONSTRUCTOR_PATH"] = self._rep
+        os.environ["TEXT_CONSTRUCTOR_PATH"] = self._text
+        os.environ["IMPORT_REPORT_PATH"] = self._report
+        os.environ["IMPORT_JOURNAL_PATH"] = self._journal
         os.environ["FINE_CONSTRUCTOR_PATH"] = self._fines
         os.environ["RECIPE_CONSTRUCTOR_PATH"] = self._recipes
         os.environ["PROFILE_LAYOUT_PATH"] = self._playout
@@ -48,7 +56,11 @@ class ConstructorImportTest(unittest.TestCase):
         os.environ.pop("FINE_CONSTRUCTOR_PATH", None)
         os.environ.pop("RECIPE_CONSTRUCTOR_PATH", None)
         os.environ.pop("PROFILE_LAYOUT_PATH", None)
-        for base in (self._items, self._world, self._effects, self._city, self._ach, self._achcat, self._fines, self._recipes, self._playout):
+        os.environ.pop("REPUTATION_CONSTRUCTOR_PATH", None)
+        os.environ.pop("TEXT_CONSTRUCTOR_PATH", None)
+        os.environ.pop("IMPORT_REPORT_PATH", None)
+        os.environ.pop("IMPORT_JOURNAL_PATH", None)
+        for base in (self._items, self._world, self._effects, self._city, self._ach, self._achcat, self._fines, self._recipes, self._playout, self._rep, self._text, self._report, self._journal):
             for suffix in ("", ".lock", ".tmp"):
                 try:
                     os.unlink(base + suffix)
@@ -270,11 +282,266 @@ class ConstructorImportTest(unittest.TestCase):
         self.assertTrue(any(b["type"] == "main_info" for b in char["blocks"]))
         self.assertEqual(ci.import_profile_layout(mode="new")["created"], 0)
 
+    def test_import_reputation(self):
+        from services import reputation_constructor_service as rep
+
+        report = ci.import_reputation()
+        self.assertGreaterEqual(report["created"], 6)
+        items = rep.store().list()
+        ids = {i["id"] for i in items}
+        self.assertIn("rep_black_market", ids)
+        self.assertTrue(all(i["status"] == "published" for i in items))
+        # Импортированные репутации проходят валидацию конструктора.
+        for it in items:
+            res = rep.validate(it)
+            self.assertTrue(res["ok"], (it["id"], res["errors"]))
+        # Скрытая репутация не показывает точное значение игроку (§6.2).
+        bm = rep.store().get("rep_black_market")
+        self.assertEqual((bm.get("data") or {}).get("visibility"), "hidden")
+        self.assertFalse((bm.get("data") or {}).get("show_exact_value"))
+        self.assertEqual(ci.import_reputation(mode="new")["created"], 0)
+
+    def test_import_shops(self):
+        from services import city_constructor_service as ccs
+
+        report = ci.import_shops()
+        self.assertGreater(report["created"], 0)
+        items = [i for i in ccs.store().list() if (i.get("data") or {}).get("_kind") == ccs.KIND_SHOP_ITEM]
+        self.assertTrue(items)
+        self.assertTrue(all(i["status"] == "published" for i in items))
+        for it in items:
+            res = ccs.validate(ccs.KIND_SHOP_ITEM, it)
+            self.assertTrue(res["ok"], (it["id"], res["errors"]))
+        # Цена покупки перенесена из источника.
+        sample = next(i for i in items if (i.get("data") or {}).get("item_id") == "simple_healing_potion")
+        self.assertEqual((sample.get("data") or {}).get("price_buy"), 70)
+        self.assertEqual(ci.import_shops(mode="new")["created"], 0)
+
+    def test_rollback_reputation_and_shops(self):
+        from services import reputation_constructor_service as rep
+        from services import city_constructor_service as ccs
+
+        ci.import_all(["reputation", "shop"], mode="new")
+        self.assertTrue(rep.store().list())
+        self.assertTrue([i for i in ccs.store().list() if (i.get("data") or {}).get("_kind") == ccs.KIND_SHOP_ITEM])
+        rb = ci.rollback_last()
+        self.assertGreater(rb["deleted"], 0)
+        self.assertEqual(rep.store().list(), [])
+        self.assertEqual([i for i in ccs.store().list() if (i.get("data") or {}).get("_kind") == ccs.KIND_SHOP_ITEM], [])
+
+    def test_import_texts(self):
+        from services import text_constructor_service as tcs
+
+        report = ci.import_texts()
+        self.assertGreater(report["created"], 0)
+        items = tcs.store().list()
+        self.assertTrue(all(i["status"] == "published" for i in items))
+        for it in items:
+            res = tcs.validate(it)
+            self.assertTrue(res["ok"], (it["id"], res["errors"]))
+        keys = {(i.get("data") or {}).get("text_key") for i in items}
+        self.assertIn("search.nothing_found", keys)  # якорь §5.10
+        self.assertIn("delivery.admin_gift", keys)   # якорь §5.19
+        self.assertEqual(ci.import_texts(mode="new")["created"], 0)
+
+    def test_dry_run_and_real_run_isolated_across_threads(self):
+        # 15-CODEX §7: dry-run и реальный run не должны делить глобальное
+        # состояние. Гоняем их параллельно в разных потоках.
+        import threading
+        from services import fine_constructor_service as fc
+        from services import reputation_constructor_service as rep
+
+        errors = []
+
+        def dry():
+            try:
+                for _ in range(8):
+                    r = ci.import_all(["fine_def"], dry_run=True)
+                    assert r["summary"]["dry_run"] is True
+                    assert r["summary"]["created"] > 0  # dry «создаёт» в отчёте
+            except Exception as e:  # noqa: BLE001
+                errors.append(e)
+
+        def real():
+            try:
+                ci.import_all(["reputation"], dry_run=False)
+            except Exception as e:  # noqa: BLE001
+                errors.append(e)
+
+        t1, t2 = threading.Thread(target=dry), threading.Thread(target=real)
+        t1.start(); t2.start(); t1.join(); t2.join()
+        self.assertFalse(errors, errors)
+        # dry-run для штрафов НЕ записал ничего в стор.
+        self.assertEqual(fc.store().list(), [])
+        # Реальный импорт репутации записал записи.
+        self.assertTrue(rep.store().list())
+        # Журнал отката принадлежит только реальному прогону (репутация), без штрафов.
+        journal = ci.load_import_journal() or {}
+        kinds = {e["kind"] for e in journal.get("created", [])}
+        self.assertNotIn("fine_def", kinds)
+
+    def test_mob_overwrite_stays_published(self):
+        # 17-CODEX §2: re-import (overwrite) опубликованного моба не должен снимать
+        # его с публикации — иначе моб исчезает из live runtime.
+        from services import world_content_registry as wcr
+
+        ci.import_mobs()
+        pub_before = sum(1 for m in wcr.list_content(wcr.KIND_MOB) if m["status"] == "published")
+        self.assertGreater(pub_before, 0)
+        r2 = ci.import_mobs(overwrite=True)
+        self.assertGreater(r2["updated"], 0)
+        pub_after = sum(1 for m in wcr.list_content(wcr.KIND_MOB) if m["status"] == "published")
+        self.assertGreater(pub_after, 0)  # мобы остались в live после re-import
+
+    def test_invalid_effect_seed_overwrite_demoted_from_published(self):
+        # 17-CODEX §4: ранее опубликованный невалидный сид после overwrite не
+        # должен оставаться published — уходит в черновик + needs_check.
+        from services import effect_constructor_service as ecs
+
+        ci.import_effects()
+        # «slow» (stat_modifier без stat) невалиден → при create остался черновиком.
+        # Симулируем «ранее опубликованный невалидный сид».
+        ecs.store().set_status("slow", ecs.STATUS_PUBLISHED, actor="t", force=True)
+        self.assertEqual(ecs.store().get("slow")["status"], "published")
+        report = ci.import_effects(overwrite=True)
+        self.assertNotEqual(ecs.store().get("slow")["status"], "published")  # снят с live
+        self.assertTrue(any(nc["id"] == "slow" for nc in report.get("needs_check", [])))
+        # Валидный сид (проклятие) остаётся опубликованным.
+        self.assertEqual(ecs.store().get("ancient_curse")["status"], "published")
+
+    def test_achievement_dry_run_does_not_create_category(self):
+        # 19-CODEX §2: dry-run импорта достижений не создаёт/не публикует категорию.
+        from services import achievement_service as ach
+
+        ci.import_all(["achievement"], dry_run=True)
+        self.assertIsNone(ach.categories().get("small_plateau"))
+        # Реальный прогон — создаёт.
+        ci.import_all(["achievement"], dry_run=False)
+        self.assertIsNotNone(ach.categories().get("small_plateau"))
+
+    def test_rollback_skips_manual_changed(self):
+        # 19-CODEX §5: запись, изменённая админом после импорта, не удаляется откатом.
+        from services import fine_constructor_service as fc
+
+        ci.import_all(["fine_def"], mode="new")
+        ids = [i["id"] for i in fc.store().list()]
+        self.assertGreater(len(ids), 1)
+        fc.store().update(ids[0], {"name": "Изменено вручную"}, actor="admin")  # версия растёт
+        rb = ci.rollback_last()
+        self.assertGreaterEqual(rb["skipped_manual_changed"], 1)
+        self.assertIsNotNone(fc.store().get(ids[0]))  # ручная правка сохранена
+        self.assertIsNone(fc.store().get(ids[1]))     # нетронутая запись удалена
+
     def test_import_all_summary(self):
         result = ci.import_all(["location", "event"])
         self.assertIn("summary", result)
         self.assertEqual({r["kind"] for r in result["reports"]}, {"location", "event"})
         self.assertGreaterEqual(result["summary"]["created"], 1)
+
+    # --- Codex import-group P1/P2 -----------------------------------------
+    def test_update_mode_keeps_record_published(self):
+        # Codex P1: повторный импорт в режиме update не должен оставлять
+        # обновлённый объект черновиком (рантайм читает только published).
+        from services import world_content_registry as wcr
+
+        ci.import_locations()
+        before = wcr.get_content(wcr.KIND_LOCATION, "hilly_meadows")
+        self.assertEqual(before["status"], "published")
+        report = ci.import_locations(mode="update")
+        self.assertGreaterEqual(report["updated"], 1)
+        after = wcr.get_content(wcr.KIND_LOCATION, "hilly_meadows")
+        self.assertEqual(after["status"], "published")  # осталась live
+
+    def test_empty_description_location_gets_fallback(self):
+        # Codex P2: seldar_city без описания — не публикуем пустое, подставляем
+        # название и помечаем на проверку (валидный published-контент).
+        from services import world_content_registry as wcr
+
+        report = ci.import_locations()
+        seldar = wcr.get_content(wcr.KIND_LOCATION, "seldar")
+        self.assertIsNotNone(seldar)
+        self.assertTrue(str((seldar.get("data") or {}).get("description") or "").strip())
+        self.assertTrue(any(n["id"] == "seldar" for n in report["needs_check"]))
+
+    def test_achievement_rarity_from_source(self):
+        # Codex P2: curse_what_curse в источнике legendary, а сид хранил epic.
+        from services import achievement_service as ach
+
+        ci.import_achievements()
+        cw = ach.store().get("curse_what_curse")
+        self.assertEqual((cw.get("data") or {}).get("rarity"), "legendary")
+
+    def test_effect_seeds_invalid_left_as_draft(self):
+        # Codex P2: эффекты без обязательных полей типа не публикуются.
+        from services import effect_constructor_service as ecs
+
+        report = ci.import_effects()
+        # stat_modifier без stat (например, slow) остаётся черновиком.
+        slow = ecs.store().get("slow")
+        self.assertIsNotNone(slow)
+        self.assertNotEqual(slow["status"], "published")
+        # А валидные (например, проклятия) — публикуются.
+        self.assertEqual(ecs.store().get("ancient_curse")["status"], "published")
+        self.assertTrue(report.get("needs_check"))
+
+    def test_copy_mode_rejected_for_legacy_importers(self):
+        for kind, fn in (("item", ci.import_items), ("mob", ci.import_mobs),
+                         ("effect", ci.import_effects), ("skill", ci.import_skills)):
+            report = fn(mode="copy")
+            self.assertEqual(report["created"], 0, kind)
+            self.assertTrue(report.get("needs_check"), kind)
+
+    def test_events_use_real_discovery_text_and_trap_type(self):
+        # Codex P2: события используют реальный текст обнаружения, а forest_trap
+        # классифицируется как trap (а не found_resource).
+        from services import world_content_registry as wcr
+
+        ci.import_locations()
+        ci.import_events()
+        evs = {e["id"]: (e.get("data") or {}) for e in wcr.list_content(wcr.KIND_EVENT)}
+        trap = evs.get("ordinary_forest_forest_trap")
+        self.assertIsNotNone(trap)
+        self.assertEqual(trap["type"], "trap")
+        # У ресурсного события — реальный текст (не заглушка).
+        berries = evs.get("hilly_meadows_berries")
+        self.assertIsNotNone(berries)
+        self.assertNotIn("Событие локации:", berries["text"])
+
+    def test_small_plateau_search_events_imported(self):
+        # Codex P2: 28 событий поиска Малого плато видны в конструкторе событий
+        # и привязаны к существующей локации small_plateau (без сирот).
+        from services import world_content_registry as wcr
+
+        ci.import_locations()
+        report = ci.import_events()
+        sp = [e for e in wcr.list_content(wcr.KIND_EVENT)
+              if (e.get("data") or {}).get("location") == "small_plateau"]
+        self.assertGreaterEqual(len(sp), 20)
+        self.assertTrue(any(n["id"] == "small_plateau_events" for n in report["needs_check"]))
+        self.assertTrue(ci.check_import()["ok"], ci.check_import()["issues"])
+
+    def test_copy_rewrites_event_location_to_copy(self):
+        # Codex P2: при копировании событие привязывается к КОПИИ локации.
+        from services import world_content_registry as wcr
+
+        ci.import_locations()
+        ci.import_events()
+        ci.import_locations(mode="copy")
+        ci.import_events(mode="copy")
+        ev = wcr.get_content(wcr.KIND_EVENT, "hilly_meadows_berries_copy")
+        self.assertIsNotNone(ev)
+        self.assertEqual((ev.get("data") or {}).get("location"), "hilly_meadows_copy")
+
+    def test_copy_rewrites_city_node_parent(self):
+        from services import city_constructor_service as ccs
+
+        ci.import_city_nodes()
+        ci.import_city_nodes(mode="copy")
+        nodes = {i["id"]: (i.get("data") or {}) for i in ccs.store().list()}
+        quarter_copy = next((d for nid, d in nodes.items()
+                             if nid.endswith("_copy") and d.get("node_type") == "quarter"), None)
+        self.assertIsNotNone(quarter_copy)
+        self.assertEqual(quarter_copy.get("parent_id"), "seldar_copy")
 
 
 if __name__ == "__main__":

@@ -17,8 +17,19 @@ from services import city_constructor_service as city
 
 
 def live_enabled() -> bool:
-    """«Живой» город включён? (ENV CITY_CONSTRUCTOR_LIVE, по умолчанию выкл.)"""
-    return str(os.getenv("CITY_CONSTRUCTOR_LIVE", "")).strip().lower() in {"1", "true", "yes", "on"}
+    """«Живой» город включён?
+
+    Источники (15-CODEX §5): env ``CITY_CONSTRUCTOR_LIVE`` (аварийный override)
+    ИЛИ feature flag ``use_v2_buttons`` из админ-панели (городская навигация —
+    кнопочная). По умолчанию ВЫКЛ — игра работает 1:1 как раньше."""
+    if str(os.getenv("CITY_CONSTRUCTOR_LIVE", "")).strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+    try:
+        from services import feature_flags_service as ff
+
+        return ff.is_enabled("use_v2_buttons")
+    except Exception:
+        return False
 
 
 def _published() -> list[dict[str, Any]]:
@@ -158,20 +169,64 @@ def _published_label_index() -> tuple[dict[str, str], dict[str, str]]:
     return node_by_name, button_to_target
 
 
-def try_handle(action: str) -> dict[str, Any] | None:
-    """«Живая» навигация по опубликованным узлам (ТЗ §4). Возвращает {text,buttons}
-    если action соответствует опубликованному узлу (по имени) или кнопке-переходу
-    (по подписи); иначе None → легаси-навигация. Только при включённом флаге."""
+def _button_target_on_node(node_id: str, action: str) -> str | None:
+    """Цель кнопки-перехода с заданной подписью, ПРИВЯЗАННОЙ к конкретному узлу
+    (Codex P2: одинаковые подписи «Назад»/«Войти» на разных узлах ведут в разные
+    места — нельзя резолвить по глобальной карте подписей)."""
+    if not node_id:
+        return None
+    for b in _of_kind(_published(), city.KIND_BUTTON):
+        d = b.get("data") or {}
+        if str(d.get("node_id") or "") != node_id:
+            continue
+        label = str(d.get("label") or "").strip()
+        icon = str(d.get("icon") or "").strip()
+        target = str(d.get("target_node_id") or "").strip()
+        if target and action in (label, f"{icon} {label}".strip()):
+            return target
+    return None
+
+
+def _child_node_by_name(parent_id: str, label: str) -> str | None:
+    """ID дочернего узла с заданным display name В КОНТЕКСТЕ текущего родителя
+    (19-CODEX §3): одинаковые названия дочерних узлов у разных родителей не должны
+    конфликтовать — клик «Таверна» в районе A открывает таверну именно района A."""
+    if not parent_id or not label:
+        return None
+    for n in _of_kind(_published(), city.KIND_NODE):
+        d = n.get("data") or {}
+        if str(d.get("parent_id") or "") == parent_id and str(d.get("name") or "").strip() == label:
+            return n.get("id")
+    return None
+
+
+def try_handle(action: str, current_node_id: str | None = None) -> dict[str, Any] | None:
+    """«Живая» навигация по опубликованным узлам (ТЗ §4). Сначала — кнопка-переход
+    с этой подписью НА ТЕКУЩЕМ узле, затем — узел по имени. Иначе None → легаси.
+    Только при включённом флаге."""
     if not live_enabled():
         return None
     act = str(action or "").strip()
     if not act:
         return None
-    node_by_name, button_to_target = _published_label_index()
-    node_id = node_by_name.get(act) or button_to_target.get(act)
+    # 1) Кнопка-переход на текущем узле (контекстно — без коллизий подписей).
+    node_id = _button_target_on_node(str(current_node_id or ""), act)
+    # 2) Дочерний узел ТЕКУЩЕГО родителя по display name (19-CODEX §3) — раньше
+    #    глобального поиска, чтобы одинаковые названия детей не конфликтовали.
+    if not node_id and current_node_id:
+        node_id = _child_node_by_name(str(current_node_id), act)
+    # 3) Имя узла глобально (вход в узел по его названию).
+    if not node_id:
+        node_by_name, button_to_target = _published_label_index()
+        node_id = node_by_name.get(act)
+        # 4) Глобальный фолбэк по подписи кнопки — только если текущий узел неизвестен.
+        if not node_id and not current_node_id:
+            node_id = button_to_target.get(act)
     if not node_id:
         return None
     view = node_runtime_view(node_id)
     if view is None:
         return None
-    return render_node(view)
+    # node_id возвращаем, чтобы вызывающий сохранил текущий V2-узел на игроке
+    # (15-CODEX §1) — иначе следующая кнопка («Назад») потеряет контекст.
+    return {**render_node(view), "node_id": node_id}

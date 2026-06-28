@@ -10,6 +10,7 @@ import {
 } from "../../../api/adminAchievementApi.js";
 import { tr, ITEM_QUALITY, ACH_TYPE, ACH_VISIBILITY, ACH_CONDITION_LOGIC, ACH_CONDITION_TYPE, ACH_PROGRESS_TYPE, ACH_REWARD_TYPE, ACH_REPEAT_PERIOD } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { VersionHistory } from "../VersionHistory.jsx";
 import { MessageComposer } from "../MessageComposer.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 
@@ -18,7 +19,7 @@ const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", 
 const EMPTY = {
   name: "", short_description: "", description: "", category: "", type: "normal",
   rarity: "common", visibility: "open", icon: "", progress_type: "numeric",
-  condition_logic: "all", condition_n: "", conditions: [], rewards: [],
+  condition_logic: "all", condition_n: "", conditions: [], rewards: [], effects: [],
   repeatable: false, repeat_period: "", start_date: "", end_date: "", repeat_yearly: false,
   stages: [],
 };
@@ -154,8 +155,11 @@ export function AchievementsSection({ guarded, hasPerm }) {
             <select value={row.type} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{meta.rewardTypes.map((x) => <option key={x} value={x}>{tr(ACH_REWARD_TYPE, x)}</option>)}</select>
             {(row.type === "item" || row.type === "unique_item") ? <input className="ntv2-mono" placeholder="item_id" value={row.item_id || ""} disabled={disabled} onChange={(e) => setRow({ item_id: e.target.value })} /> : null}
             {row.type === "title" ? <input placeholder="title_id" value={row.title_id || ""} disabled={disabled} onChange={(e) => setRow({ title_id: e.target.value })} /> : null}
+            {row.type === "effect" ? <input className="ntv2-mono" placeholder="effect_id" value={row.effect_id || ""} disabled={disabled} onChange={(e) => setRow({ effect_id: e.target.value })} /> : null}
             <input type="number" title="кол-во" style={{ width: 90 }} value={row.amount} disabled={disabled} onChange={(e) => setRow({ amount: e.target.value })} />
           </>)} />
+
+        <Field label="Эффекты достижения (effect_id по строкам, ТЗ 09 §17)"><textarea rows={2} value={(Array.isArray(d.effects) ? d.effects : []).join("\n")} disabled={disabled} onChange={(e) => set("effects", e.target.value.split("\n").map((s) => s.trim()).filter(Boolean))} /></Field>
 
         <RowEditor title="Ступени (многоступенчатое)" rows={d.stages} disabled={disabled} onChange={(rows) => set("stages", rows)} blank={{ name: "", required_progress: 0 }}
           render={(row, setRow) => (<>
@@ -190,6 +194,8 @@ export function AchievementsSection({ guarded, hasPerm }) {
           {!editing.isNew && can.archive ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "В архив?", dangerous: true, confirmLabel: "В архив", body: <p>Достижение уйдёт в архив.</p>, run: async (r) => { await guarded(() => achievementLifecycle(editing.id, "archive", r), "В архиве."); setEditing(null); await load(); } })}>В архив</button> : null}
         </div>
 
+        {!editing.isNew ? <VersionHistory base="achievements" id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
+
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />
       </section>
@@ -209,7 +215,7 @@ export function AchievementsSection({ guarded, hasPerm }) {
         <SearchBox value={query} onChange={setQuery} />
       </div>
       {!items.length ? <p className="ntv2-hint">Достижений нет.</p> : null}
-      <NoResults query={items.length ? query : ""} />
+      <NoResults items={items} query={query} />
       <div className="ntv2-list">
         {filterEntities(items, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>

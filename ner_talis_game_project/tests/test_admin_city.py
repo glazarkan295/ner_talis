@@ -98,6 +98,80 @@ class CityServiceTest(unittest.TestCase):
         from services import city_runtime
         self.assertFalse(city_runtime.live_enabled())
 
+    def test_resolve_v2_context_ignores_non_v2_legacy_zone(self):
+        # 18-CODEX §1: legacy zone не передаётся как V2-контекст, если это не
+        # реальный опубликованный V2-узел — иначе ломается V2 entry у старых игроков.
+        from services import city_service
+        city.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city", "description": "x"})
+        city.store().set_status("seldar", city.STATUS_PUBLISHED, force=True)
+        # legacy zone не V2 → контекст пустой (глобальный fallback не подавляется).
+        self.assertEqual(city_service._resolve_v2_city_context({"current_zone": "outside_city_crossroads"}), "")
+        # сохранённый current_city_node на опубликованный узел → он и есть контекст.
+        self.assertEqual(city_service._resolve_v2_city_context({"current_city_node": "seldar"}), "seldar")
+        # legacy zone, который РЕАЛЬНО V2-узел → используется.
+        self.assertEqual(city_service._resolve_v2_city_context({"current_zone": "seldar"}), "seldar")
+        # сохранённый узел больше не опубликован → сброс.
+        self.assertEqual(city_service._resolve_v2_city_context({"current_city_node": "ghost"}), "")
+
+    def test_looks_like_game_action(self):
+        # 16-TZ §4: короткие однострочные подписи кнопок — игровые действия,
+        # длинный/многострочный свободный текст — нет (не грузит city runtime).
+        from services import city_service
+        self.assertTrue(city_service.looks_like_game_action("В город"))
+        self.assertTrue(city_service.looks_like_game_action("🏪 На рынок"))
+        self.assertFalse(city_service.looks_like_game_action(""))
+        self.assertFalse(city_service.looks_like_game_action("строка\nещё строка"))
+        self.assertFalse(city_service.looks_like_game_action("привет " * 30))
+
+    def test_try_handle_button_scoped_by_node(self):
+        # Codex P2: одинаковая подпись «Назад» на разных узлах ведёт в разные места.
+        from services import city_runtime
+        for nid in ("hub", "market", "tavern"):
+            city.store().create(nid, {"_kind": "city_node", "name": nid.title(), "node_type": "quarter"})
+            city.store().set_status(nid, city.STATUS_PUBLISHED, force=True)
+        city.store().create("b_market_back", {"_kind": "city_button", "label": "Назад", "action": "goto_node", "node_id": "market", "target_node_id": "hub"})
+        city.store().set_status("b_market_back", city.STATUS_PUBLISHED, force=True)
+        city.store().create("b_tavern_back", {"_kind": "city_button", "label": "Назад", "action": "goto_node", "node_id": "tavern", "target_node_id": "market"})
+        city.store().set_status("b_tavern_back", city.STATUS_PUBLISHED, force=True)
+        saved = os.environ.get("CITY_CONSTRUCTOR_LIVE")
+        try:
+            os.environ["CITY_CONSTRUCTOR_LIVE"] = "1"
+            # «Назад» на рынке → hub; «Назад» в таверне → market (разные цели).
+            back_market = city_runtime.try_handle("Назад", current_node_id="market")
+            back_tavern = city_runtime.try_handle("Назад", current_node_id="tavern")
+            self.assertIn("Hub", back_market["text"])
+            self.assertIn("Market", back_tavern["text"])
+            # 15-CODEX §1: возвращается node_id целевого узла (для сохранения контекста).
+            self.assertEqual(back_market["node_id"], "hub")
+            self.assertEqual(back_tavern["node_id"], "market")
+        finally:
+            if saved is None:
+                os.environ.pop("CITY_CONSTRUCTOR_LIVE", None)
+            else:
+                os.environ["CITY_CONSTRUCTOR_LIVE"] = saved
+
+    def test_child_node_resolved_within_parent(self):
+        # 19-CODEX §3: одинаковые названия дочерних узлов у разных родителей не
+        # конфликтуют — клик «Таверна» открывает таверну текущего родителя.
+        from services import city_runtime
+        for nid, name, parent in (("district_a", "Район A", None), ("district_b", "Район B", None),
+                                  ("tavern_a", "Таверна", "district_a"), ("tavern_b", "Таверна", "district_b")):
+            data = {"_kind": "city_node", "name": name, "node_type": "quarter"}
+            if parent:
+                data["parent_id"] = parent
+            city.store().create(nid, data)
+            city.store().set_status(nid, city.STATUS_PUBLISHED, force=True)
+        saved = os.environ.get("CITY_CONSTRUCTOR_LIVE")
+        try:
+            os.environ["CITY_CONSTRUCTOR_LIVE"] = "1"
+            self.assertEqual(city_runtime.try_handle("Таверна", current_node_id="district_a")["node_id"], "tavern_a")
+            self.assertEqual(city_runtime.try_handle("Таверна", current_node_id="district_b")["node_id"], "tavern_b")
+        finally:
+            if saved is None:
+                os.environ.pop("CITY_CONSTRUCTOR_LIVE", None)
+            else:
+                os.environ["CITY_CONSTRUCTOR_LIVE"] = saved
+
     def test_try_handle_respects_flag_and_matches_published(self):
         from services import city_runtime
         city.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city", "description": "Столица."})
@@ -222,6 +296,17 @@ class CityApiTest(unittest.TestCase):
         token = self._token()
         self.assertEqual(self.client.get("/api/admin/v2/city/city_node", headers=self._auth(token)).status_code, 200)
         self.assertEqual(self.client.post("/api/admin/v2/city/city_node", headers=self._auth(token), json={"id": "nx", "data": {"name": "X", "node_type": "city"}}).status_code, 403)
+
+    def test_published_city_update_requires_publish(self):
+        # 19-CODEX §1: published city-объект нельзя править без city.publish; черновик — можно.
+        token = self._token()  # owner
+        self.client.post("/api/admin/v2/city/city_node", headers=self._auth(token), json={"id": "sq", "data": {"name": "Площадь", "node_type": "square"}})
+        self.assertEqual(self.client.post("/api/admin/v2/city/city_node/sq/publish", headers=self._auth(token), json={}).status_code, 200)
+        self.client.post("/api/admin/v2/city/city_node", headers=self._auth(token), json={"id": "dn", "data": {"name": "Черновик", "node_type": "quarter"}})
+        rbac.set_role_override("telegram", "999", rbac.CONTENT)
+        ct = self._token()
+        self.assertEqual(self.client.put("/api/admin/v2/city/city_node/dn", headers=self._auth(ct), json={"data": {"name": "Ч2"}}).status_code, 200)
+        self.assertEqual(self.client.put("/api/admin/v2/city/city_node/sq", headers=self._auth(ct), json={"data": {"name": "X"}}).status_code, 403)
 
 
 if __name__ == "__main__":

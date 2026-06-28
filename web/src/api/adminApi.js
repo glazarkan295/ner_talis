@@ -38,10 +38,28 @@ export async function requestAdminJson(url, options = {}) {
     ...fetchOptions,
   });
   if (!response.ok) {
-    let message = `Ошибка запроса: ${response.status}`;
-    try { const payload = await response.json(); message = payload.detail || payload.message || message; } catch {}
-    if (response.status === 401 || response.status === 403) clear(ADMIN_SESSION_STORAGE_KEY);
-    throw new Error(message);
+    const status = response.status;
+    let detail = "";
+    try { const payload = await response.json(); detail = payload.detail || payload.message || ""; } catch {}
+    // Сессию очищаем ТОЛЬКО на 401 (недействительна/истекла). Обычный отказ в
+    // правах (403) и ошибки маршрута (404/405) или сервера (5xx) НЕ разлогинивают
+    // администратора (ТЗ 22 §5).
+    let message;
+    if (status === 401) {
+      clear(ADMIN_SESSION_STORAGE_KEY);
+      message = detail || "Сессия истекла. Войдите заново.";
+    } else if (status === 403) {
+      message = detail || "Недостаточно прав для выполнения действия.";
+    } else if (status === 404 || status === 405) {
+      message = detail || "Действие недоступно для этого раздела.";
+    } else if (status >= 500) {
+      message = detail || `Ошибка сервера (${status}). Попробуйте позже.`;
+    } else {
+      message = detail || `Ошибка запроса: ${status}`;
+    }
+    const error = new Error(message);
+    error.status = status;
+    throw error;
   }
   const payload = await response.json();
   if (payload?.sessionToken) remember(ADMIN_SESSION_STORAGE_KEY, payload.sessionToken);

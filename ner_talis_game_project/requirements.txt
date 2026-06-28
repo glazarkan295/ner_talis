@@ -6,3 +6,6 @@ uvicorn[standard]>=0.30.0,<1.0
 SQLAlchemy>=2.0,<3.0
 psycopg[binary]>=3.2,<4.0
 Pillow>=10.4.0,<13.0
+# Опционально: общий rate-limit между процессами (16-TZ §3/§6). Без Redis
+# (REDIS_URL не задан) лимитер работает in-memory — зависимость не обязательна.
+redis>=5,<6

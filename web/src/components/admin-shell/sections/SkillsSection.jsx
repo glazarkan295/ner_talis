@@ -21,6 +21,7 @@ import {
   SKILL_WEAPON_REQUIREMENT,
 } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { VersionHistory } from "../VersionHistory.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 
@@ -180,6 +181,8 @@ export function SkillsSection({ guarded, hasPerm }) {
           {!editing.isNew && can.del ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Удалить навык?", dangerous: true, confirmLabel: "Удалить", body: <p>Полное удаление определения навыка.</p>, run: async (r) => { await guarded(() => deleteSkill(editing.id, editing.id, r), "Удалено."); setEditing(null); await load(); } })}>Удалить</button> : null}
         </div>
 
+        {!editing.isNew ? <VersionHistory base="skills" id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
+
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />
       </section>
@@ -199,7 +202,7 @@ export function SkillsSection({ guarded, hasPerm }) {
       </div>
       <div className="ntv2-filters"><SearchBox value={query} onChange={setQuery} /></div>
       {!list.length ? <p className="ntv2-hint">Навыков пока нет. Можно создать новый или импортировать существующие из каталога.</p> : null}
-      <NoResults query={list.length ? query : ""} />
+      <NoResults items={list} query={query} />
       <div className="ntv2-list">
         {filterEntities(list, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>

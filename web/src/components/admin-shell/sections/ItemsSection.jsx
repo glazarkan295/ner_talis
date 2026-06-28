@@ -5,6 +5,7 @@ import {
   fetchItemMeta,
   fetchItems,
   fetchItemUsage,
+  fetchItemCraftUsage,
   hardDeleteItem,
   itemLifecycle,
   updateItem,
@@ -68,6 +69,7 @@ export function ItemsSection({ guarded, hasPerm }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [usage, setUsage] = useState(null);
+  const [craft, setCraft] = useState(null);
   const [confirm, setConfirm] = useState(null);
 
   const can = useMemo(() => ({
@@ -87,9 +89,9 @@ export function ItemsSection({ guarded, hasPerm }) {
 
   async function openItem(id) {
     const p = await guarded(() => fetchItem(id));
-    if (p?.item) { setEditing({ id, data: { ...EMPTY, ...(p.item.data || {}) }, status: p.item.status, validation: p.validation, isNew: false }); setUsage(null); }
+    if (p?.item) { setEditing({ id, data: { ...EMPTY, ...(p.item.data || {}) }, status: p.item.status, validation: p.validation, isNew: false }); setUsage(null); setCraft(null); }
   }
-  function startCreate() { setEditing({ id: "", data: { ...EMPTY }, status: "draft", validation: null, isNew: true }); setUsage(null); }
+  function startCreate() { setEditing({ id: "", data: { ...EMPTY }, status: "draft", validation: null, isNew: true }); setUsage(null); setCraft(null); }
 
   async function save() {
     const e = editing;
@@ -99,6 +101,7 @@ export function ItemsSection({ guarded, hasPerm }) {
   }
   async function runValidate() { const p = await guarded(() => validateItem(editing.id, ""), "Проверка выполнена."); if (p?.validation) setEditing((c) => ({ ...c, validation: p.validation })); }
   async function loadUsage() { const p = await guarded(() => fetchItemUsage(editing.id)); if (p?.usage) setUsage(p.usage); }
+  async function loadCraft() { const p = await guarded(() => fetchItemCraftUsage(editing.id)); if (p?.craft) setCraft(p.craft); }
   async function refreshEditing() { await load(); if (editing) await openItem(editing.id); }
 
   if (!meta) return <section className="ntv2-section"><h2>Конструктор предметов</h2><p className="ntv2-hint">Загрузка…</p></section>;
@@ -200,6 +203,81 @@ export function ItemsSection({ guarded, hasPerm }) {
             <input placeholder="параметр" value={row.value || ""} disabled={disabled} onChange={(e) => setRow({ value: e.target.value })} />
           </>)} />
 
+        <RowEditor title="Связи с эффектами (ТЗ §2.7)" rows={d.effect_links} disabled={disabled} onChange={(rows) => set("effect_links", rows)} blank={{ effect_id: "", trigger: (meta.effectLinkTriggers || ["passive"])[0] }}
+          render={(row, setRow) => (<>
+            <input className="ntv2-mono" placeholder="effect_id" value={row.effect_id || ""} disabled={disabled} onChange={(e) => setRow({ effect_id: e.target.value })} />
+            <select value={row.trigger || ""} disabled={disabled} onChange={(e) => setRow({ trigger: e.target.value })}>{(meta.effectLinkTriggers || []).map((x) => <option key={x} value={x}>{x}</option>)}</select>
+          </>)} />
+
+        <RowEditor title="Требования (ТЗ §2.8)" rows={d.requirements} disabled={disabled} onChange={(rows) => set("requirements", rows)} blank={{ type: (meta.requirementTypes || ["level"])[0], operator: ">=", value: "" }}
+          render={(row, setRow) => (<>
+            <select value={row.type || ""} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{(meta.requirementTypes || []).map((x) => <option key={x} value={x}>{x}</option>)}</select>
+            <input style={{ width: 60 }} placeholder="оп." value={row.operator || ""} disabled={disabled} onChange={(e) => setRow({ operator: e.target.value })} />
+            <input placeholder="значение" value={row.value ?? ""} disabled={disabled} onChange={(e) => setRow({ value: e.target.value })} />
+          </>)} />
+
+        <div className="ntv2-panel">
+          <h4 className="ntv2-subhead">Прочность, заряды, валюта (ТЗ §2.10–§2.11)</h4>
+          <div className="ntv2-form-row" style={{ gap: 14 }}>
+            {flag("is_unique", "Уникальный")}{flag("is_quest", "Квестовый")}{flag("bound", "Привязанный")}
+            {flag("can_sell", "Можно продать")}{flag("can_transfer", "Можно передать")}
+          </div>
+          <div className="ntv2-form-row" style={{ gap: 14 }}>
+            {flag("has_durability", "Есть прочность")}
+            {d.has_durability ? <Field label="Макс. прочность"><input type="number" value={d.max_durability || ""} disabled={disabled} onChange={(e) => set("max_durability", e.target.value)} /></Field> : null}
+            {flag("can_be_repaired", "Ремонтируется")}
+          </div>
+          <div className="ntv2-form-row" style={{ gap: 14 }}>
+            {flag("has_charges", "Есть заряды")}
+            {d.has_charges ? <Field label="Макс. зарядов"><input type="number" value={d.max_charges || ""} disabled={disabled} onChange={(e) => set("max_charges", e.target.value)} /></Field> : null}
+            {d.has_charges ? <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.restore_charges_over_time)} disabled={disabled} onChange={(e) => set("restore_charges_over_time", e.target.checked)} /> Восстанавливаются</label> : null}
+          </div>
+          <Field label="Валюта"><select value={d.currency_type || ""} disabled={disabled} onChange={(e) => set("currency_type", e.target.value)}><option value="">—</option>{(meta.currencies || []).map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
+          <div className="ntv2-field">
+            <label className="ntv2-label">Места использования (ТЗ §2.9)</label>
+            <div className="ntv2-form-row" style={{ flexWrap: "wrap", gap: 8 }}>
+              {(meta.usagePlaces || []).map((p) => {
+                const cur = Array.isArray(d.usage_places) ? d.usage_places : [];
+                const on = cur.includes(p);
+                return (
+                  <label className="ntv2-check" key={p}>
+                    <input type="checkbox" checked={on} disabled={disabled}
+                      onChange={(e) => set("usage_places", e.target.checked ? [...cur, p] : cur.filter((x) => x !== p))} /> {p}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="ntv2-panel">
+          <h4 className="ntv2-subhead">Открываемый предмет (ТЗ 21 §1)</h4>
+          {flag("openable", "Можно открыть")}
+          {d.openable ? (<>
+            <div className="ntv2-form-row" style={{ gap: 14 }}>
+              <Field label="Где можно открыть"><select value={d.open_where || ""} disabled={disabled} onChange={(e) => set("open_where", e.target.value)}><option value="">—</option>{(meta.openPlaces || []).map((p) => <option key={p} value={p}>{p}</option>)}</select></Field>
+              <Field label="Поведение после открытия"><select value={d.open_behavior || ""} disabled={disabled} onChange={(e) => set("open_behavior", e.target.value)}><option value="">—</option>{(meta.openBehaviors || []).map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}</select></Field>
+            </div>
+            {d.open_behavior === "replace" ? <Field label="Предмет-замена (id)"><input className="ntv2-mono" value={d.open_replace_item_id || ""} disabled={disabled} onChange={(e) => set("open_replace_item_id", e.target.value)} /></Field> : null}
+            <div className="ntv2-form-row" style={{ gap: 14 }}>
+              {flag("open_requires_key", "Нужен ключ")}
+              {d.open_requires_key ? <Field label="Предмет-ключ (id)"><input className="ntv2-mono" value={d.open_key_item_id || ""} disabled={disabled} onChange={(e) => set("open_key_item_id", e.target.value)} /></Field> : null}
+              {d.open_requires_key ? <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.open_key_consumed)} disabled={disabled} onChange={(e) => set("open_key_consumed", e.target.checked)} /> Ключ расходуется</label> : null}
+            </div>
+            <Field label="При нехватке места"><select value={d.open_inventory_full_behavior || ""} disabled={disabled} onChange={(e) => set("open_inventory_full_behavior", e.target.value)}><option value="">—</option>{(meta.inventoryFullBehaviors || []).map((b) => <option key={b} value={b}>{b}</option>)}</select></Field>
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.open_show_contents)} disabled={disabled} onChange={(e) => set("open_show_contents", e.target.checked)} /> Показывать содержимое заранее</label>
+            <Field label="Текст успешного открытия"><input value={d.open_text_ok || ""} disabled={disabled} onChange={(e) => set("open_text_ok", e.target.value)} /></Field>
+            <Field label="Текст ошибки открытия"><input value={d.open_text_error || ""} disabled={disabled} onChange={(e) => set("open_text_error", e.target.value)} /></Field>
+            <RowEditor title="Содержимое" rows={d.open_contents} disabled={disabled} onChange={(rows) => set("open_contents", rows)} blank={{ item_id: "", chance: 100, min_count: 1, max_count: 1 }}
+              render={(row, setRow) => (<>
+                <input className="ntv2-mono" placeholder="item_id/валюта" value={row.item_id || ""} disabled={disabled} onChange={(e) => setRow({ item_id: e.target.value })} />
+                <input type="number" style={{ width: 70 }} placeholder="шанс%" value={row.chance ?? ""} disabled={disabled} onChange={(e) => setRow({ chance: e.target.value })} />
+                <input type="number" style={{ width: 60 }} placeholder="min" value={row.min_count ?? ""} disabled={disabled} onChange={(e) => setRow({ min_count: e.target.value })} />
+                <input type="number" style={{ width: 60 }} placeholder="max" value={row.max_count ?? ""} disabled={disabled} onChange={(e) => setRow({ max_count: e.target.value })} />
+              </>)} />
+          </>) : null}
+        </div>
+
         {v ? (
           <div className={`ntv2-panel ${v.ok ? "" : "ntv2-danger-zone"}`}>
             <h4 className="ntv2-subhead">{v.ok ? "✅ Готов к публикации" : "❌ Проверка не пройдена"}</h4>
@@ -216,10 +294,13 @@ export function ItemsSection({ guarded, hasPerm }) {
           </div>
         ) : null}
 
+        {craft ? <CraftUsageBlock craft={craft} /> : null}
+
         <div className="ntv2-form-row" style={{ marginTop: 14 }}>
           {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={editing.isNew && !editing.id.trim()} onClick={save}>{editing.isNew ? "Создать" : "Сохранить"}</button> : null}
           {!editing.isNew && can.validate ? <button type="button" className="ntv2-btn" onClick={runValidate}>Проверить</button> : null}
           {!editing.isNew && can.usage ? <button type="button" className="ntv2-btn" onClick={loadUsage}>Где используется</button> : null}
+          {!editing.isNew && can.usage ? <button type="button" className="ntv2-btn" onClick={loadCraft}>Используется в ремесле</button> : null}
           {!editing.isNew && can.publish ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Опубликовать предмет?", dangerous: true, confirmLabel: "Опубликовать", body: <p>Предмет будет проверен и опубликован.</p>, run: async (r) => { await guarded(() => itemLifecycle(editing.id, "publish", r), "Опубликовано."); await refreshEditing(); } })}>Опубликовать</button> : null}
           {!editing.isNew && can.disable && published ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Отключить?", dangerous: true, confirmLabel: "Отключить", body: <p>Предмет перестанет выпадать/продаваться/создаваться.</p>, run: async (r) => { await guarded(() => itemLifecycle(editing.id, "disable", r), "Отключено."); await refreshEditing(); } })}>Отключить</button> : null}
           {!editing.isNew && can.archive ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "В архив?", dangerous: true, confirmLabel: "В архив", body: <p>Предмет уйдёт в архив.</p>, run: async (r) => { await guarded(() => itemLifecycle(editing.id, "archive", r), "В архиве."); await refreshEditing(); } })}>В архив</button> : null}
@@ -247,7 +328,7 @@ export function ItemsSection({ guarded, hasPerm }) {
         <SearchBox value={query} onChange={setQuery} />
       </div>
       {!list.length ? <p className="ntv2-hint">Предметов нет.</p> : null}
-      <NoResults query={list.length ? query : ""} />
+      <NoResults items={list} query={query} />
       <div className="ntv2-list">
         {filterEntities(list, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>
@@ -259,5 +340,28 @@ export function ItemsSection({ guarded, hasPerm }) {
         ))}
       </div>
     </section>
+  );
+}
+
+// Блок «Используется в ремесле» (ТЗ 13 §6): рецепты по ролям + цепочка + ошибки.
+function CraftUsageBlock({ craft }) {
+  const recipeLine = (r) => (
+    <li key={r.role + ":" + r.id}>
+      <b>{r.name}</b> <span className="ntv2-hint">({r.workshop_label || r.workshop} · {r.status}{r.amount ? ` · ×${r.amount}` : ""})</span>
+    </li>
+  );
+  const total = (craft.as_result?.length || 0) + (craft.as_material?.length || 0) + (craft.as_blueprint?.length || 0);
+  return (
+    <div className="ntv2-panel">
+      <h4 className="ntv2-subhead">Используется в ремесле ({total})</h4>
+      {total === 0 ? <p className="ntv2-hint">Предмет не участвует в ремесле.</p> : null}
+      {craft.as_result?.length ? <><p className="ntv2-hint">🛠 Создаётся через ремесло:</p><ul className="ntv2-craft-list">{craft.as_result.map(recipeLine)}</ul></> : null}
+      {craft.as_material?.length ? <><p className="ntv2-hint">📦 Используется как материал:</p><ul className="ntv2-craft-list">{craft.as_material.map(recipeLine)}</ul></> : null}
+      {craft.as_blueprint?.length ? <><p className="ntv2-hint">📜 Используется как чертёж:</p><ul className="ntv2-craft-list">{craft.as_blueprint.map(recipeLine)}</ul></> : null}
+      {(craft.chain?.made_from?.length || craft.chain?.makes?.length) ? (
+        <p className="ntv2-hint">🔗 Цепочка: {craft.chain.made_from?.length ? `из [${craft.chain.made_from.join(", ")}]` : ""}{craft.chain.makes?.length ? ` → делает [${craft.chain.makes.join(", ")}]` : ""}</p>
+      ) : null}
+      {(craft.warnings || []).map((w, i) => <p className="ntv2-hint" key={"cw" + i}>⚠️ {w}</p>)}
+    </div>
   );
 }

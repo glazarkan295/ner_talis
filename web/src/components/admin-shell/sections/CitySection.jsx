@@ -292,7 +292,7 @@ export function CitySection({ guarded, hasPerm }) {
       </div>
       {showTree ? <CityTree guarded={guarded} /> : null}
       {!list.length ? <p className="ntv2-hint">Объектов нет.</p> : null}
-      <NoResults query={list.length ? query : ""} />
+      <NoResults items={list} query={query} />
       <div className="ntv2-list">
         {filterEntities(list, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>

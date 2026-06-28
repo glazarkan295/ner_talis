@@ -54,6 +54,19 @@ class WorldRegistryTest(unittest.TestCase):
         self.assertEqual(env2["version"], 2)
         self.assertEqual(env2["data"]["type"], "wild")
 
+    def test_content_history_and_rollback(self):
+        # Этап 1: правки копятся в историю, откат восстанавливает прошлую версию.
+        registry.create_content("location", "loc_h", {"name": "L1", "type": "wild"})
+        registry.update_content("location", "loc_h", {"name": "L2"})
+        hist = registry.content_history("location", "loc_h")
+        self.assertEqual([h["version"] for h in hist], [1])
+        self.assertEqual(hist[0]["data"]["name"], "L1")
+        env = registry.rollback_content("location", "loc_h", 1)
+        self.assertEqual(env["data"]["name"], "L1")
+        self.assertGreaterEqual(env["version"], 3)
+        with self.assertRaises(registry.ContentError):
+            registry.rollback_content("location", "loc_h", 999)
+
     def test_invalid_status_transition_blocked(self):
         registry.create_content("location", "loc1", {"name": "L"})
         with self.assertRaises(registry.ContentError):
@@ -328,6 +341,88 @@ class WorldApiTest(unittest.TestCase):
         # But can list.
         self.assertEqual(self.client.get("/api/admin/v2/world/location", headers=self._auth(token)).status_code, 200)
 
+    def test_content_cannot_edit_published_world(self):
+        # Codex P2: правка ОПУБЛИКОВАННОГО объекта снимает его с публикации,
+        # поэтому требует прав публикации (а не только edit_draft).
+        owner = self._token("999")
+        self._create_location(owner)
+        self.client.post("/api/admin/v2/world/location/small_plateau/validate", headers=self._auth(owner), json={})
+        pub = self.client.post("/api/admin/v2/world/location/small_plateau/publish", headers=self._auth(owner), json={"reason": "rel"})
+        self.assertEqual(pub.status_code, 200, pub.text)
+
+        rbac.set_role_override("telegram", "999", rbac.CONTENT)
+        content_token = self._token("999")
+        edit_published = self.client.put(
+            "/api/admin/v2/world/location/small_plateau",
+            headers=self._auth(content_token), json={"data": {"name": "Изменено"}},
+        )
+        self.assertEqual(edit_published.status_code, 403, edit_published.text)
+        # Черновик content править может (edit_draft).
+        self._create_location(content_token, cid="draft_loc")
+        edit_draft = self.client.put(
+            "/api/admin/v2/world/location/draft_loc",
+            headers=self._auth(content_token), json={"data": {"type": "city"}},
+        )
+        self.assertEqual(edit_draft.status_code, 200, edit_draft.text)
+
+    def test_history_and_rollback_endpoints(self):
+        # Этап 1: история версий и откат через admin-эндпоинты.
+        token = self._token("999")
+        self._create_location(token, cid="loc_v")  # имя «Малое плато», draft
+        self.client.put("/api/admin/v2/world/location/loc_v", headers=self._auth(token), json={"data": {"name": "V2"}})
+        hist = self.client.get("/api/admin/v2/world/location/loc_v/history", headers=self._auth(token))
+        self.assertEqual(hist.status_code, 200, hist.text)
+        self.assertIn(1, [h["version"] for h in hist.json()["history"]])
+        rb = self.client.post("/api/admin/v2/world/location/loc_v/rollback", headers=self._auth(token), json={"version": 1})
+        self.assertEqual(rb.status_code, 200, rb.text)
+        got = self.client.get("/api/admin/v2/world/location/loc_v", headers=self._auth(token)).json()["item"]
+        self.assertEqual(got["data"]["name"], "Малое плато")  # данные восстановлены
+
+    def _publish_location(self, token, cid):
+        self._create_location(token, cid=cid)
+        self.client.post(f"/api/admin/v2/world/location/{cid}/validate", headers=self._auth(token), json={})
+        self.client.post(f"/api/admin/v2/world/location/{cid}/publish", headers=self._auth(token), json={"reason": "rel"})
+
+    def test_draft_overlay_keeps_live_until_publish(self):
+        # Этап 1: правка-черновик не убирает live из игры; публикация черновика
+        # переносит изменения в live.
+        token = self._token("999")
+        self._publish_location(token, "loc_o")
+        ed = self.client.put("/api/admin/v2/world/location/loc_o/draft", headers=self._auth(token), json={"data": {"name": "Новое имя"}})
+        self.assertEqual(ed.status_code, 200, ed.text)
+        item = self.client.get("/api/admin/v2/world/location/loc_o", headers=self._auth(token)).json()["item"]
+        self.assertEqual(item["status"], "published")          # остаётся live
+        self.assertEqual(item["data"]["name"], "Малое плато")  # live не изменён
+        self.assertTrue(item["has_draft"])
+        self.assertEqual(item["draft_data"]["name"], "Новое имя")
+        pub = self.client.post("/api/admin/v2/world/location/loc_o/publish-draft", headers=self._auth(token), json={})
+        self.assertEqual(pub.status_code, 200, pub.text)
+        after = self.client.get("/api/admin/v2/world/location/loc_o", headers=self._auth(token)).json()["item"]
+        self.assertEqual(after["data"]["name"], "Новое имя")
+        self.assertFalse(after.get("has_draft"))
+
+    def test_discard_draft_keeps_live(self):
+        token = self._token("999")
+        self._publish_location(token, "loc_d")
+        self.client.put("/api/admin/v2/world/location/loc_d/draft", headers=self._auth(token), json={"data": {"name": "X"}})
+        disc = self.client.post("/api/admin/v2/world/location/loc_d/discard-draft", headers=self._auth(token), json={})
+        self.assertEqual(disc.status_code, 200, disc.text)
+        item = self.client.get("/api/admin/v2/world/location/loc_d", headers=self._auth(token)).json()["item"]
+        self.assertFalse(item.get("has_draft"))
+        self.assertEqual(item["data"]["name"], "Малое плато")
+
+    def test_content_can_draft_published_but_not_publish_it(self):
+        # Overlay безопаснее прямой правки: content правит черновик (live цел),
+        # но публиковать черновик может только роль с правом publish.
+        owner = self._token("999")
+        self._publish_location(owner, "loc_c")
+        rbac.set_role_override("telegram", "999", rbac.CONTENT)
+        content_token = self._token("999")
+        ed = self.client.put("/api/admin/v2/world/location/loc_c/draft", headers=self._auth(content_token), json={"data": {"name": "Y"}})
+        self.assertEqual(ed.status_code, 200, ed.text)
+        pub = self.client.post("/api/admin/v2/world/location/loc_c/publish-draft", headers=self._auth(content_token), json={})
+        self.assertEqual(pub.status_code, 403, pub.text)
+
     def test_unknown_kind_is_404(self):
         token = self._token("999")
         self.assertEqual(self.client.get("/api/admin/v2/world/dragon", headers=self._auth(token)).status_code, 404)
@@ -376,6 +471,18 @@ class WorldApiTest(unittest.TestCase):
         publish = self.client.post("/api/admin/v2/world/mob/wolf/publish", headers=self._auth(token), json={"reason": "релиз"})
         self.assertEqual(publish.status_code, 200, publish.text)
         self.assertEqual(publish.json()["item"]["status"], "published")
+
+    def test_import_disallowed_kind_returns_400(self):
+        # 17-CODEX §1: переданы только не-world типы → 400, а НЕ импорт всего.
+        token = self._token("999")
+        r = self.client.post("/api/admin/v2/world/import", headers=self._auth(token), json={"kinds": ["achievement"]})
+        self.assertEqual(r.status_code, 400, r.text)
+
+    def test_import_misspelled_kind_returns_400(self):
+        # 17-CODEX §1: опечатка в типе → 400 (не запускаем все импортеры).
+        token = self._token("999")
+        r = self.client.post("/api/admin/v2/world/import", headers=self._auth(token), json={"kinds": ["achievment"]})
+        self.assertEqual(r.status_code, 400, r.text)
 
 
 if __name__ == "__main__":

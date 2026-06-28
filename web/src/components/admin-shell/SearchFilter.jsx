@@ -7,10 +7,18 @@ import React from "react";
 export function itemSearchText(item) {
   if (!item || typeof item !== "object") return "";
   const bag = [];
-  const push = (v) => { if (typeof v === "string" || typeof v === "number") bag.push(String(v)); };
-  push(item.id); push(item.status); push(item.code);
+  // Рекурсивно собираем вложенные примитивы: значения могут лежать в массивах/
+  // объектах (ingredients[].item_id, conditions[].target, rewards, special_loot…),
+  // и без обхода поиск по связанным id никогда бы не находил их.
+  const visit = (v, depth) => {
+    if (v == null || depth > 6) return;
+    if (typeof v === "string" || typeof v === "number") { bag.push(String(v)); return; }
+    if (Array.isArray(v)) { for (const x of v) visit(x, depth + 1); return; }
+    if (typeof v === "object") { for (const x of Object.values(v)) visit(x, depth + 1); return; }
+  };
+  visit(item.id, 0); visit(item.status, 0); visit(item.code, 0);
   const data = item.data && typeof item.data === "object" ? item.data : item;
-  for (const v of Object.values(data)) push(v);
+  visit(data, 0);
   return bag.join(" ").toLowerCase();
 }
 
@@ -34,8 +42,11 @@ export function SearchBox({ value, onChange, placeholder = "Поиск по со
   );
 }
 
-// Сообщение «ничего не найдено» (когда фильтр задан, но список пуст).
-export function NoResults({ query }) {
-  if (!String(query || "").trim()) return null;
+// Сообщение «ничего не найдено» — только когда фильтр задан И ОТФИЛЬТРОВАННЫЙ
+// список пуст (иначе сообщение ошибочно показывалось над найденными строками).
+export function NoResults({ items, query }) {
+  const q = String(query || "").trim();
+  if (!q) return null;
+  if (filterEntities(items, q).length > 0) return null;
   return <p className="ntv2-hint">Ничего не найдено. Попробуйте изменить запрос или фильтры.</p>;
 }

@@ -110,6 +110,22 @@ class ConstructorBattleTest(unittest.TestCase):
         battle, _ = pbs.create_constructor_battle(self._player(), random.Random(1), LOC)
         self.assertEqual(len(battle["enemies"]), 1)
 
+    def test_constructor_mob_drop_used_in_battle(self):
+        # Codex P2: победа над конструкторным мобом выдаёт его опубликованный
+        # drop (а не только лут хардкод-каталога по имени).
+        os.environ["WORLD_CONSTRUCTOR_LIVE"] = "1"
+        wcr.update_content(wcr.KIND_MOB, "mob_wolf", {
+            "drop": [{"item_id": "dried_meat", "name": "Сушёное мясо",
+                      "chance": 100, "min_count": 2, "max_count": 2}],
+        })
+        wcr.set_status(wcr.KIND_MOB, "mob_wolf", wcr.STATUS_PUBLISHED, force=True)
+        player = self._player()
+        battle, _ = pbs.create_constructor_battle(player, random.Random(1), LOC)
+        pbs.grant_battle_rewards(player, battle, random.Random(1))
+        meat = next((it for it in player.get("inventory", []) if it.get("item_id") == "dried_meat"), None)
+        self.assertIsNotNone(meat)
+        self.assertGreaterEqual(int(meat.get("amount") or 0), 2)
+
     def test_victory_consumes_weekly_stock(self):
         os.environ["WORLD_CONSTRUCTOR_LIVE"] = "1"
         self._publish(wcr.KIND_LOCATION_WEEKLY_LIMIT, "lim_wolf", {

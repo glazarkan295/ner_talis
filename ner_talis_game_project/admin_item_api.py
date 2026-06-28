@@ -110,6 +110,13 @@ def create_admin_item_router(get_storage) -> APIRouter:
             "tags": list(items.TAGS),
             "propertyTypes": list(items.PROPERTY_TYPES),
             "effectTypes": list(items.EFFECT_TYPES),
+            "currencies": list(items.CURRENCIES),
+            "usagePlaces": list(items.USAGE_PLACES),
+            "requirementTypes": list(items.REQUIREMENT_TYPES),
+            "effectLinkTriggers": list(items.EFFECT_LINK_TRIGGERS),
+            "openPlaces": list(items.OPEN_PLACES),
+            "openBehaviors": [{"value": b, "label": items.OPEN_BEHAVIOR_LABELS.get(b, b)} for b in items.OPEN_BEHAVIORS],
+            "inventoryFullBehaviors": list(items.INVENTORY_FULL_BEHAVIORS),
             "statuses": [{"value": s, "label": items.STATUS_LABELS.get(s, s)} for s in items.STATUSES],
         }
 
@@ -132,6 +139,15 @@ def create_admin_item_router(get_storage) -> APIRouter:
         if items.store().get(item_id) is None:
             raise HTTPException(status_code=404, detail="Предмет не найден.")
         return {"ok": True, "usage": items.where_used(item_id)}
+
+    @router.get("/{item_id}/craft-usage")
+    def item_craft_usage(item_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        """Блок «Используется в ремесле» (ТЗ 13 §6): по ролям + цепочка + ошибки."""
+        _require(_session(get_storage(), request, token), PERM_ITEM_VIEW_USAGE)
+        if items.store().get(item_id) is None:
+            raise HTTPException(status_code=404, detail="Предмет не найден.")
+        from services import recipe_constructor_service as recipes
+        return {"ok": True, "craft": recipes.item_craft_usage(item_id)}
 
     @router.post("")
     def create_item(payload: IdDataRequest, request: Request) -> dict[str, Any]:

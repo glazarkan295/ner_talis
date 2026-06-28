@@ -24,9 +24,13 @@ import os
 import re
 import threading
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator
+
+# Сколько прошлых версий храним в истории каждого объекта (Этап 1: история/откат).
+HISTORY_LIMIT = 20
 
 try:  # POSIX-блокировка (на Windows отсутствует)
     import fcntl
@@ -101,6 +105,11 @@ KIND_MOB_EFFECT = "mob_effect"
 KIND_MOB_EVENT_LINK = "mob_event_link"
 KIND_MOB_ZONE_LINK = "mob_zone_link"
 KIND_MOB_PHASE = "mob_phase"
+# Конструктор подлокаций (ТЗ 09): карточка подлокации + её внутренние узлы и
+# переходы между узлами — в том же генерик-движке.
+KIND_SUBLOCATION = "sublocation"
+KIND_SUBLOCATION_NODE = "sublocation_node"
+KIND_SUBLOCATION_TRANSITION = "sublocation_transition"
 KINDS = (
     KIND_LOCATION, KIND_MOB, KIND_BUTTON, KIND_TRANSITION,
     KIND_EVENT, KIND_NPC, KIND_QUEST, KIND_RAID,
@@ -111,6 +120,20 @@ KINDS = (
     KIND_LOCATION_EVENT_ANSWER,
     KIND_MOB_VARIANT, KIND_MOB_SKILL, KIND_MOB_PASSIVE, KIND_MOB_RESISTANCE,
     KIND_MOB_EFFECT, KIND_MOB_EVENT_LINK, KIND_MOB_ZONE_LINK, KIND_MOB_PHASE,
+    KIND_SUBLOCATION, KIND_SUBLOCATION_NODE, KIND_SUBLOCATION_TRANSITION,
+)
+
+# Типы подлокаций (ТЗ 09 §5) и типы внутренних узлов (§6.3).
+SUBLOCATION_TYPES = (
+    "cave", "dungeon", "labyrinth", "ruins", "house", "building", "mine",
+    "catacombs", "raid_dungeon", "tower", "camp", "hidden_zone",
+    "world_event_zone", "story", "quest", "raid", "special",
+)
+SUBLOCATION_NODE_TYPES = (
+    "entry", "exit", "corridor", "room", "hall", "fork", "dead_end",
+    "stairs", "hidden_passage", "stash", "trap", "resource_point",
+    "battle_point", "npc_point", "boss_room", "final_point",
+    "safe_point", "danger_point", "floor_transition",
 )
 
 LOCATION_TYPES = (
@@ -363,6 +386,44 @@ def create_content(kind: str, content_id: str, data: dict[str, Any], *, actor: s
         return dict(envelope)
 
 
+def delete_content(kind: str, content_id: str) -> bool:
+    """Удалить запись реестра. True — удалено, False — не было.
+
+    Используется откатом импорта (full-import ТЗ §4.1): импорт-журнал удаляет
+    ровно те записи, которые создал последний импорт. Прямой жёсткой команды
+    удаления у реестра больше нет — это намеренно узкий путь."""
+    _ensure_kind(kind)
+    content_id = str(content_id or "").strip()
+    with _STORE_LOCK, _store_file_lock():
+        store = _load_all()
+        bucket = store.get(kind) or {}
+        if content_id not in bucket:
+            return False
+        del bucket[content_id]
+        _save_all(store)
+        return True
+
+
+def _content_snapshot(envelope: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "version": int(envelope.get("version") or 1),
+        "data": deepcopy(envelope.get("data") or {}),
+        "status": envelope.get("status"),
+        "updated_at": envelope.get("updated_at"),
+        "updated_by": envelope.get("updated_by"),
+    }
+
+
+def _push_content_history(envelope: dict[str, Any]) -> None:
+    history = envelope.get("history")
+    if not isinstance(history, list):
+        history = []
+    history.append(_content_snapshot(envelope))
+    if len(history) > HISTORY_LIMIT:
+        del history[:-HISTORY_LIMIT]
+    envelope["history"] = history
+
+
 def update_content(kind: str, content_id: str, data: dict[str, Any], *, actor: str = "") -> dict[str, Any]:
     _ensure_kind(kind)
     content_id = str(content_id)
@@ -374,6 +435,8 @@ def update_content(kind: str, content_id: str, data: dict[str, Any], *, actor: s
             raise ContentError(f"Объект {kind}:{content_id} не найден.")
         if envelope.get("status") == STATUS_ARCHIVED:
             raise ContentError("Архивный объект редактировать нельзя.")
+        # Версия ДО правки уходит в историю — для отката (Этап 1).
+        _push_content_history(envelope)
         merged = dict(envelope.get("data") or {})
         merged.update(data if isinstance(data, dict) else {})
         envelope["data"] = merged
@@ -408,6 +471,144 @@ def set_status(kind: str, content_id: str, status: str, *, actor: str = "", forc
                 f"{STATUS_LABELS.get(status, status)}."
             )
         envelope["status"] = status
+        envelope["updated_at"] = _now_iso()
+        envelope["updated_by"] = str(actor or "")
+        bucket[content_id] = envelope
+        _save_all(store)
+        return dict(envelope)
+
+
+def content_history(kind: str, content_id: str) -> list[dict[str, Any]]:
+    """Список прошлых версий объекта (старые → новые)."""
+    _ensure_kind(kind)
+    envelope = get_content(kind, str(content_id))
+    if not isinstance(envelope, dict):
+        return []
+    history = envelope.get("history")
+    return list(history) if isinstance(history, list) else []
+
+
+def rollback_content(kind: str, content_id: str, version: int, *, actor: str = "") -> dict[str, Any]:
+    """Откат data к снимку версии (как новая версия). Статус не меняем; архивный
+    объект откатывать нельзя. Текущее состояние тоже уходит в историю."""
+    _ensure_kind(kind)
+    content_id = str(content_id)
+    target_version = int(version)
+    with _STORE_LOCK, _store_file_lock():
+        store = _load_all()
+        bucket = store.get(kind, {})
+        envelope = bucket.get(content_id)
+        if not isinstance(envelope, dict):
+            raise ContentError(f"Объект {kind}:{content_id} не найден.")
+        if envelope.get("status") == STATUS_ARCHIVED:
+            raise ContentError("Архивный объект откатывать нельзя.")
+        history = envelope.get("history")
+        history = history if isinstance(history, list) else []
+        snapshot = next(
+            (h for h in history if int((h or {}).get("version") or 0) == target_version),
+            None,
+        )
+        if snapshot is None:
+            raise ContentError(f"Версия {target_version} не найдена в истории.")
+        _push_content_history(envelope)
+        envelope["data"] = deepcopy(snapshot.get("data") or {})
+        envelope["updated_at"] = _now_iso()
+        envelope["updated_by"] = str(actor or "")
+        envelope["version"] = int(envelope.get("version") or 1) + 1
+        envelope["validation"] = None
+        bucket[content_id] = envelope
+        _save_all(store)
+        return dict(envelope)
+
+
+def edit_draft(kind: str, content_id: str, data: dict[str, Any], *, actor: str = "") -> dict[str, Any]:
+    """Правка-черновик (draft-overlay): для ОПУБЛИКОВАННОГО объекта изменения
+    копятся в draft_data, а live (data) и статус published не меняются — объект
+    остаётся в игре. Для черновика — обычная правка (с историей). Так «безобидное»
+    редактирование не убирает живой контент из рантайма до явной публикации."""
+    _ensure_kind(kind)
+    content_id = str(content_id)
+    with _STORE_LOCK, _store_file_lock():
+        store = _load_all()
+        bucket = store.get(kind, {})
+        envelope = bucket.get(content_id)
+        if not isinstance(envelope, dict):
+            raise ContentError(f"Объект {kind}:{content_id} не найден.")
+        if envelope.get("status") == STATUS_ARCHIVED:
+            raise ContentError("Архивный объект редактировать нельзя.")
+        if envelope.get("status") == STATUS_PUBLISHED:
+            base = dict(envelope.get("draft_data") or envelope.get("data") or {})
+            base.update(data if isinstance(data, dict) else {})
+            envelope["draft_data"] = base
+            envelope["has_draft"] = True
+            envelope["draft_updated_at"] = _now_iso()
+            envelope["draft_updated_by"] = str(actor or "")
+        else:
+            _push_content_history(envelope)
+            merged = dict(envelope.get("data") or {})
+            merged.update(data if isinstance(data, dict) else {})
+            envelope["data"] = merged
+            envelope["updated_at"] = _now_iso()
+            envelope["updated_by"] = str(actor or "")
+            envelope["version"] = int(envelope.get("version") or 1) + 1
+            envelope["validation"] = None
+        bucket[content_id] = envelope
+        _save_all(store)
+        return dict(envelope)
+
+
+def draft_envelope(kind: str, content_id: str) -> dict[str, Any] | None:
+    """Конверт с подменённой data на draft_data (для валидации/предпросмотра
+    черновика). Если черновика нет — обычный конверт."""
+    envelope = get_content(kind, str(content_id))
+    if not isinstance(envelope, dict):
+        return None
+    if envelope.get("has_draft") and isinstance(envelope.get("draft_data"), dict):
+        merged = dict(envelope)
+        merged["data"] = envelope["draft_data"]
+        return merged
+    return envelope
+
+
+def publish_draft(kind: str, content_id: str, *, actor: str = "") -> dict[str, Any]:
+    """Опубликовать накопленный черновик: draft_data → live data (старое live в
+    историю), объект остаётся published."""
+    _ensure_kind(kind)
+    content_id = str(content_id)
+    with _STORE_LOCK, _store_file_lock():
+        store = _load_all()
+        bucket = store.get(kind, {})
+        envelope = bucket.get(content_id)
+        if not isinstance(envelope, dict):
+            raise ContentError(f"Объект {kind}:{content_id} не найден.")
+        if not envelope.get("has_draft") or not isinstance(envelope.get("draft_data"), dict):
+            raise ContentError("Нет черновика для публикации.")
+        _push_content_history(envelope)
+        envelope["data"] = deepcopy(envelope.get("draft_data") or {})
+        envelope.pop("draft_data", None)
+        envelope["has_draft"] = False
+        envelope["status"] = STATUS_PUBLISHED
+        envelope["updated_at"] = _now_iso()
+        envelope["updated_by"] = str(actor or "")
+        envelope["version"] = int(envelope.get("version") or 1) + 1
+        envelope["validation"] = None
+        bucket[content_id] = envelope
+        _save_all(store)
+        return dict(envelope)
+
+
+def discard_draft(kind: str, content_id: str, *, actor: str = "") -> dict[str, Any]:
+    """Отбросить накопленный черновик (live остаётся как был)."""
+    _ensure_kind(kind)
+    content_id = str(content_id)
+    with _STORE_LOCK, _store_file_lock():
+        store = _load_all()
+        bucket = store.get(kind, {})
+        envelope = bucket.get(content_id)
+        if not isinstance(envelope, dict):
+            raise ContentError(f"Объект {kind}:{content_id} не найден.")
+        envelope.pop("draft_data", None)
+        envelope["has_draft"] = False
         envelope["updated_at"] = _now_iso()
         envelope["updated_by"] = str(actor or "")
         bucket[content_id] = envelope
@@ -515,7 +716,54 @@ def _validate_location(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
             pass
 
     _validate_player_message(data.get("scene_message"), "Сообщение при входе", errors, warnings)
+
+    # Глубина поиска (ТЗ 09 §19.5–§19.6): необязательная настройка карточки.
+    if data.get("search_depth_enabled"):
+        for key, label in (("search_depth_start", "Стартовая глубина"),
+                           ("search_depth_max", "Максимальная глубина")):
+            raw = data.get(key)
+            if raw is None or raw == "":
+                continue
+            try:
+                if int(raw) < 0:
+                    errors.append(f"{label} поиска не может быть отрицательной.")
+            except (TypeError, ValueError):
+                errors.append(f"{label} поиска — не число.")
+        start = _num(data.get("search_depth_start")) or 0
+        cap = _num(data.get("search_depth_max")) or 0
+        if cap and start and cap > 0 and start > cap:
+            errors.append("Стартовая глубина поиска больше максимальной.")
+        txt = _str_field(data, "search_depth_text")
+        if txt and _has_markup(txt):
+            errors.append("В тексте глубины поиска недопустимая разметка/HTML.")
+        _validate_search_depth_thresholds(data.get("search_depth_thresholds"), errors, warnings)
+
     return errors, warnings
+
+
+def _validate_search_depth_thresholds(rows: Any, errors: list[str], warnings: list[str]) -> None:
+    """Пороги глубины поиска (§19.6): список {min_depth, max_depth, ...}."""
+    if rows in (None, "", []):
+        return
+    if not isinstance(rows, list):
+        errors.append("Пороги глубины поиска должны быть списком.")
+        return
+    for idx, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            errors.append(f"Порог глубины #{idx} — не объект.")
+            continue
+        lo = row.get("min_depth")
+        hi = row.get("max_depth")
+        try:
+            lo_i = int(lo) if lo not in (None, "") else 0
+            hi_i = int(hi) if hi not in (None, "") else 0
+        except (TypeError, ValueError):
+            errors.append(f"Порог глубины #{idx}: min/max — не число.")
+            continue
+        if lo_i < 0 or hi_i < 0:
+            errors.append(f"Порог глубины #{idx}: значения не могут быть отрицательными.")
+        if hi_i > 0 and lo_i > hi_i:
+            errors.append(f"Порог глубины #{idx}: min_depth больше max_depth.")
 
 
 def _num(value: Any) -> float | None:
@@ -662,6 +910,16 @@ def _validate_mob(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
 
     _validate_drop_rows(data.get("drop"), errors, warnings)
     _warn_farm_loop(data.get("drop"), warnings)
+
+    # Лимиты ранга (ТЗ «черты/благословения/фазы» §2.1–§2.2): сверяем количества
+    # навыков/черт/фаз с рангом. Аддитивно — только если ранг задан.
+    rank = _str_field(data, "mob_rank")
+    if rank:
+        from services.mob_rank_limits import validate_mob_rank_limits
+
+        rl = validate_mob_rank_limits(data, mode=_str_field(data, "validation_mode") or "warning_only")
+        errors.extend(rl["errors"])
+        warnings.extend(rl["warnings"])
 
     if not mob_type:
         warnings.append("Не указан тип моба.")
@@ -1561,6 +1819,220 @@ def _validate_mob_phase(envelope: dict[str, Any]) -> tuple[list[str], list[str]]
     return errors, warnings
 
 
+def _sublocation_exists(sub_id: Any) -> bool:
+    sub_id = str(sub_id or "").strip()
+    return bool(sub_id) and get_content(KIND_SUBLOCATION, sub_id) is not None
+
+
+def _sublocation_node_exists(node_id: Any) -> bool:
+    node_id = str(node_id or "").strip()
+    return bool(node_id) and get_content(KIND_SUBLOCATION_NODE, node_id) is not None
+
+
+def _validate_sublocation(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Карточка подлокации (ТЗ 09 §4–§5, §12)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "name"):
+        errors.append("Не заполнено название подлокации.")
+    short = _str_field(data, "short_description")
+    full = _str_field(data, "description")
+    if not short and not full:
+        errors.append("Нужно хотя бы краткое описание подлокации.")
+
+    sub_type = _str_field(data, "type")
+    if sub_type and sub_type not in SUBLOCATION_TYPES:
+        errors.append(f"Неизвестный тип подлокации: {sub_type}.")
+
+    parent = _str_field(data, "parent_location")
+    if not parent:
+        errors.append("Не указана родительская локация.")
+    elif not _location_exists(parent):
+        warnings.append(f"Родительская локация «{parent}» не найдена среди локаций "
+                        "(допустимо, если это город/крепость/зона).")
+
+    min_level = data.get("min_level")
+    max_level = data.get("max_level")
+    if min_level is not None and min_level != "":
+        n = _num(min_level)
+        if n is None or n < 1:
+            errors.append("Минимальный уровень должен быть ≥ 1.")
+    if (min_level not in (None, "")) and (max_level not in (None, "")):
+        a, b = _num(min_level), _num(max_level)
+        if a is not None and b is not None and a > b:
+            errors.append("Минимальный уровень больше максимального.")
+
+    for key in ("lifetime_seconds", "reentry_cooldown_seconds", "visit_limit",
+                "opens_at_depth", "max_nodes"):
+        value = data.get(key)
+        if value in (None, ""):
+            continue
+        n = _num(value)
+        if n is None or n < 0:
+            errors.append(f"Поле «{key}» не может быть отрицательным.")
+
+    for key in ("name", "short_description", "description", "death_return_text"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    _check_local_image(data, "image", errors)
+    _validate_player_message(data.get("scene_message"), "Сообщение при входе", errors, warnings)
+    return errors, warnings
+
+
+def _validate_sublocation_node(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Узел подлокации (ТЗ 09 §6)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not _str_field(data, "name"):
+        errors.append("Не заполнено название узла.")
+    sub_id = _str_field(data, "sublocation_id")
+    if not sub_id:
+        errors.append("Узел не привязан к подлокации.")
+    elif not _sublocation_exists(sub_id):
+        errors.append(f"Подлокация «{sub_id}» не существует.")
+    node_type = _str_field(data, "node_type")
+    if node_type and node_type not in SUBLOCATION_NODE_TYPES:
+        errors.append(f"Неизвестный тип узла: {node_type}.")
+
+    danger = data.get("event_chance")
+    if danger not in (None, ""):
+        n = _num(danger)
+        if n is None or n < 0 or n > 100:
+            errors.append("Шанс случайного события должен быть 0–100.")
+
+    for key in ("name", "player_text", "admin_text"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    _check_local_image(data, "image", errors)
+    return errors, warnings
+
+
+def _validate_sublocation_transition(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Переход между узлами подлокации (ТЗ 09 §7)."""
+    data = envelope.get("data") or {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    sub_id = _str_field(data, "sublocation_id")
+    if not sub_id:
+        errors.append("Переход не привязан к подлокации.")
+    elif not _sublocation_exists(sub_id):
+        errors.append(f"Подлокация «{sub_id}» не существует.")
+
+    frm = _str_field(data, "from_node")
+    to = _str_field(data, "to_node")
+    if not frm:
+        errors.append("Не указан узел-источник.")
+    elif not _sublocation_node_exists(frm):
+        errors.append(f"Узел-источник «{frm}» не существует.")
+    if not to:
+        errors.append("Не указан целевой узел.")
+    elif not _sublocation_node_exists(to):
+        errors.append(f"Целевой узел «{to}» не существует.")
+    if frm and to and frm == to:
+        errors.append("Переход ведёт в тот же узел.")
+
+    cond = _str_field(data, "access_condition")
+    if cond and cond not in ACCESS_CONDITIONS:
+        errors.append(f"Неизвестное условие доступа: {cond}.")
+    _check_item_ref(data, "required_item", "Требуемый предмет", errors)
+
+    req_level = data.get("required_level")
+    if req_level not in (None, ""):
+        n = _num(req_level)
+        if n is None or n < 1:
+            errors.append("Требуемый уровень должен быть ≥ 1.")
+
+    energy = data.get("energy_cost")
+    if energy not in (None, ""):
+        n = _num(energy)
+        if n is None or n < 0:
+            errors.append("Расход энергии не может быть отрицательным.")
+
+    # §13: скрытый проход без условия открытия — ошибка структуры.
+    if data.get("hidden"):
+        has_condition = (cond or _str_field(data, "required_item")
+                         or req_level not in (None, "")
+                         or _str_field(data, "required_achievement")
+                         or _str_field(data, "required_quest")
+                         or _str_field(data, "required_effect")
+                         or (_num(data.get("opens_at_depth")) or 0) > 0)
+        if not has_condition:
+            warnings.append("Скрытый проход не имеет условия открытия (ТЗ §13).")
+
+    for key in ("button_text", "description", "success_text", "denied_text"):
+        value = _str_field(data, key)
+        if value and _has_markup(value):
+            errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
+    return errors, warnings
+
+
+def validate_sublocation_schema(sublocation_id: str) -> dict[str, Any]:
+    """Структурная проверка схемы подлокации (ТЗ 09 §13): вход/выход,
+    достижимость узлов, битые переходы, скрытые проходы без условия."""
+    sub_id = str(sublocation_id or "").strip()
+    nodes = [n for n in list_content(KIND_SUBLOCATION_NODE)
+             if str((n.get("data") or {}).get("sublocation_id") or "") == sub_id
+             and n.get("status") != STATUS_ARCHIVED]
+    transitions = [t for t in list_content(KIND_SUBLOCATION_TRANSITION)
+                   if str((t.get("data") or {}).get("sublocation_id") or "") == sub_id
+                   and t.get("status") != STATUS_ARCHIVED]
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    node_ids = {str(n.get("id")) for n in nodes}
+    types = {str(n.get("id")): str((n.get("data") or {}).get("node_type") or "") for n in nodes}
+    if not nodes:
+        warnings.append("В подлокации ещё нет узлов.")
+    entries = [nid for nid, t in types.items() if t == "entry"]
+    exits = [nid for nid, t in types.items() if t in ("exit", "final_point")]
+    if nodes and not entries:
+        errors.append("В подлокации нет входа (узел типа «вход»).")
+    if nodes and not exits:
+        warnings.append("В подлокации нет выхода/финальной точки.")
+
+    # Граф переходов и достижимость от входов.
+    adj: dict[str, list[str]] = {}
+    for t in transitions:
+        d = t.get("data") or {}
+        frm, to = str(d.get("from_node") or ""), str(d.get("to_node") or "")
+        if to and to not in node_ids:
+            errors.append(f"Переход ведёт в удалённый узел: {to}.")
+        if frm and frm not in node_ids:
+            errors.append(f"Переход исходит из удалённого узла: {frm}.")
+        if frm and to:
+            adj.setdefault(frm, []).append(to)
+
+    if nodes and entries:
+        seen: set[str] = set()
+        stack = list(entries)
+        while stack:
+            cur = stack.pop()
+            if cur in seen:
+                continue
+            seen.add(cur)
+            stack.extend(adj.get(cur, []))
+        unreachable = node_ids - seen
+        for nid in sorted(unreachable):
+            warnings.append(f"Узел недостижим от входа: {nid}.")
+        if exits and not (set(exits) & seen):
+            errors.append("Выход/финальная точка недостижимы от входа.")
+
+    return {
+        "ok": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "node_count": len(nodes),
+        "transition_count": len(transitions),
+    }
+
+
 VALIDATORS: dict[str, Callable[[dict[str, Any]], tuple[list[str], list[str]]]] = {
     KIND_LOCATION: _validate_location,
     KIND_MOB: _validate_mob,
@@ -1588,6 +2060,9 @@ VALIDATORS: dict[str, Callable[[dict[str, Any]], tuple[list[str], list[str]]]] =
     KIND_MOB_EVENT_LINK: _validate_mob_event_link,
     KIND_MOB_ZONE_LINK: _validate_mob_zone_link,
     KIND_MOB_PHASE: _validate_mob_phase,
+    KIND_SUBLOCATION: _validate_sublocation,
+    KIND_SUBLOCATION_NODE: _validate_sublocation_node,
+    KIND_SUBLOCATION_TRANSITION: _validate_sublocation_transition,
 }
 
 

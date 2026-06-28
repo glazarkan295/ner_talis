@@ -337,11 +337,19 @@ def _order(env: dict[str, Any]) -> tuple[float, str]:
     return (num, str(data.get("title") or data.get("label") or env.get("id") or ""))
 
 
+def _is_public(env: dict[str, Any]) -> bool:
+    """Запись доступна анонимному посетителю? (Codex P2: hidden/authorized —
+    не отдавать публично, даже если статус published.)"""
+    visibility = str((env.get("data") or {}).get("visibility") or "").strip().lower()
+    return visibility not in ("hidden", "authorized")
+
+
 def published(kind: str) -> list[dict[str, Any]]:
-    """Опубликованные записи указанного типа (для публичного сайта), по порядку."""
+    """Опубликованные записи указанного типа (для публичного сайта), по порядку.
+    Непубличные по видимости (hidden/authorized) не отдаются."""
     items = [
         i for i in _store.list(status=STATUS_PUBLISHED)
-        if (i.get("data") or {}).get("_kind") == kind
+        if (i.get("data") or {}).get("_kind") == kind and _is_public(i)
     ]
     items.sort(key=_order)
     return [_public_view(i) for i in items]
@@ -374,7 +382,7 @@ def published_page(slug_or_id: str) -> dict[str, Any] | None:
         if env.get("id") == key or str(data.get("slug") or "") == key:
             page_env = env
             break
-    if page_env is None:
+    if page_env is None or not _is_public(page_env):
         return None
     page = _public_view(page_env)
     blocks = [

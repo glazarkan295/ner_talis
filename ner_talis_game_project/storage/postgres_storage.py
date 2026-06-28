@@ -902,17 +902,27 @@ class PostgresStorage:
             ).mappings().all()
         return [self._loads(r["data"], {}) for r in rows]
 
-    def claim_due_outgoing_messages(self, *, now_iso: str, limit: int = 25) -> list[dict[str, Any]]:
+    def claim_due_outgoing_messages(self, *, now_iso: str, limit: int = 25, platforms: list[str] | None = None) -> list[dict[str, Any]]:
+        # platforms=None → без фильтра; пустой список → не клеймить ничего.
+        plats = None if platforms is None else [str(p) for p in platforms if p]
+        if plats is not None and not plats:
+            return []
+        params: dict[str, Any] = {"now": now_iso, "limit": max(1, int(limit))}
+        platform_sql = ""
+        if plats:
+            platform_sql = " AND data->>'platform' = ANY(:plats)"
+            params["plats"] = plats
         with self.engine.begin() as connection:
             rows = connection.execute(
                 text(
                     "SELECT id, data FROM outgoing_messages"
                     " WHERE status IN ('queued', 'retry_wait')"
                     " AND (next_attempt_at IS NULL OR next_attempt_at <= :now)"
+                    + platform_sql +
                     f" ORDER BY {self._OUTGOING_PRIORITY_ORDER}, created_at LIMIT :limit"
                     " FOR UPDATE SKIP LOCKED"
                 ),
-                {"now": now_iso, "limit": max(1, int(limit))},
+                params,
             ).mappings().all()
             claimed: list[dict[str, Any]] = []
             for row in rows:

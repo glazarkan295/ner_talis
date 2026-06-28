@@ -59,6 +59,19 @@ class PublicSiteTest(unittest.TestCase):
         self.assertNotIn("_kind", page)
         self.assertEqual(self.client.get("/api/public/site/page/missing").status_code, 404)
 
+    def test_hidden_and_authorized_not_public(self):
+        # Codex P2: hidden/authorized материалы не отдаются публично даже опубликованные.
+        self._publish("page", "pub", {"title": "Открытая", "slug": "pub", "visibility": "public"})
+        self._publish("page", "hid", {"title": "Скрытая", "slug": "hid", "visibility": "hidden"})
+        self._publish("page", "auth", {"title": "Для своих", "slug": "auth", "visibility": "authorized"})
+        slugs = {p["slug"] for p in self.client.get("/api/public/site/pages").json()["pages"]}
+        self.assertIn("pub", slugs)
+        self.assertNotIn("hid", slugs)
+        self.assertNotIn("auth", slugs)
+        self.assertEqual(self.client.get("/api/public/site/page/hid").status_code, 404)
+        self.assertEqual(self.client.get("/api/public/site/page/auth").status_code, 404)
+        self.assertEqual(self.client.get("/api/public/site/page/pub").status_code, 200)
+
     def test_menu_tree(self):
         self._publish("menu_item", "m_main", {"label": "Главная", "order": 1})
         self._publish("menu_item", "m_lore", {"label": "Лор", "order": 2})

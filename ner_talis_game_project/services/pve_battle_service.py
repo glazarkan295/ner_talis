@@ -1476,6 +1476,56 @@ def loot_parameters_for_rank(rank: EnemyRank, chance: int | float, min_amount: i
     return chance_value, min_value, max_value
 
 
+def _item_name_for(item_id: str) -> str:
+    try:
+        from services.item_registry import get_item_definition_by_id
+        definition = get_item_definition_by_id(item_id)
+        return str((definition or {}).get("name") or item_id)
+    except Exception:
+        return item_id
+
+
+def _constructor_mob_drop(source_mob_id: str) -> list[tuple[str, str, Any, Any, Any]]:
+    """Опубликованный drop конструкторного моба → (item_id, name, chance, min, max).
+
+    Конструкторный враг несёт source_mob_id; его карточка хранит таблицу drop
+    (item_id/chance/min_count/max_count). Без этого бой брал лут только из
+    хардкод-каталога по имени, и конструкторные мобы не давали свою добычу."""
+    try:
+        from services import world_content_registry as wcr
+        env = wcr.get_content(wcr.KIND_MOB, str(source_mob_id))
+    except Exception:
+        return []
+    if not isinstance(env, dict) or env.get("status") != "published":
+        return []
+    rows: list[tuple[str, str, Any, Any, Any]] = []
+    for row in (env.get("data") or {}).get("drop") or []:
+        if not isinstance(row, dict):
+            continue
+        item_id = str(row.get("item_id") or "").strip()
+        if not item_id:
+            continue
+        name = str(row.get("name") or "").strip() or _item_name_for(item_id)
+        cmin = row.get("min_count") or 1
+        rows.append((item_id, name, row.get("chance") or 0, cmin, row.get("max_count") or cmin))
+    return rows
+
+
+def _enemy_loot_table(enemy: dict[str, Any], catalog: dict[str, Any]) -> list[tuple[str, str, Any, Any, Any]]:
+    """Таблица лута врага: опубликованный drop конструкторного моба в приоритете,
+    иначе — легаси-каталог по имени. Кортежи: (item_id, name, chance, min, max)."""
+    source_mob_id = enemy.get("source_mob_id")
+    if source_mob_id:
+        drop = _constructor_mob_drop(str(source_mob_id))
+        if drop:
+            return drop
+    template_key = next((key for key, value in catalog.items() if value["name"] == enemy.get("name")), "")
+    return [
+        ("", name, chance, min_amount, max_amount)
+        for name, chance, min_amount, max_amount in catalog.get(template_key, {}).get("loot", [])
+    ]
+
+
 def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: random.Random) -> str:
     enemies = battle.get("enemies", [])
     player_level = max(1, safe_int(player.get("level"), 1))
@@ -1501,12 +1551,13 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
         else:
             diff_mult = max(0.1, 1 + difference * 0.08)
         xp_total += math.ceil(base_xp * diff_mult)
-        template_key = next((key for key, value in catalog.items() if value["name"] == enemy.get("name")), "")
-        for item_name, chance, min_amount, max_amount in catalog.get(template_key, {}).get("loot", []):
+        for item_id_hint, item_name, chance, min_amount, max_amount in _enemy_loot_table(enemy, catalog):
             loot_chance, loot_min, loot_max = loot_parameters_for_rank(rank, chance, min_amount, max_amount)
             if rng.uniform(0, 100) <= loot_chance:
                 amount = rng.randint(loot_min, loot_max)
-                item_id = battle_loot_item_id(reward_location_id, item_name)
+                # Конструкторный drop несёт точный item_id; легаси-каталог — нет,
+                # для него разрешаем id по имени с учётом локации.
+                item_id = item_id_hint or battle_loot_item_id(reward_location_id, item_name)
                 add_result = add_inventory_item(player, item_name, amount, item_id=item_id)
                 if add_result.added > 0:
                     note = inventory_add_result_notice(add_result, item_name)

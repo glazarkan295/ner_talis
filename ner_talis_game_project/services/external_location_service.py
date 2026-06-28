@@ -23,6 +23,7 @@ from services.inventory_service import add_inventory_item as add_inventory_stack
 from services.active_skill_service import normalize_starter_only_skills
 from services.pve_battle_service import BATTLE_ACTIONS, battle_buttons, create_location_battle, handle_battle_action
 from services.race_bonus_service import extra_alchemy_ingredient_chance_percent, mining_gem_drop, search_event_weights
+from services.search_depth_service import record_search, reset_depth
 from services.fishing_service import grant_waterside_reward
 from services.small_plateau_service import (
     LOCATION_ID as SMALL_PLATEAU_ID,
@@ -1080,6 +1081,7 @@ def enter_outside_city(storage: Any, player: dict[str, Any]) -> LocationResponse
     player["current_location"] = None
     player["active_event"] = None
     player["active_timer"] = None
+    reset_depth(player)  # выход с локации сбрасывает глубину поиска (ТЗ 09 §19.4)
     storage.update_player(player)
     return LocationResponse(OUTSIDE_CITY_TEXT, outside_city_buttons(), "outside_city_crossroads")
 
@@ -1196,9 +1198,32 @@ def return_to_gates(storage: Any, player: dict[str, Any]) -> LocationResponse:
     player["location_id"] = "seldar_city_gates"
     player["current_location"] = None
     player["active_event"] = None
+    reset_depth(player)  # выход с локации сбрасывает глубину поиска (ТЗ 09 §19.4)
     storage.update_player(player)
     text = "🚪 Вы возвращаетесь к стенам Селдара. После открытой местности городские ворота кажутся особенно надёжными."
     return LocationResponse(text, [[OUTSIDE_CITY], ["⬅️ Центральная площадь"]], "seldar_city_gates")
+
+
+def _search_depth_max(location_id: str) -> int:
+    """Потолок глубины поиска из карточки локации конструктора (0 = без лимита).
+
+    18-CODEX §3: настройки V2-конструктора применяются ТОЛЬКО при включённом
+    живом слое локаций (location_runtime.live_enabled = env WORLD_CONSTRUCTOR_LIVE
+    или флаг use_v2_locations). При выключенном V2 legacy-поиск не читает реестр и
+    не ограничивается опубликованными V2-настройками."""
+    try:
+        from services import location_runtime
+        if not location_runtime.live_enabled():
+            return 0
+        from services import world_content_registry as wcr
+        env = wcr.get_content(wcr.KIND_LOCATION, str(location_id))
+        if isinstance(env, dict) and env.get("status") == "published":
+            data = env.get("data") or {}
+            if data.get("search_depth_enabled"):
+                return int(data.get("search_depth_max") or 0)
+    except Exception:
+        return 0
+    return 0
 
 
 def start_search(storage: Any, player: dict[str, Any], rng: random.Random | None = None) -> LocationResponse:
@@ -1273,6 +1298,9 @@ def start_search(storage: Any, player: dict[str, Any], rng: random.Random | None
         "location_id": location_id,
     }
     player["active_timer"] = timer
+    # Глубина поиска (ТЗ 09 §19): каждая команда «Поиск» наращивает счётчик
+    # по текущей локации; смена локации авто-сбрасывает его (см. record_search).
+    record_search(player, location_id, max_depth=_search_depth_max(location_id))
     warnings = collect_energy_warning_messages(player)
     storage.update_player(player)
     hp, max_hp = hp_pair(player)

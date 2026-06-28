@@ -119,7 +119,7 @@ function PromosTab({ guarded, can }) {
       <h3>Промокоды</h3>
       <div className="ntv2-filters"><SearchBox value={promoQuery} onChange={setPromoQuery} placeholder="Поиск по коду/награде…" /></div>
       {!promos.length ? <p className="ntv2-hint">Промокодов пока нет.</p> : null}
-      <NoResults query={promos.length ? promoQuery : ""} />
+      <NoResults items={promos} query={promoQuery} />
       <div className="ntv2-list">
         {filterEntities(promos, promoQuery).map((p) => (
           <div className="ntv2-list-row" key={p.code}>

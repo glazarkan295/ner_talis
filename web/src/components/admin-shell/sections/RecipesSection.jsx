@@ -11,7 +11,10 @@ import {
   validateRecipe,
 } from "../../../api/adminRecipesApi.js";
 import { tr, RECIPE_WORKSHOP } from "../../../i18n/adminLabels.js";
+import { fetchFormulas } from "../../../api/adminFormulaApi.js";
+import { fetchLibList } from "../../../api/adminLibraryApi.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { VersionHistory } from "../VersionHistory.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 
@@ -23,6 +26,11 @@ const EMPTY = {
   craft_time: 60, success_chance: 100, quality_chance: 0, fail_chance: 0,
   blueprint_required: false, blueprint_id: "", blueprint_one_time: false,
   hidden: false, unlock_condition: "",
+  // Расширение ремесла (ТЗ 13 §5.6–§5.8).
+  recipe_type: "create_item", profession: "", workshop_id: "",
+  profession_level: 0, player_level: 0, difficulty: "",
+  result_formula_id: "", time_formula_id: "", cost_formula_id: "", exp_formula_id: "",
+  can_mass_craft: false, can_queue: false, can_cancel: true,
 };
 
 function Field({ label, children }) {
@@ -36,6 +44,9 @@ export function RecipesSection({ guarded, hasPerm }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [formulaOpts, setFormulaOpts] = useState([]);
+  const [professionOpts, setProfessionOpts] = useState([]);
+  const [workshopOpts, setWorkshopOpts] = useState([]);
 
   const can = useMemo(() => ({
     create: hasPerm("recipe.create"), edit: hasPerm("recipe.edit"), validate: hasPerm("recipe.validate"),
@@ -45,6 +56,11 @@ export function RecipesSection({ guarded, hasPerm }) {
 
   const load = useCallback(async () => { const p = await guarded(() => fetchRecipes(statusFilter)); if (p) setList(p.items || []); }, [guarded, statusFilter]);
   useEffect(() => { (async () => { const m = await guarded(() => fetchRecipeMeta()); if (m) setMeta(m); })(); }, [guarded]);
+  useEffect(() => { (async () => {
+    const f = await guarded(() => fetchFormulas("published")); if (f) setFormulaOpts((f.items || []).map((x) => ({ value: x.id, label: x.data?.name || x.id })));
+    const p = await guarded(() => fetchLibList("professions", "published")); if (p) setProfessionOpts((p.items || []).map((x) => ({ value: x.id, label: x.data?.name || x.id })));
+    const w = await guarded(() => fetchLibList("workshops", "published")); if (w) setWorkshopOpts((w.items || []).map((x) => ({ value: x.id, label: x.data?.name || x.id })));
+  })(); }, [guarded]);
   useEffect(() => { load(); }, [load]);
 
   const statuses = meta?.statuses || [];
@@ -102,7 +118,8 @@ export function RecipesSection({ guarded, hasPerm }) {
               {ings.map((row, i) => (
                 <div className="ntv2-list-row" key={i}>
                   <input className="ntv2-mono" placeholder="item_id" value={row.item_id || ""} disabled={disabled} onChange={(e) => setIng(i, { item_id: e.target.value })} />
-                  <input type="number" style={{ width: 90 }} placeholder="кол-во" value={row.amount ?? 1} disabled={disabled} onChange={(e) => setIng(i, { amount: e.target.value })} />
+                  <input type="number" style={{ width: 80 }} placeholder="кол-во" value={row.amount ?? 1} disabled={disabled} onChange={(e) => setIng(i, { amount: e.target.value })} />
+                  <select value={row.role || ""} disabled={disabled} onChange={(e) => setIng(i, { role: e.target.value })}><option value="">роль…</option>{(meta.materialRoles || []).map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}</select>
                   {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => set("ingredients", ings.filter((_, idx) => idx !== i))}>×</button> : null}
                 </div>
               ))}
@@ -112,6 +129,26 @@ export function RecipesSection({ guarded, hasPerm }) {
 
           <h4 className="ntv2-subhead">Параметры</h4>
           <div className="ntv2-form-row">{num("craft_time", "Время (сек)")}{num("success_chance", "Шанс успеха %")}{num("quality_chance", "Шанс качества %")}{num("fail_chance", "Шанс провала %")}</div>
+
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Профессия, тип и формулы (ТЗ 13 §5.6–§5.8)</h4>
+            <div className="ntv2-form-row">
+              <Field label="Тип рецепта"><select value={d.recipe_type || ""} disabled={disabled} onChange={(e) => set("recipe_type", e.target.value)}><option value="">—</option>{(meta.recipeTypes || []).map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}</select></Field>
+              <Field label="Профессия"><select value={d.profession || ""} disabled={disabled} onChange={(e) => set("profession", e.target.value)}><option value="">—</option>{professionOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
+              <Field label="Мастерская (объект)"><select value={d.workshop_id || ""} disabled={disabled} onChange={(e) => set("workshop_id", e.target.value)}><option value="">—</option>{workshopOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
+            </div>
+            <div className="ntv2-form-row">{num("profession_level", "Уровень профессии")}{num("player_level", "Уровень игрока")}<Field label="Сложность"><input value={d.difficulty} disabled={disabled} onChange={(e) => set("difficulty", e.target.value)} /></Field></div>
+            <div className="ntv2-form-row">
+              {[["result_formula_id", "Формула результата"], ["time_formula_id", "Формула времени"], ["cost_formula_id", "Формула стоимости"], ["exp_formula_id", "Формула опыта"]].map(([key, label]) => (
+                <Field key={key} label={label}><select value={d[key] || ""} disabled={disabled} onChange={(e) => set(key, e.target.value)}><option value="">— без формулы —</option>{formulaOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
+              ))}
+            </div>
+            <div className="ntv2-form-row" style={{ gap: 14 }}>
+              <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.can_mass_craft)} disabled={disabled} onChange={(e) => set("can_mass_craft", e.target.checked)} /> Массовое создание</label>
+              <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.can_queue)} disabled={disabled} onChange={(e) => set("can_queue", e.target.checked)} /> В очередь</label>
+              <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.can_cancel)} disabled={disabled} onChange={(e) => set("can_cancel", e.target.checked)} /> Можно отменить</label>
+            </div>
+          </div>
 
           <div className="ntv2-panel">
             <h4 className="ntv2-subhead">Чертёж и доступ</h4>
@@ -144,6 +181,8 @@ export function RecipesSection({ guarded, hasPerm }) {
           {!editing.isNew && can.del ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Удалить рецепт?", dangerous: true, confirmLabel: "Удалить", body: <p>Полное удаление рецепта.</p>, run: async (r) => { await guarded(() => deleteRecipe(editing.id, editing.id, r), "Удалено."); setEditing(null); await load(); } })}>Удалить</button> : null}
         </div>
 
+        {!editing.isNew ? <VersionHistory base="recipes" id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
+
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />
       </section>
@@ -163,7 +202,7 @@ export function RecipesSection({ guarded, hasPerm }) {
         <SearchBox value={query} onChange={setQuery} />
       </div>
       {!list.length ? <p className="ntv2-hint">Рецептов пока нет. Можно создать новый или импортировать существующие.</p> : null}
-      <NoResults query={list.length ? query : ""} />
+      <NoResults items={list} query={query} />
       <div className="ntv2-list">
         {filterEntities(list, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>

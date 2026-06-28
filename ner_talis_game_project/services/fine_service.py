@@ -867,8 +867,19 @@ def repair_player_fines(player: dict[str, Any], now: float | int | None = None) 
     if legacy is not None and not is_fine_active(legacy):
         player.pop("active_fine", None)
         issues.append("dropped_inactive_legacy_alias")
+    elif is_fine_active(legacy):
+        # Legacy-форма: активный штраф лежит ТОЛЬКО в active_fine, списка
+        # active_fines нет. Помечаем перенос — active_fines() ниже мигрирует
+        # его в список. Без этого _sync_active_fine_alias затёр бы валидный
+        # долг пустым списком (тихо снимал бы штраф и сообщал fixed: false).
+        current = player.get("active_fines")
+        current = current if isinstance(current, list) else []
+        legacy_id = str(legacy.get("id") or "")
+        if not legacy_id or all(str(f.get("id") or "") != legacy_id for f in current):
+            issues.append("migrated_legacy_fine")
 
-    _sync_active_fine_alias(player)
+    # active_fines() переносит активный legacy active_fine в список И
+    # синхронизирует алиас — вызываем ЕГО, а не голый _sync_active_fine_alias.
     fines = active_fines(player)
     if not fines:
         state = "no_active_fines"

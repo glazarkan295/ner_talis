@@ -236,6 +236,19 @@ def claim_port_stock(item_id: str, amount: int) -> tuple[int, int]:
     with _PORT_STOCK_LOCK, _port_state_file_lock():
         state = _load_port_state()
         items = state.get("items")
+        now = time.time()
+        # Ревалидация ротации ПОД ЛОКОМ перед списанием: если ассортимент истёк
+        # (или пуст), регенерируем — иначе игрок, открывший товар до истечения и
+        # подтвердивший покупку после expires_at, списал бы «фантомный» сток из
+        # просроченной ротации до того, как её обновит другой вызов.
+        if (
+            not isinstance(items, list)
+            or not items
+            or float(state.get("expires_at") or 0) <= now
+        ):
+            state = _generate_port_rotation(now, random.Random())
+            _save_port_state(state)
+            items = state.get("items")
         if not isinstance(items, list):
             return 0, 0
         for entry in items:

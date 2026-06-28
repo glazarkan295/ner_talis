@@ -5,8 +5,14 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from keyboards.reply_keyboards import make_keyboard, start_keyboard
-from services.city_service import CITY_BUTTONS, process_world_action, unstuck_player
-from services.chat_log_service import append_player_chat_log, normalize_bot_messages, pop_pending_bot_messages
+from services.bot_flood_guard import clamp_incoming_text, guard_incoming
+from services.city_service import CITY_BUTTONS, looks_like_game_action, process_world_action, unstuck_player
+from services.chat_log_service import (
+    DurableOutboxDelivery,
+    append_player_chat_log,
+    normalize_bot_messages,
+    pop_pending_bot_messages,
+)
 from services.external_location_service import complete_active_timer
 from services.runtime_timer_scheduler import attach_timer_notification, schedule_timer_delivery
 from storage.base import PlayerStorage
@@ -90,7 +96,21 @@ async def unstuck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def city_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await send_city_response(update, context, update.message.text)
+    # Защита входящих (ТЗ 08 §7): дедуп события, антифлуд, обрезка длины ДО
+    # игровой логики. Дубликаты/флуд тихо игнорируем (не шлём длинный ответ).
+    user_id = get_external_user_id(update)
+    decision = guard_incoming(TELEGRAM_PLATFORM, user_id, getattr(update, "update_id", None))
+    if not decision["allowed"]:
+        if decision["reason"] == "flood":
+            logger.info("Telegram flood-limit: user=%s", user_id)
+        return
+    text = clamp_incoming_text(update.message.text)
+    # 16-TZ §4: свободный текст (длинный/многострочный) не гоняем через городскую
+    # игровую логику — это снижает нагрузку от случайных сообщений. Подписи
+    # кнопок короткие и однострочные, поэтому реальные действия проходят.
+    if not looks_like_game_action(text):
+        return
+    await send_city_response(update, context, text)
 
 
 async def send_city_response(
@@ -124,12 +144,19 @@ async def send_city_response(
         platform=TELEGRAM_PLATFORM,
     )
 
-    for message in [*durable_messages, *pop_pending_bot_messages(player), *getattr(result, "extra_messages", ())]:
-        append_player_chat_log(player, direction="bot", text=message, platform=TELEGRAM_PLATFORM)
-        await update.message.reply_text(
-            message,
-            disable_web_page_preview=True,
-        )
+    # Durable-outbox доставляем с гарантией: при сбое reply_text несработавшие
+    # сообщения возвращаются в очередь (см. DurableOutboxDelivery), а не теряются.
+    delivery = DurableOutboxDelivery(storage, game_id, durable_messages)
+    try:
+        for message in durable_messages:
+            append_player_chat_log(player, direction="bot", text=message, platform=TELEGRAM_PLATFORM)
+            await update.message.reply_text(message, disable_web_page_preview=True)
+            delivery.mark_sent()
+        for message in [*pop_pending_bot_messages(player), *getattr(result, "extra_messages", ())]:
+            append_player_chat_log(player, direction="bot", text=message, platform=TELEGRAM_PLATFORM)
+            await update.message.reply_text(message, disable_web_page_preview=True)
+    finally:
+        delivery.requeue_unsent()
 
     append_player_chat_log(player, direction="bot", text=result.text, platform=TELEGRAM_PLATFORM)
     await update.message.reply_text(

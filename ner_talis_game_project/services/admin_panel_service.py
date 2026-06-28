@@ -728,15 +728,22 @@ def deliver_rewards_to_player(storage: Any, *, target_game_id: str, rewards: lis
         "source": "admin_panel",
     }
     # Мгновенная доставка через очередь (если включена), иначе атомарный outbox —
-    # ровно один путь, без дублей.
-    from services.message_delivery import notify_player
-    status = notify_player(
-        storage, game_id, text, type="admin_gift", priority="high",
-        source="admin_panel", fallback_message=gift_message,
-    )
-    if status == "skipped":  # хранилище без outbox — крайний запасной путь
-        player.setdefault("pending_bot_messages", []).append(gift_message)
-        storage.update_player(player)
+    # ровно один путь, без дублей. Награда УЖЕ сохранена (update_player выше),
+    # поэтому сбой постановки уведомления не должен делать операцию повторяемой:
+    # иначе повтор админа начислит ту же награду второй раз. Сообщение дошлётся
+    # при следующем действии игрока/тике.
+    message_queued = True
+    try:
+        from services.message_delivery import notify_player
+        status = notify_player(
+            storage, game_id, text, type="admin_gift", priority="high",
+            source="admin_panel", fallback_message=gift_message,
+        )
+        if status == "skipped":  # хранилище без outbox — крайний запасной путь
+            player.setdefault("pending_bot_messages", []).append(gift_message)
+            storage.update_player(player)
+    except Exception:
+        message_queued = False
     record_admin_operation(
         session=admin_session,
         action="rewards.grant",
@@ -751,7 +758,7 @@ def deliver_rewards_to_player(storage: Any, *, target_game_id: str, rewards: lis
         reason=reason,
         details={"rewards": normalized},
     )
-    return {"ok": True, "target_game_id": game_id, "delivered": lines, "playerMessageQueued": True}
+    return {"ok": True, "target_game_id": game_id, "delivered": lines, "playerMessageQueued": message_queued}
 
 
 def rewards_to_promo_payload(rewards: list[dict[str, Any]]) -> dict[str, Any]:

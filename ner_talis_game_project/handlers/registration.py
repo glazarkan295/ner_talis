@@ -13,6 +13,7 @@ from keyboards.reply_keyboards import (
     start_keyboard,
 )
 from services.promo_service import redeem_promo_code
+from services import referral_service
 from services.registration_service import (
     CONSENT_BUTTON,
     consent_message,
@@ -68,6 +69,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             "Ты уже зарегистрирован. Команда /start повторно не запускает регистрацию."
         )
         return ConversationHandler.END
+
+    # Реферальная ссылка: deep-link payload «/start ref_<код>» запоминаем до конца
+    # регистрации, чтобы привязать новичка к рефереру.
+    args = getattr(context, "args", None)
+    if isinstance(args, (list, tuple)) and args:
+        ref_code = referral_service.parse_referral_code(" ".join(str(a) for a in args))
+        if ref_code:
+            context.user_data["referral_code"] = ref_code
 
     # Сначала — согласие с документами, и только после него — меню начала игры.
     await update.message.reply_text(
@@ -398,7 +407,21 @@ async def handle_race_confirmation(
         gender_id=context.user_data.get("registration_gender"),
         gender_label=context.user_data.get("registration_gender_label"),
     )
+    # Реферал (15-CODEX §6): помечаем новичка ДО сохранения (referred_by попадёт
+    # в его запись), но начисляем рефереру ТОЛЬКО ПОСЛЕ успешного создания —
+    # иначе при сбое save_new_player у реферера остался бы фиктивный приглашённый.
+    referral_code = context.user_data.get("referral_code")
+    if referral_code:
+        try:
+            referral_service.mark_referred_by(player, referral_code)
+        except Exception:
+            pass
     storage.save_new_player(player, TELEGRAM_PLATFORM, external_user_id)
+    if player.get("referred_by"):
+        try:
+            referral_service.credit_referrer(storage, player)
+        except Exception:
+            pass
     context.user_data.clear()
 
     await update.message.reply_text(

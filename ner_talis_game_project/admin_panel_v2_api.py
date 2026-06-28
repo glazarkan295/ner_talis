@@ -32,9 +32,11 @@ from services.admin_player_service import delete_player_profile, reset_player_pr
 from services.admin_rbac import (
     ALL_PERMISSIONS,
     DANGEROUS_ACTIONS,
+    DEFAULT_ROLE,
     OWNER,
     PERM_AUDIT_VIEW,
     PERM_FINES_MANAGE,
+    PERM_INVENTORY_EDIT,
     PERM_PLAYERS_DELETE,
     PERM_PLAYERS_MESSAGE,
     PERM_PLAYERS_RESET,
@@ -48,6 +50,7 @@ from services.admin_rbac import (
     ROLES,
     get_role_overrides,
     identity_key,
+    is_configured_admin_user,
     normalize_role,
     permissions_for,
     remove_role_override,
@@ -261,7 +264,19 @@ def create_admin_panel_v2_router(get_storage) -> APIRouter:
         session = _session(storage, request, token)
         _require(session, PERM_ROLES_MANAGE)
         target_key = identity_key(platform, admin_user_id)
+        actor_key = identity_key(session.get("platform"), session.get("admin_user_id"))
         before = resolve_admin_role(platform, admin_user_id)
+        # Защита от самоблокировки: снятие СОБСТВЕННОГО override owner запрещено,
+        # если роль owner держится только на override (нет ENV-bootstrap). Иначе
+        # owner-через-override снимет себе доступ к управлению ролями. Путь assign
+        # уже имеет такую защиту — здесь её не было.
+        if target_key == actor_key and before == OWNER:
+            would_be = OWNER if is_configured_admin_user(platform, admin_user_id) else DEFAULT_ROLE
+            if would_be != OWNER:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Нельзя снять собственный override owner (защита от потери доступа).",
+                )
         removed = remove_role_override(platform, admin_user_id)
         after = resolve_admin_role(platform, admin_user_id)
         record_admin_operation(
@@ -390,7 +405,10 @@ def create_admin_panel_v2_router(get_storage) -> APIRouter:
     def player_view_token(game_id: str, payload: PlayerActionRequest, request: Request) -> dict[str, Any]:
         storage = get_storage()
         session = _session(storage, request, payload.token)
-        _require(session, PERM_PLAYERS_VIEW)
+        # Этот токен даёт РЕДАКТИРУЕМЫЙ доступ к профилю игрока (выброс предметов,
+        # смена имени, очки, курьер), поэтому требует права на изменение, а не
+        # только players.view (Codex P1: read-only не должен получать edit-токен).
+        _require(session, PERM_INVENTORY_EDIT)
         try:
             view_token = create_admin_player_view_token(storage, target_game_id=game_id, admin_session=session)
         except ValueError as exc:

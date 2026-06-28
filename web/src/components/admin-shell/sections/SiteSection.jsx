@@ -14,6 +14,7 @@ import {
   SITE_BLOCK_WIDTH, SITE_BLOCK_ALIGN, SITE_RATING_TYPE, SITE_RATING_PERIOD, SITE_LORE_TYPE,
 } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { VersionHistory } from "../VersionHistory.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { ImageUploadField } from "../ImageUploadField.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
@@ -351,6 +352,8 @@ export function SiteSection({ guarded, hasPerm }) {
           {!editing.isNew && can.archive ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "В архив?", dangerous: true, confirmLabel: "В архив", body: <p>Материал уйдёт в архив.</p>, run: async (r) => { await guarded(() => siteLifecycle(kind, editing.id, "archive", r), "В архиве."); await refreshEditing(); } })}>В архив</button> : null}
         </div>
 
+        {!editing.isNew ? <VersionHistory base={`site/${kind}`} id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
+
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />
       </section>
@@ -372,7 +375,7 @@ export function SiteSection({ guarded, hasPerm }) {
         <SearchBox value={query} onChange={setQuery} />
       </div>
       {!list.length ? <p className="ntv2-hint">Материалов нет.</p> : null}
-      <NoResults query={list.length ? query : ""} />
+      <NoResults items={list} query={query} />
       <div className="ntv2-list">
         {filterEntities(list, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>

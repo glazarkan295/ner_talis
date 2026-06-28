@@ -29,6 +29,7 @@ from services.admin_rbac import (
     require_permission,
 )
 from services import fine_constructor_service as fines
+from services.admin_versioning_routes import attach_entity_versioning_routes
 
 
 class IdDataRequest(BaseModel):
@@ -248,4 +249,12 @@ def create_admin_fines_router(get_storage) -> APIRouter:
         )
         return {"ok": True, "deleted": True}
 
+    attach_entity_versioning_routes(
+        router,
+        session_for=lambda req, tok: _session(get_storage(), req, tok),
+        require=_require, actor=_actor, store=fines.store,
+        target_type="fine_def",
+        view_perm=PERM_FINE_DEF_VIEW, edit_perm=PERM_FINE_DEF_EDIT, publish_perm=PERM_FINE_DEF_PUBLISH,
+        not_found="Штраф не найден.",
+    )
     return router

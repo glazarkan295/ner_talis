@@ -51,6 +51,27 @@ class PortStockAtomicTest(unittest.TestCase):
             finally:
                 os.environ.pop("PORT_MARKET_STATE_PATH", None)
 
+    def test_expired_rotation_not_sold(self):
+        # Codex P2: истёкшая ротация регенерируется под локом — «фантомный»
+        # сток из просроченного ассортимента нельзя купить.
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["PORT_MARKET_STATE_PATH"] = str(Path(tmp) / "port_state.json")
+            try:
+                import services.market_service as ms
+                ms._save_port_state({
+                    "generated_at": 0, "expires_at": 1,  # истекло (в прошлом)
+                    "items": [{"item_id": "phantom_item", "stock": 99}],
+                })
+                claimed, available = ms.claim_port_stock("phantom_item", 1)
+                self.assertEqual((claimed, available), (0, 0))
+                # Ротация действительно обновлена (свежий expires_at в будущем).
+                state = ms._load_port_state()
+                self.assertGreater(float(state.get("expires_at") or 0), 1)
+            finally:
+                os.environ.pop("PORT_MARKET_STATE_PATH", None)
+
 
 class MoneyRewardCapTest(unittest.TestCase):
     def test_high_denomination_capped_by_copper(self):

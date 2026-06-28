@@ -14,6 +14,7 @@ import html
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,7 +41,40 @@ from admin_promos_api import create_admin_promos_router
 from admin_profile_layout_api import create_admin_profile_layout_router
 from admin_city_api import create_admin_city_router
 from admin_recipes_api import create_admin_recipes_router
+from admin_camp_api import create_admin_camp_router
+from admin_graph_api import create_admin_graph_router
+from admin_sublocation_api import create_admin_sublocation_router
+from admin_formula_api import create_admin_formula_router
+from admin_craft_api import create_admin_profession_router, create_admin_workshop_router
+from admin_workshop_message_api import create_admin_workshop_message_router
+from admin_item_action_api import (
+    create_admin_upgrade_router, create_admin_enchant_router, create_admin_disassemble_router,
+)
+from admin_search_api import create_admin_search_router
+from admin_reputation_api import create_admin_reputation_router
+from admin_addiction_tolerance_api import (
+    create_admin_addiction_router, create_admin_tolerance_router,
+)
+from admin_tavern_api import create_admin_tavern_router
+from admin_trait_api import create_admin_trait_router
+from admin_blessing_api import create_admin_blessing_router
+from admin_phase_api import create_admin_phase_router
+from admin_progression_api import (
+    create_admin_levels_router,
+    create_admin_exp_router,
+    create_admin_registration_router,
+    create_admin_races_router,
+)
 from admin_import_api import create_admin_import_router
+from admin_feature_flags_api import create_admin_feature_flags_router
+from admin_text_api import create_admin_text_router
+from admin_pvp_api import create_admin_pvp_router
+from admin_combat_api import create_admin_combat_router
+from admin_npc_ally_api import create_admin_npc_ally_router
+from admin_mole_api import create_admin_mole_router
+from admin_casino_api import create_admin_casino_router
+from admin_housing_api import create_admin_housing_router
+from admin_dashboard_api import create_admin_dashboard_router
 from admin_uploads_api import create_admin_uploads_router
 from admin_site_api import create_admin_site_router
 from public_site_api import create_public_site_router
@@ -156,6 +190,23 @@ def _client_ip_for_rate_limit(request: Request) -> str:
     return direct_ip
 
 
+def _request_is_https(request: Request) -> bool:
+    """HTTPS ли запрос. X-Forwarded-Proto подделывается прямым HTTP-клиентом,
+    поэтому доверяем ему только при TRUST_PROXY_HEADERS и доверенном ближайшем
+    узле — та же модель доверия, что и для IP в _client_ip_for_rate_limit.
+    Иначе FORCE_HTTPS обходится спуфом заголовка на любом прямом развёртывании."""
+    if request.url.scheme == "https":
+        return True
+    if _truthy_env("TRUST_PROXY_HEADERS", "false"):
+        direct_ip = request.client.host if request.client else "unknown"
+        trusted_proxies = set(_csv_env("TRUSTED_PROXY_IPS", "127.0.0.1,::1"))
+        if direct_ip in trusted_proxies:
+            proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+            if proto == "https":
+                return True
+    return False
+
+
 def _safe_uploaded_asset_path(asset_path: str) -> Path | None:
     relative = Path(str(asset_path or ""))
     if relative.is_absolute() or ".." in relative.parts:
@@ -234,17 +285,22 @@ def create_app() -> FastAPI:
     # раскрывают все admin/profile-ручки и схемы. Включаются осознанно для
     # разработки флагом ENABLE_API_DOCS=true.
     docs_enabled = _truthy_env("ENABLE_API_DOCS", "false")
+
+    # Современный lifespan вместо устаревшего @app.on_event("startup") (16-TZ §7):
+    # фоновые воркеры стартуют при запуске приложения, shutdown — no-op.
+    @asynccontextmanager
+    async def _lifespan(_app: FastAPI):
+        _start_web_background_workers()
+        yield
+
     app = FastAPI(
         title="Ner-Talis",
         version="0.4.2",
         docs_url="/docs" if docs_enabled else None,
         redoc_url="/redoc" if docs_enabled else None,
         openapi_url="/openapi.json" if docs_enabled else None,
+        lifespan=_lifespan,
     )
-
-    @app.on_event("startup")
-    def _on_startup() -> None:
-        _start_web_background_workers()
 
     app.add_middleware(
         TrustedHostMiddleware,
@@ -261,8 +317,7 @@ def create_app() -> FastAPI:
     async def security_and_rate_limit_middleware(request: Request, call_next):
         path = request.url.path
         if _truthy_env("FORCE_HTTPS", "false") and path != "/health":
-            forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
-            is_https = request.url.scheme == "https" or forwarded_proto == "https"
+            is_https = _request_is_https(request)
             host = request.headers.get("host", "")
             if not is_https and not host.startswith(("localhost", "127.0.0.1")):
                 secure_url = request.url.replace(scheme="https")
@@ -281,30 +336,19 @@ def create_app() -> FastAPI:
             max_requests = 0
 
         if max_requests > 0:
+            # Общий лимитер (16-TZ §6): через Redis — единый для всех процессов;
+            # без Redis — in-memory fallback (поведение как раньше для dev).
+            from services import shared_rate_limit
             client_ip = _client_ip_for_rate_limit(request)
-            bucket_key = (client_ip, request.method.upper(), path.rsplit("/", 1)[0] if "/" in path else path)
-            buckets = app.state.rate_limit_hits
-            hits = buckets[bucket_key]
-            while hits and now - hits[0] > window_seconds:
-                hits.popleft()
-            if len(hits) >= max_requests:
+            scope = path.rsplit("/", 1)[0] if "/" in path else path
+            limit_key = f"web:{request.method.upper()}:{scope}:{client_ip}"
+            if not shared_rate_limit.allow(limit_key, max_requests, window_seconds, now=now):
                 response = JSONResponse(
                     {"detail": "Слишком много запросов. Подождите немного и повторите действие."},
                     status_code=429,
                 )
             else:
-                hits.append(now)
                 response = await call_next(request)
-            # Periodically drop empty/stale buckets so per-IP keys do not pile up
-            # forever (slow memory growth over weeks of uptime).
-            app.state.rate_limit_sweep_counter = getattr(app.state, "rate_limit_sweep_counter", 0) + 1
-            if app.state.rate_limit_sweep_counter >= int(os.getenv("RATE_LIMIT_SWEEP_EVERY", "500") or "500"):
-                app.state.rate_limit_sweep_counter = 0
-                for stale_key, stale_hits in list(buckets.items()):
-                    while stale_hits and now - stale_hits[0] > window_seconds:
-                        stale_hits.popleft()
-                    if not stale_hits:
-                        buckets.pop(stale_key, None)
         else:
             response = await call_next(request)
 
@@ -345,9 +389,40 @@ def create_app() -> FastAPI:
     app.include_router(create_admin_profile_layout_router(storage))
     app.include_router(create_admin_city_router(storage))
     app.include_router(create_admin_recipes_router(storage))
+    app.include_router(create_admin_camp_router(storage))
+    app.include_router(create_admin_trait_router(storage))
+    app.include_router(create_admin_blessing_router(storage))
+    app.include_router(create_admin_phase_router(storage))
+    app.include_router(create_admin_levels_router(storage))
+    app.include_router(create_admin_exp_router(storage))
+    app.include_router(create_admin_registration_router(storage))
+    app.include_router(create_admin_races_router(storage))
     app.include_router(create_admin_import_router(storage))
+    app.include_router(create_admin_feature_flags_router(storage))
+    app.include_router(create_admin_text_router(storage))
+    app.include_router(create_admin_pvp_router(storage))
+    app.include_router(create_admin_combat_router(storage))
+    app.include_router(create_admin_npc_ally_router(storage))
+    app.include_router(create_admin_mole_router(storage))
+    app.include_router(create_admin_casino_router(storage))
+    app.include_router(create_admin_housing_router(storage))
+    app.include_router(create_admin_dashboard_router(storage))
     app.include_router(create_admin_uploads_router(storage))
     app.include_router(create_admin_site_router(storage))
+    app.include_router(create_admin_graph_router(storage))
+    app.include_router(create_admin_sublocation_router(storage))
+    app.include_router(create_admin_formula_router(storage))
+    app.include_router(create_admin_profession_router(storage))
+    app.include_router(create_admin_workshop_router(storage))
+    app.include_router(create_admin_workshop_message_router(storage))
+    app.include_router(create_admin_upgrade_router(storage))
+    app.include_router(create_admin_enchant_router(storage))
+    app.include_router(create_admin_disassemble_router(storage))
+    app.include_router(create_admin_search_router(storage))
+    app.include_router(create_admin_reputation_router(storage))
+    app.include_router(create_admin_addiction_router(storage))
+    app.include_router(create_admin_tolerance_router(storage))
+    app.include_router(create_admin_tavern_router(storage))
     app.include_router(create_public_site_router())
 
     # Очередь сообщений читает/пишет ту же БД, что и боты (SQLite/Postgres),

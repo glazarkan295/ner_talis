@@ -30,6 +30,7 @@ from services.admin_rbac import (
     require_permission,
 )
 from services import recipe_constructor_service as recipes
+from services.admin_versioning_routes import attach_entity_versioning_routes
 
 
 class IdDataRequest(BaseModel):
@@ -108,6 +109,9 @@ def create_admin_recipes_router(get_storage) -> APIRouter:
         return {
             "ok": True,
             "workshops": list(recipes.WORKSHOPS),
+            "workshopLabels": recipes.WORKSHOP_LABELS,
+            "recipeTypes": [{"value": t, "label": recipes.RECIPE_TYPE_LABELS.get(t, t)} for t in recipes.RECIPE_TYPES],
+            "materialRoles": [{"value": r, "label": recipes.MATERIAL_ROLE_LABELS.get(r, r)} for r in recipes.MATERIAL_ROLES],
             "statuses": [{"value": s, "label": recipes.STATUS_LABELS.get(s, s)} for s in recipes.STATUSES],
         }
 
@@ -272,4 +276,12 @@ def create_admin_recipes_router(get_storage) -> APIRouter:
         )
         return {"ok": True, "deleted": True}
 
+    attach_entity_versioning_routes(
+        router,
+        session_for=lambda req, tok: _session(get_storage(), req, tok),
+        require=_require, actor=_actor, store=recipes.store,
+        target_type="recipe",
+        view_perm=PERM_RECIPE_VIEW, edit_perm=PERM_RECIPE_EDIT, publish_perm=PERM_RECIPE_PUBLISH,
+        not_found="Рецепт не найден.",
+    )
     return router

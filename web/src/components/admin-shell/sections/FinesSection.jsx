@@ -11,6 +11,7 @@ import {
 } from "../../../api/adminFinesApi.js";
 import { tr, FINE_TYPE, FINE_SOURCE, FINE_ISSUER_ROLE, CURRENCY, FINE_RESTRICTION } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { VersionHistory } from "../VersionHistory.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { MessageComposer } from "../MessageComposer.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
@@ -158,6 +159,8 @@ export function FinesSection({ guarded, hasPerm }) {
           {!editing.isNew && can.del ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Удалить тип штрафа?", dangerous: true, confirmLabel: "Удалить", body: <p>Полное удаление определения типа штрафа.</p>, run: async (r) => { await guarded(() => deleteFine(editing.id, editing.id, r), "Удалено."); setEditing(null); await load(); } })}>Удалить</button> : null}
         </div>
 
+        {!editing.isNew ? <VersionHistory base="fines" id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
+
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />
       </section>
@@ -176,7 +179,7 @@ export function FinesSection({ guarded, hasPerm }) {
       </div>
       <div className="ntv2-filters"><SearchBox value={query} onChange={setQuery} /></div>
       {!list.length ? <p className="ntv2-hint">Типов штрафов пока нет.</p> : null}
-      <NoResults query={list.length ? query : ""} />
+      <NoResults items={list} query={query} />
       <div className="ntv2-list">
         {filterEntities(list, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>

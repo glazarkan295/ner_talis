@@ -25,6 +25,7 @@ from services.admin_rbac import (
     require_permission,
 )
 from services import profile_layout_service as layout
+from services.admin_versioning_routes import attach_kinded_versioning_routes
 
 
 class IdDataRequest(BaseModel):
@@ -268,4 +269,21 @@ def create_admin_profile_layout_router(get_storage) -> APIRouter:
         )
         return {"ok": True, "deleted": True}
 
+    def _pl_get_checked(object_id: str, kind: str) -> dict[str, Any]:
+        _check_kind(kind)
+        item = layout.store().get(object_id)
+        if item is None or (item.get("data") or {}).get("_kind") != kind:
+            raise HTTPException(status_code=404, detail="Объект раскладки не найден.")
+        return item
+
+    attach_kinded_versioning_routes(
+        router,
+        session_for=lambda req, tok: _session(get_storage(), req, tok),
+        require=_require, actor=_actor, store=layout.store,
+        get_checked=_pl_get_checked,
+        view_perm_for=lambda k: PERM_PROFILE_LAYOUT_VIEW,
+        edit_perm_for=lambda k: PERM_PROFILE_LAYOUT_EDIT,
+        publish_perm_for=lambda k: PERM_PROFILE_LAYOUT_PUBLISH,
+        target_type_for=lambda k: f"profile_layout.{k}",
+    )
     return router

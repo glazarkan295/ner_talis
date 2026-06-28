@@ -95,6 +95,27 @@ class MessageQueueTest(unittest.TestCase):
         mq.dispatch_once(lambda m: (order.append(m["text"]) or (mq.RESULT_SENT, "")))
         self.assertEqual(order[0], "crit")
 
+    def test_dispatch_claims_only_requested_platforms(self):
+        # Codex P2: dispatch с platforms=[telegram] не клеймит vk-сообщения —
+        # процесс telegram не жжёт попытки чужим сообщениям.
+        tg, _ = self._msg(platform="telegram", text="tg", recipient="t1")
+        vk, _ = self._msg(platform="vk", text="vk", recipient="v1")
+        sent = []
+        counts = mq.dispatch_once(
+            lambda m: (sent.append(m["platform"]) or (mq.RESULT_SENT, "")),
+            platforms=["telegram"],
+        )
+        self.assertEqual(counts["sent"], 1)
+        self.assertEqual(sent, ["telegram"])
+        # vk-сообщение осталось в очереди (queued), не тронуто.
+        self.assertEqual(mq.get(vk["id"])["status"], "queued")
+        self.assertEqual(mq.get(tg["id"])["status"], "sent")
+
+    def test_dispatch_empty_platforms_claims_nothing(self):
+        self._msg(platform="telegram", text="tg")
+        counts = mq.dispatch_once(lambda m: (mq.RESULT_SENT, ""), platforms=[])
+        self.assertEqual(counts["processed"], 0)
+
 
 class MessagesApiTest(unittest.TestCase):
     def setUp(self):

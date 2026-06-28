@@ -14,6 +14,7 @@ import {
   tr, PROFILE_LAYOUT_KIND, PROFILE_BLOCK_TYPE, PROFILE_VISIBILITY, PROFILE_BLOCK_WIDTH,
 } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
+import { VersionHistory } from "../VersionHistory.jsx";
 import { EmojiInput } from "../EmojiField.jsx";
 import { ImageUploadField } from "../ImageUploadField.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
@@ -217,6 +218,8 @@ export function ProfileLayoutSection({ guarded, hasPerm }) {
           {!editing.isNew && can.publish ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Удалить?", dangerous: true, confirmLabel: "Удалить", body: <p>Полное удаление объекта раскладки.</p>, run: async (r) => { await guarded(() => deleteLayoutItem(kind, editing.id, editing.id, r), "Удалено."); setEditing(null); await load(); } })}>Удалить</button> : null}
         </div>
 
+        {!editing.isNew ? <VersionHistory base={`profile-layout/${kind}`} id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
+
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />
       </section>
@@ -241,7 +244,7 @@ export function ProfileLayoutSection({ guarded, hasPerm }) {
       </div>
       {showPreview ? <LayoutPreview guarded={guarded} /> : null}
       {!list.length ? <p className="ntv2-hint">Объектов нет.</p> : null}
-      <NoResults query={list.length ? query : ""} />
+      <NoResults items={list} query={query} />
       <div className="ntv2-list">
         {filterEntities(list, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item.id)}>

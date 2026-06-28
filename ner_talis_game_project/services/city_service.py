@@ -104,6 +104,43 @@ CITY_MANAGER = "Городской управляющий"
 CITY_REWARD_CLAIM_ACTION = "Получить награду"
 logger = logging.getLogger(__name__)
 
+# 15-CODEX §1: подписи, по которым игрок выходит из V2-узла обратно в легаси-город
+# (тогда сохранённый current_city_node сбрасывается).
+_CITY_V2_EXIT_ACTIONS = {"В город", "Назад в город", "На центральную площадь"}
+
+# 16-TZ §4: грубый, но безопасный фильтр «похоже на нажатие кнопки». Городской
+# хендлер ловит любой текст (catch-all), поэтому свободные сообщения (длинные или
+# многострочные) не должны грузить игровую логику города. Подписи кнопок короткие
+# и однострочные, так что реальные действия проходят, а чат-мусор — нет.
+_MAX_ACTION_LEN = 64
+
+
+def looks_like_game_action(action: Any) -> bool:
+    """True, если текст похож на подпись кнопки (короткий, однострочный)."""
+    s = str(action or "").strip()
+    if not s or "\n" in s:
+        return False
+    return len(s) <= _MAX_ACTION_LEN
+
+
+def _resolve_v2_city_context(player: dict[str, Any]) -> str:
+    """Текущий V2-узел игрока для навигации (18-CODEX §1).
+
+    Берём сохранённый current_city_node (если он всё ещё опубликован). Legacy
+    current_zone/location_id используем как контекст ТОЛЬКО если это реальный
+    опубликованный V2 city node — иначе ложный legacy zone подавил бы глобальный
+    fallback по подписи кнопки и V2 entry-кнопка не сработала бы у старых игроков."""
+    from services import city_runtime
+
+    current_node = str(player.get("current_city_node") or "")
+    if current_node and city_runtime.node_runtime_view(current_node) is None:
+        current_node = ""
+    if not current_node:
+        legacy = str(player.get("current_zone") or player.get("location_id") or "")
+        if legacy and city_runtime.node_runtime_view(legacy) is not None:
+            current_node = legacy
+    return current_node
+
 
 @dataclass(frozen=True)
 class CityResponse:
@@ -1071,12 +1108,25 @@ def process_world_action(
     # При выключенном флаге ветка не входит и поведение 1:1 как раньше.
     from services import city_runtime
     if city_runtime.live_enabled():
-        node_response = city_runtime.try_handle(action)
+        # 15-CODEX §1: текущий V2-узел берём из состояния игрока (а не из legacy
+        # zone), чтобы одинаковые кнопки («Назад») резолвились в контексте именно
+        # текущего узла. Если сохранённый узел больше не опубликован — сбрасываем.
+        # 18-CODEX §1: legacy zone передаётся как V2-контекст только если это
+        # реальный опубликованный V2-узел (см. _resolve_v2_city_context).
+        current_node = _resolve_v2_city_context(player)
+        node_response = city_runtime.try_handle(action, current_node_id=current_node)
         if node_response is not None:
+            # Сохраняем текущий V2-узел на игроке (handler сохранит его после
+            # действия — мутируем тот же объект, см. handlers/city.py).
+            player["current_city_node"] = node_response.get("node_id") or current_node
             return _with_extra_messages(
                 WorldActionResult(text=node_response["text"], buttons=node_response["buttons"]),
                 fine_advance.messages,
             )
+        # Не V2-навигация: явный возврат «В город» выводит из V2-контекста, чтобы
+        # дальше работала легаси-городская логика без устаревшего узла.
+        if player.get("current_city_node") and str(action).strip() in _CITY_V2_EXIT_ACTIONS:
+            player["current_city_node"] = ""
 
     if action == PROFILE_BUTTON:
         try:

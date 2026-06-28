@@ -1376,6 +1376,15 @@ def _published_profile_layout() -> dict[str, Any]:
         return {"tabs": [], "theme": None}
 
 
+def _referral_summary(player: dict[str, Any]) -> dict[str, Any]:
+    """Реферальные данные игрока для профиля (код, ссылка, число приглашённых)."""
+    try:
+        from services.referral_service import referral_summary
+        return referral_summary(player)
+    except Exception:  # noqa: BLE001 - реферал не должен ломать профиль
+        return {"code": "", "link": "", "count": 0, "referredBy": ""}
+
+
 def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
     prune_expired_effects(player)
     ensure_curse_bearer_effect(player)
@@ -1575,6 +1584,7 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "balanceCopper": safe_int(player.get("money"), 0),
             "balanceText": format_money(safe_int(player.get("money"), 0)),
         },
+        "referral": _referral_summary(player),
         "information": {
             "achievements": player.get("achievements", []),
             "rating": player.get("rating", {"globalPlace": "—", "pvePlace": "—", "pvpPlace": "—", "craftPlace": "—"}),
@@ -2581,8 +2591,16 @@ def create_profile_api_router(get_storage) -> APIRouter:
             )
         except CourierError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+        # Посылка уже оформлена и СОХРАНЕНА внутри create_courier_transfer
+        # (списание durable до постановки в очередь). Повторное сохранение
+        # синх-параметров для ботов не должно делать запрос повторяемым: при сбое
+        # клиент создал бы вторую платную посылку. Параметры пересчитаются при
+        # следующем действии игрока.
         sync_player_parameters_for_bots(player)
-        save_player(storage, player)
+        try:
+            save_player(storage, player)
+        except Exception:
+            pass
         return {
             "ok": True,
             "message": result["message"],

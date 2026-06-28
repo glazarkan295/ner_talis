@@ -17,8 +17,14 @@ from keyboards.vk_keyboards import (
     race_keyboard,
     start_keyboard,
 )
+from services.bot_flood_guard import clamp_incoming_text, guard_incoming
 from services.city_service import CITY_BUTTONS, process_world_action, unstuck_player
-from services.chat_log_service import append_player_chat_log, normalize_bot_messages, pop_pending_bot_messages
+from services.chat_log_service import (
+    DurableOutboxDelivery,
+    append_player_chat_log,
+    normalize_bot_messages,
+    pop_pending_bot_messages,
+)
 from services.chat_scope_service import (
     ACTION_GAME,
     GROUP_GAME_NOTICE,
@@ -121,11 +127,19 @@ class VkRegistrationBot:
                         logger.exception("Failed to send VK group notice: peer_id=%s", peer_id)
                 continue
 
+            # Защита входящих (ТЗ 08 §7): дедуп события + антифлуд + обрезка длины
+            # ДО игровой логики. Дубликаты/флуд тихо пропускаем.
+            decision = guard_incoming(VK_PLATFORM, from_id, message.get("conversation_message_id") or message.get("id"))
+            if not decision["allowed"]:
+                if decision["reason"] == "flood":
+                    logger.info("VK flood-limit: from_id=%s", from_id)
+                continue
+
             try:
                 self.handle_message(
                     external_user_id=str(from_id),
                     peer_id=peer_id,
-                    text=text,
+                    text=clamp_incoming_text(text),
                 )
             except Exception:
                 logger.exception("VK message handling failed: peer_id=%s from_id=%s text=%r", peer_id, from_id, text)
@@ -670,9 +684,19 @@ class VkRegistrationBot:
             action=action,
             platform=VK_PLATFORM,
         )
-        for message in [*durable_messages, *pop_pending_bot_messages(player), *getattr(result, "extra_messages", ())]:
-            append_player_chat_log(player, direction="bot", text=message, platform=VK_PLATFORM)
-            self.send(peer_id, message)
+        # Durable-outbox с гарантией: при сбое self.send несработавшие сообщения
+        # возвращаются в очередь (см. DurableOutboxDelivery), а не теряются.
+        delivery = DurableOutboxDelivery(self.storage, game_id, durable_messages)
+        try:
+            for message in durable_messages:
+                append_player_chat_log(player, direction="bot", text=message, platform=VK_PLATFORM)
+                self.send(peer_id, message)
+                delivery.mark_sent()
+            for message in [*pop_pending_bot_messages(player), *getattr(result, "extra_messages", ())]:
+                append_player_chat_log(player, direction="bot", text=message, platform=VK_PLATFORM)
+                self.send(peer_id, message)
+        finally:
+            delivery.requeue_unsent()
         append_player_chat_log(player, direction="bot", text=result.text, platform=VK_PLATFORM)
         self.send(peer_id, result.text, make_keyboard(result.buttons))
         self.storage.update_player(player)

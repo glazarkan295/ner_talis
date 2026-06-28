@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from typing import Any
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_]{1,63}$")
@@ -60,6 +61,52 @@ def _was_imported(existing: dict[str, Any]) -> bool:
     return bool((existing.get("data") or {}).get("imported"))
 
 
+# --- Dry-run + изоляция запусков (ТЗ §3.3/§16 + 15-CODEX §7) -----------------
+# Состояние одного запуска импорта (dry-run флаг + журнал созданных записей)
+# хранится в thread-local, а НЕ в module-level глобалях: FastAPI исполняет
+# sync-эндпоинты в threadpool, поэтому параллельные /dry-run и /run шли бы по
+# одному глобальному состоянию и портили друг друга (15-CODEX §7). Реальные
+# (не dry-run) запуски дополнительно сериализуются _RUN_LOCK, чтобы их
+# rollback-журналы не перетирали друг друга (§7.4).
+_TL = threading.local()
+_RUN_LOCK = threading.Lock()
+
+
+def _dry_on() -> bool:
+    return bool(getattr(_TL, "dry_run", False))
+
+
+def _batch() -> list[tuple[str, str]]:
+    b = getattr(_TL, "batch", None)
+    if b is None:
+        b = []
+        _TL.batch = b
+    return b
+
+
+def _record_created(kind: str, sid: str) -> None:
+    if not _dry_on():
+        _batch().append((str(kind), str(sid)))
+
+
+def _noop(*_args: Any, **_kwargs: Any) -> None:
+    return None
+
+
+class _dry_run_scope:  # noqa: N801 — контекст-менеджер в стиле snake_case
+    def __init__(self, on: bool) -> None:
+        self._on = bool(on)
+        self._prev = False
+
+    def __enter__(self) -> "_dry_run_scope":
+        self._prev = getattr(_TL, "dry_run", False)
+        _TL.dry_run = self._on
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        _TL.dry_run = self._prev
+
+
 # --- Предметы --------------------------------------------------------------
 def _map_item(definition: dict[str, Any], source_id: str) -> dict[str, Any]:
     max_stack = definition.get("max_stack")
@@ -93,6 +140,8 @@ def import_items(*, overwrite: bool = False, actor: str = "import", mode: str | 
     from services.item_registry import load_all_item_definitions
     from services import item_constructor_service as ics
 
+    if _resolve_mode(mode) == "copy":
+        return _copy_unsupported("item")
     overwrite = overwrite or _mode_is_overwrite(mode)
     store = ics.store()
     created = updated = skipped = invalid = 0
@@ -105,19 +154,24 @@ def import_items(*, overwrite: bool = False, actor: str = "import", mode: str | 
             invalid += 1
             continue
         data = _map_item(definition, sid)
+        data.setdefault("legacy_id", data.get("source_id") or sid)
+        blocked = _dry_on()
         existing = store.get(sid)
         if existing is not None:
             if overwrite and _was_imported(existing):
-                store.update(sid, data, actor=actor)
+                if not blocked:
+                    store.update(sid, data, actor=actor)
                 updated += 1
             else:
                 skipped += 1
             continue
-        store.create(sid, data, actor=actor)
-        try:
-            store.set_status(sid, ics.STATUS_PUBLISHED, actor=actor, force=True)
-        except Exception:
-            pass
+        if not blocked:
+            store.create(sid, data, actor=actor)
+            try:
+                store.set_status(sid, ics.STATUS_PUBLISHED, actor=actor, force=True)
+            except Exception:
+                pass
+        _record_created("item", sid)
         created += 1
     return {"kind": "item", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid}
 
@@ -179,8 +233,11 @@ def import_mobs(*, overwrite: bool = False, actor: str = "import", mode: str | N
     from services.pve_battle_service import BATTLE_MOB_CATALOGS
     from services import world_content_registry as wcr
 
+    if _resolve_mode(mode) == "copy":
+        return _copy_unsupported("mob")
     overwrite = overwrite or _mode_is_overwrite(mode)
     created = updated = skipped = invalid = 0
+    needs_check: list[dict[str, Any]] = []
     seen: set[str] = set()
     for catalog in BATTLE_MOB_CATALOGS.values():
         if not isinstance(catalog, dict):
@@ -198,21 +255,43 @@ def import_mobs(*, overwrite: bool = False, actor: str = "import", mode: str | N
                 invalid += 1
                 continue
             data = _map_mob(template, sid)
+            data.setdefault("legacy_id", data.get("source_id") or sid)
+            blocked = _dry_on()
             existing = wcr.get_content(wcr.KIND_MOB, sid)
             if existing is not None:
                 if overwrite and _was_imported(existing):
-                    wcr.update_content(wcr.KIND_MOB, sid, data, actor=actor)
+                    # 17-CODEX §2: update_content переводит published-моба в draft.
+                    # Если он был опубликован и данные валидны — публикуем заново,
+                    # иначе оставляем черновиком и помечаем needs_check (не теряем
+                    # моба из live и не публикуем невалидное).
+                    was_published = existing.get("status") == wcr.STATUS_PUBLISHED
+                    if not blocked:
+                        wcr.update_content(wcr.KIND_MOB, sid, data, actor=actor)
+                        if was_published:
+                            valid = wcr.validate_envelope({"kind": wcr.KIND_MOB, "data": data})["ok"]
+                            if valid:
+                                try:
+                                    wcr.set_status(wcr.KIND_MOB, sid, wcr.STATUS_PUBLISHED, actor=actor, force=True)
+                                except Exception:
+                                    pass
+                            else:
+                                needs_check.append({
+                                    "id": sid, "type": "mob",
+                                    "reason": "После обновления моб не прошёл валидацию — оставлен черновиком, опубликуйте после правки.",
+                                })
                     updated += 1
                 else:
                     skipped += 1
                 continue
-            wcr.create_content(wcr.KIND_MOB, sid, data, actor=actor)
-            try:
-                wcr.set_status(wcr.KIND_MOB, sid, wcr.STATUS_PUBLISHED, actor=actor, force=True)
-            except Exception:
-                pass
+            if not blocked:
+                wcr.create_content(wcr.KIND_MOB, sid, data, actor=actor)
+                try:
+                    wcr.set_status(wcr.KIND_MOB, sid, wcr.STATUS_PUBLISHED, actor=actor, force=True)
+                except Exception:
+                    pass
+            _record_created("mob", sid)
             created += 1
-    return {"kind": "mob", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid}
+    return {"kind": "mob", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid, "needs_check": needs_check}
 
 
 # --- Эффекты / состояния / проклятия (сид существующих, ТЗ §6/§7) ----------
@@ -267,31 +346,68 @@ _EFFECT_SEED = [
 def import_effects(*, overwrite: bool = False, actor: str = "import", mode: str | None = None) -> dict[str, Any]:
     from services import effect_constructor_service as ecs
 
+    if _resolve_mode(mode) == "copy":
+        return _copy_unsupported("effect")
     overwrite = overwrite or _mode_is_overwrite(mode)
     store = ecs.store()
     created = updated = skipped = 0
+    needs_check: list[dict[str, Any]] = []
+
+    def _publish_if_valid(effect_id: str, data: dict[str, Any]) -> bool:
+        # Публикуем ТОЛЬКО валидные сиды: часть состояний/проклятий требует
+        # тип-специфичных полей (stat для stat_modifier, control_kind для
+        # control_effect, resource для регенерации), которых в сиде нет. Раньше
+        # их публиковали force=True → реестр держал эффекты, которые обычный
+        # publish-эндпоинт отверг бы, а рантайм получал бы неполные записи.
+        if not ecs.validate({"data": data})["ok"]:
+            return False
+        if not _dry_on():
+            try:
+                store.set_status(effect_id, ecs.STATUS_PUBLISHED, actor=actor, force=True)
+            except Exception:
+                pass
+        return True
+
     for effect_id, name, effect_type, negative, source in _EFFECT_SEED:
         data = {
             "effect_name": name, "effect_type": effect_type, "source_type": source,
             "target": "self", "active_when": "always", "stack_rule": "strongest_only",
-            "negative": bool(negative), "show_to_player": True,
+            "negative": bool(negative), "show_to_player": True, "player_text": name,
             "imported": True, "import_source": "effect_seed", "source_id": effect_id,
+            "legacy_id": effect_id,
         }
+        blocked = _dry_on()
         existing = store.get(effect_id)
         if existing is not None:
             if overwrite and _was_imported(existing):
-                store.update(effect_id, data, actor=actor)
+                if not blocked:
+                    store.update(effect_id, data, actor=actor)
+                    # 17-CODEX §4: если после overwrite сид невалиден — он НЕ должен
+                    # остаться published (update сохраняет статус). Понижаем в
+                    # черновик и помечаем needs_check; валидный — (пере)публикуем.
+                    if not _publish_if_valid(effect_id, data):
+                        try:
+                            store.set_status(effect_id, ecs.STATUS_DRAFT, actor=actor, force=True)
+                        except Exception:
+                            pass
+                        needs_check.append({
+                            "id": effect_id, "type": "effect",
+                            "reason": "После обновления сид-эффект не прошёл валидацию — снят с публикации (черновик), дополните обязательные поля типа.",
+                        })
                 updated += 1
             else:
                 skipped += 1
             continue
-        store.create(effect_id, data, actor=actor)
-        try:
-            store.set_status(effect_id, ecs.STATUS_PUBLISHED, actor=actor, force=True)
-        except Exception:
-            pass
+        if not blocked:
+            store.create(effect_id, data, actor=actor)
+        if not _publish_if_valid(effect_id, data):
+            needs_check.append({
+                "id": effect_id, "type": "effect",
+                "reason": "Сид без обязательных полей типа (stat/control_kind/resource) — оставлен черновиком, дополните и опубликуйте.",
+            })
+        _record_created("effect", effect_id)
         created += 1
-    return {"kind": "effect", "created": created, "updated": updated, "skipped": skipped, "invalid": 0}
+    return {"kind": "effect", "created": created, "updated": updated, "skipped": skipped, "invalid": 0, "needs_check": needs_check}
 
 
 # --- Навыки (импорт каталога путей, ТЗ §7) ---------------------------------
@@ -353,6 +469,8 @@ def import_skills(*, overwrite: bool = False, actor: str = "import", mode: str |
     from services import active_skill_service as ass
     from services import skill_constructor_service as scs
 
+    if _resolve_mode(mode) == "copy":
+        return _copy_unsupported("skill")
     overwrite = overwrite or _mode_is_overwrite(mode)
     store = scs.store()
     created = updated = skipped = invalid = 0
@@ -365,19 +483,24 @@ def import_skills(*, overwrite: bool = False, actor: str = "import", mode: str |
             invalid += 1
             continue
         data = _map_skill(skill, sid)
+        data.setdefault("legacy_id", data.get("source_id") or sid)
+        blocked = _dry_on()
         existing = store.get(sid)
         if existing is not None:
             if overwrite and _was_imported(existing):
-                store.update(sid, data, actor=actor)
+                if not blocked:
+                    store.update(sid, data, actor=actor)
                 updated += 1
             else:
                 skipped += 1
             continue
-        store.create(sid, data, actor=actor)
-        try:
-            store.set_status(sid, scs.STATUS_PUBLISHED, actor=actor, force=True)
-        except Exception:
-            pass
+        if not blocked:
+            store.create(sid, data, actor=actor)
+            try:
+                store.set_status(sid, scs.STATUS_PUBLISHED, actor=actor, force=True)
+            except Exception:
+                pass
+        _record_created("skill", sid)
         created += 1
     return {"kind": "skill", "created": created, "updated": updated, "skipped": skipped, "invalid": invalid}
 
@@ -402,6 +525,22 @@ def _resolve_mode(mode: str | None, overwrite: bool = False) -> str:
 
 def _mode_is_overwrite(mode: str | None) -> bool:
     return _resolve_mode(mode) in ("update", "overwrite")
+
+
+def _copy_unsupported(kind: str) -> dict[str, Any]:
+    """Отчёт-отказ: режим «копии» не поддержан для сид/каталог-импортёров.
+
+    item/mob/effect/skill импортируются из кода/каталогов без отдельных
+    исходных id, поэтому осмысленной «копии» у них нет. Раньше copy молча
+    схлопывался в new и существующие записи просто пропускались — админ видел
+    «успех», но копий не появлялось. Возвращаем явный needs_check."""
+    return {
+        "kind": kind, "created": 0, "updated": 0, "skipped": 0, "invalid": 0,
+        "needs_check": [{
+            "id": kind, "type": kind,
+            "reason": "Режим «Создать копии» не поддерживается для этого импорта. Используйте «Добавить новые» или «Обновить».",
+        }],
+    }
 
 
 def _rich_report(kind: str) -> dict[str, Any]:
@@ -429,8 +568,22 @@ def _copy_id(sid: str, exists: Any) -> str:
     return ""
 
 
-def _apply_record(report, sid, data, mode, *, get_fn, create_fn, update_fn, publish_fn) -> None:
-    """Создать/обновить/скопировать/пропустить запись с защитой ручных правок (§9)."""
+def _apply_record(report, sid, data, mode, *, get_fn, create_fn, update_fn, publish_fn, copy_rewrite=None) -> None:
+    """Создать/обновить/скопировать/пропустить запись с защитой ручных правок (§9).
+
+    copy_rewrite(data) -> data — для режима «копия» переписывает ссылки на
+    скопированные записи (например, location/parent_id → их копии), иначе копия
+    оставалась бы привязанной к оригиналам.
+
+    В dry-run (ТЗ §3.3, §16) запись в сторы подменяется no-op: счётчики и
+    needs_check заполняются как при реальном импорте, но ничего не пишется."""
+    # legacy_id (ТЗ §2/§3, AC#3): стабильный технический id старой сущности рядом
+    # с записью. По умолчанию = source_id (или сам sid, если источника нет).
+    data.setdefault("legacy_id", data.get("source_id") or sid)
+    if _dry_on():
+        create_fn = _noop
+        update_fn = _noop
+        publish_fn = _noop
     report["found"] += 1
     existing = get_fn(sid)
     if existing is not None:
@@ -450,15 +603,25 @@ def _apply_record(report, sid, data, mode, *, get_fn, create_fn, update_fn, publ
                 report["invalid"] += 1
                 report["errors"].append({"id": sid, "type": report["kind"], "reason": "Не удалось подобрать id для копии."})
                 return
-            create_fn(new_id, data)
+            copy_data = dict(data)
+            if copy_rewrite is not None:
+                copy_data = copy_rewrite(copy_data)
+            create_fn(new_id, copy_data)
             publish_fn(new_id)
+            _record_created(report["kind"], new_id)
             report["created"] += 1
             return
         update_fn(sid, data)
+        # ПЕРЕпубликация обязательна: update_content у реестра мира переводит
+        # опубликованный объект обратно в черновик (правится копия), а рантайм
+        # читает только published — без этого обновлённая локация/событие/моб
+        # пропадали бы из игры до ручной повторной публикации.
+        publish_fn(sid)
         report["updated"] += 1
         return
     create_fn(sid, data)
     publish_fn(sid)
+    _record_created(report["kind"], sid)
     report["created"] += 1
 
 
@@ -538,9 +701,19 @@ def import_locations(*, mode: str | None = None, overwrite: bool = False, actor:
             continue
         name = data_raw.get("name") or data_raw.get("name_ru") or sid
         desc = data_raw.get("short_description") or data_raw.get("description") or data_raw.get("entry_text") or data_raw.get("lore_description") or ""
+        desc = str(desc).strip()
+        if not desc:
+            # Источник без описания (например, seldar_city) — валидатор локаций
+            # требует ≥1 описания. Подставляем название как минимальное описание,
+            # чтобы не публиковать невалидный контент, и помечаем на доработку.
+            desc = f"{name}."
+            report["needs_check"].append({
+                "id": sid, "type": "location",
+                "reason": "В источнике нет описания — подставлено название. Добавьте полноценное описание локации.",
+            })
         record = {
             "name": name, "type": default_type,
-            "short_description": str(desc)[:300], "description": str(desc),
+            "short_description": desc[:300], "description": desc,
             "imported": True, "import_source": f"data/{filename}", "source_id": str(raw_id),
         }
         _apply_record(report, sid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
@@ -553,6 +726,37 @@ _EVENT_TYPE_MAP = {
     "berries": "found_resource", "alchemy_ingredient": "found_resource", "stone_or_ore": "found_resource",
 }
 
+# Спец-типы событий поиска Малого плато → типы конструктора событий.
+_SP_EVENT_TYPE_MAP = {
+    "reward": "rare_find", "item_reward": "rare_find", "empty_atmosphere": "found_resource",
+    "curse_hint": "rare_find", "curse_or_milestone_hint": "rare_find",
+    "milestone_hint": "rare_find", "seeker_hint": "rare_find", "choice_cursed_coins": "rare_find",
+}
+
+
+def _event_type_for(name: str) -> str:
+    """Тип события по имени: ловушки/бои не теряются (например forest_trap→trap)."""
+    n = str(name).lower()
+    if "trap" in n:
+        return "trap"
+    if "battle" in n or "mob" in n:
+        return "met_mob"
+    if "glint" in n:
+        return "rare_find"
+    return _EVENT_TYPE_MAP.get(n, "found_resource")
+
+
+def _event_discovery_text(event_texts: Any, ev_name: str) -> str:
+    """Реальный текст обнаружения из исходных данных (event_texts[name].discovery)."""
+    entry = event_texts.get(ev_name) if isinstance(event_texts, dict) else None
+    if isinstance(entry, dict):
+        disc = entry.get("discovery")
+        if isinstance(disc, list) and disc:
+            return str(disc[0])
+        if isinstance(disc, str) and disc.strip():
+            return disc
+    return ""
+
 
 def import_events(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
     from services import world_content_registry as wcr
@@ -560,6 +764,15 @@ def import_events(*, mode: str | None = None, overwrite: bool = False, actor: st
     report = _rich_report("event")
     mode = _resolve_mode(mode, overwrite)
     get_fn, create_fn, update_fn, publish_fn = _wcr_funcs(wcr.KIND_EVENT, actor)
+
+    def _copy_rewrite_event(data):
+        # При копировании события привязываем его к КОПИИ локации, если та тоже
+        # скопирована, иначе копия осталась бы прикреплённой к оригиналу.
+        loc = str(data.get("location") or "")
+        if loc and wcr.get_content(wcr.KIND_LOCATION, f"{loc}_copy") is not None:
+            data["location"] = f"{loc}_copy"
+        return data
+
     placeholder_text = False
     for filename in ("hilly_meadows.json", "ordinary_forest.json"):
         data_raw = _read_data_json(filename)
@@ -569,6 +782,7 @@ def import_events(*, mode: str | None = None, overwrite: bool = False, actor: st
         events = data_raw.get("events")
         if not isinstance(events, dict):
             continue
+        event_texts = data_raw.get("event_texts") or {}
         for ev_name, chance in events.items():
             evsid = safe_constructor_id(f"{loc_id}_{ev_name}")
             if not evsid:
@@ -578,19 +792,60 @@ def import_events(*, mode: str | None = None, overwrite: bool = False, actor: st
                 ch = float(chance)
             except (TypeError, ValueError):
                 ch = 0.0
+            # Реальный текст обнаружения из источника; заглушка — только если его нет
+            # (например, у trap/battle event_texts отсутствует).
+            text = _event_discovery_text(event_texts, ev_name)
+            has_real_text = bool(text)
+            if not text:
+                text = f"Событие локации: {ev_name}."
             record = {
-                "name": str(ev_name), "type": _EVENT_TYPE_MAP.get(str(ev_name), "found_resource"),
-                "text": f"Событие локации: {ev_name}.", "chance": ch, "location": loc_id,
+                "name": str(ev_name), "type": _event_type_for(ev_name),
+                "text": text, "chance": ch, "location": loc_id,
                 "imported": True, "import_source": f"data/{filename}", "source_id": str(ev_name),
             }
             before = report["created"] + report["updated"]
-            _apply_record(report, evsid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
-            if report["created"] + report["updated"] > before:
+            _apply_record(report, evsid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn, copy_rewrite=_copy_rewrite_event)
+            if report["created"] + report["updated"] > before and not has_real_text:
                 placeholder_text = True
+
+    # Малое плато: 28 событий поиска лежат отдельной list-таблицей, а не в events{}.
+    sp_raw = _read_data_json("small_plateau_search_events.json")
+    sp_events = sp_raw.get("events") if isinstance(sp_raw, dict) else None
+    sp_imported = 0
+    if isinstance(sp_events, list):
+        for ev in sp_events:
+            if not isinstance(ev, dict):
+                report["invalid"] += 1
+                continue
+            ev_id = ev.get("event_id") or ev.get("id")
+            evsid = safe_constructor_id(f"small_plateau_{ev_id}")
+            if not evsid:
+                report["invalid"] += 1
+                continue
+            text = str(ev.get("text") or ev.get("title") or "").strip() or f"Событие: {ev_id}"
+            record = {
+                "name": str(ev.get("title") or ev_id),
+                "type": _SP_EVENT_TYPE_MAP.get(str(ev.get("type")), "rare_find"),
+                "text": text, "result_text": str(ev.get("result_text") or ""),
+                "chance": 0.0, "weight": ev.get("weight") or 0,
+                "source_event_type": str(ev.get("type") or ""), "location": "small_plateau",
+                "imported": True, "import_source": "data/small_plateau_search_events.json",
+                "source_id": str(ev_id),
+            }
+            before = report["created"] + report["updated"]
+            _apply_record(report, evsid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn, copy_rewrite=_copy_rewrite_event)
+            if report["created"] + report["updated"] > before:
+                sp_imported += 1
+
     if placeholder_text:
         report["needs_check"].append({
             "id": "events", "type": "event",
-            "reason": "У событий текст-заглушка (в исходных данных только шанс) — задайте текст/исход вручную.",
+            "reason": "У части событий (ловушки/бои) текст-заглушка — задайте текст/исход вручную.",
+        })
+    if sp_imported:
+        report["needs_check"].append({
+            "id": "small_plateau_events", "type": "event",
+            "reason": "События поиска Малого плато импортированы со спец-типами (подсказки/проклятья/выбор монет) — проверьте сопоставление типов и исходы.",
         })
     return report
 
@@ -602,6 +857,14 @@ def import_city_nodes(*, mode: str | None = None, overwrite: bool = False, actor
     report = _rich_report("city_node")
     mode = _resolve_mode(mode, overwrite)
     get_fn, create_fn, update_fn, publish_fn = _store_funcs(ccs.store(), ccs.STATUS_PUBLISHED, actor)
+
+    def _copy_rewrite_node(data):
+        # Копия квартала должна указывать на КОПИЮ города-родителя, если та есть.
+        parent = str(data.get("parent_id") or "")
+        if parent and get_fn(f"{parent}_copy") is not None:
+            data["parent_id"] = f"{parent}_copy"
+        return data
+
     data_raw = _read_data_json("seldar_city.json")
     if not isinstance(data_raw, dict):
         report["errors"].append({"id": "seldar_city.json", "type": "city_node", "reason": "Файл города отсутствует или повреждён."})
@@ -625,7 +888,7 @@ def import_city_nodes(*, mode: str | None = None, overwrite: bool = False, actor
                 "_kind": ccs.KIND_NODE,
                 "name": zone.get("name") or zid, "node_type": "quarter", "parent_id": city_id, "description": "",
                 "imported": True, "import_source": "data/seldar_city.json", "source_id": str(zid),
-            }, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+            }, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn, copy_rewrite=_copy_rewrite_node)
     return report
 
 
@@ -640,7 +903,7 @@ _ACHIEVEMENT_SEED = {
         "name": "Ищущий", "category": "small_plateau", "type": "exploration",
         "rarity": "legendary", "visibility": "open", "progress_type": "numeric",
         "conditions": [{"type": "discover_location", "amount": 1, "target": "small_plateau"}],
-        "needs_check": "Награда «Ищущего» — игровой доступ к seeker-контенту; задайте при необходимости.",
+        "needs_check": "Рантайм выдаёт «Ищущего» на 1000-м поиске Малого плато (small_plateau_service.apply_search_milestone), а условие сид-определения упрощено (discover_location) — задайте счётчик из 1000 поисков. Награда «Ищущего» — доступ к seeker-контенту.",
     },
     "curse_what_curse": {
         "name": "Проклятье? Какое проклятье?", "category": "small_plateau", "type": "story",
@@ -658,13 +921,21 @@ def import_achievements(*, mode: str | None = None, overwrite: bool = False, act
     mode = _resolve_mode(mode, overwrite)
 
     # Гарантируем категорию для импортированных достижений.
+    # 19-CODEX §2: в dry-run НИЧЕГО не пишем (категорию не создаём/не публикуем) —
+    # только показываем планируемое действие в needs_check.
     cats = ach.categories()
     if cats.get("small_plateau") is None:
-        try:
-            cats.create("small_plateau", {"name": "Малое плато"}, actor=actor)
-            cats.set_status("small_plateau", ach.STATUS_PUBLISHED, actor=actor, force=True)
-        except Exception:
-            pass
+        if _dry_on():
+            report["needs_check"].append({
+                "id": "small_plateau", "type": "achievement_category",
+                "reason": "Будет создана и опубликована категория «Малое плато» (план; в dry-run не создаётся).",
+            })
+        else:
+            try:
+                cats.create("small_plateau", {"name": "Малое плато"}, actor=actor)
+                cats.set_status("small_plateau", ach.STATUS_PUBLISHED, actor=actor, force=True)
+            except Exception:
+                pass
 
     # Имена/описания из данных (приоритет), структура — из сид-таблицы.
     descriptions: dict[str, dict[str, Any]] = {}
@@ -681,9 +952,13 @@ def import_achievements(*, mode: str | None = None, overwrite: bool = False, act
         src = descriptions.get(aid, {})
         name = src.get("name") or seed["name"]
         desc = src.get("description") or ""
+        # Редкость — из живого источника (small_plateau_mechanics.json), если есть:
+        # там curse_what_curse помечен legendary, а сид по ошибке хранил epic, из-за
+        # чего конструктор расходился с рантаймовым достижением игрока.
+        rarity = src.get("rarity") or seed["rarity"]
         record = {
             "name": name, "short_description": desc[:300], "description": desc,
-            "category": seed["category"], "type": seed["type"], "rarity": seed["rarity"],
+            "category": seed["category"], "type": seed["type"], "rarity": rarity,
             "visibility": seed["visibility"], "progress_type": seed["progress_type"],
             "condition_logic": "all", "conditions": seed["conditions"], "rewards": [],
             "notify_message": {"format": "single", "text": f"Получено достижение: «{name}»."},
@@ -839,6 +1114,349 @@ def import_profile_layout(*, mode: str | None = None, overwrite: bool = False, a
     return report
 
 
+# --- Импорт лагерей (доп. ТЗ §4) --------------------------------------------
+def import_camps(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    """Импорт существующих лагерей в конструктор лагеря.
+
+    Отдельного статического JSON лагерей в проекте нет — механика отдыха/готовки
+    живёт в external_location_service. Поэтому сид пуст: возвращаем отчёт с
+    needs_check, чтобы админ завёл лагеря вручную (а не молча «успешно ноль»)."""
+    report = _rich_report("camp")
+    report["needs_check"].append({
+        "id": "camps", "type": "camp",
+        "reason": "Статического источника лагерей нет (отдых/готовка заданы в коде локаций). Создайте лагеря вручную в конструкторе и привяжите к локациям.",
+    })
+    return report
+
+
+# --- Импорт черт/благословений/фаз (ТЗ «черты/благословения/фазы») ----------
+# (id, название, ранг, триггер, описание-для-игрока)
+_TRAIT_SEED = [
+    ("tough_hide", "Крепкая шкура", "special", "passive", "Моб получает меньше физического урона."),
+    ("dense_shell", "Плотная оболочка", "special", "on_receive_damage", "Доп. защита от первого сильного удара."),
+    ("quick_reaction", "Быстрая реакция", "special", "passive", "Чаще уклоняется или снижает шанс попадания по себе."),
+    ("sharp_claws", "Острые когти", "special", "on_attack", "Атаки с шансом вызывают кровотечение."),
+    ("acid_spit", "Едкая слюна", "special", "on_attack", "Атака может немного снизить защиту цели."),
+    ("weak_venom_body", "Слабое ядовитое тело", "special", "on_receive_damage", "Атакующий в ближнем бою может получить слабое отравление."),
+    ("heavy_body", "Тяжёлое тело", "special", "passive", "Бонус к сопротивлению оглушению и отталкиванию."),
+    ("night_hunt", "Ночная охота", "special", "passive", "В тьме/ночью/подземелье — бонус к точности и урону."),
+    ("territorial_rage", "Территориальная ярость", "special", "passive", "Сильнее в своей основной локации."),
+    ("fearsome_visage", "Пугающий вид", "special", "battle_start", "В начале боя снижает точность/крит игрока."),
+    ("ragged_strike", "Рваный удар", "special", "on_attack", "Атака с шансом накладывает лёгкую травму/кровотечение."),
+    ("element_resist", "Сопротивление стихии", "special", "passive", "Меньше урона от выбранной стихии или зоны."),
+    ("unstable_flesh", "Нестабильная плоть", "special", "on_receive_damage", "При получении урона с шансом случайный слабый баф/дебаф."),
+    ("survival_instinct", "Инстинкт выживания", "special", "passive", "При низком HP бонус к уклонению/побегу."),
+    ("unpleasant_prey", "Неприятная добыча", "special", "on_death", "Риск слабого негативного эффекта при сборе добычи."),
+    ("enhanced_regen", "Усиленная регенерация", "elite", "on_turn_start", "Восстанавливает здоровье каждый ход."),
+    ("combat_adaptation", "Боевая адаптация", "elite", "on_receive_damage", "После ударов одного типа — временное сопротивление этому типу."),
+    ("riposte", "Ответный выпад", "elite", "on_receive_damage", "После прямого удара с шансом отвечает атакой."),
+    ("elite_pressure", "Давление элиты", "elite", "passive", "Пока жив, игрок получает штраф к точности/уклонению."),
+    ("armor_pierce", "Бронебойные удары", "elite", "on_attack", "Атаки частично игнорируют физзащиту игрока."),
+    ("disrupting_strike", "Срывающий удар", "elite", "on_attack", "Атака может временно заблокировать доп. действие игрока."),
+    ("hunter_threat", "Угроза охотника", "elite", "on_attack", "Выбирает ослабленную цель и бьёт сильнее."),
+    ("healing_suppression", "Подавление лечения", "elite", "passive", "Пока жив, лечение игрока/группы слабее."),
+    ("unstable_field", "Нестабильное поле", "elite", "on_turn_start", "Каждые N ходов на поле появляется случайный слабый эффект."),
+    ("wound_empowerment", "Усиление от ранения", "elite", "passive", "Чем меньше HP, тем сильнее атаки."),
+    ("defensive_phase", "Защитная фаза", "elite", "phase_change", "При низком HP временно усиливает защиту."),
+    ("summon_weak_minions", "Призыв слабых помощников", "elite", "on_turn_start", "Призывает слабых помощников через интервалы."),
+    ("threat_aura", "Аура угрозы", "elite", "passive", "Снижает боевую эффективность игроков вокруг."),
+    ("strong_natural_defense", "Сильная природная защита", "elite", "passive", "Заметная защита от выбранных эффектов (яд/кровь/огонь/контроль)."),
+    ("defense_breaker", "Разрушитель защиты", "elite", "on_attack", "Атаки могут временно снижать защиту игрока."),
+    ("unique_defense", "Уникальная защита", "unique", "passive", "Особая защита, меняющая тактику боя."),
+    ("unique_attack", "Уникальная атака", "unique", "on_attack", "Особая усиленная атака с откатом/условием."),
+    ("shifting_defense", "Меняющаяся защита", "unique", "on_turn_start", "Тип защиты меняется каждые N ходов."),
+    ("mirror_carapace", "Зеркальный панцирь", "unique", "on_receive_damage", "Часть магического урона отражается (без цепочек)."),
+    ("unbreakable_stance", "Непробиваемая стойка", "unique", "phase_change", "Резко снижает входящий физурон, пока стойка активна."),
+    ("cursed_presence", "Проклятое присутствие", "unique", "on_turn_start", "Шанс наложить/усилить слабое проклятье."),
+    ("space_rift", "Разлом пространства", "unique", "on_turn_start", "Искажает бой: цель/точность/стоимость/позиция."),
+    ("resource_devour", "Пожирание ресурса", "unique", "on_attack", "Забирает ману/Дух/энергию при атаке."),
+    ("phase_invulnerability", "Фазовая неуязвимость", "unique", "phase_change", "Периодически почти неуязвим до конца фазы."),
+    ("legendary_rage", "Легендарная ярость", "unique", "phase_change", "При низком HP больше урона/навыков, но больше входящего урона."),
+    ("world_pressure", "Давление мирового существа", "world", "passive", "Пока жив, все участники получают штраф к точности/уклонению/восстановлению."),
+    ("region_quake", "Сотрясение региона", "world", "on_turn_start", "Каждые N ходов региональный удар по всем участникам."),
+    ("world_suppression_aura", "Мировая аура подавления", "world", "passive", "Ослабляет лечение/очищение/благословения во всём бою."),
+    ("formation_break", "Разрушение строя", "world", "passive", "Снижает эффективность групповых аур и построений."),
+    ("world_devour", "Поглощение мира", "world", "on_turn_start", "Периодически поглощает ману/Дух/энергию игроков."),
+    ("minion_call", "Зов прислужников", "world", "on_turn_start", "Призывает волны помощников по фазе/таймеру."),
+    ("unstable_reality", "Нестабильная реальность", "world", "on_turn_start", "Периодически меняет правила боя."),
+    ("inexhaustible_body", "Неистощимое тело", "world", "on_turn_start", "Восстанавливает HP, если урона давно не было достаточно."),
+    ("catastrophic_limit", "Катастрофический предел", "world", "on_turn_start", "При затяжном бое усиливается по таймеру (soft-enrage)."),
+    ("world_loot", "Мировая добыча", "world", "on_death", "Награда зависит от вклада/стадии/участия в фазах."),
+]
+
+# (id, название, источник, описание)
+_BLESSING_SEED = [
+    ("blessing_strength", "Благословение силы", "item", "Повышает Силу и физический урон."),
+    ("blessing_endurance", "Благословение выносливости", "item", "Повышает Выносливость и максимум HP."),
+    ("blessing_wisdom", "Благословение мудрости", "zone", "Усиливает лечение, очищение и защитные действия."),
+    ("blessing_intellect", "Благословение интеллекта", "zone", "Усиливает навыки Маны и магические эффекты."),
+    ("blessing_combat_spirit", "Благословение боевого Духа", "item", "Усиливает ресурс Дух, физнавыки, стойки и приёмы."),
+    ("blessing_hunter", "Благословение охотника", "event", "Повышает шанс добычи с животных, следов и охотничьих событий."),
+    ("blessing_herbalist", "Благословение травника", "zone", "Повышает шанс найти травы и алхимические ингредиенты."),
+    ("blessing_miner", "Благословение рудокопа", "zone", "Повышает шанс найти руду, камень или материал."),
+    ("blessing_craftsman", "Благословение ремесленника", "event", "Повышает шанс успеха/качества ремесла."),
+    ("blessing_merchant", "Благословение купца", "event", "Улучшает покупку/продажу или снижает комиссию."),
+    ("blessing_wanderer", "Благословение странника", "zone", "Снижает расход энергии или повышает мирные события."),
+    ("blessing_protection", "Благословение защиты", "item", "Снижает входящий урон."),
+    ("blessing_cleanse", "Благословение очищения", "zone", "Повышает шанс снять негатив или ослабляет проклятья."),
+    ("blessing_luck", "Благословение удачи", "event", "Повышает шанс получить дополнительную/редкую награду."),
+    ("blessing_experience", "Благословение опыта", "event", "Увеличивает получаемый опыт."),
+    ("blessing_coins", "Благословение монет", "event", "Увеличивает получаемые монеты из разрешённых источников."),
+    ("blessing_event", "Благословение события", "event", "Усиливает игрока/мобов в рамках определённого события."),
+    ("blessing_victor", "Благословение победителя", "boss_phase", "Временный бонус после сложной победы над боссом."),
+    ("blessing_risk", "Благословение риска", "event", "Больше наград, но бой/поиск становится опаснее."),
+]
+
+# (id, название, тип триггера, описание)
+_PHASE_SEED = [
+    ("phase_intro", "Вступительная фаза", "manual", "Начальная фаза боя: базовый набор навыков, показ главной механики."),
+    ("phase_defense_check", "Фаза проверки защиты", "hp_percent", "Сильные удары — проверка физ/маг защиты игроков."),
+    ("phase_pressure", "Фаза давления", "turn_count", "Чаще атакует, сокращает безопасные окна восстановления."),
+    ("phase_summon", "Фаза призыва", "turn_count", "Призывает помощников или волны врагов."),
+    ("phase_shell", "Фаза защитного панциря", "hp_percent", "Сильная защита, пока не кончится фаза или условие."),
+    ("phase_vulnerable", "Уязвимая фаза", "objective", "После условия временно получает больше урона."),
+    ("phase_rage", "Фаза ярости", "hp_percent", "При низком HP больше урона и чаще активные навыки."),
+    ("phase_drain", "Фаза истощения игроков", "hp_percent", "Активно снижает ресурсы игроков (мана/Дух/энергия)."),
+    ("phase_field_control", "Фаза контроля поля", "turn_count", "Эффекты зоны: туман/огонь/мороз/тьма/ловушки."),
+    ("phase_hunt_weak", "Фаза охоты на слабых", "objective", "Чаще выбирает игроков с низким HP или дебафами."),
+    ("phase_reflection", "Фаза отражения", "hp_percent", "Часть урона возвращается атакующим."),
+    ("phase_no_heal", "Фаза запрета восстановления", "hp_percent", "Ослабляет лечение/регенерацию/очищение."),
+    ("phase_rift", "Фаза разлома", "turn_count", "Искажает порядок действий/цели/стоимость/позиции."),
+    ("phase_charge", "Фаза накопления силы", "turn_count", "Накопление заряда → сильная атака, если не прервать."),
+    ("phase_armor_decay", "Фаза распада брони", "hp_percent", "Теряет защиту, но наносит больше урона."),
+    ("phase_recovery", "Фаза восстановления", "hp_percent", "Пытается восстановить HP или снять негатив."),
+    ("phase_damage_check", "Фаза испытания урона", "turn_count", "Нужно нанести достаточно урона за N ходов, иначе усиление."),
+    ("phase_survival_check", "Фаза испытания выживания", "turn_count", "Усиливает давление; задача игроков — пережить фазу."),
+    ("phase_final", "Финальная фаза", "hp_percent", "Последняя опасная фаза, самые сильные навыки."),
+    ("phase_post_death", "Посмертная фаза", "manual", "После смерти: взрыв/проклятье/волна/зона/событие."),
+]
+
+
+def import_traits(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import trait_constructor_service as tcs
+
+    report = _rich_report("trait")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(tcs.store(), tcs.STATUS_PUBLISHED, actor)
+    for tid, name, rank, trigger, desc in _TRAIT_SEED:
+        record = {
+            "trait_name": name, "trait_rank": rank, "trigger": trigger,
+            "player_text": desc, "admin_description": desc,
+            "stack_rule": "strongest_only", "applicable_mob_categories": [],
+            "can_be_removed": False,
+            "imported": True, "import_source": "trait_seed", "source_id": tid,
+        }
+        _apply_record(report, tid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    return report
+
+
+def import_blessings(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import blessing_constructor_service as bcs
+
+    report = _rich_report("blessing")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(bcs.store(), bcs.STATUS_PUBLISHED, actor)
+    for bid, name, source, desc in _BLESSING_SEED:
+        record = {
+            "blessing_name": name, "source_type": source, "allowed_targets": ["player"],
+            "player_text": desc, "bonus_values": {"flat_bonus": 0, "percent_bonus": 0, "duration_seconds": 0},
+            "stack_rule": "refresh", "show_to_player": True,
+            "imported": True, "import_source": "blessing_seed", "source_id": bid,
+        }
+        _apply_record(report, bid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    return report
+
+
+def import_phases(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import phase_constructor_service as pcs
+
+    report = _rich_report("phase")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(pcs.store(), pcs.STATUS_PUBLISHED, actor)
+    all_ranks = list(pcs.BOSS_RANKS)
+    for pid, name, trigger, desc in _PHASE_SEED:
+        record = {
+            "phase_name": name, "trigger_type": trigger, "trigger_value": 0,
+            "allowed_boss_ranks": all_ranks, "phase_text_for_player": desc,
+            "phase_admin_notes": desc, "phase_effects": [], "phase_skill_pool": [],
+            "imported": True, "import_source": "phase_seed", "source_id": pid,
+        }
+        _apply_record(report, pid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    return report
+
+
+# --- Импорт рас (чат-ТЗ «уровни/опыт/регистрация/расы») ---------------------
+def import_races(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import race_constructor_service as rcs
+
+    report = _rich_report("race")
+    mode = _resolve_mode(mode, overwrite)
+    data_raw = _read_data_json("races.json")
+    if not isinstance(data_raw, dict) or not data_raw:
+        report["errors"].append({"id": "races.json", "type": "race", "reason": "Файл рас отсутствует или повреждён."})
+        return report
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(rcs.store(), rcs.STATUS_PUBLISHED, actor)
+    for raw_id, race in data_raw.items():
+        sid = safe_constructor_id(raw_id)
+        if not sid or not isinstance(race, dict):
+            report["invalid"] += 1
+            continue
+        record = {
+            "race_name": race.get("name") or sid,
+            "description": str(race.get("description") or ""),
+            "stat_bonuses": race.get("bonuses") if isinstance(race.get("bonuses"), dict) else {},
+            "starting_stats": race.get("stats") if isinstance(race.get("stats"), dict) else {},
+            "playable": True,
+            "imported": True, "import_source": "data/races.json", "source_id": str(raw_id),
+        }
+        _apply_record(report, sid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    return report
+
+
+# --- Импорт репутаций (full-import ТЗ §5.17) --------------------------------
+# Репутации заданы в коде/механиках (стража, торговцы, ремесленники, Чёрный
+# рынок, информатор Крот, гильдия, арена). Заводим их как опубликованные
+# определения, чтобы админ мог править пороги/эффекты/тексты. Скрытые репутации
+# (crime/informer) не показывают игроку точное значение (§6.2).
+# (id, название, видимость, область, режим отображения)
+_REPUTATION_SEED = [
+    ("rep_seldar_city", "Репутация Селдара", "visible", "city", "stage"),
+    ("rep_city_guards", "Репутация у городской стражи", "visible", "guards", "stage"),
+    ("rep_traders", "Репутация у торговцев", "visible", "traders", "stage"),
+    ("rep_crafters", "Репутация у ремесленников", "visible", "crafters", "stage"),
+    ("rep_black_market", "Репутация на Чёрном рынке", "hidden", "crime_group", "stage"),
+    ("rep_informer_mole", "Доверие информатора Крота", "hidden", "npc", "stage"),
+    ("rep_guild", "Репутация в гильдии", "visible", "guild", "stage"),
+    ("rep_arena", "Репутация на арене (PvP)", "visible", "world_event", "stage"),
+]
+
+
+def import_reputation(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import reputation_constructor_service as rep
+
+    report = _rich_report("reputation")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(rep.store(), rep.STATUS_PUBLISHED, actor)
+    for rid, name, visibility, scope, display in _REPUTATION_SEED:
+        hidden = visibility == "hidden"
+        record = {
+            "name_ru": name, "visibility": visibility, "scope_type": scope,
+            "display_mode": display, "min_value": -1000, "max_value": 1000,
+            "default_value": 0, "show_to_player": True,
+            "show_exact_value": not hidden,
+            "description_player": name, "description_admin": name,
+            "imported": True, "import_source": "reputation_seed", "source_id": rid,
+        }
+        _apply_record(report, rid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    report["needs_check"].append({
+        "id": "reputation", "type": "reputation",
+        "reason": "Диапазоны/стадии/правила изменения — типовые; уточните пороги и последствия под каждую фракцию. Рантайм-применение репутации — на вырост.",
+    })
+    return report
+
+
+# --- Импорт товаров рынка (full-import ТЗ §5.15) ----------------------------
+def import_shops(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    """Товары рынка Селдара (data/seldar_market.json) → city_shop_item."""
+    from services import city_constructor_service as ccs
+
+    report = _rich_report("city_shop_item")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(ccs.store(), ccs.STATUS_PUBLISHED, actor)
+    data_raw = _read_data_json("seldar_market.json")
+    items = data_raw.get("items") if isinstance(data_raw, dict) else None
+    if not isinstance(items, list):
+        report["errors"].append({"id": "seldar_market.json", "type": "city_shop_item", "reason": "Файл рынка отсутствует или повреждён."})
+        return report
+    currency = str((data_raw or {}).get("currency") or "copper")
+    if currency not in ccs.CURRENCIES:
+        currency = "copper"
+    for raw in items:
+        if not isinstance(raw, dict):
+            report["invalid"] += 1
+            continue
+        item_id = str(raw.get("item_id") or "").strip()
+        sid = safe_constructor_id(f"market_{item_id}")
+        if not item_id or not sid:
+            report["invalid"] += 1
+            continue
+        record = {
+            "_kind": ccs.KIND_SHOP_ITEM,
+            "item_id": item_id,
+            "display_name": str(raw.get("display_name") or item_id),
+            "shop_kind": "trade_quarter", "node_id": "trade_quarter",
+            "currency": currency, "price_buy": raw.get("buy_price_copper") or 0,
+            "can_buy": True, "can_sell": False, "stock_type": "always",
+            "category": str(raw.get("category") or ""),
+            "description": str(raw.get("description") or ""),
+            "imported": True, "import_source": "data/seldar_market.json", "source_id": item_id,
+        }
+        _apply_record(report, sid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    report["needs_check"].append({
+        "id": "shops", "type": "city_shop_item",
+        "reason": "Товары привязаны к узлу «trade_quarter» с продажей за медь; проверьте привязку к узлу города, цены продажи и лимиты/ротацию.",
+    })
+    return report
+
+
+# --- Импорт текстов бота (full-import ТЗ §5.18) -----------------------------
+# Тексты бота разбросаны по коду хендлеров/сервисов. Сид заводит ключевые
+# сообщения (системные/ошибки/бой/штрафы/доставка/награды/смерть/проклятия) как
+# опубликованные редактируемые записи. Якорные тексты (поиск §5.10, дар §5.19)
+# перенесены дословно. Рантайм-чтение игрой — text_runtime под use_v2_texts.
+# (text_key, текст, контекст, платформа, [переменные])
+_TEXT_SEED = [
+    ("system.welcome", "Добро пожаловать в Нер-Талис!", "system", "both", []),
+    ("system.help", "Используйте кнопки меню, чтобы играть.", "system", "both", []),
+    ("error.not_enough_energy", "Недостаточно энергии для этого действия.", "error", "both", []),
+    ("error.in_battle", "Сейчас вы в бою — действие недоступно.", "error", "both", []),
+    ("error.move_blocked", "Сейчас вы не можете перемещаться.", "error", "both", []),
+    ("error.inventory_full", "Инвентарь переполнен.", "error", "both", []),
+    ("search.nothing_found", "Вы ничего не нашли — похоже, на этой локации уже всё забрали.", "search", "both", []),
+    ("battle.victory", "Победа! Вы одолели противника.", "battle", "both", []),
+    ("battle.defeat", "Поражение. Вы потерпели неудачу в бою.", "battle", "both", []),
+    ("craft.success", "Изделие готово.", "craft", "both", []),
+    ("craft.fail", "Что-то пошло не так — изделие испорчено.", "craft", "both", []),
+    ("fine.issued", "Вам выписан штраф.", "fine", "both", []),
+    ("fine.paid", "Штраф оплачен.", "fine", "both", []),
+    ("fine.blocked", "Доступ закрыт до оплаты штрафа.", "fine", "both", []),
+    ("delivery.admin_gift", "Вы получили в дар от высших сил: {items}", "delivery", "both", ["items"]),
+    ("reward.received", "Вы получили награду: {reward}", "reward", "both", ["reward"]),
+    ("promo.redeemed", "Промокод активирован: {reward}", "promo", "both", ["reward"]),
+    ("death.generic", "Вы погибли. Придётся восстановиться.", "death", "both", []),
+    ("curse.applied", "На вас наложено проклятье: {curse}", "curse", "both", ["curse"]),
+    ("achievement.earned", "Получено достижение: «{name}».", "achievement", "both", ["name"]),
+    ("transition.moved", "Вы переходите: {destination}", "transition", "both", ["destination"]),
+    ("camp.rest_done", "Отдых завершён. Силы восстановлены.", "camp", "both", []),
+]
+
+
+def import_texts(*, mode: str | None = None, overwrite: bool = False, actor: str = "import") -> dict[str, Any]:
+    from services import text_constructor_service as tcs
+
+    report = _rich_report("text")
+    mode = _resolve_mode(mode, overwrite)
+    get_fn, create_fn, update_fn, publish_fn = _store_funcs(tcs.store(), tcs.STATUS_PUBLISHED, actor)
+    for key, value, context, platform, variables in _TEXT_SEED:
+        sid = safe_constructor_id(key)
+        if not sid:
+            report["invalid"] += 1
+            continue
+        record = {
+            "text_key": key, "text_value": value, "context": context,
+            "platform": platform, "parse_mode": "none",
+            "variables": list(variables), "fallback_text": value,
+            "entity_type": "none", "entity_id": "",
+            "imported": True, "import_source": "text_seed", "source_id": key,
+        }
+        _apply_record(report, sid, record, mode, get_fn=get_fn, create_fn=create_fn, update_fn=update_fn, publish_fn=publish_fn)
+    report["needs_check"].append({
+        "id": "texts", "type": "text",
+        "reason": "Импортирован базовый набор текстов; большинство сообщений бота всё ещё в коде. Добавьте недостающие ключи и включите чтение через feature flag use_v2_texts.",
+    })
+    return report
+
+
 # --- Проверка целостности импорта (ТЗ §10) ----------------------------------
 def check_import() -> dict[str, Any]:
     """Сканирует реестры конструкторов и находит проблемы связей/полей."""
@@ -887,13 +1505,39 @@ IMPORTERS = {
     "item": import_items, "mob": import_mobs, "effect": import_effects, "skill": import_skills,
     "location": import_locations, "event": import_events, "city_node": import_city_nodes,
     "achievement": import_achievements, "fine_def": import_fines, "recipe": import_recipes,
-    "profile_layout": import_profile_layout,
+    "profile_layout": import_profile_layout, "camp": import_camps,
+    "trait": import_traits, "blessing": import_blessings, "phase": import_phases,
+    "race": import_races, "reputation": import_reputation, "shop": import_shops,
+    "text": import_texts,
 }
 
 
-def import_all(kinds: list[str] | None = None, *, overwrite: bool = False, mode: str | None = None, actor: str = "import") -> dict[str, Any]:
+def _run_selected(selected, overwrite, mode, actor, dry_run):
+    """Прогон импортёров в изолированном thread-local контексте."""
+    _TL.batch = []
+    with _dry_run_scope(dry_run):
+        reports = [_normalize_report(IMPORTERS[k](overwrite=overwrite, mode=mode, actor=actor)) for k in selected]
+    # Журнал созданных записей — только для реального импорта (ТЗ §4.1, откат).
+    # 19-CODEX §5: фиксируем версию каждой записи сразу после импорта — при откате
+    # сравним с текущей и НЕ удалим запись, изменённую админом (версия выросла).
+    if not dry_run:
+        try:
+            enriched = [{"kind": k, "id": s, "version": _record_version(k, s)} for k, s in _batch()]
+            save_import_journal(enriched)
+        except Exception:
+            pass
+    return reports
+
+
+def import_all(kinds: list[str] | None = None, *, overwrite: bool = False, mode: str | None = None, actor: str = "import", dry_run: bool = False) -> dict[str, Any]:
     selected = [k for k in (kinds or list(IMPORTERS)) if k in IMPORTERS]
-    reports = [_normalize_report(IMPORTERS[k](overwrite=overwrite, mode=mode, actor=actor)) for k in selected]
+    if dry_run:
+        # dry-run ничего не пишет → может идти параллельно, без блокировки.
+        reports = _run_selected(selected, overwrite, mode, actor, True)
+    else:
+        # Реальный импорт сериализуется: один за раз (защита rollback-журнала).
+        with _RUN_LOCK:
+            reports = _run_selected(selected, overwrite, mode, actor, False)
     summary = {
         "found": sum(r["found"] for r in reports),
         "created": sum(r["created"] for r in reports),
@@ -903,5 +1547,247 @@ def import_all(kinds: list[str] | None = None, *, overwrite: bool = False, mode:
         "errors": sum(len(r["errors"]) for r in reports),
         "needs_check": sum(len(r["needs_check"]) for r in reports),
         "mode": _resolve_mode(mode, overwrite),
+        "dry_run": bool(dry_run),
+        "kinds": selected,
     }
-    return {"ok": True, "reports": reports, "summary": summary}
+    result = {"ok": True, "dry_run": bool(dry_run), "reports": reports, "summary": summary}
+    # Сохраняем отчёт последнего запуска (ТЗ §10, AC#13) — и для dry-run, и для
+    # реального импорта; в админке его можно открыть в JSON или markdown.
+    try:
+        save_last_report(result)
+    except Exception:
+        pass
+    return result
+
+
+# --- Отчёт импорта (ТЗ §10): сохранение последнего + markdown ----------------
+def _report_path():
+    import os
+    from project_paths import project_path
+
+    override = os.environ.get("IMPORT_REPORT_PATH")
+    if override:
+        from pathlib import Path
+
+        return Path(override)
+    return project_path("data", "import_report.json")
+
+
+def save_last_report(result: dict[str, Any]) -> None:
+    import json
+
+    path = _report_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(result, handle, ensure_ascii=False, indent=2)
+
+
+def load_last_report() -> dict[str, Any] | None:
+    import json
+
+    path = _report_path()
+    if not path.exists():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def build_import_markdown(result: dict[str, Any] | None) -> str:
+    """Markdown-отчёт последнего импорта (ТЗ §10)."""
+    if not result:
+        return "# Отчёт импорта\n\nОтчётов пока нет — запустите импорт или dry-run."
+    summary = result.get("summary") or {}
+    lines: list[str] = []
+    title = "Отчёт импорта (dry-run)" if result.get("dry_run") else "Отчёт импорта"
+    lines.append(f"# {title}")
+    lines.append("")
+    lines.append(f"- Режим: **{summary.get('mode', '—')}**")
+    lines.append(f"- Найдено: **{summary.get('found', 0)}**")
+    lines.append(f"- Создано: **{summary.get('created', 0)}**")
+    lines.append(f"- Обновлено: **{summary.get('updated', 0)}**")
+    lines.append(f"- Пропущено: **{summary.get('skipped', 0)}**")
+    lines.append(f"- Некорректных: **{summary.get('invalid', 0)}**")
+    lines.append(f"- Ошибок: **{summary.get('errors', 0)}**")
+    lines.append(f"- Требует проверки: **{summary.get('needs_check', 0)}**")
+    lines.append("")
+    lines.append("| Тип | Найдено | Создано | Обновлено | Пропущено | Некорр. | Ошибки | Проверить |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|")
+    for r in result.get("reports") or []:
+        lines.append(
+            f"| {r.get('kind', '—')} | {r.get('found', 0)} | {r.get('created', 0)} | "
+            f"{r.get('updated', 0)} | {r.get('skipped', 0)} | {r.get('invalid', 0)} | "
+            f"{len(r.get('errors') or [])} | {len(r.get('needs_check') or [])} |"
+        )
+    # Подробности «требует проверки» и ошибок.
+    checks = [(r.get("kind"), nc) for r in (result.get("reports") or []) for nc in (r.get("needs_check") or [])]
+    if checks:
+        lines.append("")
+        lines.append("## Требует ручной проверки")
+        for kind, nc in checks:
+            reason = nc.get("reason") if isinstance(nc, dict) else str(nc)
+            ident = nc.get("id") if isinstance(nc, dict) else ""
+            lines.append(f"- **{kind}/{ident}**: {reason}")
+    errors = [(r.get("kind"), er) for r in (result.get("reports") or []) for er in (r.get("errors") or [])]
+    if errors:
+        lines.append("")
+        lines.append("## Ошибки")
+        for kind, er in errors:
+            reason = er.get("reason") if isinstance(er, dict) else str(er)
+            ident = er.get("id") if isinstance(er, dict) else ""
+            lines.append(f"- **{kind}/{ident}**: {reason}")
+    return "\n".join(lines)
+
+
+# --- Откат последнего импорта (ТЗ §4.1) -------------------------------------
+# kind → имя модуля сервиса с EntityStore (store() + get/delete).
+_ENTITY_STORE_KINDS = {
+    "item": "item_constructor_service",
+    "effect": "effect_constructor_service",
+    "skill": "skill_constructor_service",
+    "fine_def": "fine_constructor_service",
+    "recipe": "recipe_constructor_service",
+    "achievement": "achievement_service",
+    "profile_layout": "profile_layout_service",
+    "city_node": "city_constructor_service",
+    "trait": "trait_constructor_service",
+    "blessing": "blessing_constructor_service",
+    "phase": "phase_constructor_service",
+    "race": "race_constructor_service",
+    "reputation": "reputation_constructor_service",
+    "city_shop_item": "city_constructor_service",
+    "text": "text_constructor_service",
+}
+# kind → имя константы вида реестра мира (world_content_registry без отдельного store()).
+_WCR_KINDS = {"mob": "KIND_MOB", "location": "KIND_LOCATION", "event": "KIND_EVENT"}
+
+
+def _journal_path():
+    import os
+    from project_paths import project_path
+
+    override = os.environ.get("IMPORT_JOURNAL_PATH")
+    if override:
+        from pathlib import Path
+
+        return Path(override)
+    return project_path("data", "import_journal.json")
+
+
+def _normalize_journal_entry(entry: Any) -> dict[str, Any] | None:
+    """Запись журнала → {kind,id,version}. Поддержка старого формата [kind,id]."""
+    if isinstance(entry, dict):
+        if not entry.get("kind") or not entry.get("id"):
+            return None
+        return {"kind": str(entry["kind"]), "id": str(entry["id"]), "version": entry.get("version")}
+    if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+        return {"kind": str(entry[0]), "id": str(entry[1]), "version": (entry[2] if len(entry) > 2 else None)}
+    return None
+
+
+def save_import_journal(batch) -> None:
+    import json
+
+    path = _journal_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    entries = [e for e in (_normalize_journal_entry(x) for x in batch) if e]
+    payload = {"created": entries, "count": len(entries)}
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+
+
+def load_import_journal():
+    import json
+
+    path = _journal_path()
+    if not path.exists():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _record_envelope(kind: str, sid: str) -> dict[str, Any] | None:
+    """Текущий envelope записи (для отката): из реестра мира или EntityStore."""
+    if kind in _WCR_KINDS:
+        from services import world_content_registry as wcr
+
+        try:
+            return wcr.get_content(getattr(wcr, _WCR_KINDS[kind]), sid)
+        except Exception:
+            return None
+    module_name = _ENTITY_STORE_KINDS.get(kind)
+    if not module_name:
+        return None
+    import importlib
+
+    try:
+        return importlib.import_module(f"services.{module_name}").store().get(sid)
+    except Exception:
+        return None
+
+
+def _record_version(kind: str, sid: str) -> Any:
+    env = _record_envelope(kind, sid)
+    return env.get("version") if isinstance(env, dict) else None
+
+
+def _delete_imported(kind: str, sid: str, expected_version: Any = None) -> str:
+    """Удалить одну запись отката. Статус: deleted/kept/missing/unknown/manual_changed.
+
+    kept — запись больше не помечена imported (админ снял метку, §11).
+    manual_changed (19-CODEX §5) — запись изменена после импорта (версия выросла),
+    т.е. админ её правил → откат её НЕ удаляет, чтобы не потерять ручные правки."""
+    if kind not in _WCR_KINDS and kind not in _ENTITY_STORE_KINDS:
+        return "unknown"
+    env = _record_envelope(kind, sid)
+    if env is None:
+        return "missing"
+    if not (env.get("data") or {}).get("imported"):
+        return "kept"
+    if expected_version is not None and env.get("version") != expected_version:
+        return "manual_changed"
+    if kind in _WCR_KINDS:
+        from services import world_content_registry as wcr
+
+        wcr.delete_content(getattr(wcr, _WCR_KINDS[kind]), sid)
+        return "deleted"
+    import importlib
+
+    importlib.import_module(f"services.{_ENTITY_STORE_KINDS[kind]}").store().delete(sid)
+    return "deleted"
+
+
+def rollback_last(*, actor: str = "import") -> dict[str, Any]:
+    """Откатить последний реальный импорт: удалить созданные им записи (§4.1).
+
+    Удаляются только записи, всё ещё помеченные imported И не изменённые админом
+    после импорта (19-CODEX §5: ручные правки сохраняются → skipped_manual_changed).
+    Журнал после отката очищается."""
+    journal = load_import_journal()
+    created = (journal or {}).get("created") or []
+    counts = {"deleted": 0, "kept": 0, "missing": 0, "unknown": 0, "manual_changed": 0}
+    details: list[dict[str, Any]] = []
+    for entry in created:
+        norm = _normalize_journal_entry(entry)
+        if norm is None:
+            continue
+        kind, sid, ver = norm["kind"], norm["id"], norm.get("version")
+        status = _delete_imported(kind, sid, expected_version=ver)
+        counts[status] = counts.get(status, 0) + 1
+        if status in ("kept", "unknown", "manual_changed"):
+            details.append({"kind": kind, "id": sid, "status": status})
+    save_import_journal([])  # журнал израсходован — повторный откат ничего не делает
+    _TL.batch = []
+    return {"ok": True, "found": len(created),
+            "skipped_manual_changed": counts["manual_changed"], **counts, "details": details}

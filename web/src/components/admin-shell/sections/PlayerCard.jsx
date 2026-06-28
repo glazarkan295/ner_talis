@@ -223,7 +223,9 @@ export function PlayerCard({ gameId, guarded, hasPerm, onBack, onDeleted }) {
 
       {/* Быстрые действия */}
       <div className="ntv2-form-row" style={{ marginTop: 14 }}>
-        <button type="button" className="ntv2-btn" onClick={openView}>Открыть профиль</button>
+        {/* ТЗ 22 §3: токен профиля даёт РЕДАКТИРУЕМЫЙ доступ (backend требует inventory.edit),
+            поэтому кнопку показываем только при этом праве — иначе 403 разлогинивал бы админа. */}
+        {hasPerm("inventory.edit") ? <button type="button" className="ntv2-btn" onClick={openView}>Открыть редактируемый профиль</button> : null}
         <button type="button" className="ntv2-btn" onClick={async () => setLogs((await guarded(() => fetchPlayerLogs(gameId)))?.logs || [])}>Логи 24ч</button>
         <button type="button" className="ntv2-btn" onClick={async () => setChat((await guarded(() => fetchPlayerChat(gameId)))?.chat || [])}>Чат 24ч</button>
         {hasPerm("players.unstuck") ? (

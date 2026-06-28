@@ -53,6 +53,27 @@ class WebHardeningTest(unittest.TestCase):
         self.assertEqual(response.headers.get("X-Frame-Options"), "DENY")
         self.assertIn("Content-Security-Policy", response.headers)
 
+    def test_force_https_ignores_spoofed_forwarded_proto(self):
+        # Codex P2: прямой HTTP-клиент не должен обходить FORCE_HTTPS подделкой
+        # X-Forwarded-Proto: https — заголовок не доверенный без TRUST_PROXY_HEADERS.
+        os.environ["FORCE_HTTPS"] = "true"
+        os.environ.pop("TRUST_PROXY_HEADERS", None)
+        try:
+            client = self._client()
+            resp = client.get("/", headers={"X-Forwarded-Proto": "https"})
+            self.assertEqual(resp.status_code, 426, resp.text)
+        finally:
+            os.environ.pop("FORCE_HTTPS", None)
+
+    def test_force_https_allows_real_https(self):
+        os.environ["FORCE_HTTPS"] = "true"
+        try:
+            client = TestClient(web_app.create_app(), base_url="https://testserver")
+            resp = client.get("/")
+            self.assertNotEqual(resp.status_code, 426)
+        finally:
+            os.environ.pop("FORCE_HTTPS", None)
+
 
 if __name__ == "__main__":
     unittest.main()

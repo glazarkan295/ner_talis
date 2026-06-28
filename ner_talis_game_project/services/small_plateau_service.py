@@ -119,7 +119,13 @@ def _effect_is_active(effect: dict[str, Any]) -> bool:
 
 def has_effect(player_state: dict[str, Any], effect_id: str) -> bool:
     stored = _effects_dict(player_state).get(effect_id)
-    if isinstance(stored, dict) and _effect_is_active(stored):
+    if isinstance(stored, dict):
+        if _effect_is_active(stored):
+            return True
+    elif stored:
+        # Legacy-представление: эффект как ключ-флаг (например {"ancient_curse":
+        # True}). Раньше наличие ключа = активность; сохраняем это поведение,
+        # иначе старые игроки/тесты теряют проклятие/амулет.
         return True
     return any(
         _effect_id(effect) == effect_id and _effect_is_active(effect)

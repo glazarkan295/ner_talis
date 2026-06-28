@@ -90,7 +90,45 @@ EFFECT_TYPES = (
     "reflect", "thorns", "vampirism", "burn", "poison", "stun", "bleed",
     "cleanse", "regen",
 )
+# Расширение конструктора предметов (item-reputation §2).
+CURRENCIES = ("copper", "silver", "gold", "magic_gold", "ancient_coin")
+USAGE_PLACES = (
+    "inventory", "pouch", "equipment", "special_slot", "weapon_slot_1",
+    "weapon_slot_2", "quiver", "location", "city", "district", "home",
+    "library", "collection", "battle", "craft", "alchemy", "smeltery",
+    "forge", "leatherwork", "jewelry", "enchanting", "quest", "achievement",
+    "npc_dialogue", "hidden_event", "market", "pavilion", "transfer",
+    "delivery", "promo", "admin_only", "technical",
+)
+REQUIREMENT_TYPES = (
+    "level", "stat", "race", "achievement", "reputation", "hidden_reputation",
+    "faction_mark", "quest_active", "quest_done", "location", "city", "season",
+    "event", "weapon_type", "slot", "no_curse", "has_effect", "no_fine",
+    "admin", "custom",
+)
+# Связь предмета с эффектом из конструктора эффектов (§2.7).
+EFFECT_LINK_TRIGGERS = (
+    "passive", "active", "on_equip", "on_unequip", "on_use", "on_attack",
+    "on_receive_damage", "on_death", "after_battle", "on_enter_location",
+    "on_search", "on_craft", "on_trade", "on_transfer", "on_rest",
+    "on_hidden_event",
+)
 PRICE_SELL_CAP = 1_000_000_000_000  # 1e12 меди — мягкий предупредительный лимит
+
+# --- Открываемые предметы (ТЗ 21 §1): сундуки/мешки/коробки/подарки/контейнеры.
+OPEN_PLACES = (
+    "anywhere", "city", "out_of_battle", "in_battle", "location",
+    "sublocation", "npc",
+)
+OPEN_BEHAVIORS = ("disappear", "replace", "stay", "become_empty")
+OPEN_BEHAVIOR_LABELS = {
+    "disappear": "Исчезает", "replace": "Заменяется другим предметом",
+    "stay": "Остаётся", "become_empty": "Становится пустым",
+}
+# Поведение при нехватке места в инвентаре (§1.5).
+INVENTORY_FULL_BEHAVIORS = (
+    "deny", "partial", "to_mailbox", "to_delivery", "keep_unopened", "temp_parcel",
+)
 
 _store = EntityStore(
     env_var="ITEM_CONSTRUCTOR_PATH",
@@ -197,6 +235,78 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             etype = str((eff or {}).get("type") or "").strip() if isinstance(eff, dict) else ""
             if etype and etype not in EFFECT_TYPES:
                 warnings.append(f"Эффект {i}: тип «{etype}» не из стандартного набора движка.")
+
+    # --- Расширение (item-reputation §2, проверки §6.1) ---------------------
+    is_unique = bool(data.get("is_unique") or item_type == "unique")
+    is_quest = bool(data.get("is_quest") or item_type == "quest")
+    is_bound = bool(data.get("bound") or data.get("bound_on_pickup") or data.get("bound_on_equip"))
+    if is_unique and stackable:
+        errors.append("Уникальный предмет не может стакаться (ТЗ §6.1).")
+    if is_quest and (data.get("can_sell") or data.get("sellable")):
+        warnings.append("Квестовый предмет помечен продаваемым (ТЗ §6.1).")
+    if is_bound and (data.get("can_transfer") or data.get("transferable")):
+        warnings.append("Привязанный предмет помечен передаваемым (ТЗ §6.1).")
+
+    if data.get("has_charges"):
+        if _num(data.get("max_charges")) is None:
+            warnings.append("У предмета есть заряды, но не задан max_charges (ТЗ §6.1).")
+        if not data.get("restore_charges_over_time") and not data.get("restore_on_battle_end") \
+                and not data.get("restore_on_day_start"):
+            warnings.append("У предмета есть заряды, но нет способа восстановления (ТЗ §6.1).")
+    if data.get("has_durability") and _num(data.get("max_durability")) is None:
+        warnings.append("У предмета есть прочность, но не задан max_durability.")
+
+    currency = str(data.get("currency_type") or "").strip()
+    if currency and currency not in CURRENCIES:
+        warnings.append(f"Валюта «{currency}» не из стандартного списка.")
+
+    for i, place in enumerate(data.get("usage_places") or [], start=1):
+        if str(place).strip() and str(place).strip() not in USAGE_PLACES:
+            warnings.append(f"Место использования «{place}» не из списка.")
+
+    for i, req in enumerate(data.get("requirements") or [], start=1):
+        if isinstance(req, dict):
+            rt = str(req.get("type") or "").strip()
+            if rt and rt not in REQUIREMENT_TYPES:
+                warnings.append(f"Требование {i}: тип «{rt}» не из списка.")
+
+    for i, link in enumerate(data.get("effect_links") or [], start=1):
+        if isinstance(link, dict):
+            if not str(link.get("effect_id") or "").strip():
+                errors.append(f"Связь с эффектом {i}: не указан effect_id.")
+            trig = str(link.get("trigger") or "").strip()
+            if trig and trig not in EFFECT_LINK_TRIGGERS:
+                warnings.append(f"Связь с эффектом {i}: триггер «{trig}» не из списка.")
+
+    # --- Открываемый предмет (ТЗ 21 §1) ------------------------------------
+    if data.get("openable"):
+        where = str(data.get("open_where") or "").strip()
+        if where and where not in OPEN_PLACES:
+            warnings.append(f"Открытие: место «{where}» не из списка.")
+        if data.get("open_requires_key") and not str(data.get("open_key_item_id") or "").strip():
+            errors.append("Открытие требует ключ, но предмет-ключ не указан.")
+        behavior = str(data.get("open_behavior") or "").strip()
+        if behavior and behavior not in OPEN_BEHAVIORS:
+            errors.append(f"Неизвестное поведение после открытия: {behavior}.")
+        if behavior == "replace" and not str(data.get("open_replace_item_id") or "").strip():
+            errors.append("Поведение «заменяется», но не указан предмет-замена.")
+        full = str(data.get("open_inventory_full_behavior") or "").strip()
+        if full and full not in INVENTORY_FULL_BEHAVIORS:
+            warnings.append(f"Поведение при нехватке места «{full}» не из списка.")
+        # Содержимое: каждая строка — предмет/валюта с шансом 0–100 и кол-вом min≤max.
+        has_content = False
+        for i, row in enumerate(data.get("open_contents") or [], start=1):
+            if not isinstance(row, dict):
+                continue
+            has_content = True
+            chance = row.get("chance")
+            if chance not in (None, "") and (_num(chance) is None or not (0 <= _num(chance) <= 100)):
+                errors.append(f"Содержимое {i}: шанс должен быть 0–100.")
+            mn, mx = _num(row.get("min_count")), _num(row.get("max_count"))
+            if mn is not None and mx is not None and mn > mx:
+                errors.append(f"Содержимое {i}: min больше max.")
+        if not has_content and behavior != "stay":
+            warnings.append("Предмет открываемый, но содержимое не задано.")
 
     for key in ("name", "short_description", "description"):
         value = str(data.get(key) or "").strip()

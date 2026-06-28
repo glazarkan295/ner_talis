@@ -875,27 +875,48 @@ class SQLiteStorage:
             ).fetchall()
             return [self._deserialize(r["data"]) for r in rows]
 
-    def claim_due_outgoing_messages(self, *, now_iso: str, limit: int = 25) -> list[dict[str, Any]]:
+    def claim_due_outgoing_messages(self, *, now_iso: str, limit: int = 25, platforms: list[str] | None = None) -> list[dict[str, Any]]:
+        # platforms=None → без фильтра; пустой список → не клеймить ничего.
+        plats = None if platforms is None else [str(p) for p in platforms if p]
+        if plats is not None and not plats:
+            return []
         with self._lock, self._connect() as connection:
-            rows = connection.execute(
-                "SELECT id, data FROM outgoing_messages"
-                " WHERE status IN ('queued', 'retry_wait')"
-                " AND (next_attempt_at IS NULL OR next_attempt_at <= ?)"
-                f" ORDER BY {self._OUTGOING_PRIORITY_ORDER}, created_at LIMIT ?",
-                (now_iso, max(1, int(limit))),
-            ).fetchall()
-            claimed: list[dict[str, Any]] = []
-            for row in rows:
-                message = self._deserialize(row["data"])
-                if not isinstance(message, dict):
-                    continue
-                message["status"] = "sending"
-                connection.execute(
-                    "UPDATE outgoing_messages SET status = 'sending', data = ? WHERE id = ?",
-                    (self._serialize(message), row["id"]),
-                )
-                claimed.append(message)
-            return claimed
+            # BEGIN IMMEDIATE берёт write-lock ДО чтения: иначе два диспетчера
+            # (разные процессы) прочитали бы одни и те же 'queued' строки и
+            # отправили сообщение дважды (Codex P2).
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                params: list[Any] = [now_iso]
+                platform_sql = ""
+                if plats:
+                    placeholders = ",".join("?" for _ in plats)
+                    platform_sql = f" AND json_extract(data, '$.platform') IN ({placeholders})"
+                    params.extend(plats)
+                params.append(max(1, int(limit)))
+                rows = connection.execute(
+                    "SELECT id, data FROM outgoing_messages"
+                    " WHERE status IN ('queued', 'retry_wait')"
+                    " AND (next_attempt_at IS NULL OR next_attempt_at <= ?)"
+                    + platform_sql +
+                    f" ORDER BY {self._OUTGOING_PRIORITY_ORDER}, created_at LIMIT ?",
+                    params,
+                ).fetchall()
+                claimed: list[dict[str, Any]] = []
+                for row in rows:
+                    message = self._deserialize(row["data"])
+                    if not isinstance(message, dict):
+                        continue
+                    message["status"] = "sending"
+                    connection.execute(
+                        "UPDATE outgoing_messages SET status = 'sending', data = ? WHERE id = ?",
+                        (self._serialize(message), row["id"]),
+                    )
+                    claimed.append(message)
+                connection.execute("COMMIT")
+                return claimed
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
 
     def outgoing_message_status_counts(self) -> dict[str, int]:
         with self._lock, self._connect() as connection:

@@ -3,12 +3,17 @@ import {
   archiveWorldItem,
   createWorldItem,
   disableWorldItem,
+  discardWorldDraft,
+  editWorldDraft,
+  fetchWorldHistory,
   fetchWorldItems,
   fetchWorldMeta,
   importExistingContent,
   mobTestBattle,
   previewWorldItem,
+  publishWorldDraft,
   publishWorldItem,
+  rollbackWorldItem,
   testRunWorldItem,
   updateWorldItem,
   validateWorldItem,
@@ -62,6 +67,9 @@ const EMPTY_LOCATION = {
   image: "", min_level: 1, mob_level_min: "", mob_level_max: "",
   can_search: false, can_camp: false, can_fish: false, can_teleport: false,
   city_functions: false, safe: false,
+  // Глубина поиска (ТЗ 09 §19): необязательная настройка.
+  search_depth_enabled: false, search_depth_start: 1, search_depth_max: 0,
+  show_search_depth: false, search_depth_text: "", search_depth_thresholds: [],
 };
 
 const EMPTY_MOB = {
@@ -166,6 +174,43 @@ function LocationForm({ value, onChange, meta, disabled, uploadKey }) {
         {flag("can_teleport", "Телепорт")}{flag("city_functions", "Городские функции")}{flag("safe", "Безопасная")}
       </div>
       <MessageComposer label="Сообщение при входе (изображение/формат/предпросмотр)" value={value.scene_message} category="locations" uploadKey={`${uploadKey || "location"}_msg`} disabled={disabled} onChange={(v) => set("scene_message", v)} />
+      <fieldset className="ntv2-fieldset">
+        <legend>🔎 Глубина поиска</legend>
+        <div className="ntv2-form-row" style={{ gap: 14 }}>
+          {flag("search_depth_enabled", "Включить глубину поиска")}
+          {flag("show_search_depth", "Показывать игроку")}
+        </div>
+        {value.search_depth_enabled ? (
+          <>
+            <div className="ntv2-form-row">
+              <Field label="Стартовая глубина"><input type="number" value={value.search_depth_start} disabled={disabled} onChange={(e) => set("search_depth_start", e.target.value)} /></Field>
+              <Field label="Макс. глубина (0 = без лимита)"><input type="number" value={value.search_depth_max} disabled={disabled} onChange={(e) => set("search_depth_max", e.target.value)} /></Field>
+            </div>
+            <Field label="Текст для игрока (при показе глубины)"><textarea rows={2} value={value.search_depth_text} disabled={disabled} onChange={(e) => set("search_depth_text", e.target.value)} /></Field>
+            <SearchDepthThresholdsEditor rows={value.search_depth_thresholds || []} disabled={disabled} onChange={(rows) => set("search_depth_thresholds", rows)} />
+          </>
+        ) : null}
+      </fieldset>
+    </div>
+  );
+}
+
+function SearchDepthThresholdsEditor({ rows, disabled, onChange }) {
+  const update = (idx, key, val) => onChange(rows.map((r, i) => (i === idx ? { ...r, [key]: val } : r)));
+  const add = () => onChange([...rows, { min_depth: "", max_depth: "", note: "" }]);
+  const remove = (idx) => onChange(rows.filter((_, i) => i !== idx));
+  return (
+    <div className="ntv2-depth-thresholds">
+      <div className="ntv2-field-label">Пороги глубины (события/ресурсы/мобы по глубине, §19.6)</div>
+      {rows.map((row, idx) => (
+        <div className="ntv2-form-row" key={idx} style={{ gap: 8, alignItems: "flex-end" }}>
+          <Field label="От глубины"><input type="number" value={row.min_depth ?? ""} disabled={disabled} onChange={(e) => update(idx, "min_depth", e.target.value)} /></Field>
+          <Field label="До (0 = ∞)"><input type="number" value={row.max_depth ?? ""} disabled={disabled} onChange={(e) => update(idx, "max_depth", e.target.value)} /></Field>
+          <Field label="Что открывается (заметка)"><input value={row.note ?? ""} disabled={disabled} onChange={(e) => update(idx, "note", e.target.value)} /></Field>
+          {!disabled ? <button type="button" className="ntv2-btn-mini" onClick={() => remove(idx)}>✕</button> : null}
+        </div>
+      ))}
+      {!disabled ? <button type="button" className="ntv2-btn-mini" onClick={add}>＋ Порог</button> : null}
     </div>
   );
 }
@@ -721,6 +766,7 @@ export function WorldSection({ guarded, hasPerm }) {
   const [preview, setPreview] = useState(null);
   const [testReport, setTestReport] = useState(null);
   const [battleReport, setBattleReport] = useState(null);
+  const [history, setHistory] = useState(null);
 
   const can = useMemo(() => ({
     create: hasPerm("world.create_draft"),
@@ -764,7 +810,7 @@ export function WorldSection({ guarded, hasPerm }) {
   const schema = SUBOBJECT_SCHEMAS[kind];
   const Form = FORM_BY_KIND[kind] || LocationForm;
 
-  function resetPanels() { setPreview(null); setTestReport(null); setBattleReport(null); }
+  function resetPanels() { setPreview(null); setTestReport(null); setBattleReport(null); setHistory(null); }
 
   async function runMobBattle() {
     const payload = await guarded(() => mobTestBattle(editing.id, { count: 300 }), "Тестовый бой проведён.");
@@ -772,7 +818,7 @@ export function WorldSection({ guarded, hasPerm }) {
   }
   function switchKind(k) { setKind(k); setEditing(null); setStatusFilter(""); resetPanels(); }
   function startCreate() { resetPanels(); setEditing({ id: "", data: { ...(EMPTY_BY_KIND[kind] || {}) }, status: "draft", validation: null, isNew: true }); }
-  function openItem(item) { resetPanels(); setEditing({ id: item.id, data: { ...(EMPTY_BY_KIND[kind] || {}), ...(item.data || {}) }, status: item.status, validation: item.validation, isNew: false }); }
+  function openItem(item) { resetPanels(); setEditing({ id: item.id, data: { ...(EMPTY_BY_KIND[kind] || {}), ...(item.data || {}) }, status: item.status, validation: item.validation, isNew: false, hasDraft: Boolean(item.has_draft), draftData: item.draft_data || null }); }
 
   async function runPreview() {
     const payload = await guarded(() => previewWorldItem(kind, editing.id));
@@ -805,7 +851,57 @@ export function WorldSection({ guarded, hasPerm }) {
     const payload = await guarded(() => fetchWorldItems(kind, statusFilter));
     if (payload) setItems(payload.items || []);
     const fresh = (payload?.items || []).find((i) => i.id === editing.id);
-    if (fresh) setEditing((cur) => ({ ...cur, status: fresh.status }));
+    if (fresh) setEditing((cur) => ({ ...cur, status: fresh.status, hasDraft: Boolean(fresh.has_draft), draftData: fresh.draft_data || null }));
+  }
+
+  // --- Версионирование (Этап 1): история/откат и draft-overlay --------------
+  async function loadHistory() {
+    const payload = await guarded(() => fetchWorldHistory(kind, editing.id));
+    if (payload) { setHistory(payload.history || []); setPreview(null); setTestReport(null); }
+  }
+
+  function doRollback(version) {
+    setConfirm({
+      title: `Откатить к версии ${version}?`, dangerous: true, confirmLabel: "Откатить",
+      body: <p>Текущие данные будут заменены снимком версии {version}. Текущая версия тоже сохранится в истории — откат обратим.</p>,
+      run: async (reason) => {
+        const payload = await guarded(() => rollbackWorldItem(kind, editing.id, version, reason), "Откат выполнен.");
+        if (payload?.item) setEditing((cur) => ({ ...cur, data: { ...(EMPTY_BY_KIND[kind] || {}), ...(payload.item.data || {}) }, status: payload.item.status, validation: payload.item.validation }));
+        setHistory(null);
+        await loadList();
+      },
+    });
+  }
+
+  async function saveDraft() {
+    // Правка-черновик опубликованного объекта: live в игре не меняется.
+    const payload = await guarded(() => editWorldDraft(kind, editing.id, editing.data, ""), "Сохранено как черновик (live не изменён).");
+    if (payload?.item) setEditing((cur) => ({ ...cur, hasDraft: Boolean(payload.item.has_draft), draftData: payload.item.draft_data || null }));
+    await loadList();
+  }
+
+  function doPublishDraft() {
+    setConfirm({
+      title: "Опубликовать черновик?", dangerous: true, confirmLabel: "Опубликовать",
+      body: <p>Черновик будет проверен и перенесён в live — игроки увидят изменения.</p>,
+      run: async (reason) => {
+        const payload = await guarded(() => publishWorldDraft(kind, editing.id, reason), "Черновик опубликован.");
+        if (payload?.item) setEditing((cur) => ({ ...cur, data: { ...(EMPTY_BY_KIND[kind] || {}), ...(payload.item.data || {}) }, status: payload.item.status, hasDraft: false, draftData: null }));
+        await loadList();
+      },
+    });
+  }
+
+  function doDiscardDraft() {
+    setConfirm({
+      title: "Отменить черновик?", dangerous: true, confirmLabel: "Отменить черновик",
+      body: <p>Накопленные правки черновика будут отброшены. Live-версия останется как есть.</p>,
+      run: async (reason) => {
+        await guarded(() => discardWorldDraft(kind, editing.id, reason), "Черновик отменён.");
+        setEditing((cur) => ({ ...cur, hasDraft: false, draftData: null }));
+        await loadList();
+      },
+    });
   }
 
   if (!meta) return <section className="ntv2-section"><h2>Конструктор мира</h2><p className="ntv2-hint">Загрузка…</p></section>;
@@ -818,6 +914,7 @@ export function WorldSection({ guarded, hasPerm }) {
           <button type="button" className="ntv2-btn" onClick={() => setEditing(null)}>← К списку</button>
           <h2>{editing.isNew ? KIND_NEW_LABEL[kind] : itemTitle(kind, { data: editing.data, id: editing.id })}</h2>
           {!editing.isNew ? <span className={`ntv2-badge ${STATUS_TONE[editing.status] || ""}`}>{statusLabel(statuses, editing.status)}</span> : null}
+          {editing.hasDraft ? <span className="ntv2-badge ntv2-badge-error" title="Есть неопубликованный черновик; live в игре не изменён">✎ есть черновик</span> : null}
         </div>
 
         {editing.isNew ? (
@@ -838,12 +935,40 @@ export function WorldSection({ guarded, hasPerm }) {
           </div>
         ) : null}
 
+        {history !== null ? (
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">История версий</h4>
+            {history.length ? (
+              <div className="ntv2-list">
+                {[...history].reverse().map((h) => (
+                  <div className="ntv2-list-row" key={h.version}>
+                    <span className="ntv2-badge">в.{h.version}</span>
+                    <b>{(h.data && (h.data.name || h.data.title)) || "—"}</b>
+                    <span className="ntv2-hint ntv2-mono">{h.updated_at || ""}</span>
+                    {can.edit ? <button type="button" className="ntv2-btn" onClick={() => doRollback(h.version)}>Откатить</button> : null}
+                  </div>
+                ))}
+              </div>
+            ) : <p className="ntv2-hint">История пуста — объект ещё не редактировался.</p>}
+          </div>
+        ) : null}
+
         <div className="ntv2-form-row" style={{ marginTop: 14 }}>
           {(editing.isNew ? can.create : can.edit) ? (
             <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={editing.isNew && !editing.id.trim()} onClick={save}>{editing.isNew ? "Создать черновик" : "Сохранить"}</button>
           ) : null}
+          {!editing.isNew && can.edit && editing.status === "published" ? (
+            <button type="button" className="ntv2-btn" title="Сохранить правки в черновик — live в игре не изменится" onClick={saveDraft}>Сохранить как черновик</button>
+          ) : null}
+          {!editing.isNew && editing.hasDraft && can.publish ? (
+            <button type="button" className="ntv2-btn ntv2-btn-primary" onClick={doPublishDraft}>Опубликовать черновик</button>
+          ) : null}
+          {!editing.isNew && editing.hasDraft && can.edit ? (
+            <button type="button" className="ntv2-btn" onClick={doDiscardDraft}>Отменить черновик</button>
+          ) : null}
           {!editing.isNew && can.validate ? <button type="button" className="ntv2-btn" onClick={runValidate}>Проверить</button> : null}
           {!editing.isNew ? <button type="button" className="ntv2-btn" onClick={runPreview}>Предпросмотр</button> : null}
+          {!editing.isNew ? <button type="button" className="ntv2-btn" onClick={loadHistory}>История версий</button> : null}
           {!editing.isNew && can.testRun ? <button type="button" className="ntv2-btn" onClick={runTestRun}>Тестовый проход</button> : null}
           {!editing.isNew && kind === "mob" && can.mobTestBattle ? <button type="button" className="ntv2-btn" onClick={runMobBattle}>Тестовый бой</button> : null}
           {!editing.isNew && can.publish ? (
@@ -963,7 +1088,7 @@ export function WorldSection({ guarded, hasPerm }) {
         <SearchBox value={query} onChange={setQuery} />
       </div>
       {!items.length ? <p className="ntv2-hint">Пока нет объектов. {can.create ? "Создайте первый черновик." : ""}</p> : null}
-      <NoResults query={items.length ? query : ""} />
+      <NoResults items={items} query={query} />
       <div className="ntv2-list">
         {filterEntities(items, query).map((item) => (
           <button key={item.id} type="button" className="ntv2-list-row ntv2-player-row" onClick={() => openItem(item)}>

@@ -216,6 +216,29 @@ class AchievementApiTest(unittest.TestCase):
         self.assertEqual(self.client.post("/api/admin/v2/achievements", headers=self._auth(token), json={"id": "ach_x", "data": {"name": "x"}}).status_code, 403)
         self.assertEqual(self.client.get("/api/admin/v2/achievements", headers=self._auth(token)).status_code, 200)
 
+    def test_content_cannot_edit_published_achievement(self):
+        # Codex P2: правка опубликованного достижения уходит в игру немедленно
+        # (рантайм читает published), поэтому требует прав публикации.
+        owner = self._token("999")
+        self._published_achievement(owner, aid="hero")
+        rbac.set_role_override("telegram", "999", rbac.CONTENT)
+        content_token = self._token("999")
+        edit_published = self.client.put(
+            "/api/admin/v2/achievements/hero",
+            headers=self._auth(content_token), json={"data": {"name": "Изменено"}},
+        )
+        self.assertEqual(edit_published.status_code, 403, edit_published.text)
+        # Черновик content править может (edit).
+        self.client.post("/api/admin/v2/achievements", headers=self._auth(content_token), json={
+            "id": "draft_ach",
+            "data": {"name": "D", "category": "combat", "conditions": [{"type": "kill_mob"}]},
+        })
+        edit_draft = self.client.put(
+            "/api/admin/v2/achievements/draft_ach",
+            headers=self._auth(content_token), json={"data": {"name": "D2"}},
+        )
+        self.assertEqual(edit_draft.status_code, 200, edit_draft.text)
+
     def _make_player(self):
         races = load_races("data/races.json")
         gid = self.storage.generate_game_id()
