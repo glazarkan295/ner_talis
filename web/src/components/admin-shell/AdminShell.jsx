@@ -280,6 +280,7 @@ const HOUSING_CONFIG = {
 const TRAIT_CONFIG = {
   base: "traits", title: "Конструктор черт мобов", permPrefix: "trait",
   newLabel: "Новая черта", nameField: "trait_name",
+  supportsImport: true,
   importLabel: "Импортировать библиотеку черт?", importText: "50 универсальных черт будут заведены как опубликованные записи (без дублей).",
   fields: [
     { key: "trait_name", label: "Название", type: "text", hint: "Короткое имя черты, видно админу в списках. Обязательное поле." },
@@ -294,6 +295,7 @@ const TRAIT_CONFIG = {
 const BLESSING_CONFIG = {
   base: "blessings", title: "Конструктор благословений", permPrefix: "blessing",
   newLabel: "Новое благословение", nameField: "blessing_name",
+  supportsImport: true,
   importLabel: "Импортировать библиотеку благословений?", importText: "19 благословений будут заведены как опубликованные записи (без дублей).",
   fields: [
     { key: "blessing_name", label: "Название", type: "text" },
@@ -307,6 +309,7 @@ const BLESSING_CONFIG = {
 const PHASE_CONFIG = {
   base: "phases", title: "Конструктор фаз боссов", permPrefix: "phase",
   newLabel: "Новая фаза", nameField: "phase_name",
+  supportsImport: true,
   importLabel: "Импортировать библиотеку фаз?", importText: "20 универсальных фаз боссов будут заведены как опубликованные записи (без дублей).",
   fields: [
     { key: "phase_name", label: "Название", type: "text" },
@@ -361,6 +364,7 @@ const REGISTRATION_CONFIG = {
 const RACE_CONFIG = {
   base: "races", title: "Конструктор рас", permPrefix: "race",
   newLabel: "Новая раса", nameField: "race_name",
+  supportsImport: true,
   importLabel: "Импортировать существующие расы?", importText: "Расы из data/races.json будут заведены как опубликованные записи (без дублей).",
   fields: [
     { key: "race_name", label: "Название", type: "text", hint: "Имя расы, видно игроку при регистрации. Обязательное поле." },
@@ -744,7 +748,8 @@ export function AdminShell() {
           <div className="ntv2-brand-title">Нер-Талис</div>
           <div className="ntv2-brand-sub">Админ-консоль V2</div>
         </div>
-        <GlobalSearch guarded={guarded} onOpen={setActive} />
+        {/* ТЗ 22 §2: глобальный поиск требует graph.view — не показываем тем, у кого его нет (иначе 403 на /search). */}
+        {hasPerm("graph.view") ? <GlobalSearch guarded={guarded} onOpen={setActive} /> : null}
         <nav className="ntv2-nav">
           {groupedNav.map(({ group, items }) => (
             <div className="ntv2-nav-group" key={group}>

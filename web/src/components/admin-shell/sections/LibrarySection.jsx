@@ -163,7 +163,8 @@ export function LibrarySection({ guarded, hasPerm, config }) {
           {!editing.isNew && can.del ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Удалить?", dangerous: true, confirmLabel: "Удалить", body: <p>Полное удаление записи.</p>, run: async (r) => { await guarded(() => deleteLibItem(base, editing.id, editing.id, r), "Удалено."); setEditing(null); await load(); } })}>Удалить</button> : null}
         </div>
 
-        {!editing.isNew ? <VersionHistory base={base} id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
+        {/* ТЗ 22 §4: откат опубликованной записи требует и edit, и publish; черновик — только edit. */}
+        {!editing.isNew ? <VersionHistory base={base} id={editing.id} canRollback={can.edit && (editing.status !== "published" || can.publish)} onRolledBack={refreshEditing} /> : null}
 
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />
@@ -180,7 +181,8 @@ export function LibrarySection({ guarded, hasPerm, config }) {
           {statuses.map((s) => <option key={s.value || s} value={s.value || s}>{s.label || s}</option>)}
         </select>
         {can.create ? <button type="button" className="ntv2-btn ntv2-btn-primary" onClick={startCreate}>＋ {newLabel}</button> : null}
-        {can.publish ? <button type="button" className="ntv2-btn" onClick={() => setConfirm({ title: config.importLabel || "Импортировать библиотеку?", dangerous: true, confirmLabel: "Импортировать", body: <p>{config.importText || "Стандартная библиотека будет заведена как опубликованные записи (без дублей)."}</p>, run: async (r) => { const p = await guarded(() => importLib(base, "new", r), "Импорт выполнен."); if (p?.report) { await load(); window.alert(`Импорт: создано ${p.report.created}, пропущено ${p.report.skipped}.`); } } })}>Импортировать библиотеку</button> : null}
+        {/* ТЗ 22 §1/§6: кнопку импорта показываем только если конструктор реально поддерживает import-route (config.supportsImport), а не просто при can.publish. */}
+        {can.publish && config.supportsImport ? <button type="button" className="ntv2-btn" onClick={() => setConfirm({ title: config.importLabel || "Импортировать библиотеку?", dangerous: true, confirmLabel: "Импортировать", body: <p>{config.importText || "Стандартная библиотека будет заведена как опубликованные записи (без дублей)."}</p>, run: async (r) => { const p = await guarded(() => importLib(base, "new", r), "Импорт выполнен."); if (p?.report) { await load(); window.alert(`Импорт: создано ${p.report.created}, пропущено ${p.report.skipped}.`); } } })}>Импортировать библиотеку</button> : null}
         <SearchBox value={query} onChange={setQuery} />
       </div>
       {!list.length ? <p className="ntv2-hint">Записей пока нет. Создайте новую или импортируйте библиотеку.</p> : null}
