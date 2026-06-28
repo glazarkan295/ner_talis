@@ -73,9 +73,12 @@ ALLOW_JSON_STORAGE_IN_PRODUCTION=false
 ALLOWED_HOSTS=ner-talis-game.ru,www.ner-talis-game.ru,localhost,127.0.0.1
 ENABLE_HSTS=true
 FORCE_HTTPS=true
-# Доверять X-Forwarded-For только за известным proxy (иначе rate-limit обходится подменой IP)
-TRUST_PROXY_HEADERS=false
-TRUSTED_PROXY_IPS=127.0.0.1,::1
+# За reverse proxy Timeweb нужно доверять proxy-заголовкам HTTPS (иначе ошибка
+# {"detail":"HTTPS required"} при открытии профиля/админки):
+UVICORN_PROXY_HEADERS=true
+UVICORN_FORWARDED_ALLOW_IPS=*
+TRUST_PROXY_HEADERS=true
+TRUSTED_PROXY_IPS=*
 # Постоянный диск под загрузки админки (иконки переживают пересборку контейнера)
 PUBLIC_UPLOADS_ASSETS_DIR=data/public_uploads/assets
 # OpenAPI/Swagger по умолчанию ВЫКЛЮЧЕНЫ в проде (раскрывают список ручек/схемы).
@@ -83,7 +86,31 @@ PUBLIC_UPLOADS_ASSETS_DIR=data/public_uploads/assets
 ENABLE_API_DOCS=false
 ```
 
-Если за Timeweb стоит балансировщик/прокси с фиксированным IP — поставьте `TRUST_PROXY_HEADERS=true` и укажите его IP в `TRUSTED_PROXY_IPS`, иначе rate-limit и логи будут видеть IP прокси, а не клиента.
+Если за Timeweb стоит балансировщик/прокси с фиксированным IP — вместо `TRUSTED_PROXY_IPS=*` безопаснее перечислить его IP или CIDR-сети (например `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`), иначе любому отправителю можно будет доверять proxy-заголовки.
+
+### Ошибка `{"detail":"HTTPS required"}`
+
+Если при открытии `/profile?token=...` или `/admin_panel_v2?token=...` сайт возвращает JSON `{"detail":"HTTPS required","redirect":"https://..."}` — приложение за reverse proxy Timeweb видит запрос как HTTP (TLS терминируется на прокси, до Uvicorn доходит HTTP), а `FORCE_HTTPS=true` блокирует «небезопасный» доступ.
+
+Решение — включить доверие proxy-заголовкам HTTPS:
+
+```env
+FORCE_HTTPS=true
+UVICORN_PROXY_HEADERS=true
+UVICORN_FORWARDED_ALLOW_IPS=*
+TRUST_PROXY_HEADERS=true
+TRUSTED_PROXY_IPS=*
+```
+
+Как это работает:
+
+- `UVICORN_PROXY_HEADERS=true` + `UVICORN_FORWARDED_ALLOW_IPS=*` — Uvicorn доверяет `X-Forwarded-Proto`/`X-Forwarded-For` от прокси и переписывает scheme на `https`;
+- `TRUST_PROXY_HEADERS=true` + `TRUSTED_PROXY_IPS` — приложение дополнительно признаёт запрос защищённым по `X-Forwarded-Proto: https`, `X-Forwarded-Ssl: on` или `Forwarded: proto=https`, если ближайший узел доверенный;
+- прямой HTTP без доверенного proxy по-прежнему блокируется.
+
+Аварийный временный обход (если HTTPS уже обеспечивает внешний proxy, а правка ещё не применена): `FORCE_HTTPS=false`. Снимите его после настройки proxy-заголовков.
+
+После такой ошибки **перевыпустите ссылки профиля/админки через бота** — токены могли попасть в логи/сообщения. Не публикуйте реальные токены в чатах и на скриншотах.
 
 Раздельных режимов запуска больше нет: `main.py` всегда запускает Telegram и VK вместе, поэтому нужны все три переменные `TELEGRAM_BOT_TOKEN`, `VK_GROUP_TOKEN`, `VK_GROUP_ID`.
 
