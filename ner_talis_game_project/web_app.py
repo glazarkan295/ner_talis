@@ -11,6 +11,7 @@ The app serves:
 from __future__ import annotations
 
 import html
+import ipaddress
 import logging
 import os
 import time
@@ -177,33 +178,77 @@ def _truthy_env(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).strip().casefold() in {"1", "true", "yes", "on", "да"}
 
 
+def _proxy_ip_trusted(direct_ip: str, trusted: list[str]) -> bool:
+    """True, если ближайший узел (direct_ip) — доверенный proxy.
+
+    Поддерживает ``*`` (доверять любому proxy), точные IP и CIDR-сети
+    (например ``10.0.0.0/8``). Безопасное поведение: при пустом/некорректном
+    списке или нераспознаваемом IP — НЕ доверять.
+    """
+    if not trusted:
+        return False
+    if "*" in trusted:
+        return True
+    # Точное строковое совпадение — на случай не-IP токенов («unknown»/«testclient»).
+    if direct_ip in trusted:
+        return True
+    try:
+        ip = ipaddress.ip_address(direct_ip)
+    except ValueError:
+        return False
+    for entry in trusted:
+        try:
+            if "/" in entry:
+                if ip in ipaddress.ip_network(entry, strict=False):
+                    return True
+            elif ip == ipaddress.ip_address(entry):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _trusted_proxy(request: Request) -> bool:
+    """TRUST_PROXY_HEADERS включён и непосредственный узел — доверенный proxy."""
+    if not _truthy_env("TRUST_PROXY_HEADERS", "false"):
+        return False
+    direct_ip = request.client.host if request.client else "unknown"
+    return _proxy_ip_trusted(direct_ip, _csv_env("TRUSTED_PROXY_IPS", "127.0.0.1,::1"))
+
+
 def _client_ip_for_rate_limit(request: Request) -> str:
     direct_ip = request.client.host if request.client else "unknown"
     # Do not trust spoofable proxy headers by default. X-Forwarded-For is used
     # only when explicitly enabled and the immediate peer is a known proxy.
-    if _truthy_env("TRUST_PROXY_HEADERS", "false"):
-        trusted_proxies = set(_csv_env("TRUSTED_PROXY_IPS", "127.0.0.1,::1"))
-        if direct_ip in trusted_proxies:
-            forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-            if forwarded:
-                return forwarded
+    if _trusted_proxy(request):
+        forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        if forwarded:
+            return forwarded
     return direct_ip
 
 
-def _request_is_https(request: Request) -> bool:
-    """HTTPS ли запрос. X-Forwarded-Proto подделывается прямым HTTP-клиентом,
-    поэтому доверяем ему только при TRUST_PROXY_HEADERS и доверенном ближайшем
-    узле — та же модель доверия, что и для IP в _client_ip_for_rate_limit.
-    Иначе FORCE_HTTPS обходится спуфом заголовка на любом прямом развёртывании."""
+def is_effectively_https(request: Request) -> bool:
+    """HTTPS ли запрос с учётом reverse proxy (Timeweb/балансировщик).
+
+    1) ``request.url.scheme == "https"`` — запрос уже защищён (в т.ч. когда Uvicorn
+       сам переписал scheme по proxy-заголовкам, см. UVICORN_PROXY_HEADERS).
+    2) Иначе — только если TRUST_PROXY_HEADERS включён И ближайший узел доверенный
+       (TRUSTED_PROXY_IPS): доверяем признакам HTTPS от proxy —
+       ``X-Forwarded-Proto: https`` / ``X-Forwarded-Ssl: on`` / ``Forwarded: proto=https``.
+    3) Иначе запрос считается HTTP — заголовки подделываются прямым HTTP-клиентом,
+       поэтому без доверенного proxy им верить нельзя (иначе FORCE_HTTPS обходится).
+    """
     if request.url.scheme == "https":
         return True
-    if _truthy_env("TRUST_PROXY_HEADERS", "false"):
-        direct_ip = request.client.host if request.client else "unknown"
-        trusted_proxies = set(_csv_env("TRUSTED_PROXY_IPS", "127.0.0.1,::1"))
-        if direct_ip in trusted_proxies:
-            proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
-            if proto == "https":
-                return True
+    if not _trusted_proxy(request):
+        return False
+    proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    if proto == "https":
+        return True
+    if request.headers.get("x-forwarded-ssl", "").strip().lower() == "on":
+        return True
+    if "proto=https" in request.headers.get("forwarded", "").lower():
+        return True
     return False
 
 
@@ -317,7 +362,7 @@ def create_app() -> FastAPI:
     async def security_and_rate_limit_middleware(request: Request, call_next):
         path = request.url.path
         if _truthy_env("FORCE_HTTPS", "false") and path != "/health":
-            is_https = _request_is_https(request)
+            is_https = is_effectively_https(request)
             host = request.headers.get("host", "")
             if not is_https and not host.startswith(("localhost", "127.0.0.1")):
                 secure_url = request.url.replace(scheme="https")
