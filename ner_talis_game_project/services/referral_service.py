@@ -45,6 +45,22 @@ def build_telegram_link(player: dict[str, Any] | None) -> str:
     return f"https://t.me/{bot}?start={REF_PREFIX}{code}"
 
 
+def build_vk_link(player: dict[str, Any] | None) -> str:
+    """Ссылка-приглашение в VK-бота с ref-кодом (ТЗ 2.0 файл 16 §3/§6).
+
+    Использует VK_BOT_SCREEN_NAME (например «nertalis») либо club<VK_GROUP_ID>.
+    Пусто, если ни то, ни другое не задано.
+    """
+    screen = os.getenv("VK_BOT_SCREEN_NAME", "").strip().lstrip("@")
+    if not screen:
+        group_id = os.getenv("VK_GROUP_ID", "").strip()
+        screen = f"club{group_id}" if group_id else ""
+    code = referral_code_for(player)
+    if not screen or not code:
+        return ""
+    return f"https://vk.me/{screen}?ref={REF_PREFIX}{code}"
+
+
 def mark_referred_by(new_player: dict[str, Any], code: Any) -> str | None:
     """Пометить новичка как приглашённого (локально, ДО save_new_player).
 
@@ -111,6 +127,7 @@ def referral_summary(player: dict[str, Any] | None) -> dict[str, Any]:
     return {
         "code": referral_code_for(player),
         "link": build_telegram_link(player),
+        "vkLink": build_vk_link(player),
         "count": int(player.get("referral_count") or 0),
         "referredBy": str(player.get("referred_by") or ""),
     }

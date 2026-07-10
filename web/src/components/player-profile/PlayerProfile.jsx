@@ -1576,24 +1576,31 @@ function PromoForm({ onRedeemPromo }) {
 }
 
 // --- Профиль V2: вкладка «Сервисы» (ТЗ §22, Передача + Промокод) ----------
-function ReferralPanel({ referral }) {
-  const data = referral || {};
-  const link = data.link || "";
+function ReferralLinkRow({ label, link }) {
   const [copied, setCopied] = useState(false);
   async function copy() {
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* буфер может быть недоступен */ }
   }
   return (
+    <div className="nt-row">
+      <span>{label}</span>
+      <strong className="nt-summary-value"><span className="nt-summary-text nt-mono">{link}</span><button type="button" className="nt-fines-button" onClick={copy}>{copied ? "Скопировано" : "Копировать"}</button></strong>
+    </div>
+  );
+}
+
+function ReferralPanel({ referral }) {
+  const data = referral || {};
+  const link = data.link || "";
+  const vkLink = data.vkLink || "";
+  return (
     <Panel title="Реферальная программа">
       <div className="nt-lines">
         <Row label="Приглашено игроков" value={data.count || 0} />
         {data.code ? <Row label="Ваш код" value={data.code} /> : null}
-        {link ? (
-          <div className="nt-row">
-            <span>Ссылка-приглашение</span>
-            <strong className="nt-summary-value"><span className="nt-summary-text nt-mono">{link}</span><button type="button" className="nt-fines-button" onClick={copy}>{copied ? "Скопировано" : "Копировать"}</button></strong>
-          </div>
-        ) : <p className="nt-empty-text">Ссылка появится после настройки бота. Передайте новичку ваш код — он привяжется при регистрации.</p>}
+        {link ? <ReferralLinkRow label="Ссылка Telegram" link={link} /> : null}
+        {vkLink ? <ReferralLinkRow label="Ссылка VK" link={vkLink} /> : null}
+        {!link && !vkLink ? <p className="nt-empty-text">Ссылка появится после настройки бота. Передайте новичку ваш код — он привяжется при регистрации.</p> : null}
       </div>
     </Panel>
   );

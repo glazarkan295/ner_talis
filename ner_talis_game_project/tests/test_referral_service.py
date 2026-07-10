@@ -98,6 +98,25 @@ class ReferralServiceTest(unittest.TestCase):
         self.assertEqual(s["code"], "NT-9")
         self.assertEqual(s["count"], 3)
         self.assertEqual(s["referredBy"], "NT-1")
+        self.assertIn("vkLink", s)  # ТЗ 2.0 файл 16: обе ссылки в сводке
+
+    def test_vk_link(self):
+        # ТЗ 2.0 файл 16 §3/§6: VK-ссылка со стабильным ref-кодом.
+        saved = {k: os.environ.get(k) for k in ("VK_BOT_SCREEN_NAME", "VK_GROUP_ID")}
+        try:
+            os.environ.pop("VK_BOT_SCREEN_NAME", None)
+            os.environ.pop("VK_GROUP_ID", None)
+            self.assertEqual(rs.build_vk_link({"game_id": "NT-1"}), "")
+            os.environ["VK_GROUP_ID"] = "12345"
+            self.assertEqual(rs.build_vk_link({"game_id": "NT-1"}), "https://vk.me/club12345?ref=ref_NT-1")
+            os.environ["VK_BOT_SCREEN_NAME"] = "nertalis"
+            self.assertEqual(rs.build_vk_link({"game_id": "NT-1"}), "https://vk.me/nertalis?ref=ref_NT-1")
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
 
 
 if __name__ == "__main__":
