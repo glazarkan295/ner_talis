@@ -94,6 +94,18 @@ class ItemServiceTest(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertTrue(any("effect_id" in e for e in result["errors"]), result["errors"])
 
+    def test_celestial_quality_between_mythic_and_divine(self):
+        # ТЗ 2.0 (файлы 02/05): качество «Небесный» между «Мифический» и «Божественный».
+        self.assertIn("celestial", items.QUALITIES)
+        i = items.QUALITIES.index("celestial")
+        self.assertEqual(items.QUALITIES[i - 1], "mythic")
+        self.assertEqual(items.QUALITIES[i + 1], "divine")
+        env = items.store().create("halo_ring", {
+            "name": "Небесное кольцо", "description": "x", "category": "Украшение",
+            "quality": "celestial", "stackable": False,
+        })
+        self.assertTrue(items.validate(env)["ok"], items.validate(env)["errors"])
+
     def test_openable_valid(self):
         env = items.store().create("chest", {
             "name": "Сундук", "description": "x", "category": "Контейнер", "stackable": False,

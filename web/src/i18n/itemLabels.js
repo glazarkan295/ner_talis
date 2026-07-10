@@ -31,7 +31,7 @@ export const ITEM_CATEGORY = {
 // Качество / редкость.
 export const ITEM_QUALITY = {
   trash: "Хлам", poor: "Плохое", common: "Обычный", uncommon: "Необычный", rare: "Редкий",
-  epic: "Эпический", legendary: "Легендарный", mythic: "Мифический", divine: "Божественный",
+  epic: "Эпический", legendary: "Легендарный", mythic: "Мифический", celestial: "Небесный", divine: "Божественный",
   unique: "Уникальный", artifact: "Артефактное", set: "Комплектное",
 };
 

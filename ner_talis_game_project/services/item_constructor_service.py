@@ -66,7 +66,7 @@ ITEM_TYPES = (
     "quest", "unique", "artifact", "one_time_artifact", "special_slot",
     "craft", "sale", "event", "guild", "raid", "achievement",
 )
-QUALITIES = ("common", "uncommon", "rare", "epic", "legendary", "mythic", "divine")
+QUALITIES = ("common", "uncommon", "rare", "epic", "legendary", "mythic", "celestial", "divine")
 EQUIP_SLOTS = (
     "head", "chest", "legs", "gloves", "boots", "belt", "main_hand",
     "off_hand", "two_hands", "staff", "spellbook", "shield", "ring",
