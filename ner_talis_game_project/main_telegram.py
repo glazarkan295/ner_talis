@@ -122,6 +122,7 @@ def _import_telegram_runtime():
         start_command,
     )
     from handlers.site_profile import profile_site_button, profile_site_command
+    from handlers.menu import hide_menu_command, menu_command
     from handlers.telegram_admin import register_telegram_admin_handlers
 
     return {
@@ -163,6 +164,8 @@ def _import_telegram_runtime():
         "start_command": start_command,
         "profile_site_button": profile_site_button,
         "profile_site_command": profile_site_command,
+        "menu_command": menu_command,
+        "hide_menu_command": hide_menu_command,
         "register_telegram_admin_handlers": register_telegram_admin_handlers,
     }
 
@@ -329,6 +332,13 @@ def build_application():
     application.add_handler(CommandHandler("connect", runtime["connect_command"]))
     application.add_handler(CommandHandler("city", runtime["city_command"]))
     application.add_handler(CommandHandler("unstuck", runtime["unstuck_command"]))
+    # Нижняя клавиатура (ТЗ 14): /menu возвращает меню, /hide_menu полностью
+    # скрывает его. Текстовые «меню»/«открыть меню»/«вернуть меню» = /menu; их
+    # хендлер регистрируем ДО city_message, чтобы город не перехватил их.
+    application.add_handler(CommandHandler("menu", runtime["menu_command"]))
+    if get_bool_env("TG_ENABLE_HIDE_MENU_COMMAND", True):
+        application.add_handler(CommandHandler("hide_menu", runtime["hide_menu_command"]))
+    application.add_handler(MessageHandler(filters.Regex(r"(?i)^(меню|открыть меню|вернуть меню)$"), runtime["menu_command"]))
     application.add_handler(MessageHandler(filters.Regex("^Профиль$"), runtime["profile_button"]))
     application.add_handler(MessageHandler(filters.Regex("^Профиль на сайте$"), runtime["profile_site_button"]))
     application.add_handler(MessageHandler(filters.Regex(runtime["CITY_BUTTON_PATTERN"]), runtime["city_message"]))

@@ -17,7 +17,12 @@ if "telegram" not in sys.modules:
             self.keyboard = keyboard
             self.kwargs = kwargs
 
+    class _ReplyKeyboardRemove:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
     telegram_stub.ReplyKeyboardMarkup = _ReplyKeyboardMarkup
+    telegram_stub.ReplyKeyboardRemove = _ReplyKeyboardRemove
     telegram_stub.Update = object
     sys.modules["telegram"] = telegram_stub
 

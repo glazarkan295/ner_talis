@@ -1,4 +1,6 @@
-from telegram import ReplyKeyboardMarkup
+import os
+
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 from services.city_service import (
     central_square_buttons,
@@ -14,13 +16,28 @@ from services.city_service import (
 )
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return str(value).strip().casefold() in {"1", "true", "yes", "on", "да"}
+
+
 def make_keyboard(buttons: list[list[str]]) -> ReplyKeyboardMarkup:
+    # ТЗ 14: по умолчанию НЕ persistent и НЕ one-time — Telegram сам показывает
+    # стандартную кнопку сворачивания/разворачивания, а меню не навязчиво на
+    # телефонах. Значения можно переопределить через ENV, не меняя код.
     return ReplyKeyboardMarkup(
         buttons,
         resize_keyboard=True,
-        one_time_keyboard=False,
-        is_persistent=True,
+        one_time_keyboard=_env_bool("TG_REPLY_KEYBOARD_ONE_TIME", False),
+        is_persistent=_env_bool("TG_REPLY_KEYBOARD_PERSISTENT", False),
     )
+
+
+def remove_keyboard() -> ReplyKeyboardRemove:
+    """Полное удаление нижней reply-клавиатуры (команда /hide_menu, ТЗ 14 §5.2)."""
+    return ReplyKeyboardRemove()
 
 
 def consent_keyboard() -> ReplyKeyboardMarkup:
