@@ -291,6 +291,31 @@ const HOUSING_CONFIG = {
     { key: "rest_finish_text", label: "Текст завершения отдыха", type: "text" },
   ],
 };
+const MESSAGE_RULE_CONFIG = {
+  base: "message-rules", title: "Очередь и приоритет сообщений", permPrefix: "message_rule",
+  newLabel: "Новое правило очереди", nameField: "name",
+  fields: [
+    { key: "name", label: "Название", type: "text", hint: "Имя правила очереди (видно админу)." },
+    { key: "message_type", label: "Тип сообщения", type: "select", metaKey: "messageTypes", hint: "combat/achievement/reward/broadcast/penalty/… (§4)." },
+    { key: "source", label: "Источник", type: "select", metaKey: "sourceTypes" },
+    { key: "priority", label: "Приоритет", type: "number", hint: "1 — бой/критичное, 2 — достижения/награды, 3 — рассылки, 0 — ждать сообщения игрока, пусто — после таймера." },
+    { key: "platform", label: "Платформа", type: "select", metaKey: "platforms" },
+    { key: "send_mode", label: "Режим отправки", type: "select", metaKey: "sendModes", hint: "Сразу/после таймера/после боя/после действия/в время/пачкой (§9)." },
+    { key: "send_at", label: "Время отправки (для «в указанное время»)", type: "text" },
+    { key: "timer_seconds", label: "Таймер (сек)", type: "number" },
+    { key: "group_enabled", label: "Группировать похожие сообщения", type: "checkbox" },
+    { key: "max_in_group", label: "Макс. сообщений в группе", type: "number" },
+    { key: "group_header", label: "Заголовок группы", type: "text" },
+    { key: "repeat_on_error", label: "Повторять при ошибке доставки", type: "checkbox" },
+    { key: "max_retries", label: "Макс. повторов", type: "number" },
+    { key: "retry_interval_seconds", label: "Интервал повторов (сек)", type: "number" },
+    { key: "ttl_seconds", label: "Срок жизни сообщения (сек)", type: "number" },
+    { key: "log_send", label: "Логировать отправку", type: "checkbox" },
+    { key: "show_admin", label: "Показывать админу", type: "checkbox" },
+    { key: "error_text", label: "Текст ошибки доставки", type: "text" },
+    { key: "description", label: "Описание (для админа)", type: "textarea" },
+  ],
+};
 const QUEST_CONFIG = {
   base: "quests", title: "Конструктор квестов и заданий", permPrefix: "quest",
   newLabel: "Новый квест", nameField: "name",
@@ -620,6 +645,7 @@ const NAV = [
   { id: "events", label: "Мировые события", icon: "🌌", perm: "world_event.view" },
   { id: "achievements", label: "Достижения", icon: "🏆", perm: "achievement.view" },
   { id: "messages", label: "Очередь сообщений", icon: "📨", perm: "messages.view_queue" },
+  { id: "message-rules", label: "Правила приоритета", icon: "🚦", perm: "message_rule.view" },
   { id: "promos", label: "Промокоды и рассылки", icon: "🎟️", perm: "promos.view" },
   { id: "texts", label: "Тексты бота", icon: "💬", perm: "text.view" },
   { id: "import", label: "Импорт контента", icon: "📥", perm: "world.view" },
@@ -651,7 +677,7 @@ const NAV_GROUP_OF = {
   housing: "Ремесло и экономика", promos: "Ремесло и экономика",
   site: "Сайт и профиль", profile_layout: "Сайт и профиль",
   levels: "Прогрессия", exp: "Прогрессия", registration: "Прогрессия", races: "Прогрессия", quests: "Прогрессия",
-  messages: "Система", reference: "Система", audit: "Система",
+  messages: "Система", "message-rules": "Система", reference: "Система", audit: "Система",
   sessions: "Система", roles: "Система",
 };
 
@@ -673,6 +699,7 @@ const SEARCH_TYPE_TO_SECTION = {
   addiction: "addictions", tolerance: "tolerances", tavern: "taverns",
   sublocation: "sublocations", sublocation_node: "sublocations", sublocation_transition: "sublocations",
   npc_ally: "npc-allies", mole: "mole", casino: "casino", housing: "housing", quest: "quests",
+  message_rule: "message-rules",
 };
 function sectionForSearchType(type) {
   if (type in SEARCH_TYPE_TO_SECTION) return SEARCH_TYPE_TO_SECTION[type];
@@ -884,6 +911,7 @@ export function AdminShell() {
         {active === "events" && hasPerm("world_event.view") && <EventsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "achievements" && hasPerm("achievement.view") && <AchievementsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "messages" && hasPerm("messages.view_queue") && <MessagesSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "message-rules" && hasPerm("message_rule.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={MESSAGE_RULE_CONFIG} />}
         {active === "promos" && hasPerm("promos.view") && <PromosSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "reference" && <ReferenceSection />}
         {active === "audit" && hasPerm("audit.view") && <AuditSection guarded={guarded} />}
