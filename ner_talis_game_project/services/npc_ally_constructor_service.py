@@ -71,6 +71,29 @@ ABILITIES = (
 )
 CURRENCIES = ("copper", "silver", "gold", "magic_gold", "ancient_coin")
 
+# --- ТЗ 2.0 (файл 10 ч.3): углубление NPC-помощников ------------------------
+# Способы восстановления после смерти/выбытия (§62).
+REVIVAL_METHODS = ("time", "camp", "npc", "quest", "payment", "auto_after_battle")
+REVIVAL_METHOD_LABELS = {
+    "time": "Через время", "camp": "Через лагерь", "npc": "Через NPC",
+    "quest": "Через квест", "payment": "За оплату", "auto_after_battle": "Автоматически после боя",
+}
+# Разрешение в PVP (§58).
+PVP_ALLOW_MODES = (
+    "forbidden", "allowed", "duel_only", "criminal_only", "event_only", "mirror_only",
+)
+PVP_ALLOW_LABELS = {
+    "forbidden": "Запрещён в PVP", "allowed": "Разрешён в PVP",
+    "duel_only": "Только в дуэлях", "criminal_only": "Только в криминальном PVP",
+    "event_only": "Только в эвентах", "mirror_only": "Только если у противника тоже есть помощник",
+}
+# Внебоевые действия (§59).
+OUT_OF_BATTLE_ACTIONS = (
+    "find_resources", "reduce_event_risk", "boost_noncombat_event", "reduce_encounter",
+    "help_craft", "speed_rest", "help_camp", "open_sublocation", "find_npc",
+    "find_player", "carry_items", "hints", "quest_actions",
+)
+
 _store = EntityStore(
     env_var="NPC_ALLY_CONSTRUCTOR_PATH",
     default_rel="data/npc_ally_constructor.json",
@@ -171,6 +194,51 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         a = str(ability or "").strip()
         if a and a not in ABILITIES:
             warnings.append(f"Способность «{a}» не из списка.")
+
+    # --- ТЗ 2.0 (файл 10 ч.3) ---
+    # Лояльность (§61): start в пределах [min, max], значения ≥ 0.
+    if data.get("loyalty_enabled"):
+        lmin = _num(data.get("loyalty_min"))
+        lmax = _num(data.get("loyalty_max"))
+        lstart = _num(data.get("loyalty_start"))
+        for key, label in (("loyalty_min", "минимальная лояльность"),
+                           ("loyalty_max", "максимальная лояльность"),
+                           ("loyalty_start", "стартовая лояльность")):
+            if data.get(key) not in (None, "") and (_num(data.get(key)) is None or _num(data.get(key)) < 0):
+                errors.append(f"Лояльность: {label} — неотрицательное число.")
+        if lmin is not None and lmax is not None and lmin > lmax:
+            errors.append("Лояльность: минимум больше максимума.")
+        if lstart is not None and lmin is not None and lmax is not None and not (lmin <= lstart <= lmax):
+            errors.append("Лояльность: стартовое значение вне диапазона [min, max].")
+
+    # Развитие (§60): уровни ≥ 0, текущий ≤ максимального.
+    if data.get("has_levels"):
+        for key, label in (("dev_level", "текущий уровень"), ("dev_max_level", "максимальный уровень"),
+                           ("dev_exp_per_battle", "опыт за бой"), ("dev_exp_per_quest", "опыт за квест")):
+            if data.get(key) not in (None, "") and (_num(data.get(key)) is None or _num(data.get(key)) < 0):
+                errors.append(f"Развитие: {label} — неотрицательное число.")
+        cur, mx = _num(data.get("dev_level")), _num(data.get("dev_max_level"))
+        if cur is not None and mx is not None and cur > mx:
+            warnings.append("Развитие: текущий уровень больше максимального.")
+
+    # Восстановление (§62).
+    for method in (data.get("revival_methods") or []):
+        if str(method or "").strip() and str(method).strip() not in REVIVAL_METHODS:
+            warnings.append(f"Способ восстановления «{method}» не из списка.")
+    if data.get("can_die") and not (data.get("revival_methods") or []) and not data.get("permanent_death"):
+        warnings.append("Союзник может погибнуть, но не задан способ восстановления и смерть не помечена как окончательная.")
+
+    # PVP (§58).
+    pvp_mode = str(data.get("pvp_allow_mode") or "").strip()
+    if pvp_mode and pvp_mode not in PVP_ALLOW_MODES:
+        warnings.append(f"Режим допуска в PVP «{pvp_mode}» не из списка.")
+    if pvp_mode and pvp_mode != "forbidden" and not (data.get("abilities") or []) and not data.get("hp"):
+        warnings.append("Союзник допущен в PVP, но нет боевых параметров/навыков (баланс §66).")
+
+    # Внебоевые действия (§59).
+    for act in (data.get("out_of_battle_actions") or []):
+        if str(act or "").strip() and str(act).strip() not in OUT_OF_BATTLE_ACTIONS:
+            warnings.append(f"Внебоевое действие «{act}» не из списка.")
 
     # Тексты без HTML.
     for key in ("name", "description", "out_of_battle_behavior"):

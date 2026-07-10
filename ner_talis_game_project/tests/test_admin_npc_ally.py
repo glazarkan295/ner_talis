@@ -76,6 +76,36 @@ class NpcAllyServiceTest(unittest.TestCase):
         res = allies.validate(env)
         self.assertTrue(any("валюта" in w.lower() for w in res["warnings"]))
 
+    def test_loyalty_bounds(self):
+        # ТЗ 2.0 §61: стартовая лояльность вне [min, max] — ошибка.
+        env = allies.store().create("pet", {
+            "name": "Питомец", "ally_type": "combat",
+            "loyalty_enabled": True, "loyalty_min": 10, "loyalty_max": 100, "loyalty_start": 5,
+        })
+        res = allies.validate(env)
+        self.assertFalse(res["ok"])
+        self.assertTrue(any("вне диапазона" in e.lower() for e in res["errors"]), res["errors"])
+
+    def test_death_without_revival_warns(self):
+        # ТЗ 2.0 §62: может погибнуть без способа восстановления и без окончательной смерти.
+        env = allies.store().create("merc2", {
+            "name": "Наёмник", "ally_type": "mercenary", "can_die": True,
+        })
+        res = allies.validate(env)
+        self.assertTrue(res["ok"])
+        self.assertTrue(any("способ восстановления" in w.lower() for w in res["warnings"]))
+
+    def test_revival_and_pvp_valid(self):
+        env = allies.store().create("guard2", {
+            "name": "Страж", "ally_type": "guard", "hp": 200, "abilities": ["attack"],
+            "can_die": True, "permanent_death": False, "revival_methods": ["camp", "npc"],
+            "pvp_allow_mode": "duel_only", "out_of_battle_actions": ["find_resources"],
+            "has_levels": True, "dev_level": 1, "dev_max_level": 20,
+            "loyalty_enabled": True, "loyalty_min": 0, "loyalty_max": 100, "loyalty_start": 50,
+        })
+        res = allies.validate(env)
+        self.assertTrue(res["ok"], res["errors"])
+
     def test_preview_card(self):
         prev = allies.preview({
             "name": "Лекарь", "ally_type": "healer", "level": 7,
