@@ -25,6 +25,9 @@ const EMPTY = {
   first_deadline_days: 7, second_deadline_days: 23, restriction_start_day: 24,
   interest_enabled: true, interest_percent_per_day: 1, interest_start_day: 8,
   restrictions: [], issuer_roles: [],
+  stages: [], payment_places: [], removal_methods: [],
+  payment_npc_id: "", payment_commission: "", fortress_id: "", city_id: "",
+  can_become_permanent: false,
   messages: { on_issue: "", on_pay: "", on_block: "" },
 };
 
@@ -119,6 +122,50 @@ export function FinesSection({ guarded, hasPerm }) {
             <div className="ntv2-form-row" style={{ gap: 10 }}>
               {(meta.restrictions || []).map((code) => (
                 <label className="ntv2-check" key={code}><input type="checkbox" checked={isOn("restrictions", code)} disabled={disabled} onChange={() => toggleIn("restrictions", code)} /> {tr(FINE_RESTRICTION, code)}</label>
+              ))}
+            </div>
+          </div>
+
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Стадии штрафа (ТЗ 2.0 §9–§10)</h4>
+            {(Array.isArray(d.stages) ? d.stages : []).map((row, i) => {
+              const upd = (c, val) => set("stages", d.stages.map((r, idx) => idx === i ? { ...r, [c]: val } : r));
+              return (
+                <div className="ntv2-form-row" key={i} style={{ gap: 6, alignItems: "flex-end", flexWrap: "wrap" }}>
+                  <Field label="Стадия"><select value={row.stage || ""} disabled={disabled} onChange={(e) => upd("stage", e.target.value)}><option value="">—</option>{(meta.stages || []).map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</select></Field>
+                  <Field label="Срок (дней)"><input type="number" style={{ width: 80 }} value={row.duration_days ?? ""} disabled={disabled} onChange={(e) => upd("duration_days", e.target.value)} /></Field>
+                  <Field label="Базовая сумма"><input type="number" style={{ width: 100 }} value={row.base_amount ?? ""} disabled={disabled} onChange={(e) => upd("base_amount", e.target.value)} /></Field>
+                  <Field label="% увеличения"><input type="number" style={{ width: 90 }} value={row.percent_increase ?? ""} disabled={disabled} onChange={(e) => upd("percent_increase", e.target.value)} /></Field>
+                  <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.force_fortress)} disabled={disabled} onChange={(e) => upd("force_fortress", e.target.checked)} /> В крепость</label>
+                  <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.block_city)} disabled={disabled} onChange={(e) => upd("block_city", e.target.checked)} /> Запрет города</label>
+                  <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.permanent)} disabled={disabled} onChange={(e) => upd("permanent", e.target.checked)} /> Бессрочная</label>
+                  <Field label="Текст стадии"><input value={row.text || ""} disabled={disabled} onChange={(e) => upd("text", e.target.value)} /></Field>
+                  {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => set("stages", d.stages.filter((_, idx) => idx !== i))}>×</button> : null}
+                </div>
+              );
+            })}
+            {!disabled ? <button type="button" className="ntv2-btn" style={{ marginTop: 6 }} onClick={() => set("stages", [...(Array.isArray(d.stages) ? d.stages : []), { stage: "first" }])}>＋ Стадия</button> : null}
+          </div>
+
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Оплата и снятие (ТЗ 2.0 §14)</h4>
+            <div className="ntv2-form-row" style={{ gap: 14 }}>
+              <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.can_become_permanent)} disabled={disabled} onChange={(e) => set("can_become_permanent", e.target.checked)} /> Может стать бессрочным</label>
+              <Field label="NPC оплаты (id)"><input value={d.payment_npc_id || ""} disabled={disabled} onChange={(e) => set("payment_npc_id", e.target.value)} /></Field>
+              <Field label="Комиссия оплаты"><input type="number" style={{ width: 100 }} value={d.payment_commission ?? ""} disabled={disabled} onChange={(e) => set("payment_commission", e.target.value)} /></Field>
+              <Field label="Крепость (id)"><input value={d.fortress_id || ""} disabled={disabled} onChange={(e) => set("fortress_id", e.target.value)} /></Field>
+              <Field label="Город (id)"><input value={d.city_id || ""} disabled={disabled} onChange={(e) => set("city_id", e.target.value)} /></Field>
+            </div>
+            <div className="ntv2-subhead" style={{ fontSize: 12, marginTop: 6 }}>Места оплаты</div>
+            <div className="ntv2-form-row" style={{ gap: 10 }}>
+              {(meta.paymentPlaces || []).map((p) => (
+                <label className="ntv2-check" key={p.value}><input type="checkbox" checked={(d.payment_places || []).includes(p.value)} disabled={disabled} onChange={() => set("payment_places", (d.payment_places || []).includes(p.value) ? d.payment_places.filter((x) => x !== p.value) : [...(d.payment_places || []), p.value])} /> {p.label}</label>
+              ))}
+            </div>
+            <div className="ntv2-subhead" style={{ fontSize: 12, marginTop: 6 }}>Способы снятия</div>
+            <div className="ntv2-form-row" style={{ gap: 10 }}>
+              {(meta.removalMethods || []).map((m) => (
+                <label className="ntv2-check" key={m.value}><input type="checkbox" checked={(d.removal_methods || []).includes(m.value)} disabled={disabled} onChange={() => set("removal_methods", (d.removal_methods || []).includes(m.value) ? d.removal_methods.filter((x) => x !== m.value) : [...(d.removal_methods || []), m.value])} /> {m.label}</label>
               ))}
             </div>
           </div>
