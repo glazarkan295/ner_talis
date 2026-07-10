@@ -160,6 +160,20 @@ const NPC_ALLY_CONFIG = {
     { key: "has_progress", label: "Имеет собственный прогресс", type: "checkbox" },
     { key: "can_level_up", label: "Повышает уровень", type: "checkbox" },
     { key: "restrictions", label: "Штрафы/запреты (по строкам)", type: "list" },
+    { key: "loyalty_enabled", label: "Лояльность включена (§61)", type: "checkbox" },
+    { key: "loyalty_start", label: "Стартовая лояльность", type: "number" },
+    { key: "loyalty_min", label: "Минимальная лояльность", type: "number" },
+    { key: "loyalty_max", label: "Максимальная лояльность", type: "number" },
+    { key: "has_levels", label: "Имеет уровни (развитие §60)", type: "checkbox" },
+    { key: "dev_level", label: "Текущий уровень", type: "number" },
+    { key: "dev_max_level", label: "Максимальный уровень", type: "number" },
+    { key: "dev_exp_per_battle", label: "Опыт за бой", type: "number" },
+    { key: "dev_exp_per_quest", label: "Опыт за квест", type: "number" },
+    { key: "dev_formula_id", label: "Формула развития (id)", type: "text" },
+    { key: "permanent_death", label: "Может умереть навсегда (§62)", type: "checkbox" },
+    { key: "revival_methods", label: "Способы восстановления", type: "multiselect", metaKey: "revivalMethods" },
+    { key: "pvp_allow_mode", label: "Допуск в PVP (§58)", type: "select", metaKey: "pvpAllowModes" },
+    { key: "out_of_battle_actions", label: "Внебоевые действия (§59)", type: "multiselect", metaKey: "outOfBattleActions" },
   ],
 };
 const MOLE_CONFIG = {
@@ -275,6 +289,75 @@ const HOUSING_CONFIG = {
     { key: "rest_interrupt_text", label: "Текст при прерывании отдыха", type: "text" },
     { key: "rest_start_text", label: "Текст начала отдыха", type: "text" },
     { key: "rest_finish_text", label: "Текст завершения отдыха", type: "text" },
+  ],
+};
+const MESSAGE_RULE_CONFIG = {
+  base: "message-rules", title: "Очередь и приоритет сообщений", permPrefix: "message_rule",
+  newLabel: "Новое правило очереди", nameField: "name",
+  fields: [
+    { key: "name", label: "Название", type: "text", hint: "Имя правила очереди (видно админу)." },
+    { key: "message_type", label: "Тип сообщения", type: "select", metaKey: "messageTypes", hint: "combat/achievement/reward/broadcast/penalty/… (§4)." },
+    { key: "source", label: "Источник", type: "select", metaKey: "sourceTypes" },
+    { key: "priority", label: "Приоритет", type: "number", hint: "1 — бой/критичное, 2 — достижения/награды, 3 — рассылки, 0 — ждать сообщения игрока, пусто — после таймера." },
+    { key: "platform", label: "Платформа", type: "select", metaKey: "platforms" },
+    { key: "send_mode", label: "Режим отправки", type: "select", metaKey: "sendModes", hint: "Сразу/после таймера/после боя/после действия/в время/пачкой (§9)." },
+    { key: "send_at", label: "Время отправки (для «в указанное время»)", type: "text" },
+    { key: "timer_seconds", label: "Таймер (сек)", type: "number" },
+    { key: "group_enabled", label: "Группировать похожие сообщения", type: "checkbox" },
+    { key: "max_in_group", label: "Макс. сообщений в группе", type: "number" },
+    { key: "group_header", label: "Заголовок группы", type: "text" },
+    { key: "repeat_on_error", label: "Повторять при ошибке доставки", type: "checkbox" },
+    { key: "max_retries", label: "Макс. повторов", type: "number" },
+    { key: "retry_interval_seconds", label: "Интервал повторов (сек)", type: "number" },
+    { key: "ttl_seconds", label: "Срок жизни сообщения (сек)", type: "number" },
+    { key: "log_send", label: "Логировать отправку", type: "checkbox" },
+    { key: "show_admin", label: "Показывать админу", type: "checkbox" },
+    { key: "error_text", label: "Текст ошибки доставки", type: "text" },
+    { key: "description", label: "Описание (для админа)", type: "textarea" },
+  ],
+};
+const QUEST_CONFIG = {
+  base: "quests", title: "Конструктор квестов и заданий", permPrefix: "quest",
+  newLabel: "Новый квест", nameField: "name",
+  fields: [
+    { key: "name", label: "Название", type: "text", hint: "Имя квеста (видно админу и игроку)." },
+    { key: "quest_type", label: "Тип квеста", type: "select", metaKey: "questTypes", hint: "Сюжетный/побочный/ежедневный/скрытый/NPC/доска и т.д." },
+    { key: "category", label: "Категория", type: "text" },
+    { key: "description", label: "Описание (игроку)", type: "textarea" },
+    { key: "hidden_description", label: "Скрытое описание", type: "textarea" },
+    { key: "image_path", label: "Изображение", type: "text", hint: "Локальный путь /assets/…" },
+    { key: "level", label: "Уровень квеста", type: "number" },
+    { key: "recommended_level", label: "Рекомендуемый уровень", type: "number" },
+    { key: "min_level", label: "Минимальный уровень", type: "number" },
+    { key: "max_level", label: "Максимальный уровень", type: "number" },
+    { key: "difficulty", label: "Сложность", type: "text" },
+    { key: "rarity", label: "Редкость", type: "text" },
+    { key: "source_type", label: "Источник выдачи", type: "select", metaKey: "sourceTypes", hint: "NPC/доска/предмет/событие/локация/достижение/админ и т.д." },
+    { key: "source_id", label: "ID источника", type: "text" },
+    { key: "source_npc_id", label: "NPC-источник (id)", type: "text" },
+    { key: "reveal_condition", label: "Условие открытия (для скрытых)", type: "text" },
+    { key: "accept_conditions", label: "Условия принятия (по строкам)", type: "list", hint: "Уровень/раса/предмет/достижение/репутация/предыдущий квест и т.д." },
+    { key: "stages", label: "Этапы", type: "objlist", columns: [{ key: "stage_id", label: "ID этапа" }, { key: "name", label: "Название" }, { key: "player_text", label: "Текст игроку" }, { key: "next_stage", label: "След. этап" }, { key: "alt_stage", label: "Альт. этап" }, { key: "fail_stage", label: "Этап провала" }], hint: "ID этапов уникальны; переходы не должны образовывать цикл." },
+    { key: "tasks", label: "Задачи", type: "objlist", columns: [{ key: "task_type", label: "Тип" }, { key: "target_id", label: "Цель (id)" }, { key: "target_name", label: "Название цели" }, { key: "required_count", label: "Кол-во" }, { key: "stage_id", label: "Этап" }, { key: "optional", label: "Доп. (1/0)" }], hint: "talk_npc/kill_mob/find_item/gather_resource/deliver_item и т.д." },
+    { key: "dialogs", label: "Диалоги NPC", type: "objlist", columns: [{ key: "npc_id", label: "NPC (id)" }, { key: "stage_id", label: "Этап" }, { key: "phase", label: "Фаза" }, { key: "text", label: "Реплика" }], hint: "Фаза: before/after/progress/complete/fail." },
+    { key: "quest_items", label: "Квестовые предметы", type: "objlist", columns: [{ key: "item_id", label: "Предмет (id)" }, { key: "count", label: "Кол-во" }, { key: "give_on_accept", label: "Выдать (1/0)" }, { key: "take_on_complete", label: "Забрать (1/0)" }] },
+    { key: "choices", label: "Выборы и ветвления", type: "objlist", columns: [{ key: "choice_id", label: "ID" }, { key: "text", label: "Текст выбора" }, { key: "next_stage", label: "След. этап" }, { key: "next_quest", label: "След. квест" }, { key: "reputation_change", label: "Δ репутации" }] },
+    { key: "completion_conditions", label: "Условия завершения (по строкам)", type: "list", hint: "Обязательно хотя бы одно: all_tasks_done / npc_confirm / items_delivered и т.д." },
+    { key: "rewards", label: "Награды", type: "objlist", columns: [{ key: "type", label: "Тип" }, { key: "object_id", label: "ID объекта" }, { key: "count", label: "Кол-во" }, { key: "quality", label: "Качество" }], hint: "item/currency/exp/skill/effect/achievement/reputation/recipe и т.д." },
+    { key: "can_fail", label: "Квест может провалиться", type: "checkbox" },
+    { key: "fail_consequences", label: "Последствия провала (по строкам)", type: "list" },
+    { key: "repeat_mode", label: "Повторяемость", type: "select", metaKey: "repeatModes" },
+    { key: "repeat_cooldown_seconds", label: "Кулдаун повтора (сек)", type: "number" },
+    { key: "repeat_count", label: "Количество повторов", type: "number" },
+    { key: "deadline_seconds", label: "Срок выполнения (сек)", type: "number" },
+    { key: "timer_text", label: "Текст таймера", type: "text" },
+    { key: "appear_text", label: "Текст появления", type: "text" },
+    { key: "accept_text", label: "Текст принятия", type: "text" },
+    { key: "decline_text", label: "Текст отказа", type: "text" },
+    { key: "complete_text", label: "Текст завершения", type: "text" },
+    { key: "reward_text", label: "Текст награды", type: "text" },
+    { key: "fail_text", label: "Текст провала", type: "text" },
+    { key: "admin_notes", label: "Заметки админа", type: "textarea" },
   ],
 };
 const TRAIT_CONFIG = {
@@ -557,10 +640,12 @@ const NAV = [
   { id: "exp", label: "Опыт", icon: "📈", perm: "exp.view" },
   { id: "registration", label: "Регистрация", icon: "📝", perm: "registration.view" },
   { id: "races", label: "Расы", icon: "🧝", perm: "race.view" },
+  { id: "quests", label: "Квесты и задания", icon: "📜", perm: "quest.view" },
   { id: "guilds", label: "Гильдии", icon: "🏰", perm: "guild.view" },
   { id: "events", label: "Мировые события", icon: "🌌", perm: "world_event.view" },
   { id: "achievements", label: "Достижения", icon: "🏆", perm: "achievement.view" },
   { id: "messages", label: "Очередь сообщений", icon: "📨", perm: "messages.view_queue" },
+  { id: "message-rules", label: "Правила приоритета", icon: "🚦", perm: "message_rule.view" },
   { id: "promos", label: "Промокоды и рассылки", icon: "🎟️", perm: "promos.view" },
   { id: "texts", label: "Тексты бота", icon: "💬", perm: "text.view" },
   { id: "import", label: "Импорт контента", icon: "📥", perm: "world.view" },
@@ -591,8 +676,8 @@ const NAV_GROUP_OF = {
   taverns: "Ремесло и экономика", casino: "Ремесло и экономика",
   housing: "Ремесло и экономика", promos: "Ремесло и экономика",
   site: "Сайт и профиль", profile_layout: "Сайт и профиль",
-  levels: "Прогрессия", exp: "Прогрессия", registration: "Прогрессия", races: "Прогрессия",
-  messages: "Система", reference: "Система", audit: "Система",
+  levels: "Прогрессия", exp: "Прогрессия", registration: "Прогрессия", races: "Прогрессия", quests: "Прогрессия",
+  messages: "Система", "message-rules": "Система", reference: "Система", audit: "Система",
   sessions: "Система", roles: "Система",
 };
 
@@ -613,7 +698,8 @@ const SEARCH_TYPE_TO_SECTION = {
   item_enchant: "enchants", item_disassemble: "disassembles", reputation: "reputations",
   addiction: "addictions", tolerance: "tolerances", tavern: "taverns",
   sublocation: "sublocations", sublocation_node: "sublocations", sublocation_transition: "sublocations",
-  npc_ally: "npc-allies", mole: "mole", casino: "casino", housing: "housing",
+  npc_ally: "npc-allies", mole: "mole", casino: "casino", housing: "housing", quest: "quests",
+  message_rule: "message-rules",
 };
 function sectionForSearchType(type) {
   if (type in SEARCH_TYPE_TO_SECTION) return SEARCH_TYPE_TO_SECTION[type];
@@ -817,6 +903,7 @@ export function AdminShell() {
         {active === "housing" && hasPerm("housing.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={HOUSING_CONFIG} />}
         {active === "phases" && hasPerm("phase.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={PHASE_CONFIG} />}
         {active === "levels" && hasPerm("level.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={LEVEL_CONFIG} />}
+        {active === "quests" && hasPerm("quest.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={QUEST_CONFIG} />}
         {active === "exp" && hasPerm("exp.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={EXP_CONFIG} />}
         {active === "registration" && hasPerm("registration.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={REGISTRATION_CONFIG} />}
         {active === "races" && hasPerm("race.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={RACE_CONFIG} />}
@@ -824,6 +911,7 @@ export function AdminShell() {
         {active === "events" && hasPerm("world_event.view") && <EventsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "achievements" && hasPerm("achievement.view") && <AchievementsSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "messages" && hasPerm("messages.view_queue") && <MessagesSection guarded={guarded} hasPerm={hasPerm} />}
+        {active === "message-rules" && hasPerm("message_rule.view") && <LibrarySection guarded={guarded} hasPerm={hasPerm} config={MESSAGE_RULE_CONFIG} />}
         {active === "promos" && hasPerm("promos.view") && <PromosSection guarded={guarded} hasPerm={hasPerm} />}
         {active === "reference" && <ReferenceSection />}
         {active === "audit" && hasPerm("audit.view") && <AuditSection guarded={guarded} />}

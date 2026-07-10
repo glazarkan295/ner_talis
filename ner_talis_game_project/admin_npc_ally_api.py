@@ -37,6 +37,9 @@ def _meta_extra(_svc: Any) -> dict[str, Any]:
         "targetModes": [{"value": t, "label": svc.TARGET_MODE_LABELS.get(t, t)} for t in svc.TARGET_MODES],
         "abilities": list(svc.ABILITIES),
         "currencies": list(svc.CURRENCIES),
+        "revivalMethods": [{"value": r, "label": svc.REVIVAL_METHOD_LABELS.get(r, r)} for r in svc.REVIVAL_METHODS],
+        "pvpAllowModes": [{"value": m, "label": svc.PVP_ALLOW_LABELS.get(m, m)} for m in svc.PVP_ALLOW_MODES],
+        "outOfBattleActions": list(svc.OUT_OF_BATTLE_ACTIONS),
     }
 
 

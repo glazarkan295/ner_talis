@@ -34,6 +34,7 @@ from services.chat_scope_service import (
 from services.promo_service import redeem_promo_code
 from services.external_location_service import complete_active_timer
 from services.runtime_timer_scheduler import attach_timer_notification, schedule_timer_delivery
+from services import referral_service
 from services.registration_service import (
     CONSENT_BUTTON,
     consent_message,
@@ -75,6 +76,7 @@ logger = logging.getLogger(__name__)
 class VkRegistrationSession:
     state: str = STATE_CONSENT
     name: str | None = None
+    referral_code: str | None = None
     pending_name: str | None = None
     gender_id: str | None = None
     gender_label: str | None = None
@@ -155,7 +157,7 @@ class VkRegistrationBot:
         session_key = f"{VK_PLATFORM}:{external_user_id}"
         lowered = text.casefold()
 
-        if lowered in {"/start", "начать заново"}:
+        if lowered == "/start" or lowered.startswith("/start ") or lowered == "начать заново":
             existing_player = self.storage.get_player_by_platform(VK_PLATFORM, external_user_id)
             if existing_player is not None:
                 self.sessions.pop(session_key, None)
@@ -165,8 +167,15 @@ class VkRegistrationBot:
                 )
                 return
 
+            # Реферальная ссылка VK (ТЗ 2.0 файл 16): «/start ref_<код>» → запоминаем
+            # код до конца регистрации, чтобы привязать новичка к рефереру.
+            ref_code = None
+            parts = text.split(maxsplit=1)
+            if len(parts) > 1:
+                ref_code = referral_service.parse_referral_code(parts[1]) or None
             self.sessions[session_key] = VkRegistrationSession(
                 state=STATE_CONSENT,
+                referral_code=ref_code,
             )
             self.send(peer_id, consent_message(), consent_keyboard())
             return
@@ -557,7 +566,11 @@ class VkRegistrationBot:
             gender_id=session.gender_id,
             gender_label=session.gender_label,
         )
+        # Привязка к рефереру (ТЗ 2.0 файл 16): до сохранения ставим referred_by
+        # (идемпотентно, не самому себе), после сохранения засчитываем рефереру.
+        referral_service.mark_referred_by(player, session.referral_code)
         self.storage.save_new_player(player, VK_PLATFORM, external_user_id)
+        referral_service.credit_referrer(self.storage, player)
         self.sessions.pop(f"{VK_PLATFORM}:{external_user_id}", None)
 
         self.send(

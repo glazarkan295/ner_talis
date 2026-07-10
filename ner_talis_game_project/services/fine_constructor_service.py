@@ -62,6 +62,30 @@ RESTRICTIONS = (  # §13
     "block_quests", "force_fortress", "raise_guard_check", "raise_raid_chance",
     "debuff", "debtor_mark",
 )
+# --- ТЗ 2.0 (файл 10 ч.1): стадии, оплата и снятие --------------------------
+# Стадии штрафа (§9): первый/второй/третий/бессрочный/особая/админская.
+FINE_STAGES = ("first", "second", "third", "permanent", "special", "admin")
+FINE_STAGE_LABELS = {
+    "first": "Первый штраф", "second": "Второй штраф", "third": "Третий штраф",
+    "permanent": "Бессрочный штраф", "special": "Особая стадия", "admin": "Админская стадия",
+}
+# Места оплаты (§14).
+PAYMENT_PLACES = ("npc", "city", "fortress", "profile", "button", "admin")
+PAYMENT_PLACE_LABELS = {
+    "npc": "У NPC", "city": "В городе", "fortress": "В крепости",
+    "profile": "Через профиль", "button": "Через кнопку", "admin": "Через админку",
+}
+# Способы снятия (§14).
+REMOVAL_METHODS = (
+    "auto_after_payment", "after_term", "via_npc", "via_quest", "via_event",
+    "admin", "delete_admin", "mass_old",
+)
+REMOVAL_METHOD_LABELS = {
+    "auto_after_payment": "Автоматически после оплаты", "after_term": "После срока",
+    "via_npc": "Через NPC", "via_quest": "Через квест", "via_event": "Через событие",
+    "admin": "Через админ-панель", "delete_admin": "Удаление админом",
+    "mass_old": "Массовое снятие старых",
+}
 
 _HTML_RE = re.compile(r"<[^>]+>")
 
@@ -157,6 +181,43 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         for role in issuer_roles:
             if str(role) not in ISSUER_ROLES:
                 errors.append(f"Неизвестная роль выдающего: {role}.")
+
+    # Стадии штрафа (ТЗ 2.0 §9-§10).
+    for i, st in enumerate(data.get("stages") or [], start=1):
+        if not isinstance(st, dict):
+            continue
+        skey = str(st.get("stage") or "").strip()
+        if skey and skey not in FINE_STAGES:
+            warnings.append(f"Стадия #{i}: «{skey}» не из списка.")
+        for fkey, flabel in (("duration_days", "срок (дней)"),
+                             ("base_amount", "базовая сумма"),
+                             ("per_day_increase", "увеличение за день")):
+            if st.get(fkey) not in (None, "") and (_num(st.get(fkey)) is None or _num(st.get(fkey)) < 0):
+                errors.append(f"Стадия #{i}: {flabel} — неотрицательное число.")
+        if st.get("percent_increase") not in (None, ""):
+            pct = _num(st.get("percent_increase"))
+            if pct is None or pct < 0 or pct > 1000:
+                errors.append(f"Стадия #{i}: процент увеличения должен быть 0–1000.")
+        # Перенос в крепость требует указания крепости (§19).
+        if st.get("force_fortress") and not str(st.get("fortress_id") or data.get("fortress_id") or "").strip():
+            warnings.append(f"Стадия #{i}: перенос в крепость включён, но крепость не указана.")
+        if st.get("block_city") and not str(st.get("city_id") or data.get("city_id") or "").strip():
+            warnings.append(f"Стадия #{i}: блокирует город, но город не указан.")
+
+    # Оплата и снятие (ТЗ 2.0 §14).
+    for place in (data.get("payment_places") or []):
+        if str(place or "").strip() and str(place).strip() not in PAYMENT_PLACES:
+            warnings.append(f"Место оплаты «{place}» не из списка.")
+    if "npc" in (data.get("payment_places") or []) and not str(data.get("payment_npc_id") or "").strip():
+        warnings.append("Оплата у NPC включена, но NPC оплаты не указан (§19).")
+    if data.get("payment_commission") not in (None, "") and (_num(data.get("payment_commission")) is None or _num(data.get("payment_commission")) < 0):
+        errors.append("Комиссия оплаты — неотрицательное число.")
+    for method in (data.get("removal_methods") or []):
+        if str(method or "").strip() and str(method).strip() not in REMOVAL_METHODS:
+            warnings.append(f"Способ снятия «{method}» не из списка.")
+    # Бессрочный без способа снятия — предупреждение (§19), если явно не разрешено.
+    if data.get("can_become_permanent") and not (data.get("removal_methods") or []) and not data.get("permanent_no_removal_allowed"):
+        warnings.append("Штраф может стать бессрочным, но не задан способ снятия (§19).")
 
     # Безопасность текстов (§16): без HTML/скриптов. messages — словарь текстов.
     text_fields = [str(data.get(k) or "") for k in ("name", "short_description", "description")]

@@ -175,6 +175,7 @@ QUALITY_TO_RU = {
     "epic": "эпический",
     "legendary": "легендарный",
     "mythic": "мифический",
+    "celestial": "небесный",
     "divine": "божественный",
 }
 

@@ -106,6 +106,9 @@ def create_admin_fines_router(get_storage) -> APIRouter:
             "issuerRoles": list(fines.ISSUER_ROLES),
             "currencies": list(fines.CURRENCIES),
             "restrictions": list(fines.RESTRICTIONS),
+            "stages": [{"value": s, "label": fines.FINE_STAGE_LABELS.get(s, s)} for s in fines.FINE_STAGES],
+            "paymentPlaces": [{"value": p, "label": fines.PAYMENT_PLACE_LABELS.get(p, p)} for p in fines.PAYMENT_PLACES],
+            "removalMethods": [{"value": m, "label": fines.REMOVAL_METHOD_LABELS.get(m, m)} for m in fines.REMOVAL_METHODS],
             "statuses": [{"value": s, "label": fines.STATUS_LABELS.get(s, s)} for s in fines.STATUSES],
         }
 

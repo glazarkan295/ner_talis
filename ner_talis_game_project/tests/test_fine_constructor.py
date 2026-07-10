@@ -31,6 +31,33 @@ class FineConstructorValidateTest(unittest.TestCase):
         self.assertFalse(res["ok"])
         self.assertTrue(any("название" in e.lower() for e in res["errors"]))
 
+    def test_stages_valid_and_errors(self):
+        # ТЗ 2.0 §9-§10: валидная стадия проходит.
+        ok = _val({
+            "name": "Штраф", "type": "city", "base_amount": 100,
+            "stages": [{"stage": "first", "duration_days": 7, "base_amount": 100, "percent_increase": 10}],
+        })
+        self.assertTrue(ok["ok"], ok["errors"])
+        # Отрицательный срок и процент >1000 — ошибки.
+        bad = _val({
+            "name": "Штраф", "type": "city", "base_amount": 100,
+            "stages": [{"stage": "second", "duration_days": -3, "percent_increase": 5000}],
+        })
+        self.assertFalse(bad["ok"])
+        joined = " ".join(bad["errors"]).lower()
+        self.assertIn("срок", joined)
+        self.assertIn("процент увеличения", joined)
+
+    def test_permanent_without_removal_warns(self):
+        # ТЗ 2.0 §14/§19: бессрочный без способа снятия — предупреждение.
+        res = _val({"name": "Штраф", "type": "city", "base_amount": 100, "can_become_permanent": True})
+        self.assertTrue(res["ok"])
+        self.assertTrue(any("способ снятия" in w.lower() for w in res["warnings"]), res["warnings"])
+
+    def test_payment_npc_without_id_warns(self):
+        res = _val({"name": "Штраф", "type": "city", "base_amount": 100, "payment_places": ["npc"]})
+        self.assertTrue(any("npc оплаты не указан" in w.lower() for w in res["warnings"]), res["warnings"])
+
     def test_unknown_enums(self):
         res = _val({"name": "X", "type": "teleport_tax", "source": "aliens", "base_amount": 10})
         self.assertFalse(res["ok"])

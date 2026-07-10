@@ -17,7 +17,12 @@ if "telegram" not in sys.modules:
             self.keyboard = keyboard
             self.kwargs = kwargs
 
+    class _ReplyKeyboardRemove:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
     telegram_stub.ReplyKeyboardMarkup = _ReplyKeyboardMarkup
+    telegram_stub.ReplyKeyboardRemove = _ReplyKeyboardRemove
     telegram_stub.Update = object
     sys.modules["telegram"] = telegram_stub
 
@@ -255,6 +260,24 @@ class VkRegistrationFullFlowTest(unittest.TestCase):
         self.assertTrue(sent)
         self.assertIn("добро пожаловать в город Селдар", sent[-1][1])
         self.assertFalse(any("Сначала нужно создать персонажа" in message for _peer, message, _keyboard in sent[-2:]))
+
+    def test_vk_registration_via_referral_link_binds_new_player(self):
+        # ТЗ 2.0 файл 16: «/start ref_<код>» в VK привязывает новичка к рефереру.
+        temp_dir, storage, bot, sent = self._make_bot()
+        self.addCleanup(temp_dir.cleanup)
+        referrer = create_saved_player(storage, VK_PLATFORM, "ref-owner", name="Реферер")
+
+        steps = [f"/start ref_{referrer['game_id']}", CONSENT_BUTTON, "Начать",
+                 "Новичок", "Подтвердить", "Муж.", "Да", "Человек", "Выбрать", "Да"]
+        for text in steps:
+            bot.handle_message("referred-1", 3001, text)
+
+        newbie = storage.get_player_by_platform(VK_PLATFORM, "referred-1")
+        self.assertIsNotNone(newbie)
+        self.assertEqual(newbie["referred_by"], referrer["game_id"])
+        updated_ref = storage.get_player_by_game_id(referrer["game_id"])
+        self.assertEqual(updated_ref.get("referral_count"), 1)
+        self.assertIn(newbie["game_id"], updated_ref.get("referrals") or [])
 
     def test_vk_registration_back_button_stays_in_registration_flow(self):
         temp_dir, _storage, bot, sent = self._make_bot()

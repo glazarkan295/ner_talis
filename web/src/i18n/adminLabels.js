@@ -30,7 +30,7 @@ export const ROLE = {
 // Качество/редкость предметов (в данных часто уже по-русски — тогда passthrough).
 export const ITEM_QUALITY = {
   common: "Обычный", uncommon: "Необычный", rare: "Редкий", epic: "Эпический",
-  legendary: "Легендарный", mythic: "Мифический", divine: "Божественный",
+  legendary: "Легендарный", mythic: "Мифический", celestial: "Небесный", divine: "Божественный",
   unique: "Уникальный",
 };
 
