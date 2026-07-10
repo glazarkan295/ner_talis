@@ -75,6 +75,7 @@ from admin_npc_ally_api import create_admin_npc_ally_router
 from admin_mole_api import create_admin_mole_router
 from admin_casino_api import create_admin_casino_router
 from admin_housing_api import create_admin_housing_router
+from admin_quest_api import create_admin_quest_router
 from admin_dashboard_api import create_admin_dashboard_router
 from admin_uploads_api import create_admin_uploads_router
 from admin_site_api import create_admin_site_router
@@ -451,6 +452,7 @@ def create_app() -> FastAPI:
     app.include_router(create_admin_mole_router(storage))
     app.include_router(create_admin_casino_router(storage))
     app.include_router(create_admin_housing_router(storage))
+    app.include_router(create_admin_quest_router(storage))
     app.include_router(create_admin_dashboard_router(storage))
     app.include_router(create_admin_uploads_router(storage))
     app.include_router(create_admin_site_router(storage))
