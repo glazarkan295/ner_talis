@@ -17,4 +17,5 @@ export const fetchPlayerMessages = (gameId) => requestAdminJson(`${base}/players
 export const sendDirectMessage = (gameId, text, priority, reason) => post(`${base}/send`, { game_id: gameId, text, priority, reason });
 export const retryMessage = (id, reason) => post(`${base}/${encodeURIComponent(id)}/retry`, { reason });
 export const cancelMessage = (id, reason) => post(`${base}/${encodeURIComponent(id)}/cancel`, { reason });
+export const deleteMessage = (id, reason) => post(`${base}/${encodeURIComponent(id)}/delete`, { reason });
 export const runDispatcher = (reason) => post(`${base}/dispatch`, { reason });

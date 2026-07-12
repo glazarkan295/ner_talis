@@ -277,6 +277,81 @@ class MarketItem:
     description: str
     buy_price_copper: int
     stock: int = -1  # -1 = unlimited; >=0 = limited rotation stock (port market)
+    authored_market_id: str = ""
+
+
+def _published_market(kind: str) -> dict[str, Any]:
+    try:
+        from services.economy_constructor_service import active_profile
+        aliases = {MARKET_KIND_NPC: {"npc", "ordinary", "regular", "common"}, MARKET_KIND_PORT: {"port"}, MARKET_KIND_BLACK: {"black"}}
+        rows = active_profile().get("markets") or []
+        return next((dict(row) for row in rows if isinstance(row, dict) and row.get("active", True)
+                     and str(row.get("market_type") or "npc").casefold() in aliases.get(kind, {kind})), {})
+    except Exception:
+        return {}
+
+
+def _authored_market_items(kind: str) -> list[MarketItem] | None:
+    market = _published_market(kind)
+    if not market:
+        return None
+    rows = market.get("items") or []
+    if isinstance(rows, str):
+        try: rows = json.loads(rows)
+        except json.JSONDecodeError: rows = []
+    if isinstance(rows, dict): rows = list(rows.values())
+    result: list[MarketItem] = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict) or row.get("active", True) is False: continue
+        item_id = str(row.get("item_id") or row.get("id") or "").strip()
+        if not item_id: continue
+        definition = get_item_definition_by_id(item_id) or {}
+        base = safe_int(row.get("buy_price"), safe_int(definition.get("buy_price_copper"), 0))
+        if row.get("price_formula_id"):
+            try:
+                from services.formula_runtime import evaluate
+                base = max(0, safe_int(evaluate(row["price_formula_id"], {"base_amount": base, "stock": safe_int(row.get("stock"), -1)}, default=base), base))
+            except Exception: pass
+        result.append(MarketItem(item_id=item_id,
+            display_name=str(row.get("name") or row.get("item_name") or definition.get("name_ru") or definition.get("name") or item_id),
+            category=str(row.get("category") or definition.get("category_ru") or definition.get("category") or "Товар"),
+            description=str(row.get("description") or definition.get("description") or "Описание товара пока не добавлено."),
+            buy_price_copper=max(0, base), stock=safe_int(row.get("stock"), -1),
+            authored_market_id=str(market.get("market_id") or market.get("id") or kind)))
+    return result
+
+
+def _market_charge_state(player: dict[str, Any], kind: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    market = _published_market(kind)
+    if not market.get("use_charges"):
+        return market, {}
+    market_id = str(market.get("market_id") or kind)
+    state = player.setdefault("economy_market_state", {}).setdefault(market_id, {})
+    maximum = max(0, safe_int(market.get("max_charges"), 0))
+    if "charges" not in state: state["charges"] = min(maximum, safe_int(market.get("current_charges"), maximum))
+    now = int(time.time()); period = max(0, safe_int(market.get("charge_restore_seconds"), 0)); amount = max(1, safe_int(market.get("charge_restore_amount"), 1))
+    last = safe_int(state.get("restored_at"), now); state.setdefault("restored_at", now)
+    if period and maximum and now > last:
+        ticks = (now - last) // period
+        if ticks: state["charges"] = min(maximum, safe_int(state.get("charges"), 0) + ticks * amount); state["restored_at"] = last + ticks * period
+    return market, state
+
+
+def _charge_error(player: dict[str, Any], kind: str, operation: str) -> str:
+    market, state = _market_charge_state(player, kind)
+    if not state: return ""
+    need = max(0, safe_int(market.get(f"{operation}_charge_cost"), 1))
+    return str(market.get("no_charges_text") or "У рынка закончились заряды. Попробуйте позже.") if safe_int(state.get("charges"), 0) < need else ""
+
+
+def _consume_charge(player: dict[str, Any], kind: str, operation: str) -> None:
+    market, state = _market_charge_state(player, kind)
+    if state: state["charges"] = max(0, safe_int(state.get("charges"), 0) - max(0, safe_int(market.get(f"{operation}_charge_cost"), 1)))
+
+
+def _market_commission(kind: str, fallback: float) -> float:
+    market = _published_market(kind)
+    return max(0, min(100, float(market.get("commission_percent") if market.get("commission_percent") not in (None, "") else fallback)))
 
 
 def _chunk_buttons(labels: list[str], row_size: int = 2) -> list[list[str]]:
@@ -414,6 +489,9 @@ def _port_market_items() -> list[MarketItem]:
 
 
 def load_market_items(kind: str = MARKET_KIND_NPC) -> list[MarketItem]:
+    authored = _authored_market_items(kind)
+    if authored is not None:
+        return authored
     if kind == MARKET_KIND_PORT:
         return _port_market_items()
     return _load_static_market_items(kind)
@@ -543,18 +621,91 @@ def market_buy_buttons(kind: str = MARKET_KIND_NPC, page: int = 0) -> list[list[
 
 def _npc_buy_discount_percent(player: dict[str, Any]) -> int:
     mods = equipment_modifier_totals(player)
-    return max(0, min(90, safe_int(mods.get("bonus_npc_buy_discount_percent"), 0)))
+    reputation = 0
+    try:
+        from services.reputation_runtime_service import economic_modifiers
+        rep=economic_modifiers(player);reputation = safe_int(rep.get("buy_discount_percent"), 0)-safe_int(rep.get("bad_reputation_markup_percent"),0)
+    except Exception:
+        pass
+    return max(-500, min(90, safe_int(mods.get("bonus_npc_buy_discount_percent"), 0) + reputation))
 
 
 def _npc_sell_bonus_percent(player: dict[str, Any]) -> int:
     mods = equipment_modifier_totals(player)
-    return max(0, safe_int(mods.get("bonus_npc_sell_bonus_percent"), 0))
+    reputation = 0
+    try:
+        from services.reputation_runtime_service import economic_modifiers
+        reputation = safe_int(economic_modifiers(player).get("sell_bonus_percent"), 0)
+    except Exception:
+        pass
+    return max(0, safe_int(mods.get("bonus_npc_sell_bonus_percent"), 0) + reputation)
 
 
-def _discounted_buy_price(player: dict[str, Any], unit_price: int) -> int:
+def _reputation_blocks_trade(player: dict[str, Any]) -> bool:
+    try:
+        from services.reputation_runtime_service import economic_modifiers
+        return bool(economic_modifiers(player).get("trade_blocked"))
+    except Exception:
+        return False
+
+
+def _economy_multiplier(key: str) -> float:
+    """Live-множитель опубликованного экономического профиля (по умолчанию 1)."""
+    try:
+        from services.economy_constructor_service import active_profile
+        value = float(active_profile().get(key, 1) or 1)
+        try:
+            from services.world_event_runtime import multiplier
+            world_key = {"global_buy_multiplier": "buy_price_multiplier", "global_sell_multiplier": "sell_price_multiplier", "reward_multiplier": "reward_multiplier"}.get(key)
+            if world_key: value *= multiplier(world_key, context={"market_id": "npc_market", "city_id": "seldar"})
+        except Exception:
+            pass
+        return max(0.0, value)
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def _economy_formula_price(base_price: int, *, player: dict[str, Any] | None = None, multiplier_value: float = 1.0) -> int:
+    """Apply the published global price formula, with legacy price as fallback."""
+    try:
+        from services.economy_constructor_service import active_profile
+        from services.formula_runtime import evaluate, numeric_context
+        profile = active_profile()
+        value = evaluate(profile.get("price_formula_id"), numeric_context({
+            "base_amount": base_price, "price": base_price,
+            "multiplier": multiplier_value, "item_count": 1,
+        }, player=player), default=base_price * multiplier_value)
+        return max(0, math.floor(float(value)))
+    except (TypeError, ValueError):
+        return max(0, math.floor(base_price * multiplier_value))
+
+
+def _item_formula_price(definition: dict[str, Any] | None, base_price: int, *, player: dict[str, Any] | None = None) -> int:
+    data = definition or {}
+    try:
+        from services.formula_runtime import evaluate, numeric_context
+        result = max(0, safe_int(evaluate(data.get("price_formula_id"), numeric_context({
+            "base_amount": base_price, "price": base_price,
+            "item_level": data.get("item_level", 1), "quality": data.get("quality_value", 0),
+        }, player=player), default=base_price), base_price))
+    except Exception:
+        result = max(0, base_price)
+    minimum = safe_int(data.get("min_price"), 0)
+    maximum = safe_int(data.get("max_price"), 0)
+    if minimum > 0: result = max(minimum, result)
+    if maximum > 0: result = min(maximum, result)
+    return result
+
+
+def _discounted_buy_price(player: dict[str, Any], unit_price: int, item_id: str = "") -> int:
+    definition = get_item_definition_by_id(item_id) if item_id else None
+    unit_price = _item_formula_price(definition, max(0, unit_price), player=player)
+    unit_price = _economy_formula_price(unit_price, player=player, multiplier_value=_economy_multiplier("global_buy_multiplier"))
+    try:
+        from services.reputation_runtime_service import price_by_reputation
+        unit_price=price_by_reputation(player,unit_price,{"operation":"buy","item_id":item_id})
+    except Exception:pass
     discount = _npc_buy_discount_percent(player)
-    if discount <= 0:
-        return max(0, unit_price)
     return max(0, math.floor(unit_price * (100 - discount) / 100))
 
 
@@ -702,6 +853,10 @@ def ask_buy_quantity(player: dict[str, Any], item: MarketItem) -> MarketResult:
 def handle_buy_quantity(storage: Any, player: dict[str, Any], item: MarketItem, raw_quantity: str) -> MarketResult:
     kind = _market_kind_from_context(player)
     buy_zone = _market_zone(kind, "buy")
+    if _reputation_blocks_trade(player):
+        return MarketResult("Торговля недоступна из-за текущего уровня репутации.", [[MARKET_BACK]], buy_zone)
+    charge_error = _charge_error(player, kind, "buy")
+    if charge_error: return MarketResult(charge_error, [[MARKET_BACK]], buy_zone)
     quantity = _parse_positive_int(raw_quantity)
     if quantity is None:
         return MarketResult(
@@ -710,7 +865,15 @@ def handle_buy_quantity(storage: Any, player: dict[str, Any], item: MarketItem, 
             buy_zone,
         )
 
-    unit_price = _discounted_buy_price(player, item.buy_price_copper)
+    unit_price = _discounted_buy_price(player, item.buy_price_copper, item.item_id)
+    try:
+        from services.economy_runtime import dynamic_multiplier,commission_adjusted
+        unit_price=max(0,math.floor(unit_price*dynamic_multiplier({"item_id":item.item_id,"market_type":kind,"operation":"buy"})))
+        from services.economy_constructor_service import active_profile
+        commission=_market_commission(kind,float(active_profile().get("market_commission_percent") or 0))
+        unit_price=math.ceil(unit_price*(100+commission)/100)
+        unit_price=commission_adjusted(unit_price,"market_buy",player,{"market_type":kind,"item_id":item.item_id})
+    except Exception:pass
     total_price = unit_price * quantity
     balance = _money(player)
     if balance < total_price:
@@ -734,7 +897,7 @@ def handle_buy_quantity(storage: Any, player: dict[str, Any], item: MarketItem, 
     # Резервируем сток портового рынка атомарно — это последний шлюз перед
     # списанием денег и выдачей, поэтому возврат не нужен: цена/место уже
     # проверены, а при гонке за последней единицей claim просто не пройдёт.
-    if kind == MARKET_KIND_PORT:
+    if kind == MARKET_KIND_PORT and not item.authored_market_id:
         claimed, available = claim_port_stock(item.item_id, quantity)
         if available <= 0:
             return MarketResult("Этот товар закончился до следующего обновления ассортимента.", [[MARKET_BACK]], buy_zone)
@@ -752,10 +915,27 @@ def handle_buy_quantity(storage: Any, player: dict[str, Any], item: MarketItem, 
             player[key] = simulated[key]
     refund = npc_purchase_refund_amount(player, total_price)
     _set_money(player, balance - total_price + refund)
+    _consume_charge(player, kind, "buy")
+    try:
+        from services.economy_runtime import record
+        record(player,"purchase","copper",-total_price,balance,_money(player),source=kind,source_id=item.item_id)
+        from services.reputation_runtime_service import apply_trigger
+        apply_trigger(player,"purchase",item.item_id,reason="Покупка на рынке")
+    except Exception:pass
 
     notice = inventory_add_result_notice(result, item.display_name)
     refund_text = f" Возврат золота: +{format_price(refund)}." if refund else ""
     list_result = open_buy_list(player)
+    try:
+        from services.achievement_engine import record_game_event
+        record_game_event(player, "buy_item", quantity, item.item_id, storage=storage)
+        record_game_event(player, "spend_currency", total_price, "copper", storage=storage)
+        record_game_event(player, "trade", 1, item.item_id, storage=storage)
+        from services.event_campaign_runtime import progress as event_progress
+        event_progress(player, "buy_item", item.item_id, quantity, storage=storage)
+        event_progress(player, "spend_currency", "copper", total_price, storage=storage)
+    except Exception:
+        pass
     storage.update_player(player)
     return MarketResult(
         f"Куплено: {item.display_name} ×{quantity}. Потрачено: {format_price(total_price)}.{refund_text}{notice}\n\nВыберите следующий товар:",
@@ -787,14 +967,19 @@ def _is_sell_protected(item: dict[str, Any]) -> bool:
 def item_sell_price(item: dict[str, Any]) -> int:
     raw_price = item.get("sell_price_copper", item.get("sellPriceCopper"))
     price = safe_int(raw_price, -1)
+    definition = get_item_definition_by_id(_item_id(item)) or get_item_definition_by_name(_item_name(item))
     if price >= 0:
-        return price
+        price = _item_formula_price(definition, price)
+        return _economy_formula_price(price, multiplier_value=_economy_multiplier("global_sell_multiplier"))
     item_id = _item_id(item)
     if item_id in _sell_price_index():
-        return _sell_price_index()[item_id]
-    definition = get_item_definition_by_id(item_id) or get_item_definition_by_name(_item_name(item))
+        value = _item_formula_price(definition, _sell_price_index()[item_id])
+        return _economy_formula_price(value, multiplier_value=_economy_multiplier("global_sell_multiplier"))
+    definition = definition or get_item_definition_by_id(item_id) or get_item_definition_by_name(_item_name(item))
     if definition:
-        return safe_int(definition.get("sell_price_copper"), -1)
+        value = safe_int(definition.get("sell_price_copper"), -1)
+        value = _item_formula_price(definition, value) if value >= 0 else value
+        return _economy_formula_price(value, multiplier_value=_economy_multiplier("global_sell_multiplier")) if value >= 0 else -1
     return -1
 
 
@@ -917,6 +1102,10 @@ def _entry_by_id(player: dict[str, Any], item_id: str) -> dict[str, Any] | None:
 
 def handle_sell_quantity(storage: Any, player: dict[str, Any], entry: dict[str, Any], raw_quantity: str, inventory_index: int | None = None) -> MarketResult:
     sell_zone = _market_zone(_market_kind_from_context(player), "sell")
+    if _reputation_blocks_trade(player):
+        return MarketResult("Торговля недоступна из-за текущего уровня репутации.", [[MARKET_BACK]], sell_zone)
+    charge_error = _charge_error(player, _market_kind_from_context(player), "sell")
+    if charge_error: return MarketResult(charge_error, [[MARKET_BACK]], sell_zone)
     quantity = _parse_positive_int(raw_quantity)
     if quantity is None or quantity > safe_int(entry.get("quantity"), 0):
         return MarketResult(
@@ -933,6 +1122,7 @@ def handle_sell_quantity(storage: Any, player: dict[str, Any], entry: dict[str, 
     indexed_items = list(enumerate(inventory))
     if inventory_index is not None:
         indexed_items = [(index, item) for index, item in indexed_items if index == inventory_index]
+    trigger_item = next((deepcopy(item) for _index, item in indexed_items if isinstance(item, dict) and _item_id(item) == entry["item_id"]), None)
 
     for index, item in indexed_items:
         if remaining <= 0:
@@ -951,9 +1141,35 @@ def handle_sell_quantity(storage: Any, player: dict[str, Any], entry: dict[str, 
     total = quantity * safe_int(entry.get("price"), 0)
     artifact_bonus = math.floor(total * _npc_sell_bonus_percent(player) / 100)
     total += artifact_bonus
+    try:
+        from services.economy_runtime import dynamic_multiplier,commission_adjusted
+        total=max(0,math.floor(total*dynamic_multiplier({"item_id":entry["item_id"],"market_type":_market_kind_from_context(player),"operation":"sell"})))
+        from services.economy_constructor_service import active_profile
+        commission=_market_commission(_market_kind_from_context(player),float(active_profile().get("market_commission_percent") or 0));total=max(0,math.floor(total*(100-commission)/100));total=commission_adjusted(total,"market_sell",player,{"market_type":_market_kind_from_context(player),"item_id":entry["item_id"]},payout=True)
+    except Exception:pass
     bonus = npc_transaction_bonus_amount(player, total)
-    _set_money(player, _money(player) + total + bonus)
+    before_money=_money(player);_set_money(player, before_money + total + bonus)
+    _consume_charge(player, _market_kind_from_context(player), "sell")
+    try:
+        from services.economy_runtime import record
+        record(player,"sale","copper",total+bonus,before_money,_money(player),source=_market_kind_from_context(player),source_id=entry["item_id"])
+        from services.reputation_runtime_service import apply_trigger
+        apply_trigger(player,"sale",entry["item_id"],reason="Продажа на рынке")
+    except Exception:pass
+    if trigger_item:
+        from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+        trigger_item_effect(player, trigger_item, "on_sell", context={"price": total, "item_count": quantity})
     list_result = open_sell_list(player)
+    try:
+        from services.achievement_engine import record_game_event
+        record_game_event(player, "sell_item", quantity, entry["item_id"], storage=storage)
+        record_game_event(player, "gain_currency", _money(player), "copper", storage=storage)
+        record_game_event(player, "trade", 1, entry["item_id"], storage=storage)
+        from services.event_campaign_runtime import progress as event_progress
+        event_progress(player, "sell_item", entry["item_id"], quantity, storage=storage)
+        event_progress(player, "gain_currency", "copper", total, storage=storage)
+    except Exception:
+        pass
     storage.update_player(player)
     bonus_text = f" Возврат золота: +{format_price(bonus)}." if bonus else ""
     return MarketResult(

@@ -49,3 +49,8 @@ def get_text(text_key: str, *, platform: str = "both",
 
     rendered = tcs.render(data, variables)
     return rendered if rendered else default
+
+
+def game_text(text_key: str, default: str, **variables: Any) -> str:
+    """Короткий helper для синхронных игровых ответов без объекта доставки."""
+    return get_text(text_key, variables=variables or None, default=default)

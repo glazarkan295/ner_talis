@@ -12,8 +12,12 @@ archived и валидацией (§28: заголовок/текст, нет HT
 from __future__ import annotations
 
 import re
+import ipaddress
+import socket
+import urllib.request
 from datetime import datetime
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 from services.admin_entity_store import EntityStore
 
@@ -62,10 +66,11 @@ KIND_RATING = "rating"        # §2.7 рейтинг
 KIND_LORE = "lore"            # §2.10 запись лора
 KIND_WHERE_IS = "where_is"    # §2.11 «Что где находится»
 KIND_THEME = "site_theme"     # §2.12 фон/оформление/цвета сайта
+KIND_SETTINGS = "site_settings"  # активная HTTPS-ссылка, домены, безопасность
 KINDS = (
     KIND_NEWS, KIND_GUIDE, KIND_FAQ, KIND_BANNER, KIND_ANNOUNCEMENT,
     KIND_PAGE, KIND_PAGE_BLOCK, KIND_MENU_ITEM, KIND_POST, KIND_RATING,
-    KIND_LORE, KIND_WHERE_IS, KIND_THEME,
+    KIND_LORE, KIND_WHERE_IS, KIND_THEME, KIND_SETTINGS,
 )
 
 NEWS_CATEGORIES = (
@@ -294,6 +299,50 @@ def _validate_theme(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
+def _validate_settings(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
+    data = envelope.get("data") or {}
+    errors = _validate_required(data, "title", "Название настроек сайта")
+    warnings: list[str] = []
+    url = _str(data, "active_url").rstrip("/")
+    parsed = urlparse(url)
+    if not url:
+        errors.append("Активная ссылка сайта не заполнена.")
+    elif parsed.scheme != "https":
+        errors.append("Опубликованный сайт должен использовать только HTTPS.")
+    elif not parsed.netloc:
+        errors.append("В активной ссылке не указан домен.")
+    if parsed.query or parsed.fragment:
+        errors.append("Активная ссылка не должна содержать query-параметры или fragment.")
+    domains = [str(x).strip().lower() for x in data.get("allowed_domains") or [] if str(x).strip()]
+    if domains and parsed.hostname and parsed.hostname.lower() not in domains:
+        errors.append("Домен активной ссылки отсутствует в списке разрешённых доменов.")
+    ttl = data.get("session_ttl_minutes")
+    if ttl not in (None, ""):
+        try:
+            if not 1 <= int(ttl) <= 43200: errors.append("Срок ссылки должен быть от 1 до 43200 минут.")
+        except (TypeError, ValueError): errors.append("Срок ссылки должен быть целым числом минут.")
+    page_ids = {
+        str(i.get("id")) for i in store().list(status=STATUS_PUBLISHED)
+        if (i.get("data") or {}).get("_kind") == KIND_PAGE and _is_public(i)
+    }
+    maintenance_id = str(data.get("maintenance_page_id") or "").strip()
+    error_id = str(data.get("error_page_id") or "").strip()
+    if not maintenance_id:
+        warnings.append("Не выбрана страница технических работ.")
+    elif maintenance_id not in page_ids:
+        errors.append("Страница технических работ не существует или не опубликована.")
+    if not error_id:
+        errors.append("Не выбрана страница ошибки.")
+    elif error_id not in page_ids:
+        errors.append("Страница ошибки не существует или не опубликована.")
+    if not published(KIND_MENU_ITEM):
+        warnings.append("Публичное меню сайта пустое.")
+    if not published(KIND_FAQ): warnings.append("На сайте нет опубликованного FAQ.")
+    if not published(KIND_GUIDE): warnings.append("На сайте нет опубликованных гайдов.")
+    if not published(KIND_LORE): warnings.append("На сайте нет опубликованных материалов лора.")
+    return errors, warnings
+
+
 VALIDATORS: dict[str, Callable[[dict[str, Any]], tuple[list[str], list[str]]]] = {
     KIND_NEWS: _validate_news,
     KIND_GUIDE: _validate_guide,
@@ -308,7 +357,43 @@ VALIDATORS: dict[str, Callable[[dict[str, Any]], tuple[list[str], list[str]]]] =
     KIND_LORE: _validate_lore,
     KIND_WHERE_IS: _validate_where_is,
     KIND_THEME: _validate_theme,
+    KIND_SETTINGS: _validate_settings,
 }
+
+
+def active_site_settings() -> dict[str, Any]:
+    items = [x for x in store().list(status=STATUS_PUBLISHED) if (x.get("data") or {}).get("_kind") == KIND_SETTINGS]
+    items.sort(key=lambda x: (int((x.get("data") or {}).get("priority") or 0), str(x.get("updated_at") or "")), reverse=True)
+    return dict(items[0].get("data") or {}) if items else {}
+
+
+def check_public_https_url(url: str, *, timeout: float = 4.0) -> dict[str, Any]:
+    """Безопасная проверка доступности активной ссылки (без SSRF в private сети)."""
+    value = str(url or "").strip().rstrip("/")
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError("Проверять можно только полную HTTPS-ссылку.")
+    if parsed.username or parsed.password or parsed.port not in (None, 443):
+        raise ValueError("Логин, пароль и нестандартный порт в ссылке запрещены.")
+    try:
+        addresses = {row[4][0] for row in socket.getaddrinfo(parsed.hostname, 443, type=socket.SOCK_STREAM)}
+    except OSError as exc:
+        raise ValueError("Домен не разрешается через DNS.") from exc
+    for address in addresses:
+        ip = ipaddress.ip_address(address)
+        if not ip.is_global:
+            raise ValueError("Ссылка ведёт во внутреннюю или служебную сеть.")
+    request = urllib.request.Request(value, method="HEAD", headers={"User-Agent": "Ner-Talis-Site-Check/1.0"})
+    try:
+        with urllib.request.urlopen(request, timeout=max(1.0, min(float(timeout), 8.0))) as response:  # noqa: S310 - host checked above
+            status = int(getattr(response, "status", 0) or 0)
+            final_url = str(response.geturl() or value)
+    except Exception as exc:
+        raise ValueError(f"Сайт недоступен: {exc}") from exc
+    final = urlparse(final_url)
+    if final.scheme != "https" or final.hostname != parsed.hostname:
+        raise ValueError("Сайт перенаправляет на другой или небезопасный домен.")
+    return {"available": 200 <= status < 400, "status": status, "url": final_url}
 
 
 def validate(kind: str, envelope: dict[str, Any]) -> dict[str, Any]:

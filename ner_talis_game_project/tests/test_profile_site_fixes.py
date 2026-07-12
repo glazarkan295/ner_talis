@@ -1,5 +1,6 @@
 import sys
 import types
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -113,6 +114,19 @@ class ProfileSiteFixesTest(unittest.TestCase):
         profile = frontend_profile(player)
 
         self.assertEqual(profile["player"]["freeSkillPoints"], 7)
+
+    def test_published_readonly_layout_blocks_write_endpoint(self):
+        from services import profile_layout_service as layout
+        with tempfile.TemporaryDirectory() as tmp:
+            old=os.environ.get("PROFILE_LAYOUT_PATH");os.environ["PROFILE_LAYOUT_PATH"]=str(Path(tmp)/"layout.json")
+            try:
+                layout.store().create("readonly",{"_kind":"profile_settings","title":"Только просмотр","system_name":"readonly","profile_type":"read_only","use_for_players":True,"allow_profile_edit":False,"readonly_text":"Изменения запрещены."});layout.store().set_status("readonly",layout.STATUS_PUBLISHED,force=True)
+                storage=JsonStorage(str(Path(tmp)/"players.json"));player=self._new_player();storage.save_new_player(player,"telegram","111");token=storage.create_site_session(player["game_id"],PROFILE_SCOPE,"telegram");app=FastAPI();app.include_router(create_profile_api_router(lambda:storage));client=TestClient(app)
+                profile=client.get(f"/api/profile/{token}");self.assertEqual(profile.status_code,200);active=profile.json()["sessionToken"]
+                denied=client.post(f"/api/profile/{active}/attributes/confirm",json={"allocations":{"strength":1}});self.assertEqual(denied.status_code,403);self.assertIn("запрещены",denied.text.lower())
+            finally:
+                if old is None:os.environ.pop("PROFILE_LAYOUT_PATH",None)
+                else:os.environ["PROFILE_LAYOUT_PATH"]=old
 
     def test_equipped_items_change_final_parameters(self):
         player = self._new_player()
@@ -1090,3 +1104,73 @@ class PromoAndEffectFixesTest(unittest.TestCase):
                     os.environ.pop("PROMO_CODES_PATH", None)
                 else:
                     os.environ["PROMO_CODES_PATH"] = old_path
+
+    def test_constructor_profile_actions_control_drop_and_special_warning(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["inventory"] = [
+                {"id": "protected_relic", "item_id": "protected_relic", "name": "Реликвия", "amount": 1, "profile_actions": ["inspect"], "protected": True, "is_unique": True},
+                {"id": "droppable_relic", "item_id": "droppable_relic", "name": "Древняя вещь", "amount": 1, "profile_actions": ["drop", "read"], "ancient": True},
+                {"id": "locked_potion", "item_id": "locked_potion", "name": "Закрытое зелье", "amount": 1, "usable": True, "energy_restore": 10, "profile_actions": ["inspect"]},
+            ]
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+            app = FastAPI()
+            app.include_router(create_profile_api_router(lambda: storage))
+            client = TestClient(app)
+
+            profile = client.get(f"/api/profile/{token}").json()
+            protected = next(row for row in profile["inventory"] if row["id"] == "protected_relic")
+            ancient = next(row for row in profile["inventory"] if row["id"] == "droppable_relic")
+            self.assertFalse(protected["profileCanDrop"])
+            self.assertIn("Осмотреть", protected["actions"])
+            self.assertTrue(ancient["profileCanDrop"])
+            self.assertIn("Прочитать", ancient["actions"])
+            self.assertTrue(ancient["dropWarning"])
+
+            active_token = profile["sessionToken"]
+            denied_use = client.post(f"/api/profile/{active_token}/inventory/use", json={"item_id": "locked_potion", "inventory_index": 2})
+            self.assertEqual(denied_use.status_code, 400)
+            denied = client.post(f"/api/profile/{active_token}/inventory/drop", json={"item_id": "protected_relic", "inventory_index": 0, "amount": 1})
+            self.assertEqual(denied.status_code, 400)
+            allowed = client.post(f"/api/profile/{active_token}/inventory/drop", json={"item_id": "droppable_relic", "inventory_index": 1, "amount": 1})
+            self.assertEqual(allowed.status_code, 200, allowed.text)
+
+    def test_charge_pouch_and_personal_storage_actions_are_live(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            storage = JsonStorage(str(Path(tmp_dir) / "players.json"))
+            player = self._new_player()
+            player["money"] = 100
+            player["inventory"] = [
+                {"id": "lamp", "item_id": "lamp", "name": "Лампа", "amount": 1, "has_charges": True, "max_charges": 3, "current_charges": 0, "charge_cost": 10, "profile_actions": ["charge", "discharge"]},
+                {"id": "combat_flask", "item_id": "combat_flask", "name": "Фляга", "amount": 1, "usable": True, "pouch_action": "heal", "profile_actions": ["pouch_store", "pouch_remove"]},
+                {"id": "keepsake", "item_id": "keepsake", "name": "Памятная вещь", "amount": 1, "profile_actions": ["storage_store"]},
+            ]
+            storage.save_new_player(player, "telegram", "111")
+            token = storage.create_site_session(player["game_id"], PROFILE_SCOPE, "telegram")
+            app = FastAPI(); app.include_router(create_profile_api_router(lambda: storage)); client = TestClient(app)
+
+            def action(item_id, index, name):
+                nonlocal token
+                response = client.post(f"/api/profile/{token}/inventory/profile-action", json={"item_id": item_id, "inventory_index": index, "action": name})
+                self.assertEqual(response.status_code, 200, response.text)
+                payload = response.json(); token = payload["profile"]["sessionToken"]
+                return payload
+
+            charged = action("lamp", 0, "charge")
+            lamp = next(row for row in charged["profile"]["inventory"] if row["id"] == "lamp")
+            self.assertEqual(lamp["current_charges"], 3)
+            self.assertEqual(storage.get_player_by_game_id(player["game_id"])["money"], 90)
+            discharged = action("lamp", 0, "discharge")
+            self.assertEqual(next(row for row in discharged["profile"]["inventory"] if row["id"] == "lamp")["current_charges"], 0)
+            pouch = action("combat_flask", 1, "pouch_store")
+            flask = next(row for row in pouch["profile"]["inventory"] if row["id"] == "combat_flask")
+            self.assertTrue(flask["in_pouch"])
+            from services.pve_battle_service import is_combat_pouch_item
+            self.assertTrue(is_combat_pouch_item(flask))
+            stored = action("keepsake", 2, "storage_store")
+            self.assertFalse(any(row["id"] == "keepsake" for row in stored["profile"]["inventory"]))
+            self.assertEqual(stored["profile"]["personalStorage"][0]["id"], "keepsake")
+            restored = action("keepsake", 0, "storage_remove")
+            self.assertTrue(any(row["id"] == "keepsake" for row in restored["profile"]["inventory"]))

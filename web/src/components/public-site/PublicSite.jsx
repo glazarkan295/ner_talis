@@ -10,6 +10,7 @@ import {
   fetchPage,
   fetchPages,
   fetchRatings,
+  fetchSettings,
   fetchTheme,
   fetchWhereIs,
 } from "../../api/publicSiteApi.js";
@@ -81,6 +82,7 @@ function DynamicList({ kind, items, title }) {
           <div className="ps-card" key={it.id}>
             <b>{it.title || it.question || it.label || it.id}</b>
             <p>{it.short_description || it.answer || it.text || it.description || it.body || ""}</p>
+            {kind === "rating" && Array.isArray(it.entries) ? <ol>{it.entries.map((row) => <li key={`${it.id}-${row.place}`}>{row.name}{row.value !== undefined ? ` — ${row.value}` : ""}</li>)}</ol> : null}
           </div>
         ))}
       </div>
@@ -88,9 +90,21 @@ function DynamicList({ kind, items, title }) {
   );
 }
 
+function PageArticle({ page, dynamic }) {
+  if (!page) return null;
+  return <article className="ps-page">
+    <h1>{page.title}</h1>
+    {page.short_description ? <p className="ps-lead">{page.short_description}</p> : null}
+    {page.image ? <img className="ps-block-image" src={page.image} alt="" /> : null}
+    {page.body ? <div className="ps-block-text"><p>{page.body}</p></div> : null}
+    {(page.blocks || []).map((b) => <Block key={b.id} block={b} dynamic={dynamic} />)}
+  </article>;
+}
+
 export function PublicSite() {
   const [menu, setMenu] = useState([]);
   const [theme, setTheme] = useState(null);
+  const [settings, setSettings] = useState(null);
   const [pages, setPages] = useState([]);
   const [page, setPage] = useState(null);
   const [dynamic, setDynamic] = useState({});
@@ -108,9 +122,10 @@ export function PublicSite() {
   useEffect(() => {
     (async () => {
       try {
-        const [m, th, pg, news, guides, faq, lore, where_is, ratings] = await Promise.all([
+        const [m, th, cfg, pg, news, guides, faq, lore, where_is, ratings] = await Promise.all([
           fetchMenu().catch(() => ({ menu: [] })),
           fetchTheme().catch(() => ({ theme: null })),
+          fetchSettings().catch(() => ({ settings: null })),
           fetchPages().catch(() => ({ pages: [] })),
           fetchNews().catch(() => ({ news: [] })),
           fetchGuides().catch(() => ({ guides: [] })),
@@ -121,6 +136,7 @@ export function PublicSite() {
         ]);
         setMenu(m.menu || []);
         setTheme(th.theme || null);
+        setSettings(cfg.settings || null);
         setPages(pg.pages || []);
         setDynamic({
           news: [...(news.news || []), ...(news.posts || [])], guide: guides.guides || [],
@@ -160,16 +176,16 @@ export function PublicSite() {
       </header>
 
       <main className="ps-main">
+        {settings?.maintenance_enabled ? (settings.maintenance_page
+          ? <PageArticle page={settings.maintenance_page} dynamic={dynamic} />
+          : <article className="ps-page"><h1>Технические работы</h1><p className="ps-lead">Сайт временно недоступен. Пожалуйста, зайдите позже.</p></article>) : null}
+        {!settings?.maintenance_enabled ? <>
         {loading ? <p className="ps-hint">Загрузка…</p> : null}
-        {error ? <p className="ps-error">{error}</p> : null}
+        {error ? (settings?.error_page
+          ? <PageArticle page={settings.error_page} dynamic={dynamic} />
+          : <div className="ps-page"><h1>Ошибка</h1><p className="ps-error">{error}</p></div>) : null}
         {!loading && page ? (
-          <article className="ps-page">
-            <h1>{page.title}</h1>
-            {page.short_description ? <p className="ps-lead">{page.short_description}</p> : null}
-            {page.image ? <img className="ps-block-image" src={page.image} alt="" /> : null}
-            {page.body ? <div className="ps-block-text"><p>{page.body}</p></div> : null}
-            {(page.blocks || []).map((b) => <Block key={b.id} block={b} dynamic={dynamic} />)}
-          </article>
+          <PageArticle page={page} dynamic={dynamic} />
         ) : null}
         {!loading && !page && !error ? (
           <div className="ps-page">
@@ -186,6 +202,7 @@ export function PublicSite() {
             ) : null}
           </div>
         ) : null}
+        </> : null}
       </main>
 
       <footer className="ps-footer">Нер-Талис · игровой проект</footer>

@@ -1,10 +1,10 @@
-"""FastAPI router for Admin V2 Item Constructor (authoring).
+"""FastAPI router for Admin V2 Item Constructor and live publication.
 
 Mounted under ``/api/admin/v2/items``. Reads need item.view; the
 draft→validate→publish→archive lifecycle, versions, where-used and delete
 (soft/hard) are gated per stage by item.* permissions and recorded via
-admin_operation. Live game consumption of constructor items is a runtime step,
-deferred.
+admin_operation. Published definitions are consumed by services.item_registry
+without a manual data-file migration.
 """
 
 from __future__ import annotations
@@ -98,6 +98,10 @@ def _actor(session: dict[str, Any]) -> str:
 def create_admin_item_router(get_storage) -> APIRouter:
     router = APIRouter(prefix="/api/admin/v2/items", tags=["admin-items"])
 
+    def _invalidate_runtime_registry() -> None:
+        from services.item_registry import invalidate_registry_caches
+        invalidate_registry_caches()
+
     @router.get("/meta")
     def meta(request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
         _require(_session(get_storage(), request, token), PERM_ITEM_VIEW)
@@ -117,6 +121,7 @@ def create_admin_item_router(get_storage) -> APIRouter:
             "openPlaces": list(items.OPEN_PLACES),
             "openBehaviors": [{"value": b, "label": items.OPEN_BEHAVIOR_LABELS.get(b, b)} for b in items.OPEN_BEHAVIORS],
             "inventoryFullBehaviors": list(items.INVENTORY_FULL_BEHAVIORS),
+            "profileActions": [{"value": action, "label": items.PROFILE_ACTION_LABELS[action]} for action in items.PROFILE_ACTIONS],
             "statuses": [{"value": s, "label": items.STATUS_LABELS.get(s, s)} for s in items.STATUSES],
         }
 
@@ -194,6 +199,8 @@ def create_admin_item_router(get_storage) -> APIRouter:
             )
         except EntityError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if published:
+            _invalidate_runtime_registry()
         return {"ok": True, "item": item}
 
     @router.post("/{item_id}/validate")
@@ -243,6 +250,7 @@ def create_admin_item_router(get_storage) -> APIRouter:
             after_func=lambda r: {"status": r.get("status")}, reason=payload.reason,
             details={"warnings": result["warnings"]},
         )
+        _invalidate_runtime_registry()
         return {"ok": True, "item": item, "validation": result}
 
     def _lifecycle(item_id, payload, request, *, perm, action, target_status):
@@ -262,6 +270,7 @@ def create_admin_item_router(get_storage) -> APIRouter:
             )
         except EntityError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        _invalidate_runtime_registry()
         return {"ok": True, "item": item}
 
     @router.post("/{item_id}/disable")
@@ -303,6 +312,7 @@ def create_admin_item_router(get_storage) -> APIRouter:
             before={"status": before.get("status")}, after_func=lambda r: {"deleted": bool(r)},
             reason=payload.reason,
         )
+        _invalidate_runtime_registry()
         return {"ok": True, "deleted": True}
 
     return router

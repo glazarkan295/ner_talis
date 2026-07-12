@@ -21,6 +21,8 @@ from services.registration_service import (
     format_race_card,
     get_race_id_by_name,
     load_races,
+    registration_text,
+    registration_access,
     validate_name,
 )
 from services.web_profile import create_profile_site_link
@@ -68,6 +70,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         await update.message.reply_text(
             "Ты уже зарегистрирован. Команда /start повторно не запускает регистрацию."
         )
+        return ConversationHandler.END
+    allowed, closed_text = registration_access("telegram")
+    if not allowed:
+        await update.message.reply_text(closed_text)
         return ConversationHandler.END
 
     # Реферальная ссылка: deep-link payload «/start ref_<код>» запоминаем до конца
@@ -141,20 +147,24 @@ async def begin_registration(update: Update, context: ContextTypes.DEFAULT_TYPE)
             reply_markup=after_registration_keyboard(),
         )
         return ConversationHandler.END
+    allowed, closed_text = registration_access("telegram")
+    if not allowed:
+        await update.message.reply_text(closed_text)
+        return ConversationHandler.END
 
     # Регистрация недоступна без подтверждённого согласия (закрывает обход через
     # точку входа «Начать» для игрока, который не проходил экран согласия).
     if await _require_consent_gate(update, context):
         return CONSENT_GATE
 
-    await update.message.reply_text(ASK_NAME_TEXT)
+    await update.message.reply_text(registration_text("telegram", "name_prompt_text", ASK_NAME_TEXT))
     return AWAITING_NAME
 
 
 async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     storage = get_storage(context)
     raw_name = update.message.text
-    is_valid, result = validate_name(raw_name)
+    is_valid, result = validate_name(raw_name, "telegram")
 
     if not is_valid:
         await update.message.reply_text(result)
@@ -182,7 +192,7 @@ async def handle_name_confirmation(update: Update, context: ContextTypes.DEFAULT
     if text == "Ввести заново":
         context.user_data.pop("registration_pending_name", None)
         context.user_data.pop("registration_name", None)
-        await update.message.reply_text(ASK_NAME_AGAIN_TEXT)
+        await update.message.reply_text(registration_text("telegram", "name_error_text", ASK_NAME_AGAIN_TEXT))
         return AWAITING_NAME
 
     if text != "Подтвердить":
@@ -194,7 +204,7 @@ async def handle_name_confirmation(update: Update, context: ContextTypes.DEFAULT
 
     pending_name = context.user_data.get("registration_pending_name")
     if not pending_name:
-        await update.message.reply_text(ASK_NAME_AGAIN_TEXT)
+        await update.message.reply_text(registration_text("telegram", "name_error_text", ASK_NAME_AGAIN_TEXT))
         return AWAITING_NAME
 
     if storage.is_name_taken(pending_name):
@@ -207,7 +217,7 @@ async def handle_name_confirmation(update: Update, context: ContextTypes.DEFAULT
     context.user_data["registration_name"] = pending_name
     context.user_data.pop("registration_pending_name", None)
 
-    await update.message.reply_text(ASK_GENDER_TEXT)
+    await update.message.reply_text(registration_text("telegram", "gender_prompt_text", ASK_GENDER_TEXT))
     await update.message.reply_text(
         GENDER_WARNING_TEXT,
         reply_markup=gender_keyboard(),
@@ -279,14 +289,14 @@ async def handle_gender_confirmation(update: Update, context: ContextTypes.DEFAU
     context.user_data.pop("registration_pending_gender_label", None)
 
     await update.message.reply_text(
-        ASK_RACE_TEXT,
+        registration_text("telegram", "race_prompt_text", ASK_RACE_TEXT),
         reply_markup=race_keyboard(),
     )
     return AWAITING_RACE
 
 
 async def receive_race(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    races = load_races()
+    races = load_races(platform="telegram")
     race_id = get_race_id_by_name(races, update.message.text)
 
     if race_id is None:
@@ -316,7 +326,7 @@ async def handle_race_card(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return AWAITING_RACE
 
     if text == "Выбрать":
-        races = load_races()
+        races = load_races(platform="telegram")
         race_id = context.user_data.get("registration_race_id")
         if not race_id:
             await update.message.reply_text(
@@ -345,7 +355,7 @@ async def handle_race_confirmation(
 ) -> int:
     storage = get_storage(context)
     text = update.message.text
-    races = load_races()
+    races = load_races(platform="telegram")
     race_id = context.user_data.get("registration_race_id")
 
     if text == "Нет":
@@ -425,7 +435,7 @@ async def handle_race_confirmation(
     context.user_data.clear()
 
     await update.message.reply_text(
-        FINAL_REGISTRATION_TEXT.format(player_name=player["name"]),
+        registration_text("telegram", "complete_text", FINAL_REGISTRATION_TEXT, player_name=player["name"]),
         reply_markup=after_registration_keyboard(),
     )
     return ConversationHandler.END
@@ -546,8 +556,16 @@ async def promo_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         await update.message.reply_text("Формат: /promo CODE")
         return None
 
-    ok, message = redeem_promo_code(storage, str(player.get("game_id")), code)
+    ok, message = redeem_promo_code(storage, str(player.get("game_id")), code,platform="telegram")
     prefix = "✅" if ok else "⚠️"
     await update.message.reply_text(f"{prefix} {message}")
     context.user_data.clear()
     return ConversationHandler.END
+
+async def promo_dynamic_command(update:Update,context:ContextTypes.DEFAULT_TYPE)->int|None:
+    from services.promo_service import promo_from_command
+    storage=get_storage(context);matched=promo_from_command(storage,str(update.message.text or ""),"telegram")
+    if not matched:return None
+    player=storage.get_player_by_platform(TELEGRAM_PLATFORM,get_external_user_id(update))
+    if player is None:await update.message.reply_text("Сначала создайте персонажа через /start.");return None
+    stored_code,argument=matched;code=argument or stored_code;ok,message=redeem_promo_code(storage,str(player.get("game_id")),code,platform="telegram");await update.message.reply_text(("✅ " if ok else "⚠️ ")+message);return ConversationHandler.END

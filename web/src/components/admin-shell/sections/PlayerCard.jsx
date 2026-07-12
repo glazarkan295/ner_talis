@@ -8,7 +8,10 @@ import {
   grantRewards,
   messagePlayer,
   openPlayerView,
+  openPlayerReadonlyView,
   repairFines,
+  removeFine,
+  deleteBrokenFine,
   resetPlayer,
   unstuckPlayer,
 } from "../../../api/adminV2Api.js";
@@ -188,6 +191,7 @@ export function PlayerCard({ gameId, guarded, hasPerm, onBack, onDeleted }) {
     const payload = await guarded(() => openPlayerView(gameId));
     if (payload?.url) window.open(payload.url, "_blank", "noopener");
   }
+  async function openReadonlyView() { const payload=await guarded(()=>openPlayerReadonlyView(gameId));if(payload?.url)window.open(payload.url,"_blank","noopener"); }
 
   async function sendMessage(reason) {
     await guarded(() => messagePlayer(gameId, message.trim(), reason), "Сообщение отправлено игроку.");
@@ -204,6 +208,7 @@ export function PlayerCard({ gameId, guarded, hasPerm, onBack, onDeleted }) {
   }
 
   const fines = player.fines || [];
+  const fineHistory = player.fineHistory || [];
 
   return (
     <section className="ntv2-section">
@@ -223,6 +228,7 @@ export function PlayerCard({ gameId, guarded, hasPerm, onBack, onDeleted }) {
 
       {/* Быстрые действия */}
       <div className="ntv2-form-row" style={{ marginTop: 14 }}>
+        <button type="button" className="ntv2-btn" onClick={openReadonlyView}>Открыть read-only профиль</button>
         {/* ТЗ 22 §3: токен профиля даёт РЕДАКТИРУЕМЫЙ доступ (backend требует inventory.edit),
             поэтому кнопку показываем только при этом праве — иначе 403 разлогинивал бы админа. */}
         {hasPerm("inventory.edit") ? <button type="button" className="ntv2-btn" onClick={openView}>Открыть редактируемый профиль</button> : null}
@@ -275,6 +281,8 @@ export function PlayerCard({ gameId, guarded, hasPerm, onBack, onDeleted }) {
                   <span>{f.source || "штраф"}</span>
                   <span className="ntv2-badge">{f.amount} меди</span>
                   <span className="ntv2-hint">день {f.day} · {tr(FINE_STATUS, f.status)}</span>
+                  <button type="button" className="ntv2-btn" onClick={() => setConfirm({ title: "Снять этот штраф?", body: <p>{f.id}</p>, confirmLabel: "Снять", dangerous: true, run: async (reason) => { await guarded(() => removeFine(gameId, f.id, reason), "Штраф снят."); await load(); } })}>Снять</button>
+                  <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Удалить битый штраф?", body: <p>Принудительное удаление {f.id} останется в истории и аудите.</p>, confirmLabel: "Удалить", dangerous: true, run: async (reason) => { await guarded(() => deleteBrokenFine(gameId, f.id, reason), "Штраф удалён."); await load(); } })}>Удалить</button>
                 </div>
               ))}
             </div>
@@ -297,6 +305,7 @@ export function PlayerCard({ gameId, guarded, hasPerm, onBack, onDeleted }) {
               if (rep) window.alert(rep.fixed ? `Исправлено. Состояние: ${rep.state}. Изменения: ${(rep.issues || []).join(", ") || "—"}` : `Штрафы в порядке. Состояние: ${rep.state}.`);
             }}>Проверить штрафы</button>
           </div>
+          <details style={{ marginTop: 10 }}><summary>История штрафов ({fineHistory.length})</summary><div className="ntv2-list">{fineHistory.slice().reverse().map((h, i) => <div className="ntv2-list-row" key={`${h.created_at_ts || h.at || i}-${i}`}><span>{h.action || h.event}</span><span className="ntv2-mono">{h.fine_id || "—"}</span><span>{h.source_name || h.source || "—"}</span><span className="ntv2-hint">{h.amount ?? "—"} · {h.place || h.reason || ""}</span></div>)}</div></details>
         </div>
       ) : null}
 

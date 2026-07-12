@@ -10,6 +10,7 @@ system.
 from __future__ import annotations
 
 import logging
+import json
 import math
 import random
 import uuid
@@ -350,6 +351,17 @@ def battle_buttons(player: dict[str, Any] | None = None) -> list[list[str]]:
     skill_names = [str(skill.get("name") or skill.get("id")) for skill in skills if isinstance(skill, dict)]
     for index in range(0, len(skill_names), 2):
         rows.append(skill_names[index:index + 2])
+    battle = (player or {}).get("active_battle") if isinstance(player, dict) else None
+    profile = (battle or {}).get("combat_profile") if isinstance(battle, dict) else None
+    if isinstance(profile, dict) and profile.get("allow_ally_commands") and (battle.get("allies") or []):
+        labels = {
+            "attack": "Атаковать", "protect": "Защищать", "heal": "Лечить",
+            "use_skill": "Использовать навык", "wait": "Ждать",
+            "change_target": "Сменить цель", "retreat": "Отступить",
+        }
+        commands = [f"Приказ: {labels.get(str(cmd), cmd)}" for cmd in (profile.get("available_commands") or [])]
+        for index in range(0, len(commands), 2):
+            rows.append(commands[index:index + 2])
     return rows
 
 
@@ -490,12 +502,21 @@ def death_camp_buttons() -> list[list[str]]:
 
 
 def move_player_to_death_camp(player: dict[str, Any], battle: dict[str, Any]) -> str:
-    """Move the defeated player to the current location camp by default."""
+    """Move the defeated player to a published configured camp or legacy camp."""
 
     location_id = battle_return_location(battle)
+    try:
+        from services.camp_runtime import death_camp
+
+        live_camp = death_camp(location_id)
+    except Exception:
+        live_camp = None
     player["current_location"] = location_id
     player["current_zone"] = f"{location_id}_camp"
     player["location_id"] = f"{location_id}_camp"
+    if live_camp:
+        player["current_camp_id"] = live_camp.get("id")
+        player["last_opened_camp_id"] = live_camp.get("id")
     player["active_timer"] = None
     return location_id
 
@@ -673,6 +694,58 @@ def build_constructor_enemy(mob_data: dict[str, Any], level: int, index: int) ->
     return enemy
 
 
+def hydrate_constructor_enemy(enemy:dict[str,Any],mob_id:str,mob_data:dict[str,Any])->dict[str,Any]:
+    """Attach every published mob sub-card needed by the live battle runtime."""
+    from services import world_content_registry as world
+    enemy.update({"source_mob_id":str(mob_id),"constructor_rank":mob_data.get("mob_rank"),"constructor_drop_rows":[dict(row) for row in mob_data.get("drop") or [] if isinstance(row,dict)],"mana":safe_int(mob_data.get("mana"),0),"spirit":safe_int(mob_data.get("spirit"),0),"energy":safe_int(mob_data.get("energy"),0),"armor":safe_int(mob_data.get("armor"),0),"initiative":safe_int(mob_data.get("initiative"),0),"base_damage":max(1,safe_int(mob_data.get("phys_damage"),0)+safe_int(mob_data.get("mag_damage"),0)),"exp_formula_id":mob_data.get("exp_formula_id"),"authored_experience":safe_int(mob_data.get("experience"),0),"authored_coins":safe_int(mob_data.get("coins"),0),"coins_min":safe_int(mob_data.get("coins_min"),0),"coins_max":safe_int(mob_data.get("coins_max"),0),"rank_reward_multiplier":float(mob_data.get("rank_reward_multiplier") or 1),"experience_reduction_after_10":float(mob_data.get("experience_reduction_after_10") or 30),"first_win_reward":mob_data.get("first_win_reward"),"repeat_win_reward":mob_data.get("repeat_win_reward"),"actions_per_turn":max(1,safe_int(mob_data.get("actions_per_turn"),1)),"escape_forbidden":bool(mob_data.get("escape_forbidden")),"player_escape_chance":safe_int(mob_data.get("player_escape_chance"),100),"attributes":{key:safe_int(mob_data.get(key),0) for key in ("strength","agility","endurance","intelligence","wisdom","perception")}})
+    mapping=((world.KIND_MOB_SKILL,"constructor_mob_skills"),(world.KIND_MOB_PASSIVE,"constructor_passives"),(world.KIND_MOB_RESISTANCE,"constructor_resistances"),(world.KIND_MOB_EFFECT,"constructor_effects"),(world.KIND_MOB_PHASE,"constructor_phases"))
+    for kind,key in mapping:
+        rows=[]
+        for env in world.list_content(kind,status=world.STATUS_PUBLISHED):
+            data=env.get("data") or {}
+            if str(data.get("mob_id") or "")==str(mob_id):rows.append({"id":env.get("id"),**data})
+        if kind==world.KIND_MOB_PHASE:rows.sort(key=lambda row:(safe_int(row.get("phase_number"),0),-safe_int(row.get("hp_percent"),100)))
+        enemy[key]=rows
+    return enemy
+
+
+def apply_constructor_phase(enemy:dict[str,Any],battle:dict[str,Any],log:list[str])->None:
+    hp=max(0,safe_int(enemy.get("current_hp"),0));maximum=max(1,safe_int(enemy.get("max_hp"),1));percent=hp*100/maximum
+    applied=enemy.setdefault("applied_constructor_phases",[])
+    for phase in enemy.get("constructor_phases") or []:
+        phase_id=str(phase.get("id") or phase.get("phase_number") or "")
+        threshold=float(phase.get("hp_percent") or 100)
+        if phase_id in applied or percent>threshold:continue
+        applied.append(phase_id);log.append(str(phase.get("transition_message") or phase.get("player_text") or f"{enemy.get('name')} переходит в новую фазу."))
+        changes=phase.get("stat_changes") or {}
+        if isinstance(changes,str):
+            try:changes=json.loads(changes)
+            except Exception:changes={}
+        if isinstance(changes,dict):
+            for key,value in changes.items():
+                if key in {"base_damage","physical_defense","magic_defense","accuracy","dodge","actions_per_turn"}:enemy[key]=safe_int(enemy.get(key),0)+safe_int(value,0)
+        if phase.get("forbid_escape"):battle["can_escape"]=False;enemy["escape_forbidden"]=True
+        enemy.setdefault("added_phase_skill_ids",[]).extend(str(value) for value in phase.get("add_skill_ids") or [])
+        enemy.setdefault("removed_phase_skill_ids",[]).extend(str(value) for value in phase.get("remove_skill_ids") or [])
+        for effect_id in phase.get("add_effect_ids") or []:enemy.setdefault("phase_effect_ids",[]).append(str(effect_id))
+
+
+def constructor_damage_multiplier(enemy:dict[str,Any],damage_type:Any,player:dict[str,Any])->float:
+    dtype=str(getattr(damage_type,"value",damage_type) or "").lower();wanted={"physical"} if "physical" in dtype else {"magical","magic"} if "magic" in dtype else set()
+    if "mixed" in dtype:wanted={"physical","magical","magic"}
+    multiplier=1.0
+    equipped=player.get("equipped_items") or player.get("equipment") or [];equipped=equipped.values() if isinstance(equipped,dict) else equipped
+    weapons={str(row.get("weapon_type") or "") for row in equipped if isinstance(row,dict)}
+    inventory_ids={str(row.get("item_id") or row.get("id") or "") for row in player.get("inventory") or [] if isinstance(row,dict)}
+    for row in enemy.get("constructor_resistances") or []:
+        rtype=str(row.get("resist_type") or "").lower();weapon=str(row.get("weapon_type") or "")
+        if rtype not in wanted and not (weapon and weapon in weapons):continue
+        value=max(0,min(100,float(row.get("value") or 0)));weakening=str(row.get("weakening_item_id") or "")
+        if weakening and weakening in inventory_ids:continue
+        multiplier*=1+value/100 if row.get("is_weakness") else max(0,1-value/100)
+    return max(0,multiplier)
+
+
 def create_constructor_battle(player: dict[str, Any], rng: random.Random, location_id: str) -> tuple[dict[str, Any], str] | None:
     """Бой из опубликованных спаунов конструктора (ТЗ §15/§22). None — нет
     подходящего спауна (вызывающий откатывается на легаси-бой)."""
@@ -731,20 +804,75 @@ def create_constructor_battle(player: dict[str, Any], rng: random.Random, locati
         battle_log=[intro],
     )
     battle_dict = serialize_battle(battle)
+    try:
+        from services.combat_constructor_service import resolve_profile
+        battle_dict["combat_profile"] = resolve_profile("mob", object_id=mob_id, group_battle=len(enemies) > 1)
+    except Exception:
+        battle_dict["combat_profile"] = {"scope": "pve", "timer_enabled": False}
+    from services.combat_group_runtime import attach_participants
+    attach_participants(battle_dict, player)
     # Тегируем врагов конструкторными данными: source_mob_id (для списания запаса
     # при победе §22) и base_damage (чтобы движок использовал урон из карточки).
     base_damage = max(1, int(float(mob_data.get("phys_damage") or 0) + float(mob_data.get("mag_damage") or 0)))
     for enemy_dict in battle_dict.get("enemies", []):
-        enemy_dict["source_mob_id"] = mob_id
-        enemy_dict["base_damage"] = base_damage
+        hydrate_constructor_enemy(enemy_dict,mob_id,mob_data)
+        from services.formula_runtime import evaluate
+        enemy_dict["base_damage"] = max(1, safe_int(evaluate(mob_data.get("damage_formula_id"), {
+            "mob_level": enemy_dict.get("level", player_level), "player_level": player_level,
+            "level_diff": safe_int(enemy_dict.get("level"), player_level) - player_level,
+            "base_amount": base_damage,
+        }, default=base_damage), base_damage))
+        enemy_dict["exp_formula_id"] = mob_data.get("exp_formula_id")
     apply_inventory_battle_stimulant_to_battle(player, battle_dict)
     battle_dict["origin_location_id"] = location_id
     battle_dict["return_location"] = location_id
     battle_dict["player_name"] = player_display_name(player)
     player["active_battle"] = battle_dict
+    from services.item_effect_trigger_runtime import trigger_equipped
+    trigger_equipped(player, "on_battle_start", context={"location_id": location_id}, rng=rng)
     player["active_event"] = None
     player["in_battle"] = True
     player["current_location"] = location_id
+    player["current_zone"] = f"{location_id}_battle"
+    player["location_id"] = f"{location_id}_battle"
+    sync_player_from_battle(player, battle_dict)
+    return battle_dict, format_battle_started_text(battle_dict)
+
+
+def create_battle_for_constructor_mob(player: dict[str, Any], mob_id: str, *, rng: random.Random | None = None, location_id: str | None = None) -> tuple[dict[str, Any], str]:
+    """Start a battle against an explicit published mob (craft/event consequence)."""
+    from services import world_runtime as wr
+    rng = rng or random.Random()
+    mob_data = wr.get_published(wr.registry.KIND_MOB, str(mob_id))
+    if not mob_data or not wr.campaign_content_allowed(player, wr.registry.KIND_MOB, str(mob_id)):
+        raise ValueError("Моб последствия не опубликован или не найден.")
+    location_id = str(location_id or player.get("current_location") or player.get("location_id") or "craft_event")
+    player_level = max(1, safe_int(player.get("level"), 1))
+    low = max(1, safe_int(mob_data.get("min_level"), player_level))
+    high = max(low, safe_int(mob_data.get("max_level"), low))
+    enemy = build_constructor_enemy(mob_data, rng.randint(low, high), 1)
+    battle = BattleState(
+        battle_id=f"pve_{uuid.uuid4().hex[:12]}", player_id=str(player.get("game_id") or player.get("id") or "player"),
+        location_id=location_id, battle_type="craft_failure", round_number=1,
+        player_state=make_player_battle_state(player), enemies=[enemy], can_escape=True,
+        battle_log=[str(mob_data.get("description") or f"Из-за провала появляется {mob_data.get('name') or 'существо'}.")],
+    )
+    battle_dict = serialize_battle(battle)
+    try:
+        from services.combat_constructor_service import resolve_profile
+        battle_dict["combat_profile"] = resolve_profile("mob", object_id=str(mob_id), group_battle=False)
+    except Exception:
+        battle_dict["combat_profile"] = {"scope": "pve", "timer_enabled": False}
+    from services.combat_group_runtime import attach_participants
+    attach_participants(battle_dict, player)
+    battle_dict["origin_location_id"] = location_id
+    battle_dict["return_location"] = location_id
+    battle_dict["player_name"] = player_display_name(player)
+    for row in battle_dict.get("enemies", []):
+        hydrate_constructor_enemy(row,str(mob_id),mob_data)
+    player["active_battle"] = battle_dict
+    player["active_event"] = None
+    player["in_battle"] = True
     player["current_zone"] = f"{location_id}_battle"
     player["location_id"] = f"{location_id}_battle"
     sync_player_from_battle(player, battle_dict)
@@ -791,11 +919,20 @@ def create_location_battle(player: dict[str, Any], rng: random.Random | None = N
         battle_log=[template["text"]],
     )
     battle_dict = serialize_battle(battle)
+    try:
+        from services.combat_constructor_service import resolve_profile
+        battle_dict["combat_profile"] = resolve_profile("pve", object_id=location_id, group_battle=len(enemies) > 1)
+    except Exception:
+        battle_dict["combat_profile"] = {"scope": "pve", "timer_enabled": False}
+    from services.combat_group_runtime import attach_participants
+    attach_participants(battle_dict, player)
     apply_inventory_battle_stimulant_to_battle(player, battle_dict)
     battle_dict["origin_location_id"] = location_id
     battle_dict["return_location"] = location_id
     battle_dict["player_name"] = player_display_name(player)
     player["active_battle"] = battle_dict
+    from services.item_effect_trigger_runtime import trigger_equipped
+    trigger_equipped(player, "on_battle_start", context={"location_id": location_id}, rng=rng)
     player["active_event"] = None
     player["in_battle"] = True
     player["current_location"] = location_id
@@ -985,6 +1122,8 @@ def maybe_apply_old_sword_on_hit(player: dict[str, Any], battle: dict[str, Any],
 
 
 def player_attack_raw_damage(player: dict[str, Any], action: str) -> tuple[int, DamageType, str]:
+    from services.item_effect_trigger_runtime import trigger_equipped
+    trigger_equipped(player, "on_attack")
     stats = calculate_player_derived_stats(player)
     level = stats["level"]
     if action == BATTLE_MAGIC_SPARK:
@@ -1029,6 +1168,8 @@ def skill_damage_type(skill: dict[str, Any]) -> DamageType:
 
 
 def player_skill_raw_damage(player: dict[str, Any], skill: dict[str, Any]) -> tuple[int, DamageType, str]:
+    from services.item_effect_trigger_runtime import trigger_equipped
+    trigger_equipped(player, "on_attack", context={"skill_level": safe_int(skill.get("level"), 1)})
     result = calculate_player_skill_raw_damage(player, skill)
     damage_type = DamageType(result.get("damage_type") or skill_damage_type(skill).value)
     damage = result.get("damage")
@@ -1117,6 +1258,9 @@ def is_combat_pouch_item(item: dict[str, Any]) -> bool:
         return False
     # Боевой стимулятор принимается из инвентаря заранее и не должен появляться в подсумке.
     if item_identity(item) == "battle_stimulant" or bool(item.get("pouch_excluded")):
+        return False
+    configured_actions = item.get("profile_actions")
+    if isinstance(configured_actions, list) and "pouch_store" in configured_actions and not item.get("in_pouch"):
         return False
     category = str(item.get("category") or item.get("type") or item.get("subtype") or "").casefold()
     tags = {str(tag).casefold() for tag in item.get("integration_tags", []) if isinstance(tag, str)}
@@ -1287,6 +1431,7 @@ def use_pouch_item(player: dict[str, Any], battle: dict[str, Any], item_name_or_
         if target is None:
             return "🎯 Эта цель уже побеждена или недоступна. Выберите живого противника.", False
         damage = throwable_damage(player, source_item)
+        damage=max(0,math.ceil(damage*constructor_damage_multiplier(target,DamageType.PHYSICAL,player)))
         target["current_hp"] = max(0, safe_int(target.get("current_hp"), 0) - damage)
         message = f"🎒 {player_display_name(player)} бросает {item_name}: {target.get('name')} получает {damage} урона."
         consumed = True
@@ -1428,6 +1573,8 @@ def format_battle_started_text(battle: dict[str, Any]) -> str:
     player_state = battle.get("player_state") or {}
     player_name = battle_player_name(battle)
     location_label = battle_location_label(str(battle.get("location_id") or battle.get("return_location") or "hilly_meadows"))
+    allies = [f"• {row.get('name')}: ❤️ {row.get('current_hp')}/{row.get('max_hp')}" for row in (battle.get("allies") or []) if isinstance(row, dict)]
+    ally_block = ("\n\n🤝 Союзники:\n" + "\n".join(allies)) if allies else ""
     return (
         f"⚔️ Бой начался!\n📍 Локация: {location_label}\n{intro}\n\n"
         f"Ход: {battle.get('round_number', 1)}.\n\n"
@@ -1437,7 +1584,7 @@ def format_battle_started_text(battle: dict[str, Any]) -> str:
         f"✨ {player_state.get('current_mana')}/{player_state.get('max_mana')}\n"
         f"🎯 {player_state.get('accuracy')} · 🌀 {player_state.get('dodge')} · "
         f"🛡 {player_state.get('physical_defense')} · ✨ {player_state.get('magic_defense')}\n\n"
-        f"👹 Противники:\n{enemy_lines}"
+        f"👹 Противники:\n{enemy_lines}{ally_block}"
     )
 
 
@@ -1446,6 +1593,18 @@ def format_battle_status(battle: dict[str, Any]) -> str:
     player_state = battle.get("player_state") or {}
     player_name = battle_player_name(battle)
     last_log = format_last_turn_log(battle)
+    allies = [f"• {row.get('name')}: ❤️ {row.get('current_hp')}/{row.get('max_hp')}" for row in (battle.get("allies") or []) if isinstance(row, dict) and safe_int(row.get("current_hp"), 0) > 0]
+    ally_block = ("🤝 Союзники:\n" + "\n".join(allies) + "\n\n") if allies else ""
+    profile = battle.get("combat_profile") if isinstance(battle.get("combat_profile"), dict) else {}
+    layout = str(profile.get("message_layout") or "").strip()
+    if layout:
+        blocks = {str(row.get("block")): row for row in profile.get("message_blocks") or [] if isinstance(row, dict)}
+        values = {"round": battle.get("round_number", 1), "player": player_name, "hp": player_state.get("current_hp"), "max_hp": player_state.get("max_hp"), "mana": player_state.get("current_mana"), "spirit": player_state.get("current_spirit"), "enemies": enemy_lines, "allies": ally_block.strip(), "log": last_log}
+        for key, row in blocks.items():
+            if row.get("enabled") is False: values[key] = ""
+            elif row.get("template"): values[key] = str(row["template"]).format_map(values)
+        try: return layout.format_map(values)
+        except (KeyError, ValueError): pass
     return (
         f"⚔️ PVE-бой. Ход: {battle.get('round_number', 1)}.\n\n"
         f"🧍 {player_name}:\n"
@@ -1454,9 +1613,99 @@ def format_battle_status(battle: dict[str, Any]) -> str:
         f"✨ {player_state.get('current_mana')}/{player_state.get('max_mana')}\n"
         f"🎯 Точность: {player_state.get('accuracy')} · 🌀 Уклонение: {player_state.get('dodge')}\n"
         f"🛡 Физ. защита: {player_state.get('physical_defense')} · ✨ Маг. защита: {player_state.get('magic_defense')}\n\n"
-        f"👹 Противники:\n{enemy_lines}\n\n"
+        f"{ally_block}👹 Противники:\n{enemy_lines}\n\n"
         f"📜 Действия прошлого хода:\n{last_log}"
     )
+
+
+def _profile_text(battle: dict[str, Any], key: str, default: str, **values: Any) -> str:
+    profile = battle.get("combat_profile") if isinstance(battle.get("combat_profile"), dict) else {}
+    rows = profile.get("texts") or []
+    authored = next((row.get("text") for row in rows if isinstance(row, dict) and row.get("key") == key), None)
+    template = str(authored or profile.get(key) or default)
+    try:
+        return template.format_map({k: v for k, v in values.items()})
+    except (KeyError, ValueError):
+        return template
+
+
+def _escape_condition(rule: dict[str, Any], enemy: dict[str, Any], battle: dict[str, Any], player: dict[str, Any]) -> bool:
+    kind = str(rule.get("condition_type") or "scenario")
+    value = rule.get("value")
+    current, maximum = safe_int(enemy.get("current_hp"), 0), max(1, safe_int(enemy.get("max_hp"), 1))
+    if kind == "hp_percent": actual = current * 100 / maximum
+    elif kind == "hp_value": actual = current
+    elif kind == "rounds": actual = safe_int(battle.get("round_number"), 1)
+    elif kind == "level_difference": actual = safe_int(player.get("level"), 1) - safe_int(enemy.get("level"), 1)
+    elif kind == "alone": return len(alive_enemies(battle)) == 1
+    elif kind in {"leader_dead", "boss_dead", "summoner_dead", "allies_dead"}:
+        role = kind.removesuffix("_dead")
+        return not any(safe_int(row.get("current_hp"), 0) > 0 and (row.get("role") == role or role in str(row.get("constructor_rank") or "")) for row in battle.get("enemies") or [])
+    elif kind in {"has_effect", "missing_effect"}:
+        effects = {str(row.get("effect_id") or row.get("id") or row) for row in enemy.get("effects") or []}
+        return (str(value) in effects) == (kind == "has_effect")
+    elif kind == "phase": return str(battle.get("phase") or enemy.get("phase") or "") == str(value)
+    elif kind == "scenario": return bool(rule.get("scenario_active", True))
+    else: return bool(battle.get(kind) or enemy.get(kind))
+    try: expected = float(value or 0)
+    except (TypeError, ValueError): expected = 0
+    operator = str(rule.get("operator") or ("<=" if kind.startswith("hp_") else ">="))
+    return {"<": actual < expected, "<=": actual <= expected, ">": actual > expected, ">=": actual >= expected, "==": actual == expected, "!=": actual != expected}.get(operator, False)
+
+
+def process_mob_escape(player: dict[str, Any], battle: dict[str, Any], rng: random.Random, log: list[str], trigger: str = "end_player_turn") -> dict[str, Any]:
+    """Executes authored individual/group/scenario retreat rules for living mobs."""
+    profile = battle.get("combat_profile") if isinstance(battle.get("combat_profile"), dict) else {}
+    rules = profile.get("mob_escape_rules") or []
+    escaped: list[dict[str, Any]] = []
+    result = "victory"
+    for rule in rules:
+        if not isinstance(rule, dict) or not rule.get("enabled", True): continue
+        timing = str(rule.get("check_timing") or "end_player_turn")
+        if timing not in {trigger, "each_turn", "any"}: continue
+        interval = max(1, safe_int(rule.get("check_interval"), 1))
+        if safe_int(battle.get("round_number"), 1) % interval: continue
+        mob_id, group_id = str(rule.get("mob_id") or ""), str(rule.get("group_id") or "")
+        candidates = [row for row in alive_enemies(battle) if (not mob_id or str(row.get("source_mob_id") or row.get("mob_id") or "") == mob_id) and (not group_id or str(row.get("group_id") or "") == group_id)]
+        if not candidates: continue
+        anchors = candidates if str(rule.get("mode") or "individual") == "individual" else candidates[:1]
+        for anchor in anchors:
+            if not _escape_condition(rule, anchor, battle, player): continue
+            log.append(_profile_text(battle, "mob_escape_attempt", str(rule.get("attempt_text") or "{mob} пытается сбежать."), mob=anchor.get("name")))
+            chance = float(rule.get("chance") if rule.get("chance") is not None else 100)
+            if rule.get("formula_id"):
+                from services.formula_runtime import evaluate
+                chance = float(evaluate(rule["formula_id"], {"mob_hp": anchor.get("current_hp", 0), "mob_hp_percent": safe_int(anchor.get("current_hp"), 0) * 100 / max(1, safe_int(anchor.get("max_hp"), 1)), "round": battle.get("round_number", 1), "player_level": player.get("level", 1)}, default=chance))
+            if rng.uniform(0, 100) > max(0, min(100, chance)):
+                log.append(str(rule.get("fail_text") or f"{anchor.get('name')} не удалось сбежать.")); continue
+            can_stop = bool(rule.get("player_can_stop")) or (bool(rule.get("npc_can_stop")) and any(safe_int(row.get("current_hp"), 0) > 0 for row in battle.get("allies") or [] if isinstance(row, dict)))
+            if can_stop:
+                stop_chance = float(rule.get("stop_chance") or 0)
+                if rule.get("stop_formula_id"):
+                    from services.formula_runtime import evaluate
+                    stop_chance = float(evaluate(rule["stop_formula_id"], {"player_level": player.get("level", 1), "round": battle.get("round_number", 1)}, default=stop_chance))
+                if rng.uniform(0, 100) <= max(0, min(100, stop_chance)):
+                    log.append(str(rule.get("stop_text") or f"Побег {anchor.get('name')} остановлен.")); continue
+            targets = candidates if str(rule.get("mode") or "individual") in {"group", "scenario", "boss_retreat"} else [anchor]
+            for target in targets:
+                if target in escaped: continue
+                target["escaped"] = True; target["current_hp"] = 0
+                target["escape_reward_policy"] = {key: rule.get(key) for key in ("cancel_rewards", "xp_factor", "coin_factor", "drop_factor", "quest_counts", "achievement_counts")}
+                escaped.append(target)
+            log.append(str(rule.get("success_text") or rule.get("group_text") or f"{anchor.get('name')} сбегает из боя."))
+            event_id = str(rule.get("event_id") or "")
+            if event_id: battle["post_escape_event_id"] = event_id
+            future_id = str(rule.get("future_encounter_id") or "")
+            if future_id: player.setdefault("future_encounters", {})[future_id] = True
+            reinforcement = str(rule.get("reinforcement_mob_id") or "")
+            if reinforcement:
+                try:
+                    from services.world_runtime import get_published, registry
+                    mob = get_published(registry.KIND_MOB, reinforcement)
+                    if mob: battle.setdefault("enemies", []).append(hydrate_constructor_enemy(asdict(build_constructor_enemy(mob, safe_int(mob.get("level"), 1), len(battle.get("enemies") or []))), reinforcement, mob))
+                except Exception: logger.exception("Could not summon escape reinforcement %s", reinforcement)
+            result = str(rule.get("boss_result") if str(rule.get("mode")) == "boss_retreat" else rule.get("all_escaped_result") or "victory")
+    return {"escaped": escaped, "all_gone": not alive_enemies(battle), "result": result}
 
 
 def loot_parameters_for_rank(rank: EnemyRank, chance: int | float, min_amount: int, max_amount: int) -> tuple[int, int, int]:
@@ -1515,6 +1764,9 @@ def _enemy_loot_table(enemy: dict[str, Any], catalog: dict[str, Any]) -> list[tu
     """Таблица лута врага: опубликованный drop конструкторного моба в приоритете,
     иначе — легаси-каталог по имени. Кортежи: (item_id, name, chance, min, max)."""
     source_mob_id = enemy.get("source_mob_id")
+    authored=enemy.get("constructor_drop_rows") or []
+    if authored:
+        return [(str(row.get("item_id") or ""),str(row.get("name") or row.get("item_id") or ""),row.get("chance") or 0,row.get("min_count") or 1,row.get("max_count") or row.get("min_count") or 1) for row in authored if isinstance(row,dict) and row.get("item_id")]
     if source_mob_id:
         drop = _constructor_mob_drop(str(source_mob_id))
         if drop:
@@ -1526,12 +1778,66 @@ def _enemy_loot_table(enemy: dict[str, Any], catalog: dict[str, Any]) -> list[tu
     ]
 
 
+def apply_mob_win_reward(player:dict[str,Any],enemy:dict[str,Any])->list[str]:
+    mob_id=str(enemy.get("source_mob_id") or "");wins=player.setdefault("mob_victories",{});first=safe_int(wins.get(mob_id),0)==0;raw=enemy.get("first_win_reward" if first else "repeat_win_reward");wins[mob_id]=safe_int(wins.get(mob_id),0)+1
+    if not raw:return []
+    if isinstance(raw,str):
+        try:raw=json.loads(raw)
+        except Exception:return [raw]
+    rows=raw if isinstance(raw,list) else [raw];lines=[]
+    for row in rows:
+        if not isinstance(row,dict):continue
+        kind=str(row.get("type") or "item");amount=max(1,safe_int(row.get("amount"),1));object_id=str(row.get("object_id") or row.get("item_id") or "")
+        if kind=="item" and object_id:
+            result=add_inventory_item(player,object_id,amount,item_id=object_id);lines.append(str(row.get("text") or f"Особая награда: {object_id} ×{result.added}"))
+        elif kind in {"coins","currency"}:
+            try:
+                from services.economy_runtime import change,reward_amount
+                amount=reward_amount("mob",amount,{"mob_id":mob_id,"first_win":int(first)});change(player,"copper",amount,operation="mob_special_reward",source="mob",source_id=mob_id)
+            except (ImportError,ValueError):
+                key="money_copper" if "money_copper" in player else "money";player[key]=safe_int(player.get(key),0)+amount
+                if key=="money_copper":player["money"]=player[key]
+            lines.append(str(row.get("text") or f"Особая награда: {amount} монет"))
+    return lines
+
+
 def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: random.Random) -> str:
+    try:
+        from services.npc_ally_runtime import record_battle
+        record_battle(player, battle, victory=True)
+    except Exception:
+        pass
+    from services.item_effect_trigger_runtime import trigger_equipped
+    trigger_equipped(player, "after_battle", context={"victory": 1}, rng=rng)
     enemies = battle.get("enemies", [])
+    defeated_enemies = [row for row in enemies if not row.get("escaped")]
+    source_npc_id=str(battle.get("source_npc_id") or "")
+    if source_npc_id:
+        try:
+            from services.world_runtime import get_published,registry
+            npc=get_published(registry.KIND_NPC,source_npc_id) or {}
+            for enemy in enemies:enemy.setdefault("constructor_drop_rows",[]).extend(dict(row) for row in npc.get("combat_drop") or [] if isinstance(row,dict))
+            fine_id=str(npc.get("kill_fine_id") or "")
+            if fine_id:
+                from services.fine_service import create_raid_fine
+                create_raid_fine(player,fine_id)
+            for consequence in npc.get("kill_consequences") or []:
+                if not isinstance(consequence,dict):continue
+                if consequence.get("type") in {"reputation","hidden_reputation"}:
+                    bucket=player.setdefault("hidden_reputations" if consequence.get("type")=="hidden_reputation" else "reputations",{});oid=str(consequence.get("object_id") or "");bucket[oid]=safe_int(bucket.get(oid),0)+safe_int(consequence.get("amount"),0)
+            if npc.get("combat_reward"):
+                for enemy in enemies:enemy["first_win_reward"]=npc.get("combat_reward")
+        except Exception:logger.exception("Failed to apply NPC combat consequences for %s",source_npc_id)
     player_level = max(1, safe_int(player.get("level"), 1))
     reward_location_id = battle_return_location(battle)
+    try:
+        from services.world_event_runtime import modifiers as world_modifiers
+        world_mods = world_modifiers(context={"location_id": reward_location_id, "game_id": player.get("game_id"), "level": player.get("level", 1)})
+    except Exception:
+        world_mods = {"drop_multiplier": 1.0, "resource_multiplier": 1.0, "exp_multiplier": 1.0, "reward_multiplier": 1.0}
     catalog = mob_catalog(reward_location_id)
     xp_total = 0
+    coins_total=0
     loot_lines: list[str] = []
     # Конструктор локаций §18/§22/§23: при победе списываем недельный запас
     # мобов и дропа. Активно только при включённом WORLD_CONSTRUCTOR_LIVE и для
@@ -1541,27 +1847,59 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
     except Exception:
         _loc_rt = None
     for enemy in enemies:
+        escape_policy = enemy.get("escape_reward_policy") if isinstance(enemy.get("escape_reward_policy"), dict) else {}
+        if enemy.get("escaped") and escape_policy.get("cancel_rewards"):
+            continue
+        xp_factor = float(escape_policy.get("xp_factor") if escape_policy.get("xp_factor") is not None else (0 if enemy.get("escaped") else 1))
+        coin_factor = float(escape_policy.get("coin_factor") if escape_policy.get("coin_factor") is not None else (0 if enemy.get("escaped") else 1))
+        drop_factor = float(escape_policy.get("drop_factor") if escape_policy.get("drop_factor") is not None else (0 if enemy.get("escaped") else 1))
         rank = enemy_rank(enemy)
         level = max(1, safe_int(enemy.get("level"), 1))
         rank_xp = RANK_MULTIPLIERS.get(rank, RANK_MULTIPLIERS[EnemyRank.NORMAL])["xp"]
-        base_xp = math.ceil((20 + level * 12) * rank_xp)
+        base_xp = safe_int(enemy.get("authored_experience"),0) or math.ceil((20 + level * 12) * rank_xp)
+        base_xp=math.ceil(base_xp*float(enemy.get("rank_reward_multiplier") or 1))
         difference = level - player_level
         if difference >= 0:
             diff_mult = min(2.5, 1 + difference * 0.04)
         else:
             diff_mult = max(0.1, 1 + difference * 0.08)
-        xp_total += math.ceil(base_xp * diff_mult)
+        calculated_xp = math.ceil(base_xp * diff_mult)
+        if enemy.get("exp_formula_id"):
+            from services.formula_runtime import evaluate
+            calculated_xp = max(0, safe_int(evaluate(enemy.get("exp_formula_id"), {
+                "mob_level": level, "player_level": player_level, "level_diff": difference,
+                "base_amount": calculated_xp, "multiplier": diff_mult,
+            }, default=calculated_xp), calculated_xp))
+        xp_total += max(0, math.floor(calculated_xp * xp_factor))
+        coin_min=safe_int(enemy.get("coins_min"),0);coin_max=max(coin_min,safe_int(enemy.get("coins_max"),0));authored=safe_int(enemy.get("authored_coins"),0)
+        coins_total+=max(0, math.floor((rng.randint(coin_min,coin_max) if coin_max else authored) * coin_factor))
         for item_id_hint, item_name, chance, min_amount, max_amount in _enemy_loot_table(enemy, catalog):
+            drop_meta=next((row for row in enemy.get("constructor_drop_rows") or [] if str(row.get("item_id") or "")==str(item_id_hint or "")),{})
+            condition=str(drop_meta.get("condition") or "")
+            if condition=="first_win" and safe_int((player.get("mob_victories") or {}).get(str(enemy.get("source_mob_id") or "")),0)>0:continue
+            drop_limit=max(0,safe_int(drop_meta.get("drop_limit"),0));usage_key=f"{enemy.get('source_mob_id')}:{item_id_hint}";drop_usage=player.setdefault("mob_drop_usage",{})
+            if drop_limit and safe_int(drop_usage.get(usage_key),0)>=drop_limit:continue
             loot_chance, loot_min, loot_max = loot_parameters_for_rank(rank, chance, min_amount, max_amount)
+            loot_chance = min(100.0, loot_chance * float(world_mods.get("drop_multiplier", 1) or 0) * max(0, drop_factor))
+            resolved_item_id = item_id_hint or battle_loot_item_id(reward_location_id, item_name)
+            if resolved_item_id:
+                from services.item_formula_runtime import drop_chance as item_drop_chance
+                loot_chance = item_drop_chance(resolved_item_id, loot_chance, player=player, context={
+                    "mob_level": level, "player_level": player_level, "level_diff": level - player_level,
+                })
             if rng.uniform(0, 100) <= loot_chance:
-                amount = rng.randint(loot_min, loot_max)
+                amount = max(1, math.floor(rng.randint(loot_min, loot_max) * float(world_mods.get("resource_multiplier", 1) or 0)))
                 # Конструкторный drop несёт точный item_id; легаси-каталог — нет,
                 # для него разрешаем id по имени с учётом локации.
-                item_id = item_id_hint or battle_loot_item_id(reward_location_id, item_name)
+                item_id = resolved_item_id
                 add_result = add_inventory_item(player, item_name, amount, item_id=item_id)
                 if add_result.added > 0:
+                    if drop_limit:drop_usage[usage_key]=safe_int(drop_usage.get(usage_key),0)+add_result.added
+                    if drop_meta.get("bind_on_receive"):
+                        for inventory_row in reversed(player.get("inventory") or []):
+                            if isinstance(inventory_row,dict) and str(inventory_row.get("item_id") or inventory_row.get("id") or "")==str(item_id):inventory_row["bound"]=True;break
                     note = inventory_add_result_notice(add_result, item_name)
-                    loot_lines.append(f"{item_name} ×{add_result.added}{note}")
+                    loot_lines.append(str(drop_meta.get("drop_text") or f"{item_name} ×{add_result.added}{note}"))
                     if _loc_rt is not None and item_id:
                         try:
                             _loc_rt.consume_for_item(reward_location_id, item_id, add_result.added)
@@ -1569,11 +1907,24 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
                             pass
                 elif add_result.discarded > 0:
                     loot_lines.append(f"{item_name}: не поместилось ×{add_result.discarded}")
+        try:
+            from services.world_event_runtime import roll_special_loot
+            source_id = str(enemy.get("source_mob_id") or enemy.get("mob_id") or enemy.get("id") or "")
+            for special in roll_special_loot(player, "battle", location_id=reward_location_id, object_id=source_id, rng=rng):
+                item_id = str(special.get("item_id") or "")
+                amount = int(special.get("amount") or 0)
+                if item_id and amount > 0:
+                    from services.item_registry import build_inventory_item
+                    result = add_inventory_item(player, build_inventory_item(item_id, amount, item_id=item_id), amount, item_id=item_id, default_source="Мировое событие")
+                    loot_lines.append(f"Мировое событие: {item_id} ×{result.added}")
+        except Exception:
+            pass
+        if not enemy.get("escaped"): loot_lines.extend(apply_mob_win_reward(player,enemy))
     # Списываем побеждённых мобов из недельного запаса локации. Берём именно
     # source_mob_id (конструкторный id), а не инстансный mob_id — у легаси-врагов
     # source_mob_id нет, поэтому для них это no-op.
     if _loc_rt is not None:
-        for enemy in enemies:
+        for enemy in defeated_enemies:
             source_mob_id = enemy.get("source_mob_id")
             if source_mob_id:
                 try:
@@ -1581,19 +1932,53 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
                 except Exception:
                     pass
 
-    group_count = max(1, len(enemies))
+    group_count = max(1, len(defeated_enemies))
     xp_total = math.ceil(xp_total * max(0.55, 1 - ((group_count - 1) * 0.05)))
     # Global balance change: experience received from killing mobs is reduced by 20%.
     xp_total = max(1, math.floor(xp_total * 0.8)) if xp_total > 0 else 0
-    # After reaching level 10, mob experience is reduced by an additional 30%.
-    if player_level >= 10 and xp_total > 0:
-        xp_total = max(1, math.floor(xp_total * 0.7))
+    if xp_total > 0:
+        xp_total = max(1, math.floor(xp_total * float(world_mods.get("exp_multiplier", 1) or 0)))
     old_sword_xp_penalty = old_iron_sword_penalty_percent(player, "mob_xp_penalty_percent")
     if old_sword_xp_penalty and xp_total > 0:
         xp_total = max(1, math.floor(xp_total * (1 - old_sword_xp_penalty / 100)))
-    progress = grant_experience(player, xp_total)
-    player["pve_kills"] = safe_int(player.get("pve_kills"), 0) + len(enemies)
+    progress = grant_experience(player, xp_total, source_type="mob_kill", context={
+        "mob_count": len(enemies), "mob_level": max((safe_int(e.get("level"), 1) for e in enemies), default=1),
+        "level_diff": max((safe_int(e.get("level"), 1) for e in enemies), default=1) - player_level,
+    })
+    player["pve_kills"] = safe_int(player.get("pve_kills"), 0) + len(defeated_enemies)
+    try:
+        from services.quest_runtime_service import progress as quest_progress
+        from services.reputation_runtime_service import apply_trigger as reputation_trigger
+        from services.achievement_engine import record_game_event
+        for enemy in enemies:
+            policy = enemy.get("escape_reward_policy") if isinstance(enemy.get("escape_reward_policy"), dict) else {}
+            if enemy.get("escaped") and not (policy.get("quest_counts") or policy.get("achievement_counts")): continue
+            target = str(enemy.get("source_mob_id") or enemy.get("mob_id") or enemy.get("id") or "")
+            if not enemy.get("escaped") or policy.get("quest_counts"): quest_progress(player, "kill_mob", target, 1)
+            if not enemy.get("escaped"): reputation_trigger(player, "mob_kill", target)
+            if not enemy.get("escaped") or policy.get("achievement_counts"): record_game_event(player, "kill_mob", 1, target)
+            from services.event_campaign_runtime import progress as event_progress
+            event_progress(player, "kill_mob", target, 1)
+            if enemy_rank(enemy) in (EnemyRank.ELITE, EnemyRank.MINI_BOSS, EnemyRank.BOSS, EnemyRank.RAID_BOSS):
+                quest_progress(player, "kill_boss", target, 1)
+                record_game_event(player, "kill_boss", 1, target)
+                event_progress(player, "kill_boss", target, 1)
+        record_game_event(player, "gain_experience", progress["gained"])
+        record_game_event(player, "reach_level", progress["level"])
+        record_game_event(player, "finish_pve", 1)
+        record_game_event(player, "win_battle", 1, "pve")
+    except Exception:
+        pass
+    if coins_total>0:
+        try:
+            from services.economy_runtime import change, reward_amount
+            coins_total=reward_amount("battle",coins_total,{"mob_count":len(enemies),"player_level":player_level})
+            change(player,"copper",coins_total,operation="battle_reward",source="pve",source_id=str(battle.get("battle_id") or ""))
+        except (ImportError, ValueError):
+            money_key="money_copper" if "money_copper" in player else "money";player[money_key]=safe_int(player.get(money_key),0)+coins_total
+            if money_key=="money_copper" and "money" in player:player["money"]=player[money_key]
     rewards = [f"Опыт: +{progress['gained']}"]
+    if coins_total:rewards.append(f"Монеты: +{coins_total}")
     if old_sword_xp_penalty:
         rewards.append(f"Старый железный меч: опыт с мобов -{old_sword_xp_penalty:.2f}%")
     if progress["level_ups"]:
@@ -1607,6 +1992,22 @@ def grant_battle_rewards(player: dict[str, Any], battle: dict[str, Any], rng: ra
         rewards.append("Добыча: " + ", ".join(loot_lines))
     else:
         rewards.append("Добыча: ничего")
+    profile = battle.get("combat_profile") if isinstance(battle.get("combat_profile"), dict) else {}
+    for row in profile.get("victory_rewards") or []:
+        if not isinstance(row, dict) or rng.uniform(0, 100) > float(row.get("chance") or 100): continue
+        kind, object_id, amount = str(row.get("type") or "item"), str(row.get("object_id") or ""), max(1, safe_int(row.get("amount"), 1))
+        if kind == "item" and object_id: add_inventory_item(player, object_id, amount, item_id=object_id)
+        elif kind in {"coins", "currency"}: player["money"] = safe_int(player.get("money"), 0) + amount
+        elif kind in {"experience", "xp"}: grant_experience(player, amount, source_type="pve_victory")
+        elif kind == "effect" and object_id:
+            from services.effect_formula_runtime import apply_to_player
+            apply_to_player(player, object_id, source="pve_victory")
+        rewards.append(str(row.get("text") or f"Награда боя: {object_id or kind} ×{amount}"))
+    if profile.get("victory_event_id"): player["constructor_event_id"] = str(profile["victory_event_id"])
+    try:
+        from services.bot_message_queue import release_waiting
+        release_waiting(str(player.get("game_id") or ""),"battle")
+    except Exception:pass
     return "\n".join(rewards)
 
 
@@ -1648,7 +2049,10 @@ def skill_uses_without_target(skill: dict[str, Any]) -> bool:
 
 
 def apply_enemy_status_effects(battle: dict[str, Any], log: list[str]) -> None:
-    for enemy in alive_enemies(battle):
+    acting_enemies=[enemy for enemy in alive_enemies(battle) for _ in range(max(1,safe_int(enemy.get("actions_per_turn"),1)))]
+    for enemy in acting_enemies:
+        if safe_int(enemy.get("current_hp"),0)<=0:continue
+        apply_constructor_phase(enemy,battle,log)
         statuses = enemy.get("statuses")
         if not isinstance(statuses, list):
             continue
@@ -1701,9 +2105,30 @@ def tick_player_battle_effects(player: dict[str, Any], battle: dict[str, Any], l
 
 
 def apply_enemy_phase(player: dict[str, Any], battle: dict[str, Any], rng: random.Random, log: list[str], *, defending: bool = False) -> bool:
+    from services.effect_runtime_service import advance_turn as advance_effect_turn
+
     player_state = battle.setdefault("player_state", {})
+    for resource in ("hp", "mana", "spirit"):
+        current_key = f"current_{resource}"
+        if current_key in player_state:
+            player[resource] = player_state[current_key]
+        if f"max_{resource}" in player_state:
+            player[f"max_{resource}"] = player_state[f"max_{resource}"]
+    effect_report = advance_effect_turn(player)
+    for resource in ("hp", "mana", "spirit"):
+        if resource in player:
+            player_state[f"current_{resource}"] = player[resource]
+    if effect_report["ticks"]:
+        total = sum(int(row.get("delta") or 0) for row in effect_report["ticks"])
+        log.append(f"⏱ Периодические эффекты срабатывают ({total:+d}).")
+    if effect_report["removed"]:
+        log.append("⌛ Временный эффект завершился.")
+    from services.item_effect_trigger_runtime import trigger_equipped
+    trigger_equipped(player, "on_battle_turn", context={"round": battle.get("round_number", 1)}, rng=rng)
     apply_enemy_status_effects(battle, log)
-    if safe_int(player_state.get("invulnerable_turns"), 0) > 0:
+    from services.effect_runtime_service import combat_flags
+    authored_flags = combat_flags(player)
+    if safe_int(player_state.get("invulnerable_turns"), 0) > 0 or authored_flags.get("invulnerable"):
         # One-turn invulnerability (e.g. Last Chance artifact resurrection).
         player_state["invulnerable_turns"] = safe_int(player_state.get("invulnerable_turns"), 0) - 1
         log.append("✨ Неуязвимость: весь урон этого хода заблокирован.")
@@ -1713,13 +2138,24 @@ def apply_enemy_phase(player: dict[str, Any], battle: dict[str, Any], rng: rando
         sync_player_from_battle(player, battle)
         return False
     for enemy in alive_enemies(battle):
-        hit_chance = calculate_hit_chance(safe_int(enemy.get("accuracy"), 1), safe_int(player_state.get("dodge"), 1))
+        from services.combat_group_runtime import choose_enemy_target, damage_ally
+        ally_target = choose_enemy_target(battle, rng)
+        from services.skill_action_runtime import choose_mob_skill
+        mob_skill = choose_mob_skill(enemy, rng)
+        target_dodge = safe_int((ally_target or player_state).get("dodge"), 1)
+        hit_chance = calculate_hit_chance(safe_int(enemy.get("accuracy"), 1), target_dodge)
         if rng.random() > hit_chance:
             log.append(f"{enemy.get('name')} промахивается.")
             continue
         raw = enemy_raw_damage(enemy)
+        if mob_skill:
+            from services.formula_runtime import evaluate, numeric_context
+            raw = max(0, safe_int(evaluate(mob_skill.get("damage_formula_id"), numeric_context({"base_amount": mob_skill.get("base_damage", raw), "mob_level": enemy.get("level", 1)}, player=player), default=mob_skill.get("base_damage", raw)), raw))
         if defending:
             raw = math.ceil(raw * 0.65)
+        if ally_target is not None:
+            damage_ally(ally_target, raw, log, str(enemy.get("name") or "Противник"))
+            continue
         damage_type = enemy_damage_type(enemy)
         final_damage = calculate_final_damage(
             raw_damage=raw,
@@ -1732,7 +2168,30 @@ def apply_enemy_phase(player: dict[str, Any], battle: dict[str, Any], rng: rando
         if damage_type == DamageType.PHYSICAL:
             final_damage = max(0, math.ceil(final_damage * incoming_physical_damage_multiplier(player)))
         player_state["current_hp"] = max(0, safe_int(player_state.get("current_hp"), 0) - final_damage)
-        log.append(f"{enemy.get('name')} атакует и наносит {final_damage} урона.")
+        reflect_key = "reflect_magic_percent" if damage_type == DamageType.MAGIC else "reflect_physical_percent"
+        reflected = round(final_damage * float(authored_flags.get(reflect_key) or 0) / 100)
+        if reflected:
+            enemy["current_hp"] = max(0, safe_int(enemy.get("current_hp"), 0) - reflected)
+            log.append(f"↩️ Отражено {reflected} урона противнику.")
+        trigger_equipped(player, "on_receive_damage", context={"base_amount": final_damage, "mob_level": enemy.get("level", 1)}, rng=rng)
+        log.append(f"{enemy.get('name')} применяет «{mob_skill.get('name')}» и наносит {final_damage} урона." if mob_skill else f"{enemy.get('name')} атакует и наносит {final_damage} урона.")
+        if mob_skill and mob_skill.get("apply_effect_id"):
+            from services.effect_formula_runtime import apply_to_player
+            apply_to_player(player, str(mob_skill.get("apply_effect_id")), source="mob_skill", context={"mob_id": enemy.get("source_mob_id")})
+        for effect in enemy.get("constructor_effects") or []:
+            if str(effect.get("trigger") or "on_attack") not in {"on_attack","on_hit","attack","hit"}:continue
+            if rng.uniform(0,100)>max(0,min(100,float(effect.get("chance") or 100))):continue
+            effect_id=str(effect.get("effect_id") or "")
+            if effect_id:
+                from services.effect_formula_runtime import apply_to_player
+                apply_to_player(player,effect_id,source="constructor_mob_effect",context={"mob_id":enemy.get("source_mob_id"),"duration_turns":effect.get("duration")})
+
+    for enemy in alive_enemies(battle):
+        for passive in enemy.get("constructor_passives") or []:
+            ptype=str(passive.get("passive_type") or passive.get("name") or "").lower()
+            if ptype in {"regeneration","regen","регенерация","регенерирующий"}:
+                amount=max(0,safe_int(passive.get("value"),0));before=safe_int(enemy.get("current_hp"),0);enemy["current_hp"]=min(safe_int(enemy.get("max_hp"),before),before+amount)
+                if enemy["current_hp"]>before:log.append(f"{enemy.get('name')} восстанавливает {enemy['current_hp']-before} HP.")
 
     regen_percent = combat_hp_regen_percent(player)
     if regen_percent and safe_int(player_state.get("current_hp"), 0) > 0:
@@ -1797,19 +2256,46 @@ def _try_last_chance_resurrection(player: dict[str, Any], battle: dict[str, Any]
 def finish_player_defeat(player: dict[str, Any], battle: dict[str, Any], log: list[str]) -> tuple[str, list[list[str]]]:
     if _try_last_chance_resurrection(player, battle, log):
         return "\n".join(log), battle_buttons(player)
+    from services.item_effect_trigger_runtime import trigger_equipped
+    try:
+        from services.npc_ally_runtime import record_battle
+        record_battle(player, battle, victory=False)
+    except Exception:
+        pass
+    trigger_equipped(player, "on_death"); trigger_equipped(player, "after_battle", context={"victory": 0})
+    try:
+        from services.quest_runtime_service import progress as quest_progress
+        quest_progress(player,"death","pve",1)
+    except Exception:pass
     player["in_battle"] = False
     player["active_battle"] = None
     player["active_event"] = None
     death_location_id = move_player_to_death_camp(player, battle)
     player["hp"] = max(1, math.ceil(safe_int(player.get("max_hp"), 100) * 0.2))
-    penalty = apply_death_experience_penalty(player, 10)
+    profile = battle.get("combat_profile") if isinstance(battle.get("combat_profile"), dict) else {}
+    consequences = [row for row in profile.get("defeat_consequences") or [] if isinstance(row, dict)]
+    xp_percent = next((safe_int(row.get("percent"), 10) for row in consequences if row.get("type") in {"experience", "xp"}), 10)
+    penalty = apply_death_experience_penalty(player, xp_percent)
+    for row in consequences:
+        kind, amount = str(row.get("type") or ""), max(0, safe_int(row.get("amount"), 0))
+        if kind in {"coins", "currency"}: player["money"] = max(0, safe_int(player.get("money"), 0) - amount)
+        elif kind == "effect" and row.get("object_id"):
+            from services.effect_formula_runtime import apply_to_player
+            apply_to_player(player, str(row["object_id"]), source="pve_defeat")
+    if profile.get("defeat_event_id"): player["constructor_event_id"] = str(profile["defeat_event_id"])
     player_name = battle_player_name(battle)
     penalty_text = "Штраф смерти: опыт не потерян."
     if penalty["lost"] > 0:
         penalty_text = f"Штраф смерти: -{penalty['lost']} опыта (-10%)."
+    from services.text_runtime import game_text
+    defeat_text = _profile_text(battle, "defeat", game_text("battle.defeat", f"❌ {player_name} проигрывает бой и отступает в лагерь локации. HP частично восстановлено."), player=player_name)
+    try:
+        from services.bot_message_queue import release_waiting
+        release_waiting(str(player.get("game_id") or ""),"battle")
+    except Exception:pass
     return (
         "\n".join(log)
-        + f"\n\n❌ {player_name} проигрывает бой и отступает в лагерь локации. HP частично восстановлено.\n{penalty_text}"
+        + f"\n\n{defeat_text}\n{penalty_text}"
     ), death_camp_buttons()
 
 
@@ -1836,7 +2322,42 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         player["active_event"] = None
         move_player_to_battle_return_location(player, battle)
         rewards = grant_battle_rewards(player, battle, rng)
-        return f"Победа!\n\n{rewards}", []
+        from services.text_runtime import game_text
+        return f"{game_text('battle.victory', 'Победа!')}\n\n{rewards}", []
+
+    from services.effect_runtime_service import combat_flags
+    authored_flags = combat_flags(player)
+    if authored_flags.get("skip_turn") and action not in {BATTLE_POUCH, BATTLE_POUCH_NEXT, BATTLE_POUCH_PREV} and not action.startswith("Предмет "):
+        log = [authored_flags.get("trigger_text") or "💫 Оглушение: ход пропущен."]
+        defeated = apply_enemy_phase(player, battle, rng, log)
+        if defeated:
+            return finish_player_defeat(player, battle, log)
+        return format_battle_status(battle), battle_buttons(player)
+
+    if action.startswith("Приказ: "):
+        profile = battle.get("combat_profile") if isinstance(battle.get("combat_profile"), dict) else {}
+        labels = {"Атаковать": "auto", "Защищать": "protect_player", "Лечить": "heal_allies",
+                  "Использовать навык": "random_skill", "Ждать": "wait", "Сменить цель": "weakest", "Отступить": "retreat"}
+        if not profile.get("allow_ally_commands") or not (battle.get("allies") or []):
+            return str(profile.get("command_error_text") or "Сейчас некому отдать приказ."), battle_buttons(player)
+        command = action.removeprefix("Приказ: ").strip()
+        behavior = labels.get(command)
+        if not behavior:
+            return str(profile.get("command_error_text") or "Этот приказ недоступен."), battle_buttons(player)
+        for ally in battle.get("allies") or []:
+            if safe_int(ally.get("current_hp"), 0) > 0:
+                ally["behavior"] = behavior
+                if behavior == "retreat" and ally.get("can_escape"):
+                    ally["current_hp"] = 0
+        text = str(profile.get("command_text") or "Приказ союзникам принят.")
+        battle.setdefault("battle_log", []).append(text)
+        player["active_battle"] = battle
+        if profile.get("command_uses_action"):
+            log = [text]
+            defeated = apply_enemy_phase(player, battle, rng, log)
+            if defeated:
+                return finish_player_defeat(player, battle, log)
+        return format_battle_status(battle), battle_buttons(player)
 
     # If a player selected a skill and then presses any other battle button,
     # cancel the stale target prompt. This prevents a later «Цель: N» click from
@@ -1846,17 +2367,29 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         battle.pop("pending_skill", None)
 
     if action in {BATTLE_ESCAPE, "Отступить"}:
+        profile = battle.get("combat_profile") if isinstance(battle.get("combat_profile"), dict) else {}
+        if profile.get("player_escape_allowed") is False or battle.get("can_escape") is False or any(enemy.get("escape_forbidden") for enemy in alive_enemies(battle)):
+            return "🚫 От этого противника нельзя сбежать.",battle_buttons(player)
         if player.get("inventory_overflow_no_escape"):
             return "🎒 Вы перегружены: при 4+ занятых доп. слотах нельзя сбежать от противника.", battle_buttons(player)
         decrement_cooldowns_once_at_player_turn(battle, player_state)
-        escape_chance = min(0.95, 0.4 + safe_int(player_state.get("escape_bonus_chance_percent"), 0) / 100)
+        authored=(safe_int(profile.get("player_escape_chance"), -1) if profile.get("player_escape_chance") is not None else -1)
+        if authored < 0: authored=min([safe_int(enemy.get("player_escape_chance"),40) for enemy in alive_enemies(battle)] or [40])
+        if profile.get("player_escape_formula_id"):
+            from services.formula_runtime import evaluate
+            authored=safe_int(evaluate(profile["player_escape_formula_id"], {"player_level": player.get("level", 1), "round": battle.get("round_number", 1)}, default=authored), authored)
+        authored=authored/100
+        escape_chance = min(0.95, max(0,authored) + safe_int(player_state.get("escape_bonus_chance_percent"), 0) / 100)
         if rng.random() < escape_chance:
             player["in_battle"] = False
             player["active_battle"] = None
             player["active_event"] = None
             move_player_to_battle_return_location(player, battle)
-            return f"🏃 {player_name} находит просвет между противниками и сбегает. Бой завершён без награды.", []
-        log = [f"🏃 {player_name} пытается сбежать, но противники отрезают путь. Ход пропущен."]
+            return _profile_text(battle, "player_escape_success", f"🏃 {player_name} находит просвет между противниками и сбегает. Бой завершён без награды.", player=player_name), []
+        log = [_profile_text(battle, "player_escape_fail", f"🏃 {player_name} пытается сбежать, но противники отрезают путь. Ход пропущен.", player=player_name)]
+        if profile.get("player_escape_attack_on_fail") is False:
+            player["active_battle"] = battle
+            return format_battle_status(battle), battle_buttons(player)
         defeated = apply_enemy_phase(player, battle, rng, log)
         if defeated:
             return finish_player_defeat(player, battle, log)
@@ -1904,7 +2437,8 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
             player["active_event"] = None
             move_player_to_battle_return_location(player, battle)
             rewards = grant_battle_rewards(player, battle, rng)
-            return f"{chr(10).join(log)}\n\n✅ Победа!\n\n{rewards}", []
+            from services.text_runtime import game_text
+            return f"{chr(10).join(log)}\n\n{game_text('battle.victory', '✅ Победа!')}\n\n{rewards}", []
         player["active_battle"] = battle
         return format_battle_status(battle), battle_buttons(player)
 
@@ -1942,7 +2476,8 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
             player["active_event"] = None
             move_player_to_battle_return_location(player, battle)
             rewards = grant_battle_rewards(player, battle, rng)
-            return f"{chr(10).join(log)}\n\n✅ Победа!\n\n{rewards}", []
+            from services.text_runtime import game_text
+            return f"{chr(10).join(log)}\n\n{game_text('battle.victory', '✅ Победа!')}\n\n{rewards}", []
         player["active_battle"] = battle
         return format_battle_status(battle), battle_buttons(player)
 
@@ -1962,6 +2497,11 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         decrement_cooldowns_once_at_player_turn(battle, player_state)
     if equipped_skill is not None and not is_skill_weapon_compatible(player, equipped_skill):
         return f"⚔️ Навык «{equipped_skill.get('name')}» нельзя применить с текущим оружием. Нужно: {skill_weapon_requirement_text(equipped_skill)}.", battle_buttons(player)
+    if equipped_skill is not None:
+        from services.skill_action_runtime import can_use
+        allowed, denied_text = can_use(player, equipped_skill, in_battle=True)
+        if not allowed:
+            return denied_text, battle_buttons(player)
     if equipped_skill is not None and target_number is None and not skill_uses_without_target(equipped_skill):
         cooldown_key = str(equipped_skill.get("id") or equipped_skill.get("name"))
         cooldowns = player_state.setdefault("cooldowns", {})
@@ -1989,11 +2529,37 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
             return f"🏹 {ammo_message}", battle_buttons(player)
 
     log: list[str] = []
+    utility_used = False
+    if equipped_skill is not None:
+        from services.skill_action_runtime import NON_DAMAGE_ACTIONS, action_type, apply_non_damage, cooldown_turns
+        if action_type(equipped_skill) in NON_DAMAGE_ACTIONS:
+            spirit_cost, mana_cost = skill_costs(equipped_skill, player)
+            if spirit_cost > safe_int(player_state.get("current_spirit"), 0):
+                return f"🔥 Не хватает духа для навыка «{equipped_skill.get('name')}». Нужно: {spirit_cost}.", battle_buttons(player)
+            if mana_cost > safe_int(player_state.get("current_mana"), 0):
+                return f"✨ Не хватает маны для навыка «{equipped_skill.get('name')}». Нужно: {mana_cost}.", battle_buttons(player)
+            ammo_ok, ammo_message = consume_skill_ammo(player, equipped_skill)
+            if not ammo_ok:
+                return f"🏹 {ammo_message}", battle_buttons(player)
+            player_state["current_spirit"] = max(0, safe_int(player_state.get("current_spirit"), 0) - spirit_cost)
+            player_state["current_mana"] = max(0, safe_int(player_state.get("current_mana"), 0) - mana_cost)
+            player["spirit"] = player_state["current_spirit"]
+            player["mana"] = player_state["current_mana"]
+            outcome = apply_non_damage(player, equipped_skill)
+            for resource in ("hp", "mana", "spirit"):
+                if resource in player:
+                    player_state[f"current_{resource}"] = safe_int(player.get(resource), player_state.get(f"current_{resource}"))
+            cooldown_key = str(equipped_skill.get("id") or equipped_skill.get("name"))
+            cooldown = cooldown_turns(player, equipped_skill)
+            if cooldown:
+                player_state.setdefault("cooldowns", {})[cooldown_key] = cooldown
+            log.append(f"{player_name} применяет «{equipped_skill.get('name')}». {outcome['text']}")
+            utility_used = True
     defending = action == BATTLE_DEFEND
-    waiting = action == BATTLE_WAIT
+    waiting = action == BATTLE_WAIT or utility_used
     if defending:
         log.append(f"{player_name} занимает защитную стойку. Входящий урон в этом ходе снижен.")
-    elif waiting:
+    elif waiting and not utility_used:
         log.append(f"{player_name} выжидает и восстанавливает темп боя.")
     else:
         if target_number is not None:
@@ -2020,7 +2586,8 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
                 log.append(f"🏹 {ammo_message}")
             player_state["current_spirit"] = max(0, safe_int(player_state.get("current_spirit"), 0) - spirit_cost)
             player_state["current_mana"] = max(0, safe_int(player_state.get("current_mana"), 0) - mana_cost)
-            cooldown = safe_int(equipped_skill.get("cooldown_turns") if "cooldown_turns" in equipped_skill else equipped_skill.get("cooldown"), 0)
+            from services.skill_action_runtime import cooldown_turns
+            cooldown = cooldown_turns(player, equipped_skill)
             if cooldown > 0:
                 cooldowns[cooldown_key] = cooldown
             raw_damage, damage_type, action_text = player_skill_raw_damage(player, equipped_skill)
@@ -2041,9 +2608,11 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
             # (производные crit_chance_percent / crit_damage_percent).
             crit_chance = safe_int(player_state.get("crit_chance"), 0)
             crit_damage = max(100, safe_int(player_state.get("crit_damage"), 100))
-            is_crit = crit_chance > 0 and rng.random() * 100 < crit_chance
+            from services.effect_runtime_service import combat_flags
+            is_crit = not combat_flags(player).get("disable_critical") and crit_chance > 0 and rng.random() * 100 < crit_chance
             if is_crit:
                 final_damage = max(1, math.ceil(final_damage * crit_damage / 100))
+            final_damage=max(0,math.ceil(final_damage*constructor_damage_multiplier(target,damage_type,player)))
             target["current_hp"] = max(0, safe_int(target.get("current_hp"), 0) - final_damage)
             crit_suffix = " 💥 Критический удар!" if is_crit else ""
             log.append(f"{player_name} бьёт {action_text}: {target.get('name')} получает {final_damage} урона.{crit_suffix}")
@@ -2052,6 +2621,11 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         else:
             log.append(f"{player_name} промахивается: {target.get('name')} успевает уйти с линии атаки.")
 
+    from services.combat_group_runtime import apply_ally_phase
+    apply_ally_phase(battle, rng, log)
+
+    escape_outcome = process_mob_escape(player, battle, rng, log)
+
     if not alive_enemies(battle):
         battle.setdefault("battle_log", []).extend(log)
         sync_player_from_battle(player, battle)
@@ -2059,8 +2633,17 @@ def handle_battle_action(player: dict[str, Any], action: str, rng: random.Random
         player["active_battle"] = None
         player["active_event"] = None
         move_player_to_battle_return_location(player, battle)
-        rewards = grant_battle_rewards(player, battle, rng)
-        return f"{chr(10).join(log)}\n\n✅ Победа!\n\n{rewards}", []
+        outcome = str(escape_outcome.get("result") or "victory")
+        rewards = "Награды не начислены."
+        if outcome not in {"draw", "defeat", "cancel"}:
+            rewards = grant_battle_rewards(player, battle, rng)
+        event_id = str(battle.get("post_escape_event_id") or "")
+        if event_id:
+            player["constructor_event_id"] = event_id
+        from services.text_runtime import game_text
+        default_result = game_text('battle.victory', '✅ Победа!') if outcome not in {"draw", "defeat", "cancel"} else "🤝 Бой завершён без победителя."
+        result_text = _profile_text(battle, f"mob_escape_{outcome}", default_result)
+        return f"{chr(10).join(log)}\n\n{result_text}\n\n{rewards}", []
 
     defeated = apply_enemy_phase(player, battle, rng, log, defending=defending)
     if defeated:

@@ -74,11 +74,10 @@ def gender_confirm_keyboard() -> ReplyKeyboardMarkup:
 
 
 def race_keyboard() -> ReplyKeyboardMarkup:
-    return make_keyboard([
-        ["Человек", "Эльф"],
-        ["Дворф", "Нежить"],
-        ["Ящеролюд"],
-    ])
+    from services.registration_service import load_races
+    rows=[]; names=[str(row.get("name") or rid) for rid,row in load_races(platform="telegram").items()]
+    for index in range(0,len(names),2): rows.append(names[index:index+2])
+    return make_keyboard(rows)
 
 
 def race_card_keyboard() -> ReplyKeyboardMarkup:

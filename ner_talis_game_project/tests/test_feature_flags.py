@@ -61,7 +61,7 @@ class FeatureFlagServiceTest(unittest.TestCase):
         wired = {f["name"]: f["wired"] for f in ff.meta()["flags"]}
         self.assertTrue(wired["use_v2_locations"])
         self.assertTrue(wired["use_v2_buttons"])
-        self.assertFalse(wired["use_v2_texts"])
+        self.assertTrue(wired["use_v2_texts"])
 
     def test_flag_drives_world_runtime(self):
         # 15-CODEX §5: use_v2_locations реально включает live-слой локаций.

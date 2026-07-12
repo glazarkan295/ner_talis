@@ -23,6 +23,7 @@ from services.item_registry import build_inventory_item, get_item_definition_by_
 from services.race_bonus_service import alchemy_ingredient_refund, crafting_extra_effect_triggered
 
 CHECK_TIMER = "Проверить таймер"
+QUEUE_ONE = "В очередь ещё 1"
 PROFILE_BUTTON = "Профиль"
 BACK = "Назад"
 CANCEL = "Отмена"
@@ -128,6 +129,7 @@ CRAFT_ACTIONS = frozenset(
         RETURN_TO_CHOICE,
         CREATE,
         CHECK_TIMER,
+        QUEUE_ONE,
         CRAFT_DISTRICT,
         ALCHEMY_BY_RECIPE,
         ALCHEMY_EXPERIMENT,
@@ -218,7 +220,22 @@ def load_crafting_recipes() -> list[dict[str, Any]]:
         payload = json.load(file)
     if not isinstance(payload, list):
         return []
-    return [recipe for recipe in payload if isinstance(recipe, dict)]
+    static = [recipe for recipe in payload if isinstance(recipe, dict)]
+    try:
+        from services.recipe_constructor_service import published_runtime_recipes
+        live = published_runtime_recipes()
+    except Exception:
+        live = []
+    by_id = {str(recipe.get("id") or ""): recipe for recipe in static if recipe.get("id")}
+    for recipe in live:
+        if recipe.get("id"):
+            by_id[str(recipe["id"])] = recipe
+    return list(by_id.values())
+
+
+def invalidate_crafting_recipe_cache() -> None:
+    load_crafting_recipes.cache_clear()
+    recipe_by_id.cache_clear()
 
 
 @lru_cache(maxsize=4)
@@ -306,6 +323,13 @@ def _ingredient_item_type_matches(item: dict[str, Any], item_type: str | None) -
 def _ingredient_matches_item(item: dict[str, Any], ingredient: dict[str, Any]) -> bool:
     if item.get("quest_item") or item.get("locked") or item.get("protected"):
         return False
+    group_id = str(ingredient.get("material_group_id") or "").strip()
+    if group_id:
+        try:
+            from services.craft_material_group_service import matches
+            return matches(item, group_id)
+        except Exception:
+            return False
     match_type = str(ingredient.get("match_type") or "").casefold()
     if match_type == "any_item_type":
         return _ingredient_item_type_matches(item, str(ingredient.get("item_type") or ""))
@@ -324,6 +348,21 @@ def _ingredient_available_count(player: dict[str, Any], ingredient: dict[str, An
         if isinstance(item, dict) and _ingredient_matches_item(item, ingredient):
             total += safe_int(item.get("amount"), 1)
     return total
+
+
+def _ingredient_variants(ingredient: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the primary ingredient plus explicitly configured alternatives."""
+    variants = [ingredient]
+    for raw in ingredient.get("alternatives") or []:
+        if isinstance(raw, str):
+            variants.append({**ingredient, "item_id": raw, "alternatives": []})
+        elif isinstance(raw, dict):
+            variants.append({**ingredient, **raw, "alternatives": []})
+    return variants
+
+
+def _selected_ingredient(player: dict[str, Any], ingredient: dict[str, Any], amount: int) -> dict[str, Any] | None:
+    return next((row for row in _ingredient_variants(ingredient) if _ingredient_available_count(player, row) >= amount), None)
 
 
 def _consume_ingredient(player: dict[str, Any], ingredient: dict[str, Any], amount: int) -> bool:
@@ -402,8 +441,22 @@ def _recipe_output_name(recipe: dict[str, Any]) -> str:
     return _item_name(output.get("item_id"), output.get("name"))
 
 
-def _recipe_output_amount(recipe: dict[str, Any]) -> int:
+def _recipe_formula_context(recipe: dict[str, Any], *, player: dict[str, Any] | None = None, quantity: int = 1) -> dict[str, float]:
+    from services.formula_runtime import numeric_context
+    return numeric_context({
+        "recipe_level": recipe.get("level", recipe.get("required_level", 1)),
+        "profession_level": _craft_skill_level(player or {}, str(recipe.get("workshop") or "")),
+        "difficulty": recipe.get("difficulty", 0), "item_count": quantity,
+        "base_amount": (recipe.get("output") or {}).get("amount", 1),
+    }, player=player)
+
+
+def _recipe_output_amount(recipe: dict[str, Any], *, player: dict[str, Any] | None = None) -> int:
     output = recipe.get("output") or {}
+    from services.formula_runtime import evaluate
+    calculated = evaluate(recipe.get("result_formula_id"), _recipe_formula_context(recipe, player=player), default=None)
+    if calculated is not None:
+        return max(1, safe_int(calculated, 1))
     if output.get("amount_min") is not None or output.get("amount_max") is not None:
         return max(1, safe_int(output.get("amount_min") or output.get("amount_max"), 1))
     return max(1, safe_int(output.get("amount"), 1))
@@ -422,16 +475,20 @@ def _recipe_output_amount_label(recipe: dict[str, Any]) -> str:
     return str(minimum) if minimum == maximum else f"{minimum}–{maximum}"
 
 
-def _roll_recipe_output_amount(recipe: dict[str, Any]) -> int:
-    minimum = _recipe_output_amount(recipe)
+def _roll_recipe_output_amount(recipe: dict[str, Any], *, player: dict[str, Any] | None = None) -> int:
+    minimum = _recipe_output_amount(recipe, player=player)
+    if recipe.get("result_formula_id"):
+        return minimum
     maximum = _recipe_output_amount_max(recipe)
     if maximum > minimum:
         return random.randint(minimum, maximum)
     return minimum
 
 
-def _recipes_for(workshop_id: str, section: str | None = None) -> list[dict[str, Any]]:
+def _recipes_for(workshop_id: str, section: str | None = None, constructor_workshop_id: str | None = None) -> list[dict[str, Any]]:
     result = [recipe for recipe in load_crafting_recipes() if recipe.get("workshop") == workshop_id]
+    if constructor_workshop_id:
+        result = [recipe for recipe in result if str(recipe.get("workshop_id") or "") == str(constructor_workshop_id)]
     if section is not None:
         result = [recipe for recipe in result if str(recipe.get("section") or "") == section]
     elif workshop_id != "smeltery":
@@ -444,9 +501,33 @@ def _has_ingredients(player: dict[str, Any], recipe: dict[str, Any], quantity: i
         if not isinstance(ingredient, dict):
             continue
         amount = max(1, safe_int(ingredient.get("amount"), 1)) * max(1, quantity)
-        if _ingredient_available_count(player, ingredient) < amount:
+        if ingredient.get("optional"):
+            continue
+        if _selected_ingredient(player, ingredient, amount) is None:
             return False
+    for tool in recipe.get("tools") or []:
+        if not isinstance(tool, dict) or tool.get("required", True) is False:
+            continue
+        variants = {**tool, "alternatives": tool.get("alternatives") or ([tool.get("alternative_item_id")] if tool.get("alternative_item_id") else [])}
+        selected = _selected_ingredient(player, variants, 1)
+        if selected is None:
+            return False
+        minimum = safe_int(tool.get("min_durability"), 0)
+        if minimum:
+            matching = [row for row in player.get("inventory", []) if isinstance(row, dict) and _ingredient_matches_item(row, selected)]
+            if not any(safe_int(row.get("durability"), safe_int(row.get("max_durability"), 0)) >= minimum for row in matching):
+                return False
     return True
+
+
+def _has_material_ingredients(player: dict[str, Any], recipe: dict[str, Any], quantity: int = 1) -> bool:
+    bare = {**recipe, "tools": []}
+    return _has_ingredients(player, bare, quantity)
+
+
+def _has_tools(player: dict[str, Any], recipe: dict[str, Any]) -> bool:
+    bare = {"ingredients": [], "tools": recipe.get("tools") or []}
+    return _has_ingredients(player, bare, 1)
 
 
 def _max_craft_count(player: dict[str, Any], recipe: dict[str, Any]) -> int:
@@ -455,7 +536,9 @@ def _max_craft_count(player: dict[str, Any], recipe: dict[str, Any]) -> int:
         if not isinstance(ingredient, dict):
             continue
         amount = max(1, safe_int(ingredient.get("amount"), 1))
-        counts.append(_ingredient_available_count(player, ingredient) // amount)
+        if ingredient.get("optional"):
+            continue
+        counts.append(max((_ingredient_available_count(player, row) // amount for row in _ingredient_variants(ingredient)), default=0))
     return min(counts) if counts else 0
 
 
@@ -465,8 +548,29 @@ def _consume_recipe_ingredients(player: dict[str, Any], recipe: dict[str, Any], 
     for ingredient in recipe.get("ingredients") or []:
         if not isinstance(ingredient, dict):
             continue
+        if ingredient.get("optional") or ingredient.get("consumed", True) is False:
+            continue
         amount = max(1, safe_int(ingredient.get("amount"), 1)) * max(1, quantity)
-        _consume_ingredient(player, ingredient, amount)
+        selected = _selected_ingredient(player, ingredient, amount)
+        if selected is None or not _consume_ingredient(player, selected, amount):
+            return False
+    for tool in recipe.get("tools") or []:
+        if not isinstance(tool, dict):
+            continue
+        selected = _selected_ingredient(player, tool, 1)
+        if selected is None:
+            continue
+        if tool.get("consumed"):
+            _consume_ingredient(player, selected, max(1, safe_int(tool.get("amount"), 1)))
+        loss = max(0, safe_int(tool.get("durability_loss"), 0))
+        if recipe.get("tool_durability_formula_id"):
+            from services.formula_runtime import evaluate
+            loss = max(0, safe_int(evaluate(recipe.get("tool_durability_formula_id"), _recipe_formula_context(recipe, player=player, quantity=quantity) | {"base_amount": loss}, default=loss), loss))
+        if loss:
+            for row in player.get("inventory", []):
+                if isinstance(row, dict) and _ingredient_matches_item(row, selected):
+                    row["durability"] = max(0, safe_int(row.get("durability"), safe_int(row.get("max_durability"), 0)) - loss)
+                    break
     return True
 
 
@@ -494,7 +598,37 @@ def _add_craft_experience(player: dict[str, Any], workshop_id: str, amount: int)
     if not isinstance(skill, dict):
         crafting_levels[skill_key] = {"level": 1, "experience": 0}
         skill = crafting_levels[skill_key]
-    skill["experience"] = safe_int(skill.get("experience"), 0) + max(1, amount) * 5
+    gained = max(1, amount) * 5
+    profession = None
+    try:
+        from services import profession_constructor_service as professions
+        aliases = {"blacksmithing": "smithing", "jewelcrafting": "jewelry"}
+        wanted = aliases.get(skill_key or "", skill_key or "")
+        profession = next((row.get("data") or {} for row in professions.store().list(status=professions.STATUS_PUBLISHED)
+                           if str((row.get("data") or {}).get("profession_type") or row.get("id") or "") in {wanted, skill_key}), None)
+        if profession:
+            from services.formula_runtime import evaluate
+            gained = max(0, safe_int(evaluate(profession.get("exp_formula_id"), {
+                "profession_level": safe_int(skill.get("level"), 1), "base_amount": gained,
+                "item_count": max(1, amount),
+            }, default=gained), gained))
+    except Exception:
+        profession = None
+    skill["experience"] = safe_int(skill.get("experience"), 0) + gained
+    if profession:
+        from services.formula_runtime import evaluate
+        max_level = max(1, safe_int(profession.get("max_level"), 100))
+        while safe_int(skill.get("level"), 1) < max_level:
+            level = max(1, safe_int(skill.get("level"), 1))
+            fallback = level * 100
+            required = max(1, safe_int(evaluate(profession.get("next_level_formula_id"), {
+                "profession_level": level, "player_level": safe_int(player.get("level"), 1),
+                "base_amount": fallback,
+            }, default=fallback), fallback))
+            if safe_int(skill.get("experience"), 0) < required:
+                break
+            skill["experience"] = safe_int(skill.get("experience"), 0) - required
+            skill["level"] = level + 1
 
 
 def _set_city_zone(player: dict[str, Any], zone_id: str) -> None:
@@ -655,14 +789,32 @@ def _show_workshop_menu(storage: Any, player: dict[str, Any], workshop_id: str) 
     return _show_recipe_list(storage, player, workshop_id, "default")
 
 
+def _show_constructor_workshop(storage: Any, player: dict[str, Any], workshop: dict[str, Any]) -> CraftResponse:
+    from services.workshop_constructor_service import player_has_access
+    ok, message = player_has_access(player, workshop)
+    runtime_type = str(workshop.get("runtime_workshop") or workshop.get("type") or "forge")
+    if runtime_type not in WORKSHOP_BY_ID:
+        return CraftResponse(str(workshop.get("unavailable_text") or "Для этого типа мастерской ещё не назначен совместимый игровой процесс."), [], str(player.get("current_zone") or ""))
+    if not ok:
+        return CraftResponse(message, [], str(player.get("current_zone") or ""))
+    context = _active_context(player)
+    context.clear()
+    context.update({"workshop": runtime_type, "constructor_workshop_id": str(workshop.get("id") or ""), "step": "list", "section": "default"})
+    storage.update_player(player)
+    return _show_recipe_list(storage, player, runtime_type, "default")
+
+
 def _show_recipe_list(storage: Any, player: dict[str, Any], workshop_id: str, section: str | None) -> CraftResponse:
     data = WORKSHOP_BY_ID[workshop_id]
-    recipes = _recipes_for(workshop_id, None if section in {None, "default"} else section)
+    constructor_workshop_id = str((_active_context(player)).get("constructor_workshop_id") or "") or None
+    recipes = _recipes_for(workshop_id, None if section in {None, "default"} else section, constructor_workshop_id)
     if workshop_id == "smeltery":
-        recipes = _recipes_for(workshop_id, "default")
+        recipes = _recipes_for(workshop_id, "default", constructor_workshop_id)
     if workshop_id == "alchemy":
         unlocked = {str(recipe_id) for recipe_id in player.get("unlocked_alchemy_recipes", []) if recipe_id}
         recipes = [recipe for recipe in recipes if str(recipe.get("id") or "") in unlocked]
+    unlocked_recipes = {str(recipe_id) for recipe_id in player.get("unlocked_recipes") or []}
+    recipes = [recipe for recipe in recipes if not recipe.get("hidden") or str(recipe.get("id") or "") in unlocked_recipes]
     context = _active_context(player)
     context.update({"workshop": workshop_id, "section": section or "default", "step": "list", "recipe_ids": [recipe["id"] for recipe in recipes]})
     _set_city_zone(player, data["zone"])
@@ -714,7 +866,7 @@ def _preview_recipe(storage: Any, player: dict[str, Any], recipe: dict[str, Any]
         f"Время создания за 1 предмет: {format_duration(unit_seconds)}",
         "При создании нескольких предметов время увеличивается пропорционально количеству.",
         "",
-        str(recipe.get("description") or "Краткое описание пока не добавлено."),
+        str(recipe.get("text_recipe_card") or recipe.get("description") or "Краткое описание пока не добавлено."),
         "",
         "Ресурсы:",
     ]
@@ -744,12 +896,103 @@ def _prompt_quantity(storage: Any, player: dict[str, Any]) -> CraftResponse:
 
 
 
-def _recipe_craft_seconds(recipe: dict[str, Any]) -> int:
-    return max(1, safe_int(recipe.get("craft_time_seconds"), CRAFT_SECONDS_DEFAULT))
+def _recipe_craft_seconds(recipe: dict[str, Any], *, player: dict[str, Any] | None = None, quantity: int = 1) -> int:
+    seconds = max(1, safe_int(recipe.get("craft_time_seconds"), CRAFT_SECONDS_DEFAULT))
+    from services.formula_runtime import evaluate
+    seconds = max(1, safe_int(evaluate(recipe.get("time_formula_id"), _recipe_formula_context(recipe, player=player, quantity=quantity) | {"base_amount": seconds}, default=seconds), seconds))
+    try:
+        from services.world_event_runtime import multiplier
+        seconds = max(1, math.ceil(seconds * multiplier("craft_time_multiplier", context={"workshop_id": recipe.get("workshop"), "recipe_id": recipe.get("id")})))
+    except Exception:
+        pass
+    if player:
+        seconds = max(1, round(seconds * max(0.05, 1 + _craft_effect_value(player, "craft_time_percent") / 100)))
+    return seconds
 
 
-def _total_craft_seconds(recipe: dict[str, Any], quantity: int) -> int:
-    return _recipe_craft_seconds(recipe) * max(1, safe_int(quantity, 1))
+def _total_craft_seconds(recipe: dict[str, Any], quantity: int, *, player: dict[str, Any] | None = None) -> int:
+    return _recipe_craft_seconds(recipe, player=player, quantity=quantity) * max(1, safe_int(quantity, 1))
+
+
+def _recipe_cost_copper(recipe: dict[str, Any], player: dict[str, Any], quantity: int) -> int:
+    workshop_cost = 0
+    workshop_id = str((player.get("crafting_context") or {}).get("constructor_workshop_id") or "")
+    if workshop_id:
+        try:
+            from services.workshop_constructor_service import store as workshop_store
+            row = workshop_store().get(workshop_id)
+            if row and row.get("status") == "published":
+                workshop_cost = max(0, safe_int((row.get("data") or {}).get("use_cost"), 0)) * (max(1, quantity) if (row.get("data") or {}).get("cost_per_operation", True) else 1)
+        except Exception:
+            pass
+    if recipe.get("free", True) and not recipe.get("cost_formula_id"):
+        try:
+            from services.economy_runtime import service_price
+            return service_price("craft", workshop_cost, player, {"quantity": quantity, "recipe_id": recipe.get("id")})
+        except (ImportError, ValueError): return workshop_cost
+    fixed = (safe_int(recipe.get("price_copper"), 0) + safe_int(recipe.get("price_silver"), 0) * 100
+             + safe_int(recipe.get("price_gold"), 0) * 10_000
+             + safe_int(recipe.get("price_magic_gold"), 0) * 1_000_000
+             + safe_int(recipe.get("price_ancient"), 0) * 10_000_000) * max(1, quantity) + workshop_cost
+    from services.formula_runtime import evaluate
+    value = evaluate(recipe.get("cost_formula_id"), _recipe_formula_context(recipe, player=player, quantity=quantity) | {
+        "base_amount": fixed, "price": fixed,
+    }, default=fixed)
+    result=max(0, safe_int(value, fixed))
+    try:
+        from services.economy_runtime import service_price
+        return service_price("craft", result, player, {"quantity": quantity, "recipe_id": recipe.get("id")})
+    except (ImportError, ValueError): return result
+
+
+def _craft_effect_value(player: dict[str, Any], key: str) -> float:
+    total = 0.0
+    try:
+        from services.effect_runtime_service import effect_fields, _definition
+        for field in effect_fields():
+            for row in player.get(field) or []:
+                if isinstance(row, dict):
+                    data = _definition(row)
+                    if data.get("blocks_crafting") or data.get("craft_block"):
+                        if key == "blocked":
+                            return 1.0
+                    total += float(data.get(key) or 0)
+    except (TypeError, ValueError):
+        pass
+    workshop_id = str((player.get("crafting_context") or {}).get("constructor_workshop_id") or "")
+    if workshop_id:
+        try:
+            from services.workshop_constructor_service import store as workshop_store
+            workshop = workshop_store().get(workshop_id)
+            data = workshop.get("data") if workshop and workshop.get("status") == "published" else {}
+            total += float((data or {}).get(key) or 0)
+            from services.effect_formula_runtime import resolve
+            for effect_id in (data or {}).get("effect_ids") or []:
+                effect = resolve(str(effect_id)) or {}
+                if effect.get("blocks_crafting") or effect.get("craft_block"):
+                    if key == "blocked":
+                        return 1.0
+                total += float(effect.get(key) or 0)
+        except (TypeError, ValueError):
+            pass
+    return total
+
+
+def _inventory_counts_by_id(player: dict[str, Any]) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for row in player.get("inventory", []):
+        if isinstance(row, dict):
+            item_id = str(row.get("item_id") or row.get("id") or "")
+            if item_id:
+                out[item_id] = out.get(item_id, 0) + safe_int(row.get("amount"), 1)
+    return out
+
+
+def _recipe_energy_cost(recipe: dict[str, Any], player: dict[str, Any], quantity: int) -> int:
+    base = max(0, safe_int(recipe.get("energy_cost"), 0)) * max(1, quantity)
+    from services.formula_runtime import evaluate
+    value = evaluate(recipe.get("energy_formula_id"), _recipe_formula_context(recipe, player=player, quantity=quantity) | {"base_amount": base}, default=base)
+    return max(0, safe_int(value, base))
 
 def _apply_elf_alchemy_refund(
     player: dict[str, Any],
@@ -799,13 +1042,64 @@ def _start_craft(storage: Any, player: dict[str, Any], quantity_text: str) -> Cr
         return CraftResponse("Нужно отправить количество числом.", _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
     if quantity <= 0:
         return CraftResponse("Количество должно быть больше нуля.", _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
-    if not _has_ingredients(player, recipe, quantity):
-        return CraftResponse("Не хватает ресурсов для выбранного количества.", _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+    if safe_int(player.get("level"), 1) < safe_int(recipe.get("player_level"), 0):
+        return CraftResponse(str(recipe.get("text_not_enough_level") or "Недостаточный уровень для рецепта."), _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+    if _craft_skill_level(player, str(recipe.get("workshop") or "")) < safe_int(recipe.get("profession_level"), 0):
+        return CraftResponse(str(recipe.get("text_not_enough_level") or "Недостаточный уровень ремесленной профессии."), _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+    if recipe.get("hidden") and str(recipe.get("id") or "") not in {str(x) for x in player.get("unlocked_recipes") or []}:
+        return CraftResponse(str(recipe.get("text_unavailable") or "Рецепт ещё не открыт."), _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+    blueprint_id = str(recipe.get("blueprint_id") or "")
+    if recipe.get("blueprint_required") and _inventory_count(player, item_id=blueprint_id) < 1:
+        return CraftResponse(str(recipe.get("text_unavailable") or "Для рецепта требуется чертёж."), _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+    if _craft_effect_value(player, "blocked"):
+        return CraftResponse(str(recipe.get("text_blocked") or "Активный эффект запрещает ремесло."), _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+    if not _has_material_ingredients(player, recipe, quantity):
+        return CraftResponse(str(recipe.get("text_not_enough_ingredients") or "Не хватает ресурсов для выбранного количества."), _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+    if not _has_tools(player, recipe):
+        return CraftResponse(str(recipe.get("text_not_enough_tool") or "Не хватает подходящего инструмента."), _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+    delivery_mode = str(recipe.get("result_delivery") or "overload")
+    if delivery_mode in {"inventory", "reject"}:
+        from services.craft_result_delivery import can_place
+        preview_amount = _recipe_output_amount(recipe) * quantity
+        preview_item = _crafted_output_item(str((recipe.get("output") or {}).get("item_id") or recipe.get("output_item_id") or ""), _recipe_output_name(recipe), preview_amount)
+        if not can_place(player, preview_item, preview_amount, delivery_mode):
+            return CraftResponse(str(recipe.get("text_inventory_full") or "В инвентаре недостаточно места для результата."), _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+    craft_cost = _recipe_cost_copper(recipe, player, quantity)
+    money_key = "money_copper" if "money_copper" in player else "money"
+    current_money = max(0, safe_int(player.get(money_key), 0))
+    if current_money < craft_cost:
+        return CraftResponse("Недостаточно монет для оплаты ремесла.", _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+    energy_cost = _recipe_energy_cost(recipe, player, quantity)
+    current_energy = max(0, safe_int(player.get("energy"), 0))
+    if current_energy < max(energy_cost, safe_int(recipe.get("min_energy"), 0)):
+        return CraftResponse(str(recipe.get("text_not_enough_energy") or "Недостаточно энергии для ремесла."), _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+    from services.craft_weekly_limit_runtime import check as check_craft_limit, consume as consume_craft_limit
+    limit_ok, limit_message = check_craft_limit(player, recipe, quantity=quantity, result_amount=_recipe_output_amount(recipe))
+    if not limit_ok:
+        return CraftResponse(limit_message, _recipe_navigation_buttons(str(recipe.get("workshop") or ""), source="quantity"), WORKSHOP_BY_ID[str(recipe.get("workshop"))]["zone"])
+    if craft_cost:
+        player[money_key] = current_money - craft_cost
+        if money_key == "money_copper" and "money" in player:
+            player["money"] = player[money_key]
+        try:
+            from services.economy_runtime import record
+            record(player,"craft_payment","copper",-craft_cost,current_money,safe_int(player.get(money_key),0),source="craft",source_id=str(recipe.get("id") or ""))
+        except (ImportError,OSError):pass
+    if energy_cost and recipe.get("energy_charge_at", "start") == "start":
+        player["energy"] = current_energy - energy_cost
+    inventory_before = _inventory_counts_by_id(player)
     _consume_recipe_ingredients(player, recipe, quantity)
+    if recipe.get("blueprint_required") and recipe.get("blueprint_one_time"):
+        _consume_inventory(player, item_id=blueprint_id, amount=1)
+    inventory_after = _inventory_counts_by_id(player)
+    consumed_items = [{"item_id": item_id, "amount": before - inventory_after.get(item_id, 0)} for item_id, before in inventory_before.items() if before > inventory_after.get(item_id, 0)]
+    consume_craft_limit(player, recipe, quantity=quantity, result_amount=_recipe_output_amount(recipe))
     workshop_id = str(recipe.get("workshop") or "smeltery")
     refund_lines = _apply_elf_alchemy_refund(player, recipe, quantity, workshop_id)
-    seconds = _total_craft_seconds(recipe, quantity)
-    craft_payload = {"recipe_id": recipe.get("id"), "quantity": quantity, "workshop_id": workshop_id}
+    seconds = _total_craft_seconds(recipe, quantity, player=player)
+    craft_payload = {"recipe_id": recipe.get("id"), "quantity": quantity, "workshop_id": workshop_id, "energy_cost": energy_cost,
+                     "charged_energy": energy_cost if recipe.get("energy_charge_at", "start") == "start" else 0,
+                     "charged_cost": craft_cost, "consumed_items": consumed_items}
     if workshop_id == "alchemy":
         components = _recipe_components(recipe, quantity)
         metrics = _alchemy_metrics(player, components, [str(action) for action in (recipe.get("actions") or [])])
@@ -814,6 +1108,18 @@ def _start_craft(storage: Any, player: dict[str, Any], quantity_text: str) -> Cr
         elif random.randint(1, 100) > int(metrics.get("success_chance", 95)):
             craft_payload.update({"alchemy_failure": True, "failure_item_id": "suspicious_potion"})
         craft_payload["alchemy_metrics"] = metrics
+    else:
+        from services.formula_runtime import evaluate
+        chance_context = _recipe_formula_context(recipe, player=player, quantity=quantity)
+        success = safe_int(evaluate(recipe.get("success_formula_id"), chance_context | {"base_amount": recipe.get("success_chance", 100)}, default=recipe.get("success_chance", 100)), 100)
+        success = max(0, min(100, success + round(_craft_effect_value(player, "craft_success_chance"))))
+        critical = safe_int(evaluate(recipe.get("critical_formula_id"), chance_context | {"base_amount": recipe.get("critical_chance", 0)}, default=recipe.get("critical_chance", 0)), 0)
+        partial = max(0, min(100, safe_int(recipe.get("partial_success_chance"), 0)))
+        fail_chance = safe_int(evaluate(recipe.get("fail_formula_id"), chance_context | {"base_amount": recipe.get("fail_chance", 0)}, default=recipe.get("fail_chance", 0)), 0)
+        roll = random.randint(1, 100)
+        craft_payload["partial_success"] = roll > success and roll <= min(100, success + partial)
+        craft_payload["craft_failure"] = (fail_chance > 0 and random.randint(1, 100) <= max(0, min(100, fail_chance))) or (roll > success and not craft_payload["partial_success"])
+        craft_payload["critical_success"] = not craft_payload["craft_failure"] and random.randint(1, 100) <= max(0, min(100, critical + round(_craft_effect_value(player, "craft_critical_chance"))))
     timer = {
         "id": new_timer_id("craft"),
         "type": "craft",
@@ -829,14 +1135,15 @@ def _start_craft(storage: Any, player: dict[str, Any], quantity_text: str) -> Cr
     storage.update_player(player)
     output_amount = _recipe_output_amount(recipe) * quantity
     text = (
-        f"⏳ Создание началось.\n\n"
+        f"{str(recipe.get('text_start') or '⏳ Создание началось.')}\n\n"
         f"Предмет: {_recipe_output_name(recipe)} ×{output_amount}\n"
         f"Время: {format_duration(seconds)}\n\n"
         "Когда таймер закончится, придёт сообщение с результатом."
     )
     if refund_lines:
         text += "\n\n" + "\n".join(refund_lines)
-    return CraftResponse(text, [[CHECK_TIMER], [CRAFT_DISTRICT]], WORKSHOP_BY_ID[workshop_id]["zone"], scheduled_timer=build_timer_schedule(player, timer))
+    timer_buttons = [[CHECK_TIMER]] + ([[CANCEL]] if recipe.get("can_cancel", True) else []) + [[CRAFT_DISTRICT]]
+    return CraftResponse(text, timer_buttons, WORKSHOP_BY_ID[workshop_id]["zone"], scheduled_timer=build_timer_schedule(player, timer))
 
 
 
@@ -1000,6 +1307,47 @@ def _crafted_output_item(item_id: str, item_name: str, amount: int, *, bonus_eff
     item["stats"] = stats
     return item
 
+
+def _place_craft_output(player: dict[str, Any], item: dict[str, Any], amount: int, recipe: dict[str, Any]):
+    from services.craft_result_delivery import place
+    return place(player, item, amount, mode=str(recipe.get("result_delivery") or "overload"), source="Ремесло")
+
+
+def _apply_recipe_result_settings(item: dict[str, Any], recipe: dict[str, Any], *, player: dict[str, Any] | None = None, critical: bool = False) -> dict[str, Any]:
+    qualities = ["common", "uncommon", "rare", "epic", "legendary", "mythic", "celestial", "divine"]
+    quality = str(recipe.get("result_quality") or item.get("quality") or "")
+    if recipe.get("quality_formula_id"):
+        from services.formula_runtime import evaluate
+        index = safe_int(evaluate(recipe.get("quality_formula_id"), _recipe_formula_context(recipe, player=player) | {"base_amount": qualities.index(quality) if quality in qualities else 0}, default=qualities.index(quality) if quality in qualities else 0), 0)
+        quality = qualities[max(0, min(len(qualities) - 1, index))]
+    if quality:
+        if critical and recipe.get("critical_quality_upgrade") and quality in qualities:
+            quality = qualities[min(len(qualities) - 1, qualities.index(quality) + 1)]
+        item["quality"] = quality
+    if recipe.get("result_level") not in (None, ""):
+        item["item_level"] = max(1, safe_int(recipe.get("result_level"), 1))
+        item["level"] = item["item_level"]
+    if recipe.get("bind_on_create"):
+        item["bound"] = True
+        item["binding_type"] = str(recipe.get("binding_type") or "character")
+    if recipe.get("unique_result"):
+        item["unique"] = True
+        item["is_unique"] = True
+    handed = str(recipe.get("crafted_handedness") or "keep")
+    if handed in {"one_handed", "two_handed"} and (item.get("can_be_one_handed") or item.get("can_be_two_handed") or item.get("two_handed") is not None):
+        item["two_handed"] = handed == "two_handed"
+    for prop in recipe.get("result_properties") or []:
+        if isinstance(prop, dict) and random.randint(1, 100) <= max(0, min(100, safe_int(prop.get("chance"), 100))):
+            key = str(prop.get("key") or prop.get("stat") or "")
+            if key:
+                item.setdefault("stat_modifiers", {})[key] = safe_int(prop.get("value"), 0)
+    for effect in recipe.get("result_effects") or []:
+        effect_id = str(effect.get("effect_id") if isinstance(effect, dict) else effect or "")
+        chance = safe_int(effect.get("chance"), 100) if isinstance(effect, dict) else 100
+        if effect_id and random.randint(1, 100) <= max(0, min(100, chance)):
+            item.setdefault("effect_ids", []).append(effect_id)
+    return item
+
 def _unlock_alchemy_recipe(player: dict[str, Any], recipe_id: str | None) -> None:
     if not recipe_id:
         return
@@ -1009,6 +1357,64 @@ def _unlock_alchemy_recipe(player: dict[str, Any], recipe_id: str | None) -> Non
         player["unlocked_alchemy_recipes"] = unlocked
     if str(recipe_id) not in {str(item) for item in unlocked}:
         unlocked.append(str(recipe_id))
+
+
+def enqueue_same_craft(storage: Any, player: dict[str, Any]) -> CraftResponse:
+    timer = player.get("active_timer")
+    craft = timer.get("craft") if isinstance(timer, dict) and isinstance(timer.get("craft"), dict) else {}
+    recipe = recipe_by_id().get(str(craft.get("recipe_id") or ""))
+    zone = str((timer or {}).get("location_id") or player.get("current_zone") or "seldar_craft_district")
+    if not recipe or not recipe.get("can_queue"):
+        return CraftResponse("Этот рецепт нельзя добавлять в очередь.", [[CHECK_TIMER]], zone)
+    if str(recipe.get("workshop") or "") == "alchemy":
+        return CraftResponse("Алхимические эксперименты нельзя ставить в автоматическую очередь.", [[CHECK_TIMER]], zone)
+    quantity = 1
+    if not _has_ingredients(player, recipe, quantity):
+        return CraftResponse(str(recipe.get("text_not_enough_ingredients") or "Не хватает ресурсов для очереди."), [[CHECK_TIMER]], zone)
+    cost = _recipe_cost_copper(recipe, player, quantity)
+    money_key = "money_copper" if "money_copper" in player else "money"
+    if safe_int(player.get(money_key), 0) < cost:
+        return CraftResponse(str(recipe.get("text_not_enough_money") or "Недостаточно монет для очереди."), [[CHECK_TIMER]], zone)
+    energy = _recipe_energy_cost(recipe, player, quantity)
+    if safe_int(player.get("energy"), 0) < max(energy, safe_int(recipe.get("min_energy"), 0)):
+        return CraftResponse(str(recipe.get("text_not_enough_energy") or "Недостаточно энергии для очереди."), [[CHECK_TIMER]], zone)
+    from services.craft_weekly_limit_runtime import check as check_limit, consume as consume_limit
+    ok, message = check_limit(player, recipe, quantity=1, result_amount=_recipe_output_amount(recipe))
+    if not ok:
+        return CraftResponse(message, [[CHECK_TIMER]], zone)
+    before = _inventory_counts_by_id(player)
+    if not _consume_recipe_ingredients(player, recipe, 1):
+        return CraftResponse("Не удалось зарезервировать ингредиенты очереди.", [[CHECK_TIMER]], zone)
+    after = _inventory_counts_by_id(player)
+    consumed = [{"item_id": iid, "amount": amount - after.get(iid, 0)} for iid, amount in before.items() if amount > after.get(iid, 0)]
+    player[money_key] = safe_int(player.get(money_key), 0) - cost
+    if energy and recipe.get("energy_charge_at", "start") == "start":
+        player["energy"] = safe_int(player.get("energy"), 0) - energy
+    consume_limit(player, recipe, quantity=1, result_amount=_recipe_output_amount(recipe))
+    success = max(0, min(100, safe_int(recipe.get("success_chance"), 100) + round(_craft_effect_value(player, "craft_success_chance"))))
+    critical = max(0, min(100, safe_int(recipe.get("critical_chance"), 0) + round(_craft_effect_value(player, "craft_critical_chance"))))
+    roll = random.randint(1, 100)
+    partial = roll > success and roll <= min(100, success + max(0, safe_int(recipe.get("partial_success_chance"), 0)))
+    failure = roll > success and not partial
+    payload = {"recipe_id": recipe.get("id"), "quantity": 1, "workshop_id": recipe.get("workshop"), "energy_cost": energy,
+               "charged_energy": energy if recipe.get("energy_charge_at", "start") == "start" else 0, "charged_cost": cost,
+               "consumed_items": consumed, "craft_failure": failure, "partial_success": partial,
+               "critical_success": not failure and random.randint(1, 100) <= critical}
+    player.setdefault("craft_queue", []).append({"craft": payload, "seconds": _total_craft_seconds(recipe, 1, player=player), "location_id": zone})
+    storage.update_player(player)
+    return CraftResponse(f"Рецепт добавлен в очередь. Позиций: {len(player['craft_queue'])}.", [[CHECK_TIMER, QUEUE_ONE, CANCEL]], zone)
+
+
+def _start_next_queued(player: dict[str, Any]) -> dict[str, Any] | None:
+    queue = player.get("craft_queue")
+    if not isinstance(queue, list) or not queue:
+        return None
+    job = queue.pop(0)
+    seconds = max(1, safe_int(job.get("seconds"), 1))
+    timer = {"id": new_timer_id("craft"), "type": "craft", "seconds": seconds, "ends_at": now_ts() + seconds,
+             "location_id": job.get("location_id"), "craft": job.get("craft") or {}}
+    player["active_timer"] = timer
+    return timer
 
 
 def complete_craft_timer(storage: Any, player: dict[str, Any], timer_id: str | None = None) -> CraftResponse:
@@ -1028,20 +1434,71 @@ def complete_craft_timer(storage: Any, player: dict[str, Any], timer_id: str | N
     _clear_context(player)
     _set_city_zone(player, zone)
     quantity = max(1, safe_int(craft.get("quantity"), 1))
+    delivered_amount = 0
+    consequence_text = ""
+    consequence_buttons: list[list[str]] | None = None
     if not recipe and not craft.get("alchemy_failure"):
         storage.update_player(player)
         return CraftResponse("⏳ Ремесленный таймер завершён, но рецепт не найден. Таймер очищен.", _craft_district_buttons(), zone)
-    if craft.get("alchemy_failure"):
-        item_id = craft.get("failure_item_id") or "suspicious_potion"
-        item_name = _item_name(str(item_id))
-        amount = 1
-        result = add_inventory_item(player, build_inventory_item(str(item_name), amount, item_id=str(item_id) if item_id else None), amount, item_id=str(item_id) if item_id else None, default_source="Ремесло")
+    if craft.get("alchemy_failure") or craft.get("craft_failure"):
+        item_id = craft.get("failure_item_id") or ((recipe or {}).get("failure_result_item_id") if recipe else None)
+        item_name = _item_name(str(item_id)) if item_id else ""
+        amount = max(1, safe_int((recipe or {}).get("failure_result_amount"), 1))
+        if item_id:
+            result, delivered_amount = _place_craft_output(player, build_inventory_item(str(item_name), amount, item_id=str(item_id)), amount, recipe or {})
+        else:
+            result = None
+        if recipe and craft.get("craft_failure"):
+            policy = str(recipe.get("failure_material_policy") or "lose_all")
+            return_percent = 100 if policy == "return_all" else max(0, min(100, safe_int(recipe.get("failure_return_percent"), 0))) if policy == "return_percent" else 0
+            if recipe.get("material_loss_formula_id"):
+                from services.formula_runtime import evaluate
+                loss_percent = max(0, min(100, safe_int(evaluate(recipe.get("material_loss_formula_id"), _recipe_formula_context(recipe, player=player, quantity=quantity) | {"base_amount": 100 - return_percent}, default=100 - return_percent), 100 - return_percent)))
+                return_percent = 100 - loss_percent
+            for consumed in craft.get("consumed_items") or []:
+                if not isinstance(consumed, dict):
+                    continue
+                returned = math.floor(max(0, safe_int(consumed.get("amount"), 0)) * return_percent / 100)
+                consumed_id = str(consumed.get("item_id") or "")
+                if consumed_id and returned:
+                    add_inventory_item(player, build_inventory_item(_item_name(consumed_id), returned, item_id=consumed_id), returned, item_id=consumed_id, default_source="Возврат после провала ремесла")
+            failure_effect = str(recipe.get("failure_effect_id") or recipe.get("failure_curse_id") or "")
+            if failure_effect:
+                from services.effect_formula_runtime import apply_to_player
+                apply_to_player(player, failure_effect, source="craft_failure", context={"recipe_id": recipe.get("id")})
+            failure_event_id = str(recipe.get("failure_event_id") or "")
+            if failure_event_id:
+                from services.world_runtime import render_event
+                view = render_event(failure_event_id, player=player)
+                if view:
+                    player["constructor_event_id"] = failure_event_id
+                    consequence_text = str(view.get("text") or "")
+                    consequence_buttons = view.get("buttons") or []
+            failure_mob_id = str(recipe.get("failure_battle_mob_id") or "")
+            if failure_mob_id:
+                try:
+                    from services.pve_battle_service import create_battle_for_constructor_mob
+                    _, battle_text = create_battle_for_constructor_mob(player, failure_mob_id, location_id=str(player.get("current_location") or player.get("location_id") or "craft_event"))
+                    consequence_text = battle_text
+                    consequence_buttons = [["Атаковать", "Защищаться"], ["Попытаться сбежать"]]
+                except ValueError:
+                    consequence_text = str(recipe.get("text_failure_consequence_error") or "Последствие провала не удалось запустить.")
+            for extra in recipe.get("byproducts") or []:
+                if not isinstance(extra, dict) or str(extra.get("when") or "success") not in {"failure", "any"}:
+                    continue
+                extra_id = str(extra.get("item_id") or "")
+                if extra_id and random.randint(1, 100) <= max(0, min(100, safe_int(extra.get("chance"), 100))):
+                    extra_amount = max(1, safe_int(extra.get("amount"), 1)) * quantity
+                    _, delivered = _place_craft_output(player, _crafted_output_item(extra_id, _item_name(extra_id), extra_amount), extra_amount, recipe)
+                    delivered_amount += delivered
     else:
         output = recipe.get("output") or {}
         item_id = output.get("item_id")
         item_name = output.get("name") or _item_name(item_id)
-        per_craft_amount = _roll_recipe_output_amount(recipe)
+        per_craft_amount = _roll_recipe_output_amount(recipe, player=player)
         amount = per_craft_amount * quantity
+        if craft.get("partial_success"):
+            amount = max(1, math.floor(amount * max(1, min(100, safe_int(recipe.get("partial_result_percent"), 50))) / 100))
         definition = get_item_definition_by_id(str(item_id or "")) if item_id else None
         craft_skill = str(WORKSHOP_BY_ID.get(workshop_id, {}).get("skill") or workshop_id)
         if isinstance(definition, dict) and definition.get("quality_variants") and amount > 1:
@@ -1051,26 +1508,121 @@ def complete_craft_timer(storage: Any, player: dict[str, Any], timer_id: str | N
                     str(item_id), str(item_name), 1,
                     bonus_effect=crafting_extra_effect_triggered(player, craft_skill),
                 )
+                _apply_recipe_result_settings(crafted_item, recipe, player=player, critical=bool(craft.get("critical_success")))
                 apply_generated_item_level_and_price(player, crafted_item, "crafted")
-                result = add_inventory_item(player, crafted_item, 1, item_id=str(item_id), default_source="Ремесло")
+                result, delivered = _place_craft_output(player, crafted_item, 1, recipe)
+                delivered_amount += delivered
         else:
             crafted_item = _crafted_output_item(
                 str(item_id), str(item_name), amount,
                 bonus_effect=crafting_extra_effect_triggered(player, craft_skill),
             )
+            _apply_recipe_result_settings(crafted_item, recipe, player=player, critical=bool(craft.get("critical_success")))
             apply_generated_item_level_and_price(player, crafted_item, "crafted")
-            result = add_inventory_item(player, crafted_item, amount, item_id=str(item_id) if item_id else None, default_source="Ремесло")
+            result, delivered_amount = _place_craft_output(player, crafted_item, amount, recipe)
+        # Дополнительные и побочные результаты конструктора (§13.2–§13.3).
+        extra_rows = list(recipe.get("results") or []) + list(recipe.get("byproducts") or [])
+        for extra in extra_rows:
+            if not isinstance(extra, dict):
+                continue
+            extra_id = str(extra.get("item_id") or "").strip()
+            if not extra_id or extra_id == str(item_id or ""):
+                continue
+            when = str(extra.get("when") or "success")
+            if when == "critical" and not craft.get("critical_success"):
+                continue
+            chance = max(0, min(100, safe_int(extra.get("chance"), 100)))
+            if random.randint(1, 100) > chance:
+                continue
+            extra_amount = max(1, safe_int(extra.get("amount"), 1)) * quantity
+            _, delivered = _place_craft_output(player, _crafted_output_item(extra_id, _item_name(extra_id), extra_amount), extra_amount, recipe)
+            delivered_amount += delivered
         if workshop_id == "alchemy":
             _unlock_alchemy_recipe(player, str(recipe.get("id") or ""))
-    _add_craft_experience(player, workshop_id, quantity)
+        try:
+            from services.quest_runtime_service import progress as quest_progress
+            quest_progress(player, "craft_item", str(item_id or ""), amount)
+        except Exception:
+            pass
+        from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+        trigger_item_effect(player, {"item_id": str(item_id or "")}, "on_receive_item", context={"item_count": amount, "recipe_level": recipe.get("level", 1)})
+        from services.item_effect_trigger_runtime import trigger_owned
+        trigger_owned(player, "on_craft", context={"item_count": amount, "recipe_level": recipe.get("level", 1)})
+        try:
+            from services.achievement_engine import record_game_event
+            record_game_event(player, "craft_item", amount, str(item_id or ""), storage=storage)
+            from services.event_campaign_runtime import progress as event_progress
+            event_progress(player, "craft_item", str(item_id or ""), amount, storage=storage)
+            event_progress(player, "complete_recipe", str(recipe.get("id") or ""), quantity, storage=storage)
+        except Exception:
+            pass
+    craft_exp = quantity
+    if recipe:
+        from services.formula_runtime import evaluate
+        craft_exp = max(1, safe_int(evaluate(recipe.get("exp_formula_id"), _recipe_formula_context(recipe, player=player, quantity=quantity) | {"base_amount": quantity}, default=quantity), quantity))
+    _add_craft_experience(player, workshop_id, craft_exp)
+    if recipe and recipe.get("energy_charge_at") == "complete":
+        player["energy"] = max(0, safe_int(player.get("energy"), 0) - max(0, safe_int(craft.get("energy_cost"), 0)))
+    next_timer = None if consequence_buttons is not None else _start_next_queued(player)
+    if not craft.get("alchemy_failure") and not craft.get("craft_failure"):
+        try:
+            from services.reputation_runtime_service import apply_trigger
+            apply_trigger(player,"craft",str(recipe.get("id") or craft.get("recipe_id") or ""),reason="Успешное ремесло")
+        except Exception:pass
     storage.update_player(player)
     notice = inventory_add_result_notice(result, item_name) if result is not None else ""
-    if craft.get("alchemy_failure"):
-        text = f"⚗️ Опыт завершился провалом. Получено: {item_name} ×{amount}.{notice}"
+    if craft.get("alchemy_failure") or craft.get("craft_failure"):
+        from services.text_runtime import game_text
+        fallback = str((recipe or {}).get("text_fail") or "❌ Ремесло завершилось провалом.")
+        text = game_text("craft.fail", fallback) + (f" Получено: {item_name} ×{amount}.{notice}" if item_name else "")
     else:
-        text = f"✅ Создание завершено. Получено: {item_name} ×{amount}.{notice}"
+        from services.text_runtime import game_text
+        fallback = str(recipe.get("text_partial_success") if craft.get("partial_success") else recipe.get("text_critical_success") if craft.get("critical_success") else recipe.get("text_success") or "✅ Создание завершено.")
+        text = game_text("craft.success", fallback) + f" Получено: {item_name} ×{amount}.{notice}"
+    if delivered_amount:
+        text += " " + str((recipe or {}).get("text_delivery") or f"В доставку отправлено: ×{delivered_amount}.")
+    if consequence_text:
+        text += "\n\n" + consequence_text
     buttons = _alchemy_menu_buttons() if workshop_id == "alchemy" else _workshop_after_complete_buttons(workshop_id)
-    return CraftResponse(text, buttons, zone)
+    if consequence_buttons is not None:
+        buttons = consequence_buttons
+    if next_timer:
+        text += f"\n\n⏳ Следующая позиция очереди запущена: {format_duration(next_timer['seconds'])}."
+        buttons = [[CHECK_TIMER, QUEUE_ONE, CANCEL]]
+    return CraftResponse(text, buttons, zone, scheduled_timer=build_timer_schedule(player, next_timer) if next_timer else None)
+
+
+def cancel_craft_timer(storage: Any, player: dict[str, Any]) -> CraftResponse:
+    timer = player.get("active_timer")
+    if not isinstance(timer, dict) or timer.get("type") != "craft":
+        return CraftResponse("Активного ремесла для отмены нет.", _craft_district_buttons(), str(player.get("current_zone") or "seldar_craft_district"))
+    craft = timer.get("craft") if isinstance(timer.get("craft"), dict) else {}
+    recipe = recipe_by_id().get(str(craft.get("recipe_id") or ""))
+    if not recipe or not recipe.get("can_cancel", True):
+        return CraftResponse(str((recipe or {}).get("text_cancel_denied") or "Эту операцию нельзя отменить."), [[CHECK_TIMER]], str(timer.get("location_id") or "seldar_craft_district"))
+    if recipe.get("return_materials_on_cancel", True):
+        for row in craft.get("consumed_items") or []:
+            item_id = str((row or {}).get("item_id") or "") if isinstance(row, dict) else ""
+            amount = max(0, safe_int((row or {}).get("amount"), 0)) if isinstance(row, dict) else 0
+            if item_id and amount:
+                add_inventory_item(player, build_inventory_item(_item_name(item_id), amount, item_id=item_id), amount, item_id=item_id, default_source="Возврат отменённого ремесла")
+    if recipe.get("refund_cost_on_cancel", True):
+        money_key = "money_copper" if "money_copper" in player else "money"
+        player[money_key] = max(0, safe_int(player.get(money_key), 0)) + max(0, safe_int(craft.get("charged_cost"), 0))
+        if money_key == "money_copper" and "money" in player:
+            player["money"] = player[money_key]
+    if recipe.get("energy_refund_on_cancel", True):
+        player["energy"] = safe_int(player.get("energy"), 0) + max(0, safe_int(craft.get("charged_energy"), 0))
+    from services.craft_weekly_limit_runtime import refund
+    refund(player, recipe, quantity=max(1, safe_int(craft.get("quantity"), 1)), result_amount=_recipe_output_amount(recipe))
+    player["active_timer"] = None
+    next_timer = _start_next_queued(player)
+    _clear_context(player)
+    storage.update_player(player)
+    text = str(recipe.get("text_cancel") or "Создание отменено. Ресурсы возвращены по настройкам рецепта.")
+    if next_timer:
+        text += " Следующая позиция очереди запущена."
+    return CraftResponse(text, [[CHECK_TIMER, QUEUE_ONE, CANCEL]] if next_timer else _craft_district_buttons(), str(timer.get("location_id") or "seldar_craft_district"), scheduled_timer=build_timer_schedule(player, next_timer) if next_timer else None)
 
 
 def _workshop_after_complete_buttons(workshop_id: str) -> list[list[str]]:
@@ -1396,6 +1948,12 @@ def _alchemy_metrics(player: dict[str, Any], components: list[dict[str, Any]], a
     chance = max(5, min(95, chance))
     if level >= STAGE_GUARANTEED_LEVELS.get(stage, 10**9):
         chance = 100
+    try:
+        from services.world_event_runtime import modifiers as world_modifiers
+        mods = world_modifiers(context={"workshop_id": "alchemy", "game_id": player.get("game_id"), "level": level})
+        chance = max(0, min(100, round(chance * float(mods.get("craft_success_multiplier", 1) or 0) + float(mods.get("craft_success_percent", 0) or 0))))
+    except Exception:
+        pass
     risk = max(0, volatility + toxicity + STAGE_RISK_PENALTY.get(stage, 0) - stability)
     return {"stage": stage, "power": power, "complexity": complexity, "success_chance": chance, "risk": risk, "level": level}
 
@@ -1595,6 +2153,12 @@ def should_handle_crafting_action(player: dict[str, Any], action: str) -> bool:
     if action in WORKSHOPS or action in {ENCHANTER, JEWELRY}:
         return True
 
+    try:
+        from services.workshop_constructor_service import published_for_action
+        if published_for_action(action):
+            return True
+    except Exception:
+        pass
     context = player.get("crafting_context")
     if isinstance(context, dict) and _is_contextual_crafting_input(context, action):
         # A stale workshop context must not consume plain numeric input after the
@@ -1612,12 +2176,18 @@ def handle_crafting_action(storage: Any, player: dict[str, Any], action: str) ->
     if isinstance(active_timer, dict) and active_timer.get("type") == "craft":
         if action == CHECK_TIMER:
             return complete_craft_timer(storage, player, active_timer.get("id"))
+        if action == QUEUE_ONE:
+            return enqueue_same_craft(storage, player)
+        if action == CANCEL:
+            return cancel_craft_timer(storage, player)
         remaining = timer_remaining_seconds(active_timer)
         if remaining <= 0:
             return complete_craft_timer(storage, player, active_timer.get("id"))
+        active_recipe = recipe_by_id().get(str((active_timer.get("craft") or {}).get("recipe_id") or "")) if isinstance(active_timer.get("craft"), dict) else None
+        lock_buttons = [[CHECK_TIMER]] + ([[CANCEL]] if active_recipe and active_recipe.get("can_cancel", True) else [])
         return CraftResponse(
             f"⏳ Сначала дождитесь окончания создания. Осталось: {format_duration(remaining)}.",
-            [[CHECK_TIMER]],
+            lock_buttons,
             str(active_timer.get("location_id") or player.get("current_zone") or "seldar_craft_district"),
         )
 
@@ -1629,6 +2199,14 @@ def handle_crafting_action(storage: Any, player: dict[str, Any], action: str) ->
 
     if action == ENCHANTER:
         return _maintenance_response(storage, player, "🔮 Мастерская чародея", "Мастерская временно закрыта на техническое обслуживание.")
+
+    try:
+        from services.workshop_constructor_service import published_for_action
+        constructor_workshop = published_for_action(action)
+    except Exception:
+        constructor_workshop = None
+    if constructor_workshop:
+        return _show_constructor_workshop(storage, player, constructor_workshop)
 
     if action in WORKSHOPS:
         workshop_id = WORKSHOPS[action]["id"]

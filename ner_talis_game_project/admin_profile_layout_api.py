@@ -1,7 +1,7 @@
 """FastAPI router for Admin V2 Profile Layout constructor (ТЗ §3).
 
-Mounted under ``/api/admin/v2/profile-layout``. Generic over kind (profile_tab /
-profile_block / profile_theme). Reads need profile_layout.view; create/edit need
+Mounted under ``/api/admin/v2/profile-layout``. Generic over kind (profile_settings /
+profile_tab / profile_block / profile_theme). Reads need profile_layout.view; create/edit need
 profile_layout.edit; publish/disable/archive/delete need profile_layout.publish.
 Every mutation is recorded via admin_operation. The layout runtime (applying the
 published layout to the player profile) is a separate step.

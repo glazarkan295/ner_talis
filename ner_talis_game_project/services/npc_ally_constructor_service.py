@@ -35,6 +35,8 @@ ALLY_TYPE_LABELS = {
     "house_worker": "Домашний работник", "guard": "Охранник",
     "summon": "Призванное существо",
 }
+ALLY_ROLES = ("attacker", "defender", "healer", "support", "controller", "scout", "porter", "gatherer", "craft_helper", "escort", "summoner", "special")
+OWN_ACTION_TYPES = ("attack", "defend", "heal", "buff", "debuff", "cleanse", "remove_curse", "cover", "take_hit", "finish_enemy", "stop_escape", "scout", "find_resource", "help_craft", "open_path", "talk_npc", "quest_action")
 # Способы получения (§2.3).
 ACQUIRE_METHODS = (
     "hire", "quest", "achievement", "event", "tavern", "guild", "house",
@@ -132,6 +134,11 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         errors.append("Не выбран тип союзника.")
     elif ally_type not in ALLY_TYPES:
         errors.append(f"Неизвестный тип союзника: {ally_type}.")
+    role = str(data.get("role") or "").strip()
+    if not role:
+        warnings.append("Не выбрана роль NPC-помощника.")
+    elif role not in ALLY_ROLES:
+        errors.append(f"Неизвестная роль NPC-помощника: {role}.")
 
     method = str(data.get("acquire_method") or "").strip()
     if method and method not in ACQUIRE_METHODS:
@@ -239,9 +246,16 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
     for act in (data.get("out_of_battle_actions") or []):
         if str(act or "").strip() and str(act).strip() not in OUT_OF_BATTLE_ACTIONS:
             warnings.append(f"Внебоевое действие «{act}» не из списка.")
+    for index, action in enumerate(data.get("own_actions") or [], 1):
+        if not isinstance(action, dict):
+            continue
+        if not str(action.get("id") or "").strip(): errors.append(f"Собственное действие {index}: нет ID.")
+        if str(action.get("type") or "") not in OWN_ACTION_TYPES: errors.append(f"Собственное действие {index}: неизвестный тип.")
+        for key in ("cost", "cooldown_seconds", "success_chance"):
+            if action.get(key) not in (None, "") and (_num(action.get(key)) is None or _num(action.get(key)) < 0): errors.append(f"Собственное действие {index}: {key} — неотрицательное число.")
 
     # Тексты без HTML.
-    for key in ("name", "description", "out_of_battle_behavior"):
+    for key in ("name", "description", "out_of_battle_behavior", "obtain_text", "denied_text", "summon_text", "battle_appear_text", "attack_text", "heal_text", "protect_text", "skill_text", "command_error_text", "death_text", "leave_text", "return_text", "level_up_text", "loyalty_text", "outside_action_text", "use_denied_text", "outside_success_text", "outside_fail_text"):
         if _has_html(data.get(key)):
             errors.append(f"В поле «{key}» недопустим HTML.")
 
@@ -270,3 +284,18 @@ def preview(data: dict[str, Any]) -> dict[str, Any]:
         "can_die": bool(data.get("can_die")),
         "loot_share_percent": data.get("loot_share_percent"),
     }
+
+
+def usage_extra(storage: Any, ally_id: str) -> dict[str, Any]:
+    """Live player owners supplement the static dependency graph (§65/§68)."""
+    owners: list[dict[str, Any]] = []
+    try:
+        raw = storage.load()
+        players = raw.get("players") if isinstance(raw, dict) else {}
+        for game_id, player in (players or {}).items():
+            if not isinstance(player, dict): continue
+            state = ((player.get("npc_helpers") or {}).get("owned") or {}).get(ally_id)
+            if isinstance(state, dict): owners.append({"game_id": str(game_id), "active": bool(state.get("active")), "status": state.get("status")})
+    except Exception:
+        pass
+    return {"player_owners": owners, "used_by": [f"player:{row['game_id']}" for row in owners]}

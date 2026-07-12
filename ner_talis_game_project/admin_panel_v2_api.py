@@ -363,6 +363,7 @@ def create_admin_panel_v2_router(get_storage) -> APIRouter:
             for f in fines
             if isinstance(f, dict)
         ]
+        detail["fineHistory"] = list((player or {}).get("fine_history") or [])[-100:] if isinstance(player, dict) else []
         return detail
 
     @router.get("/players")
@@ -414,6 +415,13 @@ def create_admin_panel_v2_router(get_storage) -> APIRouter:
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return {"ok": True, "token": view_token, "url": f"/admin_view_profile?token={view_token}"}
+
+    @router.post("/players/{game_id}/readonly-view-token")
+    def player_readonly_view_token(game_id:str,payload:PlayerActionRequest,request:Request)->dict[str,Any]:
+        storage=get_storage();session=_session(storage,request,payload.token);_require(session,PERM_PLAYERS_VIEW)
+        try:view_token=create_admin_player_view_token(storage,target_game_id=game_id,admin_session=session,editable=False)
+        except ValueError as exc:raise HTTPException(status_code=404,detail=str(exc)) from exc
+        return {"ok":True,"token":view_token,"url":f"/admin_view_profile?token={view_token}"}
 
     @router.post("/players/{game_id}/rewards")
     def grant_rewards(game_id: str, payload: PlayerRewardRequest, request: Request) -> dict[str, Any]:
@@ -584,6 +592,24 @@ def create_admin_panel_v2_router(get_storage) -> APIRouter:
             reason=payload.reason,
         )
         return {"ok": True, "report": report}
+
+    def _remove_one_fine(game_id: str, fine_id: str, payload: PlayerActionRequest, request: Request, *, delete: bool) -> dict[str, Any]:
+        storage=get_storage();session=_session(storage,request,payload.token);_require(session,PERM_FINES_MANAGE);card=_load_card(storage,game_id)
+        if card is None:raise HTTPException(status_code=404,detail="Игрок не найден.")
+        def operation():
+            from services.fine_service import remove_player_fine
+            player=storage.get_player_by_game_id(game_id)
+            if not player:raise ValueError("Игрок не найден.")
+            result=remove_player_fine(player,fine_id,by=identity_key(session.get("platform"),session.get("admin_user_id")),reason=payload.reason,delete=delete);storage.update_player(player);return result
+        try:result=run_admin_operation(session=session,action="fines.delete" if delete else "fines.remove",func=operation,target_type="player_fine",target_id=f"{game_id}:{fine_id}",target_name=card.get("name"),reason=payload.reason)
+        except ValueError as exc:raise HTTPException(status_code=404,detail=str(exc)) from exc
+        return {"ok":True,**result}
+
+    @router.post("/players/{game_id}/fines/{fine_id}/remove")
+    def remove_one_fine(game_id:str,fine_id:str,payload:PlayerActionRequest,request:Request)->dict[str,Any]:return _remove_one_fine(game_id,fine_id,payload,request,delete=False)
+
+    @router.delete("/players/{game_id}/fines/{fine_id}")
+    def delete_one_fine(game_id:str,fine_id:str,payload:PlayerActionRequest,request:Request)->dict[str,Any]:return _remove_one_fine(game_id,fine_id,payload,request,delete=True)
 
     @router.post("/players/{game_id}/reset")
     def reset_player(game_id: str, payload: PlayerActionRequest, request: Request) -> dict[str, Any]:

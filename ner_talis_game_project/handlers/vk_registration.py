@@ -42,6 +42,8 @@ from services.registration_service import (
     format_race_card,
     get_race_id_by_name,
     load_races,
+    registration_text,
+    registration_access,
     validate_name,
 )
 from storage.base import PlayerStorage
@@ -166,6 +168,10 @@ class VkRegistrationBot:
                     "Ты уже зарегистрирован. Команда /start повторно не запускает регистрацию.",
                 )
                 return
+            allowed, closed_text = registration_access("vk")
+            if not allowed:
+                self.send(peer_id, closed_text)
+                return
 
             # Реферальная ссылка VK (ТЗ 2.0 файл 16): «/start ref_<код>» → запоминаем
             # код до конца регистрации, чтобы привязать новичка к рефереру.
@@ -177,16 +183,17 @@ class VkRegistrationBot:
                 state=STATE_CONSENT,
                 referral_code=ref_code,
             )
-            self.send(peer_id, consent_message(), consent_keyboard())
+            self.send(peer_id, consent_message("vk"), consent_keyboard())
             return
 
         if lowered == "/profile" or text == "Профиль":
             self.send_profile(external_user_id, peer_id)
             return
 
-        if lowered.startswith("/promo"):
-            parts = text.split(maxsplit=1)
-            code = parts[1].strip() if len(parts) > 1 else ""
+        from services.promo_service import promo_from_command
+        matched_promo=promo_from_command(self.storage,text,"vk")
+        if matched_promo:
+            stored_code,argument=matched_promo;code=argument or stored_code
             self.redeem_promo(external_user_id, peer_id, code)
             return
 
@@ -228,7 +235,7 @@ class VkRegistrationBot:
                         start_keyboard(),
                     )
                 else:
-                    self.send(peer_id, consent_message(), consent_keyboard())
+                    self.send(peer_id, consent_message("vk"), consent_keyboard())
                 return
 
             if text == "Кратко о мире":
@@ -337,7 +344,7 @@ class VkRegistrationBot:
         session: VkRegistrationSession,
         raw_name: str,
     ) -> None:
-        is_valid, result = validate_name(raw_name)
+        is_valid, result = validate_name(raw_name, "vk")
 
         if not is_valid:
             self.send(peer_id, result)
@@ -447,7 +454,7 @@ class VkRegistrationBot:
         session.pending_gender_id = None
         session.pending_gender_label = None
         session.state = STATE_AWAITING_RACE
-        self.send(peer_id, ASK_RACE_TEXT, race_keyboard())
+        self.send(peer_id, registration_text("vk", "race_prompt_text", ASK_RACE_TEXT), race_keyboard())
 
     def receive_race(
         self,
@@ -455,7 +462,7 @@ class VkRegistrationBot:
         session: VkRegistrationSession,
         race_name: str,
     ) -> None:
-        races = load_races()
+        races = load_races(platform="vk")
         race_id = get_race_id_by_name(races, race_name)
 
         if race_id is None:
@@ -482,7 +489,7 @@ class VkRegistrationBot:
             return
 
         if text == "Выбрать":
-            races = load_races()
+            races = load_races(platform="vk")
             race_id = session.race_id
 
             if race_id is None:
@@ -512,7 +519,7 @@ class VkRegistrationBot:
         session: VkRegistrationSession,
         text: str,
     ) -> None:
-        races = load_races()
+        races = load_races(platform="vk")
         race_id = session.race_id
 
         if text == "Нет":
@@ -575,7 +582,7 @@ class VkRegistrationBot:
 
         self.send(
             peer_id,
-            FINAL_REGISTRATION_TEXT.format(player_name=player["name"]),
+            registration_text("vk", "complete_text", FINAL_REGISTRATION_TEXT, player_name=player["name"]),
             after_registration_keyboard(),
         )
 
@@ -609,7 +616,7 @@ class VkRegistrationBot:
         if not code:
             self.send(peer_id, "Формат: /promo CODE")
             return
-        ok, message = redeem_promo_code(self.storage, str(player.get("game_id")), code)
+        ok, message = redeem_promo_code(self.storage, str(player.get("game_id")), code,platform="vk")
         prefix = "✅" if ok else "⚠️"
         self.send(peer_id, f"{prefix} {message}")
 

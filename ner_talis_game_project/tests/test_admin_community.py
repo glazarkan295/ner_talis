@@ -87,6 +87,24 @@ class WorldEventServiceTest(unittest.TestCase):
         self.assertIn("позже", joined)
         self.assertIn("множитель", joined)
 
+    def test_rewards_are_real_and_idempotent(self):
+        class Storage:
+            def __init__(self): self.players = {"P1": {"game_id": "P1", "money": 0, "experience": 0, "total_experience": 0}}
+            def list_player_audience_rows(self): return [{"game_id": "P1"}]
+            def get_player_by_game_id(self, gid): return self.players.get(gid)
+            def update_player(self, player): self.players[player["game_id"]] = player
+            def enqueue_bot_messages(self, game_id, messages): return None
+        world_event_service.store().create("wave", {"name": "Волна", "type": "mob_invasion", "rewards": [
+            {"type": "coins", "currency": "copper", "amount": 50}, {"type": "experience", "amount": 10}
+        ]})
+        storage = Storage()
+        first = world_event_service.distribute_rewards(storage, "wave")
+        second = world_event_service.distribute_rewards(storage, "wave")
+        self.assertEqual(first["granted"], 1)
+        self.assertEqual(second["skipped"], 1)
+        self.assertEqual(storage.players["P1"]["money"], 50)
+        self.assertEqual(storage.players["P1"]["experience"], 10)
+
 
 class CommunityApiTest(unittest.TestCase):
     def setUp(self):

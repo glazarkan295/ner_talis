@@ -526,6 +526,13 @@ def pick_mob_spawn(location_id: str, player_level: int, *, rng: random.Random | 
         if left is not None and left <= 0:
             continue  # популяция выбита за неделю
         chance = _num(data.get("spawn_chance"), 0) or 0
+        try:
+            from services.world_event_runtime import multiplier
+            chance *= multiplier("mob_chance_multiplier", context={"location_id": location_id, "mob_id": mob_id, "object_id": mob_id, "level": player_level})
+            mob_env=registry.get_content(registry.KIND_MOB,mob_id);mob_data=(mob_env or {}).get("data") or {};rank=str(mob_data.get("mob_rank") or data.get("mob_rank") or "")
+            if rank in {"elite","rare","dangerous","mini_boss","boss","world_boss"}:chance *= multiplier("elite_mob_chance_multiplier",context={"location_id":location_id,"mob_id":mob_id,"object_id":mob_id,"level":player_level})
+        except Exception:
+            pass
         if chance <= 0:
             continue
         candidates.append({"id": env.get("id"), "mob_id": mob_id, "data": data, "chance": chance, "remaining": left})

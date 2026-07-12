@@ -399,10 +399,25 @@ def current_location_id(player: dict[str, Any] | None, default: str = "hilly_mea
 
 def location_buttons(location_id: str | None) -> list[list[str]]:
     if location_id == "ordinary_forest":
-        return ordinary_forest_buttons()
-    if location_id == "small_plateau":
-        return small_plateau_buttons()
-    return hilly_meadows_buttons()
+        rows = ordinary_forest_buttons()
+    elif location_id == "small_plateau":
+        rows = small_plateau_buttons()
+    else:
+        rows = hilly_meadows_buttons()
+    # Опубликованные кнопки мира дополняют legacy-клавиатуру. Так созданная в
+    # админке кнопка open_camp реально появляется и в Telegram, и в VK.
+    try:
+        from services.world_runtime import location_buttons as live_buttons
+
+        existing = {str(label) for row in rows for label in row}
+        for button in live_buttons(str(location_id or "")):
+            label = str((button or {}).get("text") or "").strip()
+            if label and label not in existing:
+                rows.append([label])
+                existing.add(label)
+    except Exception:
+        pass
+    return rows
 
 
 def location_name(location_id: str | None) -> str:
@@ -460,7 +475,7 @@ def cancel_active_timer(storage: Any, player: dict[str, Any]) -> LocationRespons
     if timer_type == "camp_rest":
         return LocationResponse(
             "⛺ Вы прервали отдых. Таймер сброшен, показатели не восстановлены.",
-            camp_buttons(),
+            camp_buttons(player),
             f"{location_id}_camp",
         )
     return LocationResponse("⏳ Таймер сброшен.", location_buttons(location_id), str(player.get("current_zone") or location_id))
@@ -506,12 +521,22 @@ def event_choice_buttons(event_type: str) -> list[list[str]]:
     return hilly_meadows_buttons()
 
 
-def camp_buttons() -> list[list[str]]:
-    return [
+def camp_buttons(player: dict[str, Any] | None = None) -> list[list[str]]:
+    rows = [
         [PROFILE_BUTTON],
         [SHORT_COOK_FOOD, SHORT_EAT_FOOD],
         [BREAK_CAMP],
     ]
+    if player and player.get("current_camp_id"):
+        try:
+            from services import camp_runtime
+
+            camp = camp_runtime.published(str(player.get("current_camp_id") or ""))
+            if camp:
+                rows[2:2] = [[label] for label in [*camp_runtime.npc_buttons(camp,player), *camp_runtime.service_buttons(camp)]]
+        except Exception:
+            pass
+    return rows
 
 
 def current_external_buttons(player: dict[str, Any]) -> list[list[str]]:
@@ -534,7 +559,7 @@ def current_external_buttons(player: dict[str, Any]) -> list[list[str]]:
     current_location = str(player.get("current_location") or "")
 
     if zone.endswith("_camp"):
-        return camp_buttons()
+        return camp_buttons(player)
     if zone == "small_plateau_arch":
         return small_plateau_arch_buttons()
     if zone == "small_plateau_hidden_coin_place":
@@ -993,7 +1018,7 @@ def add_item(player: dict[str, Any], name: str, amount: int, *, item_id: str | N
         apply_location_item_category(inventory_item, name)
     inventory_item.setdefault("source", source)
     inventory_item.setdefault("actions", [])
-    return add_inventory_stack(
+    result = add_inventory_stack(
         player,
         inventory_item,
         amount,
@@ -1001,6 +1026,12 @@ def add_item(player: dict[str, Any], name: str, amount: int, *, item_id: str | N
         max_stack=int(inventory_item.get("max_stack", max_stack) or max_stack),
         default_source=source,
     )
+    try:
+        from services.event_campaign_runtime import progress as event_progress
+        event_progress(player, "gather_resource", str(inventory_item.get("id") or inventory_item.get("item_id") or ""), amount)
+    except Exception:
+        pass
+    return result
 
 
 def remove_item(player: dict[str, Any], name: str, amount: int) -> bool:
@@ -1073,6 +1104,20 @@ def slugify_item_name(name: str) -> str:
     return slugify_fallback_item_id(name)
 
 
+def _record_location_achievements(player: dict[str, Any], location_id: str, storage: Any) -> None:
+    try:
+        from services.achievement_engine import record_game_event
+        record_game_event(player, "visit_location", 1, location_id, storage=storage)
+        from services.event_campaign_runtime import progress as event_progress
+        event_progress(player, "visit_location", location_id, 1, storage=storage)
+        discovered = player.setdefault("discovered_locations", [])
+        if location_id not in discovered:
+            discovered.append(location_id)
+            record_game_event(player, "discover_location", 1, location_id, storage=storage)
+    except Exception:
+        pass
+
+
 def enter_outside_city(storage: Any, player: dict[str, Any]) -> LocationResponse:
     ensure_external_fields(player)
     player["current_city"] = "outside_seldar"
@@ -1086,45 +1131,73 @@ def enter_outside_city(storage: Any, player: dict[str, Any]) -> LocationResponse
     return LocationResponse(OUTSIDE_CITY_TEXT, outside_city_buttons(), "outside_city_crossroads")
 
 
+def _trigger_item_location(player: dict[str, Any], location_id: str) -> None:
+    from services.item_effect_trigger_runtime import trigger_owned
+    trigger_owned(player, "on_enter_location", context={"location_id": location_id})
+    trigger_owned(player, "in_zone", context={"location_id": location_id, "zone_id": player.get("current_zone")})
+
+
 def enter_hilly_meadows(storage: Any, player: dict[str, Any]) -> LocationResponse:
     ensure_external_fields(player)
     location_id = "hilly_meadows"
+    try:
+        from services.world_event_runtime import access_allowed
+        if not access_allowed("location",location_id,context={"game_id":player.get("game_id")}):return LocationResponse("Локация временно недоступна из-за мирового события.",outside_city_buttons(),"outside_city_crossroads")
+    except Exception:pass
     player["current_city"] = "outside_seldar"
     player["current_zone"] = location_id
     player["location_id"] = location_id
     player["current_location"] = location_id
     player["active_event"] = None
     player["active_timer"] = None
+    _record_location_achievements(player, location_id, storage)
+    _trigger_item_location(player, location_id)
     storage.update_player(player)
     return LocationResponse(HILLY_MEADOWS_TEXT, location_buttons(location_id), location_id)
 
 
 def enter_common_forest(storage: Any, player: dict[str, Any]) -> LocationResponse:
     ensure_external_fields(player)
+    try:
+        from services.world_event_runtime import access_allowed
+        if not access_allowed("location","ordinary_forest",context={"game_id":player.get("game_id")}):return LocationResponse("Локация временно недоступна из-за мирового события.",outside_city_buttons(),"outside_city_crossroads")
+    except Exception:pass
     player["current_city"] = "outside_seldar"
     player["current_zone"] = "ordinary_forest"
     player["location_id"] = "ordinary_forest"
     player["current_location"] = "ordinary_forest"
     player["active_event"] = None
     player["active_timer"] = None
+    _record_location_achievements(player, "ordinary_forest", storage)
+    _trigger_item_location(player, "ordinary_forest")
     storage.update_player(player)
     return LocationResponse(location_text("ordinary_forest"), ordinary_forest_buttons(), "ordinary_forest")
 
 
 def enter_small_plateau(storage: Any, player: dict[str, Any]) -> LocationResponse:
     ensure_external_fields(player)
+    try:
+        from services.world_event_runtime import access_allowed
+        if not access_allowed("location","small_plateau",context={"game_id":player.get("game_id")}):return LocationResponse("Локация временно недоступна из-за мирового события.",outside_city_buttons(),"outside_city_crossroads")
+    except Exception:pass
     player["current_city"] = "outside_seldar"
     player["current_zone"] = "small_plateau"
     player["location_id"] = "small_plateau"
     player["current_location"] = "small_plateau"
     player["active_event"] = None
     player["active_timer"] = None
+    _record_location_achievements(player, "small_plateau", storage)
+    _trigger_item_location(player, "small_plateau")
     storage.update_player(player)
     return LocationResponse(location_text("small_plateau"), small_plateau_buttons(), "small_plateau")
 
 
 def enter_fortress(storage: Any, player: dict[str, Any]) -> LocationResponse:
     ensure_external_fields(player)
+    try:
+        from services.world_event_runtime import access_allowed
+        if not access_allowed("location","fortress_in_gorge",context={"game_id":player.get("game_id")}):return LocationResponse("Крепость временно недоступна из-за мирового события.",outside_city_buttons(),"outside_city_crossroads")
+    except Exception:pass
     player["current_city"] = "outside_seldar"
     player["current_zone"] = "fortress_in_gorge_courtyard"
     player["location_id"] = "fortress_in_gorge_courtyard"
@@ -1132,54 +1205,115 @@ def enter_fortress(storage: Any, player: dict[str, Any]) -> LocationResponse:
     player["active_event"] = None
     player["active_timer"] = None
     player["in_battle"] = False
+    _record_location_achievements(player, "fortress_in_gorge", storage)
+    _trigger_item_location(player, "fortress_in_gorge")
     storage.update_player(player)
     return LocationResponse(FORTRESS_TEXT, fortress_buttons(), "fortress_in_gorge_courtyard")
 
 
-def enter_camp(storage: Any, player: dict[str, Any]) -> LocationResponse:
+def enter_camp(storage: Any, player: dict[str, Any], camp_id: str | None = None) -> LocationResponse:
     ensure_external_fields(player)
-    location_id = current_location_id(player, default="")
-    if location_id not in EXPLORATION_LOCATION_IDS:
+    from services import camp_runtime
+
+    live_camp = camp_runtime.published(str(camp_id or "")) if camp_id else None
+    constructed_location = str(player.get("constructor_location_id") or "").strip()
+    if live_camp and constructed_location and camp_runtime.is_bound_to_location(live_camp, constructed_location):
+        location_id = constructed_location
+    else:
+        location_id = current_location_id(player, default="")
+    if location_id not in EXPLORATION_LOCATION_IDS and not live_camp:
         return LocationResponse("Лагерь можно разбить только в обычной внешней локации.", outside_city_buttons(), player.get("current_zone", "outside_city_crossroads"))
     if player.get("active_event"):
         return LocationResponse("Сначала завершите текущее событие.", event_choice_buttons(player["active_event"].get("type", "")), player.get("current_zone", location_id))
     if player.get("in_battle"):
         return LocationResponse("Нельзя разбить лагерь во время боя.", location_buttons(location_id), player.get("current_zone", location_id))
 
+    live_camp = live_camp or camp_runtime.published_for_location(location_id, purpose="rest")
+    if live_camp and not camp_runtime.is_bound_to_location(live_camp, location_id):
+        live_camp = None
+    if live_camp:
+        denied = camp_runtime.access_error(player, live_camp)
+        if denied:
+            return LocationResponse(denied, location_buttons(location_id), location_id)
+        if live_camp.get("can_rest") is False:
+            return LocationResponse(
+                str(live_camp.get("rest_unavailable_text") or "В этом лагере нельзя отдыхать."),
+                location_buttons(location_id), location_id,
+            )
+        limit_error = camp_runtime.rest_limit_error(player, live_camp)
+        if limit_error:
+            return LocationResponse(limit_error, location_buttons(location_id), location_id)
+        payment_error = camp_runtime.prepare_rest_payment(player, live_camp)
+        if payment_error:
+            return LocationResponse(payment_error, location_buttons(location_id), location_id)
+
     rest_time = calculate_scaled_seconds(int(player.get("energy", 100)), int(player.get("max_energy", 100)), 30, 600)
+    if live_camp:
+        rest_time = camp_runtime.rest_seconds(player, live_camp, rest_time)
+    try:
+        from services.world_event_runtime import multiplier
+        rest_time = max(1, math.ceil(rest_time * multiplier("rest_time_multiplier", context={"location_id": location_id, "camp_id": f"{location_id}_camp", "game_id": player.get("game_id")})))
+    except Exception:
+        pass
     timer = {
         "id": new_timer_id("camp_rest"),
         "type": "camp_rest",
         "seconds": rest_time,
         "ends_at": now_ts() + rest_time,
         "location_id": f"{location_id}_camp",
+        "camp_id": (live_camp or {}).get("id"),
     }
     player["current_zone"] = f"{location_id}_camp"
     player["location_id"] = f"{location_id}_camp"
     player["active_timer"] = timer
+    if live_camp:
+        player["current_camp_id"] = live_camp.get("id")
+        player["last_opened_camp_id"] = live_camp.get("id")
+        camp_runtime.apply_effects(player, live_camp, "on_enter")
+        entry_events = camp_runtime.roll_events(live_camp, "on_enter",player=player)
+    else:
+        entry_events = []
+    try:
+        from services.achievement_engine import record_game_event
+        record_game_event(player, "open_camp", 1, location_id, storage=storage)
+    except Exception:
+        pass
     storage.update_player(player)
     hp, max_hp = hp_pair(player)
     text = (
-        f"{camp_text(location_id)}\n\n"
+        f"{str((live_camp or {}).get('entry_text') or (live_camp or {}).get('full_text') or camp_text(location_id))}\n\n"
         "🛏 Отдых начался.\n"
         f"⏳ Время отдыха: {format_duration(rest_time)}\n"
         f"❤️ Жизни сейчас: {hp}/{max_hp}\n\n"
         "Если свернуть лагерь раньше окончания отдыха, восстановление не сработает."
     )
-    return LocationResponse(text, camp_buttons(), f"{location_id}_camp", scheduled_timer=build_timer_schedule(player, timer))
+    if entry_events:
+        text += "\n\n" + "\n".join(entry_events)
+    return LocationResponse(text, camp_buttons(player), f"{location_id}_camp", scheduled_timer=build_timer_schedule(player, timer))
 
 
 def leave_camp(storage: Any, player: dict[str, Any]) -> LocationResponse:
     ensure_external_fields(player)
+    from services import camp_runtime
+    live_camp = camp_runtime.published(str(player.get("current_camp_id") or ""))
     location_id = current_location_id(player)
     player["current_zone"] = location_id
     player["location_id"] = location_id
     was_resting = isinstance(player.get("active_timer"), dict) and player["active_timer"].get("type") == "camp_rest"
     player["active_timer"] = None
+    exit_events = []
+    if live_camp:
+        camp_runtime.apply_effects(player, live_camp, "on_exit")
+        exit_events = camp_runtime.roll_events(live_camp, "on_exit",player=player)
+        player.pop("current_camp_id", None)
     storage.update_player(player)
     if was_resting:
-        return LocationResponse("⛺ Вы свернули лагерь раньше окончания отдыха. Таймер сброшен, показатели не восстановлены.", location_buttons(location_id), location_id)
-    return LocationResponse(f"⛺ Вы сворачиваете лагерь и возвращаетесь в локацию «{location_name(location_id)}».", location_buttons(location_id), location_id)
+        text = str((live_camp or {}).get("rest_interrupted_text") or "⛺ Вы свернули лагерь раньше окончания отдыха. Таймер сброшен, показатели не восстановлены.")
+    else:
+        text = str((live_camp or {}).get("exit_text") or f"⛺ Вы сворачиваете лагерь и возвращаетесь в локацию «{location_name(location_id)}».")
+    if exit_events:
+        text += "\n\n" + "\n".join(exit_events)
+    return LocationResponse(text, location_buttons(location_id), location_id)
 
 
 def return_to_gates(storage: Any, player: dict[str, Any]) -> LocationResponse:
@@ -1204,7 +1338,7 @@ def return_to_gates(storage: Any, player: dict[str, Any]) -> LocationResponse:
     return LocationResponse(text, [[OUTSIDE_CITY], ["⬅️ Центральная площадь"]], "seldar_city_gates")
 
 
-def _search_depth_max(location_id: str) -> int:
+def _search_depth_max(location_id: str, player: dict[str, Any] | None = None) -> int:
     """Потолок глубины поиска из карточки локации конструктора (0 = без лимита).
 
     18-CODEX §3: настройки V2-конструктора применяются ТОЛЬКО при включённом
@@ -1220,7 +1354,12 @@ def _search_depth_max(location_id: str) -> int:
         if isinstance(env, dict) and env.get("status") == "published":
             data = env.get("data") or {}
             if data.get("search_depth_enabled"):
-                return int(data.get("search_depth_max") or 0)
+                fixed = int(data.get("search_depth_max") or 0)
+                from services.formula_runtime import evaluate, numeric_context
+                depth = int(((player or {}).get("search_depth") or {}).get("depth") or 0)
+                return max(0, int(evaluate(data.get("search_depth_formula_id"), numeric_context({
+                    "base_amount": fixed, "search_depth": depth,
+                }, player=player), default=fixed) or 0))
     except Exception:
         return 0
     return 0
@@ -1256,6 +1395,9 @@ def start_search(storage: Any, player: dict[str, Any], rng: random.Random | None
     if location_id != "small_plateau" and not has_equipped_attack_skill(player):
         return missing_attack_skill_response(player)
 
+    from services.item_effect_trigger_runtime import trigger_owned
+    trigger_owned(player, "on_search", context={"location_id": location_id}, rng=rng)
+
     energy_stats = calculate_energy_stats(player)
     energy = int(energy_stats["current_energy"])
     max_energy = int(energy_stats["max_energy"])
@@ -1266,6 +1408,12 @@ def start_search(storage: Any, player: dict[str, Any], rng: random.Random | None
     maximum_seconds = int(location_config.get("zero_energy_search_time_seconds", location_config.get("max_search_time_seconds", MAX_SEARCH_TIME_SECONDS)) or MAX_SEARCH_TIME_SECONDS)
     seconds = calculate_scaled_seconds(energy, max_energy, base_seconds, maximum_seconds)
     cost = min(int(location_config.get("base_search_energy_cost", SEARCH_ENERGY_COST) or SEARCH_ENERGY_COST), energy)
+    try:
+        from services.world_event_runtime import modifiers as world_modifiers
+        mods = world_modifiers(context={"location_id": location_id, "game_id": player.get("game_id"), "level": player.get("level", 1)})
+        cost = min(energy, max(0, round(cost * float(mods.get("energy_multiplier", 1) or 0) + float(mods.get("energy_flat", 0) or 0))))
+    except Exception:
+        pass
     player["energy"] = max(0, energy - cost)
     player["current_energy"] = player["energy"]
     player["last_search_time_seconds"] = seconds
@@ -1275,6 +1423,14 @@ def start_search(storage: Any, player: dict[str, Any], rng: random.Random | None
     else:
         raw_events = location_config.get("events") or dict(BASE_SEARCH_EVENT_WEIGHTS)
         event_weights = [(key, int(value)) for key, value in raw_events.items()] if isinstance(raw_events, dict) else BASE_SEARCH_EVENT_WEIGHTS
+        try:
+            from services.world_event_runtime import multiplier
+            adjusted=[]
+            for key,value in event_weights:
+                factor=multiplier("pve_chance_multiplier" if key=="battle" else "event_chance_multiplier",context={"location_id":location_id,"event_id":key,"object_id":key,"game_id":player.get("game_id")})
+                adjusted.append((key,max(0,round(value*factor))))
+            event_weights=adjusted
+        except Exception:pass
         event_type = weighted_choice(search_event_weights(player, event_weights), rng)
 
         payload: dict[str, Any]
@@ -1300,7 +1456,7 @@ def start_search(storage: Any, player: dict[str, Any], rng: random.Random | None
     player["active_timer"] = timer
     # Глубина поиска (ТЗ 09 §19): каждая команда «Поиск» наращивает счётчик
     # по текущей локации; смена локации авто-сбрасывает его (см. record_search).
-    record_search(player, location_id, max_depth=_search_depth_max(location_id))
+    record_search(player, location_id, max_depth=_search_depth_max(location_id, player))
     warnings = collect_energy_warning_messages(player)
     storage.update_player(player)
     hp, max_hp = hp_pair(player)
@@ -1404,9 +1560,23 @@ def complete_active_timer(storage: Any, player: dict[str, Any], timer_id: str | 
 
     timer_type = timer.get("type")
     if timer_type == "camp_rest":
-        for current_key, max_key in (("hp", "max_hp"), ("mana", "max_mana"), ("spirit", "max_spirit")):
-            if player.get(max_key) is not None:
-                player[current_key] = player[max_key]
+        from services import camp_runtime
+        live_camp = camp_runtime.published(str(timer.get("camp_id") or ""))
+        if live_camp:
+            restored = camp_runtime.apply_recovery(player, live_camp)
+            camp_items = camp_runtime.grant_rest_items(player, live_camp)
+            camp_runtime.consume_rest_limit(player, live_camp)
+            camp_runtime.apply_effects(player, live_camp, "on_rest", rng=rng)
+            camp_event_texts = camp_runtime.roll_events(live_camp, "on_rest",player=player,rng=rng)
+        else:
+            restored = {}
+            camp_items = []
+            camp_event_texts = []
+            for current_key, max_key in (("hp", "max_hp"), ("mana", "max_mana"), ("spirit", "max_spirit")):
+                if player.get(max_key) is not None:
+                    before = int(player.get(current_key) or 0)
+                    player[current_key] = player[max_key]
+                    restored[current_key] = int(player[current_key]) - before
         player["active_timer"] = None
         player["current_location"] = location_id
         curse_result = roll_ancient_curse_trigger(player, "camp_rest", rng)
@@ -1414,9 +1584,13 @@ def complete_active_timer(storage: Any, player: dict[str, Any], timer_id: str | 
             storage.update_player(player)
             return LocationResponse(str(curse_result.get("text") or "Древнее Проклятье переносит вас на Малое плато."), small_plateau_hidden_coin_buttons(), "small_plateau_hidden_coin_place")
         storage.update_player(player)
+        from services.text_runtime import game_text
         return LocationResponse(
-            "✅ Отдых завершён.\n\n❤️ Жизни, ✨ мана и 🔥 дух восстановлены до максимума.",
-            camp_buttons(),
+            str((live_camp or {}).get("rest_complete_text") or game_text("camp.rest_done", "✅ Отдых завершён."))
+            + "\n\n" + ("Восстановлено: " + ", ".join(f"{key} +{value}" for key, value in restored.items()) if restored else "Показатели восстановлены.")
+            + (("\nПолучены предметы: " + ", ".join(f"{row['item_id']} ×{row['added']}" for row in camp_items if row["added"])) if camp_items else "")
+            + (("\n\n" + "\n".join(camp_event_texts)) if camp_event_texts else ""),
+            camp_buttons(player),
             f"{location_id}_camp",
         )
 
@@ -1687,8 +1861,11 @@ def resolve_trap(player: dict[str, Any], rng: random.Random, location_id: str = 
     loss = rng.randint(1, 20)
     money = int(player.get("money_copper", player.get("money", 0)) or 0)
     actual_loss = min(money, loss)
-    player["money_copper"] = max(0, money - actual_loss)
-    player["money"] = player["money_copper"]
+    try:
+        from services.economy_runtime import change
+        change(player,"copper",-actual_loss,operation="location_loss",source="location",source_id=str(player.get("location_id") or ""))
+    except (ImportError,ValueError):
+        player["money_copper"]=max(0,money-actual_loss);player["money"]=player["money_copper"]
     return f"👝 Пробираясь через высокую траву, вы цепляете поясной кошель за сухую ветку. При проверке оказывается, что несколько монет пропали. Потеряно: медные монеты -{actual_loss}."
 
 
@@ -1803,9 +1980,26 @@ def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng:
     # ниже передают item_id ключевым аргументом, поэтому одной обёртки достаточно.
     _base_add_item = globals()["add_item"]
 
+    special_rolled = False
     def add_item(*args, **kwargs):
-        result = _base_add_item(*args, **kwargs)
+        nonlocal special_rolled
+        values = list(args)
+        try:
+            from services.world_event_runtime import multiplier
+            factor = multiplier("resource_multiplier", context={"location_id": location_id, "game_id": player.get("game_id")})
+            if len(values) >= 3: values[2] = max(1, math.floor(int(values[2]) * factor))
+            elif "amount" in kwargs: kwargs["amount"] = max(1, math.floor(int(kwargs["amount"]) * factor))
+        except Exception: pass
+        result = _base_add_item(*values, **kwargs)
         _consume_location_item(location_id, kwargs.get("item_id"), getattr(result, "added", 0))
+        if not special_rolled:
+            special_rolled = True
+            try:
+                from services.world_event_runtime import roll_special_loot
+                for special in roll_special_loot(player, "search", location_id=location_id, object_id=str(event_type or ""), rng=rng):
+                    sid=str(special.get("item_id") or "");amount=int(special.get("amount") or 0)
+                    if sid and amount:_base_add_item(player,sid,amount,item_id=sid,source="Мировое событие")
+            except Exception: pass
         return result
 
     if event_type == "small_plateau_cursed_coins" and action in {TAKE_CURSED_COINS, LEAVE}:
@@ -1901,8 +2095,11 @@ def resolve_active_event(storage: Any, player: dict[str, Any], action: str, rng:
         if rng.uniform(0, 100) <= float(bonus_data.get("chance_percent", 1) or 1):
             bonus_amount = max(1, int(bonus_data.get("amount", 1) or 1))
             copper = int(bonus_data.get("copper_equivalent", 1000) or 1000) * bonus_amount
-            player["money_copper"] = int(player.get("money_copper", player.get("money", 0)) or 0) + copper
-            player["money"] = player["money_copper"]
+            try:
+                from services.economy_runtime import change,reward_amount
+                copper=reward_amount("event",copper,{"location_id":location_id});change(player,"copper",copper,operation="location_reward",source="location",source_id=location_id)
+            except (ImportError,ValueError):
+                player["money_copper"]=int(player.get("money_copper",player.get("money",0)) or 0)+copper;player["money"]=player["money_copper"]
             bonus = f"\n✨ Уже отходя от речушки, вы замечаете короткий блик в воде и достаёте серебряную монету. Получено: серебряная монета ×{bonus_amount}."
         player["active_event"] = None
         storage.update_player(player)
@@ -2070,16 +2267,22 @@ def resolve_glint_event(player: dict[str, Any], event: dict[str, Any], rng: rand
     if entry.get("currency") == "silver":
         amount = _entry_amount(entry, rng)
         copper = int(entry.get("copper_equivalent", 1000) or 1000) * amount
-        player["money_copper"] = int(player.get("money_copper", player.get("money", 0)) or 0) + copper
-        player["money"] = player["money_copper"]
+        try:
+            from services.economy_runtime import change,reward_amount
+            copper=reward_amount("event",copper,{"location_id":location_id});change(player,"copper",copper,operation="location_reward",source="location",source_id=location_id)
+        except (ImportError,ValueError):
+            player["money_copper"]=int(player.get("money_copper",player.get("money",0)) or 0)+copper;player["money"]=player["money_copper"]
         return (
             "Спустившись ниже по склону, вы видите примятую и разбросанную вырванную траву. "
             "Похоже, здесь кто-то что-то потерял и долго пытался найти.\n\n"
             f"Среди примятой травы блестит серебряная монета. Странно, что её не заметили раньше. Получено: серебряная монета ×{amount}."
         )
     amount = _entry_amount(entry, rng)
-    player["money_copper"] = int(player.get("money_copper", player.get("money", 0)) or 0) + amount
-    player["money"] = player["money_copper"]
+    try:
+        from services.economy_runtime import change,reward_amount
+        amount=reward_amount("event",amount,{"location_id":location_id});change(player,"copper",amount,operation="location_reward",source="location",source_id=location_id)
+    except (ImportError,ValueError):
+        player["money_copper"]=int(player.get("money_copper",player.get("money",0)) or 0)+amount;player["money"]=player["money_copper"]
     return (
         "Спустившись ниже по склону, вы видите примятую и разбросанную вырванную траву. "
         "Похоже, здесь кто-то что-то потерял и долго пытался найти.\n\n"
@@ -2436,11 +2639,18 @@ def handle_external_location_action(
             or action.startswith("Использовать: ")
             or _is_equipped_skill_action(player, action)
         ):
+            old_kills=int(player.get("pve_kills") or 0);old_level=int(player.get("level") or 1)
             text, buttons = handle_battle_action(player, action, rng)
+            try:
+                from services.referral_service import process_referral_event
+                if int(player.get("pve_kills") or 0)>old_kills:process_referral_event(storage,player,"first_mob",player.get("pve_kills"))
+                if int(player.get("level") or 1)>old_level:process_referral_event(storage,player,"level_reached",player.get("level"))
+            except Exception:pass
             storage.update_player(player)
             location_id = current_location_id(player)
             return LocationResponse(text, buttons or location_buttons(location_id), player.get("current_zone", location_id))
-        return LocationResponse("⚔️ Сейчас вы в бою. Сначала завершите бой или сбегите.", battle_buttons(player), player.get("current_zone", "hilly_meadows_battle"))
+        from services.text_runtime import game_text
+        return LocationResponse(game_text("error.in_battle", "⚔️ Сейчас вы в бою. Сначала завершите бой или сбегите."), battle_buttons(player), player.get("current_zone", "hilly_meadows_battle"))
 
     if isinstance(player.get("active_timer"), dict):
         active_timer = player.get("active_timer") or {}
@@ -2459,6 +2669,58 @@ def handle_external_location_action(
                 search_timer_buttons(),
                 player.get("current_zone", "hilly_meadows"),
             )
+
+    if str(player.get("current_zone") or "").endswith("_camp") and player.get("current_camp_id"):
+        try:
+            from services import camp_runtime
+
+            camp = camp_runtime.published(str(player.get("current_camp_id") or ""))
+            if player.get("constructor_npc_id"):
+                from services.world_runtime import try_handle_npc_action
+                scene = try_handle_npc_action(player, action)
+                if scene:
+                    if scene.get("kind") == "leave_npc":
+                        player.pop("constructor_npc_id", None)
+                        player.pop("constructor_npc_dialogue_id", None)
+                        storage.update_player(player)
+                        return LocationResponse(str((camp or {}).get("entry_text") or (camp or {}).get("full_text") or "Вы снова в лагере."), camp_buttons(player), str(player.get("current_zone") or ""))
+                    player["constructor_npc_dialogue_id"] = str(scene.get("dialogue_id") or "")
+                    storage.update_player(player)
+                    return LocationResponse(str(scene.get("text") or ""), scene.get("buttons") or [["Завершить разговор"]], str(player.get("current_zone") or ""))
+            npc_id = camp_runtime.npc_id_for_label(camp or {}, action,player)
+            if npc_id:
+                from services.world_runtime import render_npc
+                scene = render_npc(npc_id, player=player)
+                if scene:
+                    player["constructor_npc_id"] = npc_id
+                    player["constructor_npc_dialogue_id"] = str(scene.get("dialogue_id") or "")
+                    storage.update_player(player)
+                    return LocationResponse(str(scene.get("text") or ""), scene.get("buttons") or [["Завершить разговор"]], str(player.get("current_zone") or ""))
+            routed, target_action, route_text = camp_runtime.prepare_service_route(player, camp or {}, action)
+            if routed:
+                if not target_action:
+                    storage.update_player(player)
+                    return LocationResponse(route_text, camp_buttons(player), str(player.get("current_zone") or ""))
+                from services.market_service import MARKET_ACTIONS, handle_market_action
+                if target_action in MARKET_ACTIONS:
+                    response = handle_market_action(storage, player, target_action)
+                    text = (route_text + "\n\n" if route_text else "") + str(response.text or "")
+                    return LocationResponse(text, response.buttons, str(player.get("current_zone") or ""))
+                from services.crafting_service import CRAFT_ACTIONS, should_handle_crafting_action, handle_crafting_action
+                if target_action in CRAFT_ACTIONS or should_handle_crafting_action(player, target_action):
+                    response = handle_crafting_action(storage, player, target_action)
+                    text = (route_text + "\n\n" if route_text else "") + str(response.text or "")
+                    return LocationResponse(text, response.buttons, str(player.get("current_zone") or ""), scheduled_timer=response.scheduled_timer)
+                from services.city_service import process_world_action
+                response = process_world_action(storage, player, target_action, str(player.get("platform") or "telegram"))
+                text = (route_text + "\n\n" if route_text else "") + str(response.text or "")
+                return LocationResponse(text, response.buttons, str(player.get("current_zone") or ""), scheduled_timer=response.scheduled_timer)
+            handled, service_text = camp_runtime.use_service(player, camp or {}, action)
+            if handled:
+                storage.update_player(player)
+                return LocationResponse(service_text, camp_buttons(player), str(player.get("current_zone") or ""))
+        except Exception:
+            pass
 
     if action == BACK:
         return current_location_back_response(player)
@@ -2527,6 +2789,17 @@ def handle_external_location_action(
         return handle_fortress_action(storage, player, action)
     if action == START_SEARCH:
         return start_search(storage, player, rng)
+    # Действие опубликованной кнопки мира. Для остальных action типов пока
+    # остаются их штатные роутеры; здесь обрабатывается конкретная связь camp.
+    try:
+        from services.world_runtime import location_buttons as live_buttons
+
+        current_id = current_location_id(player, default="")
+        live_button = next((button for button in live_buttons(current_id) if str((button or {}).get("text") or "") == str(action)), None)
+        if live_button and live_button.get("action") == "open_camp":
+            return enter_camp(storage, player, str(live_button.get("target") or ""))
+    except Exception:
+        pass
     if action == SET_CAMP:
         return enter_camp(storage, player)
     if action == BREAK_CAMP:
@@ -2540,7 +2813,7 @@ def handle_external_location_action(
         player["current_zone"] = f"{location_id}_camp"
         player["location_id"] = f"{location_id}_camp"
         storage.update_player(player)
-        return LocationResponse(camp_text(location_id), camp_buttons(), f"{location_id}_camp")
+        return LocationResponse(camp_text(location_id), camp_buttons(player), f"{location_id}_camp")
     if action in CAMP_DISHES:
         return cook_dish(storage, player, action)
     if action.startswith("Приготовить: "):

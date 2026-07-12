@@ -381,6 +381,42 @@ def load_all_item_definitions() -> list[dict[str, Any]]:
         if item_id:
             seen_ids.add(item_id)
         definitions.append(_apply_icon_override(item, overrides) if overrides else item)
+
+    # ТЗ 2.0: опубликованные предметы конструктора являются live-источником
+    # для Telegram/VK/web без ручного переноса в data/items_*.json. Они имеют
+    # приоритет над статическими определениями с тем же ID; черновики,
+    # отключённые и архивные записи в runtime не попадают.
+    try:
+        from services import item_constructor_service as constructor
+
+        published = constructor.store().list(status=constructor.STATUS_PUBLISHED)
+    except Exception:
+        published = []
+    if published:
+        positions = {
+            str(item.get("id") or item.get("item_id") or "").strip(): index
+            for index, item in enumerate(definitions)
+        }
+        for envelope in published:
+            item_id = str(envelope.get("id") or "").strip()
+            if not item_id:
+                continue
+            raw = dict(envelope.get("data") or {})
+            raw["id"] = item_id
+            raw.setdefault("item_id", item_id)
+            raw.setdefault("name_ru", raw.get("name") or item_id)
+            # Поля конструктора и старого registry используют разные имена.
+            raw.setdefault("type", raw.get("item_type") or "normal")
+            raw.setdefault("slot", raw.get("equip_slot") or "")
+            raw.setdefault("image", raw.get("icon") or "")
+            raw["constructor_version"] = envelope.get("version")
+            raw["constructor_live"] = True
+            cooked = _apply_icon_override(raw, overrides) if overrides else raw
+            if item_id in positions:
+                definitions[positions[item_id]] = cooked
+            else:
+                positions[item_id] = len(definitions)
+                definitions.append(cooked)
     return definitions
 
 

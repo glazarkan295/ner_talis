@@ -50,8 +50,8 @@ class ProfileLayoutServiceTest(unittest.TestCase):
     def test_overview_tab_warns(self):
         env = layout.store().create("t_ov", {"_kind": "profile_tab", "label": "Обзор"})
         res = layout.validate("profile_tab", env)
-        self.assertTrue(res["ok"], res["errors"])  # предупреждение, не ошибка
-        self.assertTrue(any("Обзор" in w for w in res["warnings"]))
+        self.assertFalse(res["ok"])
+        self.assertTrue(any("Обзор" in e for e in res["errors"]))
 
     def test_block_type_enum(self):
         bad = layout.store().create("b_bad", {"_kind": "profile_block", "name": "Блок", "block_type": "teleporter"})
@@ -62,6 +62,20 @@ class ProfileLayoutServiceTest(unittest.TestCase):
     def test_theme_requires_title(self):
         self.assertFalse(layout.validate("profile_theme", layout.store().create("th_bad", {"_kind": "profile_theme", "title": ""}))["ok"])
         self.assertTrue(layout.validate("profile_theme", layout.store().create("th_ok", {"_kind": "profile_theme", "title": "Тёмная"}))["ok"])
+
+    def test_settings_validation_and_runtime(self):
+        bad = layout.store().create("settings_bad", {"_kind": "profile_settings", "title": ""})
+        self.assertFalse(layout.validate("profile_settings", bad)["ok"])
+        settings = layout.store().create("settings_main", {
+            "_kind": "profile_settings", "title": "Основной", "system_name": "main",
+            "profile_type": "main", "is_default": True, "use_for_players": True,
+            "services_enabled": False, "profile_title": "Личный кабинет",
+        })
+        self.assertTrue(layout.validate("profile_settings", settings)["ok"])
+        layout.store().set_status("settings_main", layout.STATUS_PUBLISHED, force=True)
+        runtime = layout.published_layout()["settings"]
+        self.assertEqual(runtime["profile_title"], "Личный кабинет")
+        self.assertFalse(runtime["services_enabled"])
 
     def test_published_layout_runtime(self):
         # Опубликованная раскладка: вкладки по порядку + их блоки + оформление.
@@ -81,6 +95,11 @@ class ProfileLayoutServiceTest(unittest.TestCase):
         char_tab = result["tabs"][0]
         self.assertEqual([b["type"] for b in char_tab["blocks"]], ["stats"])
         self.assertEqual(result["theme"]["button_color"], "#b58a4b")
+
+    def test_player_admin_visibility_conditions_and_full_theme_are_exposed(self):
+        layout.store().create("conditional",{"_kind":"profile_tab","label":"Сервисы","tab_key":"services","condition":"has_services","show_player":True,"show_admin":False,"empty_text":"Нет сервисов"});layout.store().set_status("conditional",layout.STATUS_PUBLISHED,force=True)
+        layout.store().create("theme_full",{"_kind":"profile_theme","title":"Old style","primary_color":"#aa8844","negative_color":"#cc3333","border_radius":8,"item_image_size":96,"compact_mode":True});layout.store().set_status("theme_full",layout.STATUS_PUBLISHED,force=True)
+        result=layout.published_layout();tab=result["tabs"][0];self.assertEqual(tab["condition"],"has_services");self.assertFalse(tab["show_admin"]);self.assertEqual(tab["empty_text"],"Нет сервисов");self.assertEqual(result["theme"]["item_image_size"],96);self.assertTrue(result["theme"]["compact_mode"])
 
     def test_where_used_matches_tab_key(self):
         layout.store().create("tab_char", {"_kind": "profile_tab", "label": "Персонаж", "tab_key": "character"})
@@ -127,6 +146,7 @@ class ProfileLayoutApiTest(unittest.TestCase):
         token = self._token()
         meta = self.client.get("/api/admin/v2/profile-layout/meta", headers=self._auth(token)).json()
         self.assertIn("profile_tab", meta["kinds"])
+        self.assertIn("profile_settings", meta["kinds"])
         self.assertIn("inventory", meta["blockTypes"])
         create = self.client.post("/api/admin/v2/profile-layout/profile_tab", headers=self._auth(token), json={"id": "t_char", "data": {"label": "Персонаж", "tab_key": "character"}})
         self.assertEqual(create.status_code, 200, create.text)

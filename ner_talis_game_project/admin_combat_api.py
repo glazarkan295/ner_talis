@@ -35,6 +35,11 @@ def _meta_extra(_svc: Any) -> dict[str, Any]:
         "mixedOrderTypes": list(svc.MIXED_ORDER_TYPES),
         "enemyOrderTypes": list(svc.ENEMY_ORDER_TYPES),
         "enemyTargetRules": list(svc.ENEMY_TARGET_RULES),
+        "participantTypes": list(svc.PARTICIPANT_TYPES),
+        "participantSides": list(svc.PARTICIPANT_SIDES),
+        "allyBehaviors": list(svc.ALLY_BEHAVIORS),
+        "allyCommands": list(svc.ALLY_COMMANDS),
+        "pveTypes":list(svc.PVE_TYPES),"pveSources":list(svc.PVE_SOURCES),"turnOrders":list(svc.TURN_ORDERS),"mobEscapeConditions":list(svc.MOB_ESCAPE_CONDITIONS),"mobEscapeModes":list(svc.MOB_ESCAPE_MODES),
         "defaultTurnSeconds": svc.DEFAULT_TURN_SECONDS,
     }
 

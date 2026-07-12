@@ -82,7 +82,9 @@ class DashboardTest(unittest.TestCase):
         # Текстовый конструктор — flag-gated (use_v2_texts).
         self.assertEqual(cls.status_for("text")["flag"], "use_v2_texts")
         # Предметы — пока справочник для рантайма.
-        self.assertEqual(cls.status_for("item")["category"], "reference")
+        self.assertEqual(cls.status_for("item")["category"], "live")
+        self.assertEqual(cls.status_for("effect")["category"], "live")
+        self.assertEqual(cls.status_for("reputation")["category"], "live")
 
     def test_requires_auth(self):
         self.assertEqual(self.client.get("/api/admin/v2/dashboard").status_code, 401)

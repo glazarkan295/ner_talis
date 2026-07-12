@@ -187,6 +187,19 @@ class WorldRegistryTest(unittest.TestCase):
         self.assertFalse(report["ok"])
         self.assertTrue(any(c["kind"] == "button" and not c["ok"] for c in report["checks"]))
 
+    def test_where_used_builds_typed_world_graph(self):
+        registry.create_content("location", "hub", {"name": "Узел", "type": "wild"})
+        registry.create_content("location", "dest", {"name": "Цель", "type": "city"})
+        registry.create_content("button", "go", {
+            "text": "В путь", "owner_location": "hub", "action": "goto_location", "target": "dest",
+        })
+        registry.create_content("transition", "road", {"from_location": "hub", "to_location": "dest"})
+        usage = registry.where_used("location", "dest")
+        self.assertEqual({(row["kind"], row["id"]) for row in usage["items"]}, {
+            ("button", "go"), ("transition", "road"),
+        })
+        self.assertEqual(usage["total"], 2)
+
     def test_mob_validation_ok_with_currency_drop(self):
         env = registry.create_content("mob", "wolf", {
             "name": "Волк", "type": "beast", "min_level": 1, "max_level": 5,
@@ -208,6 +221,24 @@ class WorldRegistryTest(unittest.TestCase):
         registry.create_content("location", "city1", {"name": "Город", "type": "city", "short_description": "x"})
         good = registry.validate_envelope(registry.get_content("button", "btn_go"))
         self.assertTrue(good["ok"], good["errors"])
+
+    def test_open_camp_button_requires_published_bound_camp(self):
+        os.environ["CAMP_CONSTRUCTOR_PATH"] = str(Path(self._tmp.name) / "camps.json")
+        self.addCleanup(lambda: os.environ.pop("CAMP_CONSTRUCTOR_PATH", None))
+        from services import camp_constructor_service as camps
+
+        registry.create_content("location", "forest", {"name": "Лес", "type": "wild"})
+        camps.store().create("refuge", {"name": "Убежище", "camp_type": "safe", "locations": ["forest"]})
+        button = registry.create_content("button", "to_refuge", {
+            "text": "В убежище", "owner_location": "forest", "action": "open_camp",
+            "target": "refuge", "show_telegram": True,
+        })
+        draft = registry.validate_envelope(button)
+        self.assertFalse(draft["ok"])
+        self.assertTrue(any("не опубликован" in error for error in draft["errors"]), draft["errors"])
+        camps.store().set_status("refuge", camps.STATUS_PUBLISHED, force=True)
+        published = registry.validate_envelope(button)
+        self.assertTrue(published["ok"], published["errors"])
 
     def test_transition_validation(self):
         registry.create_content("location", "loc_a", {"name": "A", "type": "wild", "short_description": "x"})
@@ -255,9 +286,10 @@ class WorldApiTest(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         base = Path(self._tmp.name)
-        keys = ("WORLD_CONTENT_PATH", "ADMIN_ROLES_PATH", "ADMIN_AUDIT_LOG_PATH", "TELEGRAM_ADMIN_USER_IDS")
+        keys = ("WORLD_CONTENT_PATH", "LOCATION_RUNTIME_STATE_PATH", "ADMIN_ROLES_PATH", "ADMIN_AUDIT_LOG_PATH", "TELEGRAM_ADMIN_USER_IDS")
         self._saved = {k: os.environ.get(k) for k in keys}
         os.environ["WORLD_CONTENT_PATH"] = str(base / "world.json")
+        os.environ["LOCATION_RUNTIME_STATE_PATH"] = str(base / "weekly_state.json")
         os.environ["ADMIN_ROLES_PATH"] = str(base / "roles.json")
         os.environ["ADMIN_AUDIT_LOG_PATH"] = str(base / "audit.log")
         os.environ["TELEGRAM_ADMIN_USER_IDS"] = "999"
@@ -447,6 +479,61 @@ class WorldApiTest(unittest.TestCase):
         report = self.client.post("/api/admin/v2/world/location/hub/test-run", headers=self._auth(token), json={})
         self.assertEqual(report.status_code, 200, report.text)
         self.assertTrue(report.json()["report"]["ok"])
+
+    def test_usage_and_protected_delete_endpoints(self):
+        token = self._token("999")
+        self._create_location(token, cid="hub")
+        self._create_location(token, cid="dest")
+        self.client.post(
+            "/api/admin/v2/world/transition", headers=self._auth(token),
+            json={"id": "road", "data": {"from_location": "hub", "to_location": "dest"}},
+        )
+        usage = self.client.get("/api/admin/v2/world/location/dest/usage", headers=self._auth(token))
+        self.assertEqual(usage.status_code, 200, usage.text)
+        self.assertEqual(usage.json()["usage"]["total"], 1)
+
+        blocked = self.client.request(
+            "DELETE", "/api/admin/v2/world/location/dest", headers=self._auth(token),
+            json={"confirm": "dest", "reason": "cleanup"},
+        )
+        self.assertEqual(blocked.status_code, 409, blocked.text)
+        deleted_link = self.client.request(
+            "DELETE", "/api/admin/v2/world/transition/road", headers=self._auth(token),
+            json={"confirm": "road", "reason": "cleanup"},
+        )
+        self.assertEqual(deleted_link.status_code, 200, deleted_link.text)
+        deleted = self.client.request(
+            "DELETE", "/api/admin/v2/world/location/dest", headers=self._auth(token),
+            json={"confirm": "dest", "reason": "cleanup"},
+        )
+        self.assertEqual(deleted.status_code, 200, deleted.text)
+        self.assertIsNone(registry.get_content("location", "dest"))
+
+    def test_weekly_limit_runtime_view_deplete_and_restore(self):
+        token = self._token("999")
+        registry.create_content("location", "forest", {"name": "Лес", "type": "wild"})
+        registry.create_content("location_weekly_limit", "herbs", {
+            "name": "Травы", "location": "forest", "limit_type": "resource",
+            "linked_object": "healing_herb", "total_stock": 50,
+        })
+        registry.set_status("location_weekly_limit", "herbs", registry.STATUS_PUBLISHED, force=True)
+        listed = self.client.get(
+            "/api/admin/v2/world/limits/runtime", params={"location_id": "forest"}, headers=self._auth(token),
+        )
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertEqual(listed.json()["items"][0]["remaining"], 50)
+        depleted = self.client.post(
+            "/api/admin/v2/world/limits/runtime/herbs/set", headers=self._auth(token),
+            json={"location_id": "forest", "value": 0, "reason": "тест истощения"},
+        )
+        self.assertEqual(depleted.status_code, 200, depleted.text)
+        self.assertEqual(depleted.json()["remaining"], 0)
+        restored = self.client.post(
+            "/api/admin/v2/world/limits/runtime/herbs/set", headers=self._auth(token),
+            json={"location_id": "forest", "value": 100, "reason": "тест восстановления"},
+        )
+        self.assertEqual(restored.status_code, 200, restored.text)
+        self.assertEqual(restored.json()["remaining"], 50)  # API clamps to total_stock
 
     def test_test_run_requires_permission(self):
         rbac.set_role_override("telegram", "999", rbac.READ_ONLY)

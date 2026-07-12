@@ -59,7 +59,7 @@ CURRENCIES = ("copper", "silver", "gold", "magic_gold", "ancient")  # §10
 RESTRICTIONS = (  # §13
     "block_city", "block_starting", "block_market", "block_black_market",
     "block_casino", "block_transfer", "block_chat", "block_raids",
-    "block_quests", "force_fortress", "raise_guard_check", "raise_raid_chance",
+    "block_quests", "block_npc", "block_delivery", "block_trade", "block_craft", "block_transitions", "block_event", "force_fortress", "raise_guard_check", "raise_raid_chance",
     "debuff", "debtor_mark",
 )
 # --- ТЗ 2.0 (файл 10 ч.1): стадии, оплата и снятие --------------------------
@@ -145,6 +145,14 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         errors.append("Минимальная сумма не может быть отрицательной.")
     if amin is not None and amax is not None and amin > amax:
         errors.append("Минимальная сумма больше максимальной.")
+    formula_id = str(data.get("amount_formula_id") or "").strip()
+    if formula_id:
+        from services import formula_constructor_service as formulas
+        formula = formulas.store().get(formula_id)
+        if not formula:
+            errors.append(f"Формула суммы {formula_id} не найдена.")
+        elif formula.get("status") != formulas.STATUS_PUBLISHED:
+            errors.append(f"Формула суммы {formula_id} не опубликована.")
 
     # Сроки (§11) — неотрицательные дни.
     for key in ("first_deadline_days", "second_deadline_days", "interest_start_day", "restriction_start_day"):
@@ -212,6 +220,10 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         warnings.append("Оплата у NPC включена, но NPC оплаты не указан (§19).")
     if data.get("payment_commission") not in (None, "") and (_num(data.get("payment_commission")) is None or _num(data.get("payment_commission")) < 0):
         errors.append("Комиссия оплаты — неотрицательное число.")
+    if data.get("payment_formula_id"):
+        from services import formula_constructor_service as formulas
+        formula=formulas.store().get(str(data["payment_formula_id"]));
+        if not formula or formula.get("status")!=formulas.STATUS_PUBLISHED:errors.append("Формула оплаты не найдена или не опубликована.")
     for method in (data.get("removal_methods") or []):
         if str(method or "").strip() and str(method).strip() not in REMOVAL_METHODS:
             warnings.append(f"Способ снятия «{method}» не из списка.")

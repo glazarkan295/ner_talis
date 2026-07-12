@@ -17,7 +17,7 @@ def _val(data):
 
 class WorldEventRepeatTest(unittest.TestCase):
     def test_repeat_types_exposed(self):
-        self.assertEqual(wes.REPEAT_TYPES, ("none", "weekly", "monthly", "yearly"))
+        self.assertEqual(wes.REPEAT_TYPES, ("none", "daily", "weekly", "monthly", "yearly"))
 
     def test_weekly_requires_valid_weekday(self):
         bad = _val({"name": "X", "repeat_enabled": True, "repeat_type": "weekly", "repeat_weekday": 9})

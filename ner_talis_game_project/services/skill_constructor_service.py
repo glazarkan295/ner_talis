@@ -56,7 +56,7 @@ MANA_PATHS = ("fire", "water", "earth", "air", "support", "death", "life")
 PATHS = ("none",) + SPIRIT_PATHS + MANA_PATHS
 PATHS_BY_BRANCH = {"neutral": ("none",), "spirit": SPIRIT_PATHS, "mana": MANA_PATHS}
 
-RESOURCE_TYPES = ("none", "spirit", "mana")  # ресурс расхода
+RESOURCE_TYPES = ("none", "spirit", "mana", "energy", "hp")  # ресурс расхода
 DAMAGE_TYPES = ("none", "physical", "magic", "mixed")
 TARGET_MODES = (  # цель применения
     "self", "single_enemy", "all_enemies", "ally", "all_allies", "passive",
@@ -166,6 +166,19 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         errors.append("Индекс выбора — не число.")
     elif idx is not None and idx < 0:
         errors.append("Индекс выбора не может быть отрицательным.")
+    learn_cost = _num(data.get("learn_cost_skill_points"))
+    if data.get("learn_cost_skill_points") not in (None, "") and (learn_cost is None or learn_cost < 0):
+        errors.append("Цена изучения должна быть неотрицательным числом.")
+    source_type = str(data.get("source_type") or "standard")
+    source_fields = {"item": "linked_item_id", "mob": "linked_mob_id", "achievement": "linked_achievement_id"}
+    if source_type in source_fields and not str(data.get(source_fields[source_type]) or "").strip():
+        errors.append(f"Для источника «{source_type}» не выбран связанный объект.")
+    if (data.get("special") or source_type == "special") and data.get("hidden") and not str(data.get("unlock_condition") or "").strip():
+        errors.append("Скрытый особый навык должен иметь условие открытия.")
+    if data.get("ammo_enabled") and not str(data.get("ammo_item_id") or "").strip():
+        errors.append("Для навыка с боеприпасами не выбран предмет боеприпаса.")
+    if is_passive and data.get("passive_slot_cost") not in (None, "") and (_num(data.get("passive_slot_cost")) or 0) < 1:
+        errors.append("Пассивный навык должен занимать минимум один пассивный слот.")
 
     # Модификаторы — список словарей с названием.
     modifiers = data.get("modifiers")
@@ -209,5 +222,18 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         warnings.append(f"Очень длинный откат (> {MAX_COOLDOWN_TURNS} ходов).")
     if threshold is not None and threshold > MAX_PATH_THRESHOLD:
         warnings.append(f"Порог открытия выше максимума пути ({MAX_PATH_THRESHOLD}).")
+
+    from services.formula_runtime import validate_references
+    errors.extend(validate_references(data, (
+        "damage_formula_id", "use_cost_formula_id", "learn_cost_formula_id",
+        "upgrade_cost_formula_id", "level_power_formula_id", "hp_formula_id",
+        "mana_formula_id", "spirit_formula_id", "energy_formula_id",
+    )))
+    for raw in list(data.get("apply_effect_ids") or []) + list(data.get("remove_effect_ids") or []):
+        effect_id = str(raw or "")
+        if effect_id:
+            from services.effect_constructor_service import published_definition
+            if not published_definition(effect_id):
+                errors.append(f"Эффект навыка «{effect_id}» не опубликован.")
 
     return {"ok": not errors, "errors": errors, "warnings": warnings}

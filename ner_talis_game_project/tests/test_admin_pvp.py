@@ -93,6 +93,10 @@ class PvpServiceTest(unittest.TestCase):
         self.assertIn("Приглашение", titles)
         self.assertIn("Победа", titles)
 
+    def test_full_tz_pvp_fields_validate(self):
+        env=pvp.store().create("full",{"name":"Криминальная засада","pvp_type":"team_vs_team","pvp_source":"ambush","action_order":"by_initiative","message_layout_mode":"compact","actions":[{"action":"attack","enabled":True}],"victory_rewards":[{"type":"proof_bag","object_id":"proof","amount":1}],"defeat_consequences":[{"type":"fine","object_id":"pvp_fine"}],"surrender_consequences":[{"type":"coins","amount":10}],"texts":[{"key":"victory","text":"Победа"}]})
+        self.assertTrue(pvp.validate(env)["ok"],pvp.validate(env)["errors"])
+
 
 class PvpApiTest(unittest.TestCase):
     def setUp(self):
@@ -136,6 +140,8 @@ class PvpApiTest(unittest.TestCase):
         types = {t["value"] for t in meta.json()["pvpTypes"]}
         self.assertIn("duel", types)
         self.assertIn("arena", types)
+        self.assertIn("ambush", meta.json()["pvpSources"])
+        self.assertIn("proof_bag", meta.json()["pvpOutcomes"])
 
     def test_create_validate_publish(self):
         token = self._token()
@@ -156,6 +162,41 @@ class PvpApiTest(unittest.TestCase):
         pv = self.client.post("/api/admin/v2/pvp/dl/preview", headers=self._auth(token), json={})
         self.assertEqual(pv.status_code, 200, pv.text)
         self.assertEqual(pv.json()["preview"]["pvp_type"], "Дуэль 1 на 1")
+
+    def test_shared_lifecycle_duplicate_review_restore_usage(self):
+        token = self._token()
+        self.assertEqual(self._create(token, pid="source").status_code, 200)
+
+        review = self.client.post(
+            "/api/admin/v2/pvp/source/review", headers=self._auth(token), json={"reason": "готово"},
+        )
+        self.assertEqual(review.status_code, 200, review.text)
+        self.assertEqual(review.json()["item"]["status"], "ready")
+
+        duplicate = self.client.post(
+            "/api/admin/v2/pvp/source/duplicate", headers=self._auth(token),
+            json={"id": "source_copy", "reason": "вариант"},
+        )
+        self.assertEqual(duplicate.status_code, 200, duplicate.text)
+        self.assertEqual(duplicate.json()["item"]["status"], "draft")
+
+        preview = self.client.get("/api/admin/v2/pvp/source/preview", headers=self._auth(token))
+        self.assertEqual(preview.status_code, 200, preview.text)
+        self.assertEqual(preview.json()["preview"]["pvp_type"], "Дуэль 1 на 1")
+
+        usage = self.client.get("/api/admin/v2/pvp/source/usage", headers=self._auth(token))
+        self.assertEqual(usage.status_code, 200, usage.text)
+        self.assertIn("used_by", usage.json()["usage"])
+
+        archived = self.client.post(
+            "/api/admin/v2/pvp/source/archive", headers=self._auth(token), json={"reason": "архив"},
+        )
+        self.assertEqual(archived.status_code, 200, archived.text)
+        restored = self.client.post(
+            "/api/admin/v2/pvp/source/restore", headers=self._auth(token), json={"reason": "вернуть"},
+        )
+        self.assertEqual(restored.status_code, 200, restored.text)
+        self.assertEqual(restored.json()["item"]["status"], "draft")
 
     def test_content_cannot_publish_readonly_cannot_create(self):
         rbac.set_role_override("telegram", "999", rbac.CONTENT)

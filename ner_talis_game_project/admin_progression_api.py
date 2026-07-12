@@ -36,6 +36,7 @@ def create_admin_levels_router(get_storage) -> Any:
         svc=level_svc, target_type="level", name_field="title", not_found="Уровень не найден.",
         perms=_perms((PERM_LEVEL_VIEW, PERM_LEVEL_CREATE, PERM_LEVEL_EDIT, PERM_LEVEL_VALIDATE,
                       PERM_LEVEL_PUBLISH, PERM_LEVEL_DISABLE, PERM_LEVEL_ARCHIVE, PERM_LEVEL_DELETE)),
+        meta_extra=lambda svc:{"entityTypes":[{"value":"rule","label":"Правило прогрессии"},{"value":"level","label":"Строка таблицы уровней"}]},
     )
 
 
@@ -55,7 +56,7 @@ def create_admin_registration_router(get_storage) -> Any:
         svc=reg_svc, target_type="registration", name_field="label", not_found="Шаг регистрации не найден.",
         perms=_perms((PERM_REGISTRATION_VIEW, PERM_REGISTRATION_CREATE, PERM_REGISTRATION_EDIT, PERM_REGISTRATION_VALIDATE,
                       PERM_REGISTRATION_PUBLISH, PERM_REGISTRATION_DISABLE, PERM_REGISTRATION_ARCHIVE, PERM_REGISTRATION_DELETE)),
-        meta_extra=lambda svc: {"stepTypes": [{"value": s, "label": svc.STEP_TYPE_LABELS.get(s, s)} for s in svc.STEP_TYPES]},
+        meta_extra=lambda svc: {"stepTypes": [{"value": s, "label": svc.STEP_TYPE_LABELS.get(s, s)} for s in svc.STEP_TYPES], "entityTypes": [{"value":"scenario","label":"Сценарий регистрации"},{"value":"step","label":"Отдельный шаг"}]},
     )
 
 
@@ -65,6 +66,6 @@ def create_admin_races_router(get_storage) -> Any:
         svc=race_svc, target_type="race", name_field="race_name", not_found="Раса не найдена.",
         perms=_perms((PERM_RACE_VIEW, PERM_RACE_CREATE, PERM_RACE_EDIT, PERM_RACE_VALIDATE,
                       PERM_RACE_PUBLISH, PERM_RACE_DISABLE, PERM_RACE_ARCHIVE, PERM_RACE_DELETE)),
-        meta_extra=lambda svc: {"stats": [{"value": s, "label": svc.STAT_LABELS.get(s, s)} for s in svc.STATS]},
+        meta_extra=lambda svc: {"stats": [{"value": s, "label": svc.STAT_LABELS.get(s, s)} for s in svc.STATS], "bonusTypes": list(svc.BONUS_TYPES)},
         import_fn_name="import_races",
     )

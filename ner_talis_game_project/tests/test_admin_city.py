@@ -41,7 +41,8 @@ class CityServiceTest(unittest.TestCase):
     def test_node_type_enum(self):
         bad = city.store().create("n_bad", {"_kind": "city_node", "name": "X", "node_type": "spaceport"})
         self.assertFalse(city.validate("city_node", bad)["ok"])
-        ok = city.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city"})
+        city.store().create("seldar_btn",{"_kind":"city_button","label":"Рынок","action":"open_market","node_id":"seldar"})
+        ok = city.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city","main_menu_text":"Главная площадь"})
         self.assertTrue(city.validate("city_node", ok)["ok"], city.validate("city_node", ok)["errors"])
 
     def test_button_action_and_target(self):
@@ -69,6 +70,25 @@ class CityServiceTest(unittest.TestCase):
         crim_bad = city.store().create("bm_bad", {"_kind": "criminal_zone", "name": "X", "raid_chance": 150})
         self.assertFalse(city.validate("criminal_zone", crim_bad)["ok"])
 
+    def test_full_city_links_texts_and_live_transition_costs(self):
+        from services import city_runtime
+        links={"sublocation_links":[{"sublocation_id":"pier","name":"Пристань","active":True}],"npc_links":[{"npc_id":"mayor","active":True}],"market_links":[{"market_id":"central","market_type":"normal","active":True}],"workshop_links":[{"workshop_id":"forge","workshop_type":"forge","active":True}],"tavern_links":[{"tavern_id":"old_inn","name":"Старая таверна","active":True}],"event_links":[{"event_id":"fair","label":"Ярмарка","active":True}],"transition_links":[{"transition_id":"to_port","label":"В порт","target_id":"port_city","target_type":"city","energy_cost":2,"currency_cost":5,"active":True}],"governance":[{"townhall_id":"hall","fine_payment":True,"enabled":True}]}
+        city.store().create("main_btn",{"_kind":"city_button","label":"Рынок","action":"open_market","node_id":"main_city"});city.store().set_status("main_btn",city.STATUS_PUBLISHED,force=True)
+        city.store().create("main_city",{"_kind":"city_node","name":"Селдар","node_type":"city","city_type":"capital","main_menu_text":"Центр","entry_text":"Вход","exit_text":"Выход",**links});city.store().set_status("main_city",city.STATUS_PUBLISHED,force=True)
+        city.store().create("dark",{"_kind":"criminal_zone","name":"Тёмные переулки","node_id":"main_city","raid_chance":100,"fine_amount":77,"raid_text":"Облава"});city.store().set_status("dark",city.STATUS_PUBLISHED,force=True)
+        city.store().create("port_btn",{"_kind":"city_button","label":"Назад","action":"goto_node","node_id":"port_city","target_node_id":"main_city"});city.store().set_status("port_btn",city.STATUS_PUBLISHED,force=True)
+        city.store().create("port_city",{"_kind":"city_node","name":"Порт","node_type":"city","city_type":"port","main_menu_text":"Порт"});city.store().set_status("port_city",city.STATUS_PUBLISHED,force=True)
+        view=city_runtime.node_runtime_view("main_city");buttons=[x[0] for x in city_runtime.render_node(view)["buttons"]]
+        for label in ("Пристань","NPC: mayor","Рынок","forge","Старая таверна","Ярмарка","В порт","Ратуша","Оплатить штрафы"):self.assertIn(label,buttons)
+        saved=os.environ.get("CITY_CONSTRUCTOR_LIVE");os.environ["CITY_CONSTRUCTOR_LIVE"]="1"
+        try:
+            player={"level":1,"energy":3,"current_energy":3,"money":10,"money_copper":10};response=city_runtime.try_handle("В порт","main_city",player=player)
+            self.assertEqual(response["node_id"],"port_city");self.assertEqual(player["energy"],1);self.assertEqual(player["money"],5)
+            raid=city_runtime.try_handle("Тёмные переулки","main_city",player=player);self.assertEqual(raid["text"],"Облава");self.assertEqual(player["active_fines"][-1]["current_amount"],77)
+        finally:
+            if saved is None:os.environ.pop("CITY_CONSTRUCTOR_LIVE",None)
+            else:os.environ["CITY_CONSTRUCTOR_LIVE"]=saved
+
     def test_runtime_node_view_published_only(self):
         from services import city_runtime
         city.store().create("seldar", {"_kind": "city_node", "name": "Селдар", "node_type": "city"})
@@ -93,10 +113,51 @@ class CityServiceTest(unittest.TestCase):
         self.assertIsNone(city_runtime.node_runtime_view("nope"))
         # Корневые узлы — опубликованный город.
         self.assertIn("seldar", [r["id"] for r in city_runtime.root_nodes()])
+        self.assertTrue(city_runtime.live_enabled())
 
     def test_runtime_flag_default_off(self):
         from services import city_runtime
         self.assertFalse(city_runtime.live_enabled())
+
+    def test_fortress_validation_and_runtime_fine_gate(self):
+        from services import city_runtime
+        invalid = city.store().create("bad_fort", {
+            "_kind": "city_node", "name": "Штрафной форт", "node_type": "fortress",
+            "fortress_type": "penalty", "penalty": True,
+        })
+        result = city.validate("city_node", invalid)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("текст входа" in e.lower() for e in result["errors"]))
+        self.assertTrue(any("правил штрафа" in e.lower() for e in result["errors"]))
+
+        city.store().create("fort", {
+            "_kind": "city_node", "name": "Крепость", "node_type": "fortress",
+            "fortress_type": "penalty", "entry_text": "Стража открывает ворота.",
+            "only_with_fine": True, "accepts_fined_players": True,
+            "exit_after_fine_payment": True, "exit_allowed": False,
+            "exit_denied_text": "Сначала оплатите штраф.", "npc_ids": ["warden"],
+            "event_ids": ["guard_check"], "events_allowed": True,
+        })
+        city.store().set_status("fort", city.STATUS_PUBLISHED, force=True)
+        city.store().create("yard", {"_kind": "city_node", "name": "Двор", "node_type": "square", "parent_id": "fort"})
+        city.store().set_status("yard", city.STATUS_PUBLISHED, force=True)
+        saved = os.environ.get("CITY_CONSTRUCTOR_LIVE")
+        try:
+            os.environ["CITY_CONSTRUCTOR_LIVE"] = "1"
+            denied = city_runtime.try_handle("Крепость", player={})
+            self.assertIn("штраф", denied["text"].lower())
+            fined = {"active_fine": {"status": "forced_collection", "current_amount": 10}}
+            entered = city_runtime.try_handle("Крепость", player=fined)
+            self.assertIn("Стража открывает", entered["text"])
+            blocked = city_runtime.try_handle("В город", current_node_id="yard", player=fined)
+            self.assertEqual(blocked["text"], "Сначала оплатите штраф.")
+            allowed = city_runtime.try_handle("В город", current_node_id="yard", player={})
+            self.assertIsNone(allowed)
+        finally:
+            if saved is None:
+                os.environ.pop("CITY_CONSTRUCTOR_LIVE", None)
+            else:
+                os.environ["CITY_CONSTRUCTOR_LIVE"] = saved
 
     def test_resolve_v2_context_ignores_non_v2_legacy_zone(self):
         # 18-CODEX §1: legacy zone не передаётся как V2-контекст, если это не
@@ -183,7 +244,7 @@ class CityServiceTest(unittest.TestCase):
 
         saved = os.environ.get("CITY_CONSTRUCTOR_LIVE")
         try:
-            os.environ["CITY_CONSTRUCTOR_LIVE"] = ""
+            os.environ["CITY_CONSTRUCTOR_LIVE"] = "0"
             self.assertIsNone(city_runtime.try_handle("Селдар"))  # флаг выкл → легаси
             os.environ["CITY_CONSTRUCTOR_LIVE"] = "1"
             self.assertTrue(city_runtime.live_enabled())
@@ -266,8 +327,9 @@ class CityApiTest(unittest.TestCase):
         meta = self.client.get("/api/admin/v2/city/meta", headers=self._auth(token)).json()
         self.assertIn("city_node", meta["kinds"])
         self.assertIn("townhall", meta["nodeTypes"])
-        create = self.client.post("/api/admin/v2/city/city_node", headers=self._auth(token), json={"id": "seldar", "data": {"name": "Селдар", "node_type": "city"}})
+        create = self.client.post("/api/admin/v2/city/city_node", headers=self._auth(token), json={"id": "seldar", "data": {"name": "Селдар", "node_type": "city","main_menu_text":"Главная площадь"}})
         self.assertEqual(create.status_code, 200, create.text)
+        self.client.post("/api/admin/v2/city/city_button",headers=self._auth(token),json={"id":"seldar_market","data":{"label":"Рынок","action":"open_market","node_id":"seldar"}})
         publish = self.client.post("/api/admin/v2/city/city_node/seldar/publish", headers=self._auth(token), json={"reason": "релиз"})
         self.assertEqual(publish.status_code, 200, publish.text)
         tree = self.client.get("/api/admin/v2/city/tree", headers=self._auth(token)).json()["tree"]

@@ -16,7 +16,12 @@ DEFAULT_SESSION_TTL_MINUTES = 1440
 
 
 def get_web_session_ttl_minutes() -> int:
-    raw_value = os.getenv("WEB_SESSION_TTL_MINUTES", str(DEFAULT_SESSION_TTL_MINUTES)).strip()
+    try:
+        from services.site_content_registry import active_site_settings
+        configured = active_site_settings().get("session_ttl_minutes")
+    except Exception:
+        configured = None
+    raw_value = str(configured if configured not in (None, "") else os.getenv("WEB_SESSION_TTL_MINUTES", str(DEFAULT_SESSION_TTL_MINUTES))).strip()
     try:
         value = int(raw_value)
     except ValueError:
@@ -26,7 +31,12 @@ def get_web_session_ttl_minutes() -> int:
 
 def get_site_base_url() -> str:
     """Return the public website base URL without a trailing slash."""
-    base_url = os.getenv("SITE_BASE_URL", "").strip()
+    try:
+        from services.site_content_registry import active_site_settings
+        base_url = str(active_site_settings().get("active_url") or "").strip()
+    except Exception:
+        base_url = ""
+    base_url = base_url or os.getenv("SITE_BASE_URL", "").strip()
     if not base_url:
         profile_url = os.getenv("SITE_PROFILE_BASE_URL", "https://example.com/profile").strip()
         if profile_url.endswith("/profile"):

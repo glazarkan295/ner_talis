@@ -131,6 +131,16 @@ def advance_player_time(player: dict[str, Any], now_ts: float | int | None = Non
     # реальное взаимодействие игрока с ботом.
     player["last_activity_at"] = datetime.fromtimestamp(now, tz=timezone.utc).isoformat()
     messages, _changed = _advance(player, now, count_activity=True)
+    try:
+        from services.effect_runtime_service import advance_time
+
+        report = advance_time(player, now=datetime.fromtimestamp(now, tz=timezone.utc))
+        if report["ticks"]:
+            messages.append("⏱ Сработали периодические эффекты.")
+        if report["removed"]:
+            messages.append("⌛ Некоторые временные эффекты завершились.")
+    except Exception:
+        pass
     _queue_messages(player, messages)
     return messages
 

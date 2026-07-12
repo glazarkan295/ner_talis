@@ -71,6 +71,60 @@ class CombatServiceTest(unittest.TestCase):
         self.assertTrue(res["ok"])
         self.assertTrue(any("групповых" in w for w in res["warnings"]))
 
+    def test_published_profile_is_resolved_by_runtime_specificity(self):
+        combat.store().create("global", {"name": "G", "scope": "global", "timer_enabled": True, "turn_seconds": 100, "priority": 1})
+        combat.store().set_status("global", combat.STATUS_PUBLISHED, force=True)
+        combat.store().create("wolf", {"name": "W", "scope": "mob", "scope_id": "wolf", "timer_enabled": True, "turn_seconds": 30})
+        combat.store().set_status("wolf", combat.STATUS_PUBLISHED, force=True)
+        self.assertEqual(combat.resolve_profile("mob", object_id="wolf")["turn_seconds"], 30)
+        self.assertEqual(combat.resolve_profile("pve", object_id="forest")["turn_seconds"], 100)
+
+    def test_combat_group_participants_validate_and_allies_fight(self):
+        from services.combat_group_runtime import attach_participants, apply_ally_phase, choose_enemy_target, damage_ally
+        import random
+        participants = [
+            {"participant_id": "hero", "participant_type": "player", "side": "player"},
+            {"participant_id": "friend", "participant_type": "player_ally", "side": "player_allies",
+             "name": "Союзник", "hp": 40, "damage": 12, "accuracy": 100,
+             "behavior": "weakest", "order": 5, "can_attack": True, "can_die": True,
+             "death_consequence": "remove_from_group"},
+            {"participant_id": "wolf", "participant_type": "mob", "side": "enemy"},
+        ]
+        env = combat.store().create("party", {"name": "Отряд", "scope": "pve", "participants": participants})
+        self.assertTrue(combat.validate(env)["ok"], combat.validate(env)["errors"])
+        battle = {
+            "combat_profile": env["data"], "player_state": {"current_hp": 50, "max_hp": 50},
+            "enemies": [{"name": "Сильный", "current_hp": 30}, {"name": "Слабый", "current_hp": 10}],
+        }
+        allies = attach_participants(battle)
+        self.assertEqual(allies[0]["name"], "Союзник")
+        log = []
+        apply_ally_phase(battle, random.Random(1), log)
+        self.assertEqual(battle["enemies"][1]["current_hp"], 0)
+        self.assertTrue(any("Союзник" in line for line in log))
+        allies[0]["behavior"] = "protect_player"
+        target = choose_enemy_target(battle, random.Random(2))
+        self.assertIs(target, allies[0])
+        damage_ally(target, 99, log, "Волк")
+        self.assertEqual(target["current_hp"], 0)
+        self.assertTrue(any("remove_from_group" in line for line in log))
+
+    def test_combat_group_rejects_invalid_participant(self):
+        env = combat.store().create("bad_party", {"name": "X", "scope": "pve", "participants": [
+            {"participant_id": "x", "participant_type": "dragon", "side": "nowhere", "hp": -1},
+        ]})
+        result = combat.validate(env)
+        self.assertFalse(result["ok"])
+        self.assertIn("неизвестный тип", " ".join(result["errors"]).lower())
+
+    def test_full_pve_profile_and_mob_escape_validate(self):
+        env = combat.store().create("pve_full", {"name": "Рейд", "scope": "pve", "pve_type": "raid_boss", "battle_source": "event_campaign", "turn_order": "initiative", "mob_escape_rules": [{"enabled": True, "mode": "boss_retreat", "condition_type": "hp_percent", "value": 10, "chance": 75, "success_text": "Босс отступает"}]})
+        self.assertTrue(combat.validate(env)["ok"], combat.validate(env)["errors"])
+        bad = combat.store().create("pve_bad", {"name": "Bad", "scope": "pve", "pve_type": "unknown", "mob_escape_rules": [{"enabled": True, "mode": "teleport", "condition_type": "unknown"}]})
+        errors = " ".join(combat.validate(bad)["errors"])
+        self.assertIn("тип PVE", errors)
+        self.assertIn("Побег моба", errors)
+
 
 class CombatApiTest(unittest.TestCase):
     def setUp(self):
@@ -110,6 +164,10 @@ class CombatApiTest(unittest.TestCase):
         body = meta.json()
         self.assertEqual(body["defaultTurnSeconds"], 100)
         self.assertIn("global", {s["value"] for s in body["scopes"]})
+        self.assertIn("npc_ally", body["participantTypes"])
+        self.assertIn("player_allies", body["participantSides"])
+        self.assertIn("raid_boss", body["pveTypes"])
+        self.assertIn("hp_percent", body["mobEscapeConditions"])
 
     def test_create_publish_flow(self):
         token = self._token()

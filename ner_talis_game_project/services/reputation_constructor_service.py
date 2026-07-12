@@ -3,7 +3,8 @@
 Запись = определение репутации: открытая/скрытая/частичная, область действия,
 диапазон значений, стадии, правила изменения, эффекты, скрытые метки и угасание.
 Хранение — EntityStore (data/reputation_constructor.json). Чистый слой данных +
-валидация + предпросмотр последствий; рантайм-применение — на вырост.
+валидация + предпросмотр последствий; рантайм-применение —
+``reputation_runtime_service``.
 
 UX-правило: игроку не показывать формулы и (для скрытой репутации) точное
 значение — только стадию/текст.
@@ -21,6 +22,7 @@ _HTML_RE = re.compile(r"<[^>]+>")
 
 VISIBILITY = ("visible", "hidden", "partial")
 VISIBILITY_LABELS = {"visible": "Открытая", "hidden": "Скрытая", "partial": "Частично скрытая"}
+REPUTATION_TYPES = ("open","hidden","faction","city","npc","criminal","trade","guild","event","temporary","permanent","positive","negative","service")
 SCOPE_TYPES = (
     "city", "district", "faction", "npc", "guild", "crime_group", "guards",
     "traders", "crafters", "location", "region", "race", "world_event",
@@ -28,10 +30,14 @@ SCOPE_TYPES = (
 )
 DISPLAY_MODES = ("number", "stage", "scale", "text")
 CHANGE_TRIGGERS = (
-    "quest_complete", "quest_fail", "trade", "crime", "fine_paid", "fine_unpaid",
-    "event_choice", "item_use", "mob_kill", "pvp_kill", "help_npc", "raid",
-    "achievement", "admin",
+    "event", "quest", "npc_dialogue", "purchase", "sale", "fine", "fine_paid",
+    "pvp", "pve", "mob_kill", "npc_kill", "help_npc", "craft", "delivery",
+    "promo", "achievement", "event_campaign", "world_event", "admin",
+    # Legacy hooks remain valid.
+    "quest_complete", "quest_fail", "trade", "crime", "fine_unpaid", "event_choice",
+    "item_use", "pvp_kill", "raid",
 )
+ACCESS_TYPES=("location","sublocation","camp","npc","dialogue","market","product","discount","service","quest","recipe","skill","item","achievement","event","hidden_event")
 DECAY_DIRECTIONS = ("toward_zero", "toward_default", "down_only", "up_only")
 
 _store = EntityStore(
@@ -68,6 +74,8 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
     visibility = str(data.get("visibility") or "visible").strip()
     if visibility not in VISIBILITY:
         errors.append(f"Неизвестная видимость: {visibility}.")
+    reputation_type=str(data.get("reputation_type") or ("hidden" if visibility=="hidden" else "open"))
+    if reputation_type not in REPUTATION_TYPES:errors.append(f"Неизвестный тип репутации: {reputation_type}.")
     scope = str(data.get("scope_type") or "").strip()
     if scope and scope not in SCOPE_TYPES:
         warnings.append(f"Область действия «{scope}» не из стандартного списка.")
@@ -103,6 +111,8 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
                 continue
             if smin > smax:
                 errors.append(f"Стадия #{i}: min больше max.")
+            for j,row in enumerate(st.get("accesses") or [],1):
+                if not isinstance(row,dict) or str(row.get("type") or "") not in ACCESS_TYPES:errors.append(f"Стадия #{i}, доступ #{j}: неизвестный тип.")
             ranges.append((smin, smax))
         ranges.sort()
         for a, b in zip(ranges, ranges[1:]):
@@ -119,6 +129,8 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
                 warnings.append(f"Правило #{i}: триггер «{trig}» не из списка.")
             if rule.get("change_value") not in (None, "") and _num(rule.get("change_value")) is None:
                 errors.append(f"Правило #{i}: изменение должно быть числом.")
+            if rule.get("change_value") in (None,"") and not rule.get("formula_id"):errors.append(f"Правило #{i}: нужно значение или формула.")
+            if _num(rule.get("daily_limit"),) is not None and _num(rule.get("daily_limit")) < 0:errors.append(f"Правило #{i}: дневной лимит не может быть отрицательным.")
 
     # Метки (item-reputation §3.8): нужен диапазон.
     for i, mark in enumerate(data.get("marks") or [], start=1):
@@ -197,3 +209,14 @@ def preview(data: dict[str, Any], value: Any, delta: Any = 0) -> dict[str, Any]:
         "current_marks": [m.get("name_ru") or m.get("mark_id") for m in active_marks(data, cur)],
         "next_marks": [m.get("name_ru") or m.get("mark_id") for m in active_marks(data, nxt)],
     }
+
+def usage_extra(storage:Any,reputation_id:str)->dict[str,Any]:
+    players=[]
+    for row in storage.list_player_audience_rows() if hasattr(storage,"list_player_audience_rows") else []:
+        gid=str(row.get("game_id") or "");player=storage.get_player_by_game_id(gid)
+        if any(str(reputation_id) in bucket for bucket in ((player or {}).get("reputations") or {},(player or {}).get("hidden_reputations") or {})):players.append(gid)
+    return {"players":players,"used_by":[f"player:{gid}" for gid in players]}
+
+def validate_delete(storage:Any,reputation_id:str)->None:
+    players=usage_extra(storage,reputation_id).get("players") or []
+    if players:raise ValueError("Репутация назначена игрокам и не может быть удалена: "+", ".join(players[:8]))

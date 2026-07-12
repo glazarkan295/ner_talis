@@ -12,3 +12,6 @@ export const createReputation = (id, data, reason) => post(base, { id, data, rea
 export const updateReputation = (id, data, reason) => requestAdminJson(`${base}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ data, reason }) });
 export const reputationLifecycle = (id, verb, reason) => post(`${base}/${encodeURIComponent(id)}/${verb}`, { reason });
 export const previewReputation = (id, value, delta) => post(`${base}/${encodeURIComponent(id)}/preview`, { value, delta });
+export const fetchReputationUsage = (id) => requestAdminJson(`${base}/${encodeURIComponent(id)}/usage?_=${t()}`);
+export const fetchReputationHistory = (id) => requestAdminJson(`${base}/${encodeURIComponent(id)}/player-history?_=${t()}`);
+export const changePlayerReputation = (id, gameId, delta, reason, sourceId = "") => post(`${base}/${encodeURIComponent(id)}/players/${encodeURIComponent(gameId)}/change`, { delta, reason, source_id: sourceId });

@@ -8,6 +8,7 @@ import { fileToBase64, uploadImage } from "../../api/adminUploadsApi.js";
 export function ImageUploadField({ label, value, onChange, category, uploadKey, disabled }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [uploadInfo, setUploadInfo] = useState(null);
   const inputRef = useRef(null);
 
   async function onFile(event) {
@@ -17,10 +18,14 @@ export function ImageUploadField({ label, value, onChange, category, uploadKey, 
     if (!uploadKey) { setError("Сначала укажите ID объекта — он используется как имя файла."); return; }
     setBusy(true);
     setError("");
+    setUploadInfo(null);
     try {
       const base64 = await fileToBase64(file);
       const res = await uploadImage(category, uploadKey, base64, "загрузка из конструктора");
-      if (res?.path) onChange(res.path);
+      if (res?.path) {
+        onChange(res.path);
+        setUploadInfo(res);
+      }
     } catch (e) {
       setError(e?.message || "Не удалось загрузить изображение.");
     } finally {
@@ -49,6 +54,7 @@ export function ImageUploadField({ label, value, onChange, category, uploadKey, 
         </div>
       </div>
       {error ? <span className="ntv2-error">{error}</span> : null}
+      {uploadInfo ? <span className="ntv2-hint">{uploadInfo.width}×{uploadInfo.height} · {(uploadInfo.bytes / 1024).toFixed(1)} КБ · вариантов: {Object.keys(uploadInfo.variants || {}).length}</span> : null}
     </label>
   );
 }

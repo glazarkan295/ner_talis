@@ -24,7 +24,7 @@ from storage.json_storage import JsonStorage
 
 
 def _v(data):
-    return mq.validate({"data": data})
+    return mq.validate({"id":"test_rule","data": data})
 
 
 class MessageRuleServiceTest(unittest.TestCase):
@@ -69,6 +69,11 @@ class MessageRuleServiceTest(unittest.TestCase):
     def test_priority_zero_allowed(self):
         r = _v({"name": "Ждущее", "message_type": "system", "priority": 0})
         self.assertTrue(r["ok"], r["errors"])
+
+    def test_id_source_template_and_button_validation(self):
+        r=mq.validate({"data":{"name":"X","message_type":"system","source":"missing","message_template":"{{unknown}}","buttons":[{"action":"teleport"}]}})
+        self.assertFalse(r["ok"]);joined=" ".join(r["errors"])
+        self.assertIn("ID правила",joined);self.assertIn("не существует",joined);self.assertIn("неизвестные переменные",joined);self.assertIn("Кнопка",joined)
 
     def test_preview_priority_labels(self):
         self.assertEqual(mq.preview({"message_type": "combat"})["priority"], "после таймера")

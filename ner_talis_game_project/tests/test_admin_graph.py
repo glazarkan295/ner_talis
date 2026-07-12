@@ -20,6 +20,7 @@ from services import item_constructor_service as items
 from services import profile_layout_service as profile
 from services import site_content_registry as site
 from services import world_content_registry as wcr
+from services import world_event_service as world_events
 from services.admin_panel_service import (
     consume_or_read_admin_session,
     create_admin_panel_activation_token,
@@ -72,6 +73,7 @@ class GraphTestBase(unittest.TestCase):
         wcr.create_content(wcr.KIND_LOCATION_MOB_SPAWN, "sp_wolf", {"location": "forest", "mob_id": "wolf"})
         # Предмет в конструкторе + событие с валидной и битой ссылкой на предмет.
         items.store().create("sword", {"name": "Меч"})
+        world_events.store().create("storm", {"name":"Шторм","type":"weather","scope_type":"location","scope_id":"forest","modifiers":[{"type":"location_access","object_id":"cave","enabled":False}],"special_loot":[{"item_id":"sword","source":"search","chance":10}]})
         wcr.create_content(wcr.KIND_EVENT, "ev_find", {"name": "Находка", "text": "Вы нашли предмет", "location": "forest", "given_item": "sword", "required_item": "ghost_item"})
         # Сайт (_kind) + профиль (_kind): страница/блок и вкладка/блок.
         site.store().create("home", {"_kind": "page", "title": "Главная"})
@@ -95,6 +97,9 @@ class GraphServiceTest(GraphTestBase):
         self.assertIn(("button:b_go_cave", "location:cave", "leads_to"), pairs)
         self.assertIn(("location_mob_spawn:sp_wolf", "mob:wolf", "spawns"), pairs)
         self.assertIn(("event:ev_find", "item:sword", "gives_item"), pairs)
+        self.assertIn(("world_event:storm", "location:forest", "active_in"), pairs)
+        self.assertIn(("world_event:storm", "location:cave", "modifies"), pairs)
+        self.assertIn(("world_event:storm", "item:sword", "rewards_item"), pairs)
 
     def test_broken_edge_detected(self):
         g = graph.full_graph()

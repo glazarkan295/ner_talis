@@ -138,6 +138,7 @@ class ApiTest(unittest.TestCase):
         os.environ["TELEGRAM_ADMIN_USER_IDS"] = "999"
         self.addCleanup(self._restore)
         self.storage = JsonStorage(str(base / "players.json"))
+        self.storage.save_new_player({"game_id":"P1","name":"Игрок","level":1},"telegram","1")
         app = FastAPI()
         app.include_router(create_admin_reputation_router(lambda: self.storage))
         self.client = TestClient(app)
@@ -172,6 +173,18 @@ class ApiTest(unittest.TestCase):
 
     def test_requires_auth(self):
         self.assertEqual(self.client.get("/api/admin/v2/reputations/meta").status_code, 401)
+
+    def test_manual_player_change_and_history(self):
+        token=self._token();headers=self._auth(token)
+        self.client.post("/api/admin/v2/reputations",headers=headers,json={"id":"secret","data":{"name_ru":"Тайна","visibility":"hidden","reputation_type":"hidden","min_value":0,"max_value":100,"default_value":0,"show_to_player":False}})
+        self.assertEqual(self.client.post("/api/admin/v2/reputations/secret/publish",headers=headers,json={}).status_code,200)
+        changed=self.client.post("/api/admin/v2/reputations/secret/players/P1/change",headers=headers,json={"delta":15,"reason":"проверка","source_id":"manual"})
+        self.assertEqual(changed.status_code,200,changed.text);self.assertEqual(changed.json()["change"]["new_value"],15)
+        player=self.storage.get_player_by_game_id("P1");self.assertEqual(player["hidden_reputations"]["secret"],15);self.assertTrue(player["reputation_history"][0].get("admin"))
+        history=self.client.get("/api/admin/v2/reputations/secret/player-history",headers=headers).json()["history"]
+        self.assertEqual(history[0]["game_id"],"P1");self.assertEqual(history[0]["reason"],"проверка")
+        blocked=self.client.request("DELETE","/api/admin/v2/reputations/secret",headers=headers,json={"confirm":"secret","reason":"cleanup"})
+        self.assertEqual(blocked.status_code,409);self.assertIn("назначена игрокам",blocked.text)
 
 
 if __name__ == "__main__":

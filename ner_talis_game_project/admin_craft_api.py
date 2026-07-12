@@ -16,6 +16,7 @@ from fastapi import APIRouter
 
 from services import profession_constructor_service as professions
 from services import workshop_constructor_service as workshops
+from services import craft_material_group_service as material_groups
 from services.admin_constructor_factory import create_entity_constructor_router
 from services.admin_rbac import (
     PERM_PROFESSION_ARCHIVE, PERM_PROFESSION_CREATE, PERM_PROFESSION_DELETE,
@@ -24,6 +25,8 @@ from services.admin_rbac import (
     PERM_WORKSHOP_ARCHIVE, PERM_WORKSHOP_CREATE, PERM_WORKSHOP_DELETE,
     PERM_WORKSHOP_DISABLE, PERM_WORKSHOP_EDIT, PERM_WORKSHOP_PUBLISH,
     PERM_WORKSHOP_VALIDATE, PERM_WORKSHOP_VIEW,
+    PERM_RECIPE_ARCHIVE, PERM_RECIPE_CREATE, PERM_RECIPE_DELETE, PERM_RECIPE_DISABLE,
+    PERM_RECIPE_EDIT, PERM_RECIPE_PUBLISH, PERM_RECIPE_VALIDATE, PERM_RECIPE_VIEW,
 )
 
 _PROF_PERMS = {
@@ -71,4 +74,21 @@ def create_admin_workshop_router(get_storage) -> APIRouter:
             "workshopTypes": [{"value": w, "label": workshops.WORKSHOP_TYPE_LABELS.get(w, w)}
                               for w in workshops.WORKSHOP_TYPES],
         },
+    )
+
+
+def create_admin_material_group_router(get_storage) -> APIRouter:
+    return create_entity_constructor_router(
+        get_storage=get_storage,
+        prefix="/api/admin/v2/craft-material-groups",
+        tags=["admin-craft-material-groups"],
+        svc=material_groups,
+        perms={
+            "view": PERM_RECIPE_VIEW, "create": PERM_RECIPE_CREATE, "edit": PERM_RECIPE_EDIT,
+            "validate": PERM_RECIPE_VALIDATE, "publish": PERM_RECIPE_PUBLISH,
+            "disable": PERM_RECIPE_DISABLE, "archive": PERM_RECIPE_ARCHIVE, "delete": PERM_RECIPE_DELETE,
+        },
+        target_type="craft_material_group",
+        name_field="name",
+        not_found="Группа материалов не найдена.",
     )

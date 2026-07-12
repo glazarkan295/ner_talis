@@ -50,6 +50,12 @@ class _Import(BaseModel):
     reason: str = ""
 
 
+class _Duplicate(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    id: str = Field(min_length=2)
+    reason: str = ""
+
+
 def _bearer(request: Request | None) -> str:
     if request is None:
         return ""
@@ -118,6 +124,47 @@ def create_entity_constructor_router(
             raise HTTPException(status_code=404, detail=not_found)
         return {"ok": True, "item": item, "validation": svc.validate(item)}
 
+    @router.get("/{item_id}/usage")
+    def item_usage(item_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        _require(_session(request, token), perms["view"])
+        if svc.store().get(item_id) is None:
+            raise HTTPException(status_code=404, detail=not_found)
+        from services import admin_graph_service as graph
+        detail = graph.node_detail(graph.node_id(target_type, item_id))
+        if detail is None:
+            return {"ok": True, "usage": {"node": None, "incoming": [], "outgoing": [], "used_by": []}}
+        usage = {
+            "node": detail.get("node"),
+            "incoming": detail.get("incoming", []),
+            "outgoing": detail.get("outgoing", []),
+            "used_by": detail.get("used_by", []),
+        }
+        extra_func = getattr(svc, "usage_extra", None)
+        if callable(extra_func):
+            extra = extra_func(get_storage(), item_id)
+            if isinstance(extra, dict):
+                usage.update(extra)
+                usage["used_by"] = list(dict.fromkeys([*usage["used_by"], *(extra.get("used_by") or [])]))
+        return {"ok": True, "usage": usage}
+
+    @router.get("/{item_id}/preview")
+    def item_preview(item_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        _require(_session(request, token), perms["view"])
+        item = svc.store().get(item_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail=not_found)
+        renderer = getattr(svc, "preview", None)
+        if callable(renderer):
+            preview = renderer(item.get("data") or {})
+        else:
+            data = dict(item.get("data") or {})
+            preview = {
+                "title": _name(data, item_id), "id": item_id,
+                "status": item.get("status"), "description": data.get("description") or data.get("player_text") or "",
+                "data": data,
+            }
+        return {"ok": True, "preview": preview}
+
     @router.post("")
     def create_item(payload: _IdData, request: Request) -> dict[str, Any]:
         session = _session(request, payload.token)
@@ -147,6 +194,12 @@ def create_entity_constructor_router(
         published = getattr(svc, "STATUS_PUBLISHED", "published")
         if before.get("status") == published:
             _require(session, perms["publish"])
+        update_guard = getattr(svc, "validate_update", None)
+        if callable(update_guard):
+            try:
+                update_guard(before, payload.data)
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
         try:
             item = run_admin_operation(
                 session=session, action=f"{target_type}.edit",
@@ -188,6 +241,28 @@ def create_entity_constructor_router(
             reason=payload.reason,
         )
         return {"ok": True, "validation": result}
+
+    @router.post("/{item_id}/duplicate")
+    def duplicate_item(item_id: str, payload: _Duplicate, request: Request) -> dict[str, Any]:
+        """Создать независимый черновик из существующей записи."""
+        session = _session(request, payload.token)
+        _require(session, perms["create"])
+        source = svc.store().get(item_id)
+        if source is None:
+            raise HTTPException(status_code=404, detail=not_found)
+        try:
+            item = run_admin_operation(
+                session=session, action=f"{target_type}.duplicate",
+                func=lambda: svc.store().create(payload.id, dict(source.get("data") or {}), actor=_actor(session)),
+                target_type=target_type, target_id=payload.id,
+                target_name=_name(source.get("data"), payload.id),
+                before={"source_id": item_id, "source_version": source.get("version")},
+                after_func=lambda r: {"status": r.get("status"), "version": r.get("version")},
+                reason=payload.reason,
+            )
+        except EntityError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "item": item, "source_id": item_id}
 
     @router.post("/{item_id}/publish")
     def publish_item(item_id: str, payload: _Action, request: Request) -> dict[str, Any]:
@@ -245,9 +320,48 @@ def create_entity_constructor_router(
     def disable_item(item_id: str, payload: _Action, request: Request) -> dict[str, Any]:
         return _lifecycle(item_id, payload, request, perm=perms["disable"], action=f"{target_type}.disable", target_status=svc.STATUS_DISABLED)
 
+    @router.post("/{item_id}/review")
+    def review_item(item_id: str, payload: _Action, request: Request) -> dict[str, Any]:
+        """Перевести проверенный черновик в обязательный статус «На проверке»."""
+        session = _session(request, payload.token)
+        _require(session, perms["validate"])
+        item = svc.store().get(item_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail=not_found)
+        result = svc.validate(item)
+        if not result["ok"]:
+            raise HTTPException(status_code=400, detail="Проверка не пройдена: " + "; ".join(result["errors"]))
+        return _lifecycle(
+            item_id, payload, request, perm=perms["validate"],
+            action=f"{target_type}.review", target_status=svc.STATUS_READY,
+        )
+
     @router.post("/{item_id}/archive")
     def archive_item(item_id: str, payload: _Action, request: Request) -> dict[str, Any]:
         return _lifecycle(item_id, payload, request, perm=perms["archive"], action=f"{target_type}.archive", target_status=svc.STATUS_ARCHIVE)
+
+    @router.post("/{item_id}/restore")
+    def restore_item(item_id: str, payload: _Action, request: Request) -> dict[str, Any]:
+        """Восстановить архивную/отключённую запись как безопасный черновик."""
+        session = _session(request, payload.token)
+        _require(session, perms["edit"])
+        before = svc.store().get(item_id)
+        if before is None:
+            raise HTTPException(status_code=404, detail=not_found)
+        allowed = {svc.STATUS_ARCHIVE, svc.STATUS_DISABLED, svc.STATUS_ERROR}
+        if before.get("status") not in allowed:
+            raise HTTPException(status_code=400, detail="Восстановить можно запись из архива, отключённую запись или запись с ошибкой.")
+        try:
+            item = run_admin_operation(
+                session=session, action=f"{target_type}.restore",
+                func=lambda: svc.store().set_status(item_id, svc.store().initial_status, actor=_actor(session), force=True),
+                target_type=target_type, target_id=item_id, target_name=_name(before.get("data"), item_id),
+                before={"status": before.get("status")},
+                after_func=lambda r: {"status": r.get("status")}, reason=payload.reason,
+            )
+        except EntityError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "item": item}
 
     @router.delete("/{item_id}")
     def delete_item(item_id: str, payload: _Delete, request: Request) -> dict[str, Any]:
@@ -258,6 +372,18 @@ def create_entity_constructor_router(
         before = svc.store().get(item_id)
         if before is None:
             raise HTTPException(status_code=404, detail=not_found)
+        delete_guard = getattr(svc, "validate_delete", None)
+        if callable(delete_guard):
+            try: delete_guard(get_storage(), item_id)
+            except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+        # ТЗ: используемую сущность нельзя физически удалить. Проверяем единый
+        # граф непосредственно перед мутацией, чтобы UI нельзя было обойти.
+        from services import admin_graph_service as graph
+        detail = graph.node_detail(graph.node_id(target_type, item_id))
+        incoming = list((detail or {}).get("incoming") or [])
+        if incoming:
+            sources = ", ".join(sorted({str(edge.get("from") or "") for edge in incoming})[:8])
+            raise HTTPException(status_code=409, detail=f"Объект используется и не может быть удалён: {sources}.")
         run_admin_operation(
             session=session, action=f"{target_type}.delete",
             func=lambda: svc.store().delete(item_id),

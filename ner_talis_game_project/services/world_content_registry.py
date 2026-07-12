@@ -125,6 +125,8 @@ KINDS = (
 
 # Типы подлокаций (ТЗ 09 §5) и типы внутренних узлов (§6.3).
 SUBLOCATION_TYPES = (
+    "normal", "market", "craft", "tavern", "npc_zone", "criminal", "transition",
+    "rest", "quest_zone", "event_zone", "battle_zone", "hidden", "closed", "service",
     "cave", "dungeon", "labyrinth", "ruins", "house", "building", "mine",
     "catacombs", "raid_dungeon", "tower", "camp", "hidden_zone",
     "world_event_zone", "story", "quest", "raid", "special",
@@ -146,8 +148,11 @@ _DEAD_END_OK_TYPES = {"story", "event", "camp"}
 BUTTON_ACTIONS = (
     "goto_location", "show_message", "start_search", "start_battle",
     "open_shop", "open_npc", "open_quests", "open_raids", "give_item",
-    "take_item", "check_condition", "start_event", "open_fishing",
-    "open_camp", "go_back",
+    "take_item", "check_condition", "start_event", "start_event_group", "open_fishing",
+    "open_camp", "open_sublocation", "go_back", "look_around", "gather_resource",
+    "use_item", "open_dialog", "open_market", "open_craft", "open_tavern",
+    "open_profile", "open_inventory", "open_delivery", "open_promo", "open_quest",
+    "claim_reward", "confirm", "cancel", "hide_menu", "show_menu", "system_command",
 )
 # Действия кнопки, которые считаются «выходом» из локации (против тупика).
 _EXIT_BUTTON_ACTIONS = {"goto_location", "go_back"}
@@ -171,9 +176,16 @@ EVENT_RESULT_TYPES = (
 NPC_FUNCTIONS = (
     "shop", "dialog", "give_quest", "accept_quest", "repair", "pay_fines",
     "raids", "board", "craft", "teleport", "trade", "training", "informant",
+    "reward", "alchemy", "upgrade", "enchant", "remove_curse", "give_fine",
+    "find_player", "assassin_order", "guide", "combat_ally", "combat_enemy", "exchange_items",
 )
 # Виды NPC (доп.ТЗ §3): у разных видов свои поля в карточке.
-NPC_KINDS = ("regular", "quest_giver", "questioner", "trader", "special")
+NPC_KINDS = (
+    "regular", "trader", "quest_giver", "informant", "manager", "coordinator",
+    "crafter", "guard", "healer", "innkeeper", "fisher", "guide", "mercenary",
+    "ally", "enemy", "boss", "criminal", "event", "hidden", "technical",
+    "questioner", "special",
+)
 # Типы исходов событий (доп.ТЗ §5): не только бой.
 EVENT_OUTCOME_TYPES = (
     "battle", "trap", "resource", "item", "nothing", "battle_or_nothing",
@@ -352,6 +364,126 @@ def get_content(kind: str, content_id: str) -> dict[str, Any] | None:
         bucket = _load_all().get(kind, {})
     obj = bucket.get(str(content_id))
     return obj if isinstance(obj, dict) else None
+
+
+# Поля ссылок между сущностями мира. Это типизированный граф: совпадение ID в
+# произвольном тексте не считается связью, поэтому описание с таким же словом
+# не блокирует удаление.
+_REFERENCE_KEYS: dict[str, tuple[str, ...]] = {
+    KIND_LOCATION: (
+        "location", "location_id", "locations", "owner_location",
+        "parent_location", "from_location", "to_location", "return_location",
+        "start_location", "respawn_location", "entry_location",
+    ),
+    KIND_SUBLOCATION: ("sublocation", "sublocation_id", "parent_sublocation"),
+    KIND_SUBLOCATION_NODE: ("node", "node_id", "from_node", "to_node", "start_node"),
+    KIND_MOB: (
+        "mob", "mob_id", "mobs", "mob_ids", "boss_id", "boss_mob",
+        "battle_mob", "enemy_id",
+    ),
+    KIND_EVENT: ("event", "event_id", "events", "event_ids", "next_event", "linked_event"),
+    KIND_LOCATION_HIDDEN_EVENT: ("hidden_event", "hidden_event_id"),
+    KIND_NPC: ("npc", "npc_id", "npcs", "npc_ids", "npc_giver"),
+    KIND_BUTTON: ("button", "button_id", "buttons", "button_ids"),
+    KIND_QUEST: ("quest", "quest_id", "quests", "quest_ids"),
+    KIND_RAID: ("raid", "raid_id", "raids", "raid_ids"),
+    KIND_LOCATION_ZONE: ("zone", "zone_id", "zones", "zone_ids"),
+    KIND_LOCATION_RESOURCE: ("resource", "resource_id", "resources", "resource_ids"),
+    KIND_LOCATION_LOOT: ("loot", "loot_id", "loot_ids"),
+    KIND_LOCATION_WEEKLY_LIMIT: ("weekly_limit_id", "limit_id", "limit_ids"),
+    KIND_LOCATION_WEEKLY_ROTATION: ("rotation", "rotation_id", "rotation_ids"),
+}
+
+
+def _reference_values(value: Any) -> Iterator[str]:
+    if isinstance(value, (str, int)):
+        candidate = str(value).strip()
+        if candidate:
+            yield candidate
+    elif isinstance(value, list):
+        for child in value:
+            yield from _reference_values(child)
+    elif isinstance(value, dict):
+        # Селекты UI иногда сохраняют ссылку объектом {id/…}.
+        for key in ("id", "value"):
+            if key in value:
+                yield from _reference_values(value.get(key))
+
+
+def _data_references(data: Any, target_kind: str, target_id: str, *, source_kind: str) -> list[str]:
+    keys = set(_REFERENCE_KEYS.get(target_kind, ()))
+    found: list[str] = []
+
+    def walk(value: Any, path: str = "data") -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                child_path = f"{path}.{key}"
+                if key in keys and target_id in set(_reference_values(child)):
+                    found.append(child_path)
+                walk(child, child_path)
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                walk(child, f"{path}[{index}]")
+
+    walk(data)
+
+    # Универсальное поле target зависит от действия кнопки и потому не может
+    # входить в статическую таблицу выше.
+    if source_kind == KIND_BUTTON and isinstance(data, dict):
+        action_target_kind = {
+            "goto_location": KIND_LOCATION,
+            "open_sublocation": KIND_SUBLOCATION,
+            "open_npc": KIND_NPC,
+            "start_event": KIND_EVENT,
+            "start_battle": KIND_MOB,
+            "open_quests": KIND_QUEST,
+            "open_raids": KIND_RAID,
+        }.get(str(data.get("action") or ""))
+        if action_target_kind == target_kind and target_id in set(_reference_values(data.get("target"))):
+            found.append("data.target")
+    if source_kind == KIND_QUEST and isinstance(data, dict):
+        goal_kind = {
+            "kill_mob": KIND_MOB,
+            "visit_location": KIND_LOCATION,
+            "talk_npc": KIND_NPC,
+            "find_resource": KIND_LOCATION_RESOURCE,
+        }.get(str(data.get("goal_type") or ""))
+        if goal_kind == target_kind and target_id in set(_reference_values(data.get("goal_target"))):
+            found.append("data.goal_target")
+    return sorted(set(found))
+
+
+def where_used(kind: str, content_id: str) -> dict[str, Any]:
+    """Вернуть все типизированные входящие связи для кнопки «Где используется»."""
+    _ensure_kind(kind)
+    target_id = str(content_id or "").strip()
+    usages: list[dict[str, Any]] = []
+    if not target_id:
+        return {"kind": kind, "id": target_id, "items": usages, "total": 0}
+    with _STORE_LOCK, _store_file_lock():
+        store = _load_all()
+    for source_kind, bucket in store.items():
+        if source_kind not in KINDS or not isinstance(bucket, dict):
+            continue
+        for source_id, envelope in bucket.items():
+            if source_kind == kind and str(source_id) == target_id:
+                continue
+            if not isinstance(envelope, dict):
+                continue
+            paths = _data_references(
+                envelope.get("data") or {}, kind, target_id, source_kind=source_kind,
+            )
+            if paths:
+                data = envelope.get("data") or {}
+                usages.append({
+                    "kind": source_kind,
+                    "id": str(source_id),
+                    "name": data.get("name") or data.get("title") or data.get("text") or str(source_id),
+                    "status": envelope.get("status"),
+                    "paths": paths,
+                })
+    usages.sort(key=lambda row: (str(row["kind"]), str(row["id"])))
+    return {"kind": kind, "id": target_id, "items": usages, "total": len(usages)}
 
 
 # --- Мутации ---------------------------------------------------------------
@@ -716,6 +848,7 @@ def _validate_location(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
             pass
 
     _validate_player_message(data.get("scene_message"), "Сообщение при входе", errors, warnings)
+    _check_item_ref(data, "required_item", "Требуемый предмет", errors)
 
     # Глубина поиска (ТЗ 09 §19.5–§19.6): необязательная настройка карточки.
     if data.get("search_depth_enabled"):
@@ -961,10 +1094,20 @@ def _validate_button(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
         errors.append("В тексте кнопки недопустимая разметка/HTML.")
 
     owner = _str_field(data, "owner_location")
-    if not owner:
-        errors.append("Не указана локация-владелец кнопки.")
-    elif not _location_exists(owner):
+    owner_sub = _str_field(data, "owner_sublocation")
+    owner_event = _str_field(data, "owner_event")
+    owner_npc = _str_field(data, "owner_npc")
+    owner_dialogue = _str_field(data, "owner_dialogue")
+    if not any((owner, owner_sub, owner_event, owner_npc, owner_dialogue)):
+        errors.append("Не указан родитель кнопки: локация, подлокация, событие, NPC или диалог.")
+    if owner and not _location_exists(owner):
         errors.append(f"Локация-владелец «{owner}» не существует.")
+    if owner_sub and not _sublocation_exists(owner_sub):
+        errors.append(f"Подлокация-владелец «{owner_sub}» не существует.")
+    if owner_event and get_content(KIND_EVENT, owner_event) is None:
+        errors.append(f"Событие-владелец «{owner_event}» не существует.")
+    if owner_npc and get_content(KIND_NPC, owner_npc) is None:
+        errors.append(f"NPC-владелец «{owner_npc}» не существует.")
 
     action = _str_field(data, "action")
     if not action:
@@ -978,6 +1121,99 @@ def _validate_button(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
             errors.append("Для перехода укажите целевую локацию.")
         elif not _location_exists(target):
             errors.append(f"Целевая локация «{target}» не существует.")
+    elif action == "open_camp":
+        if not target:
+            errors.append("Для открытия лагеря укажите ID лагеря.")
+        else:
+            try:
+                from services import camp_constructor_service as camps
+
+                camp = camps.store().get(target)
+                if not camp:
+                    errors.append(f"Лагерь «{target}» не существует.")
+                elif camp.get("status") != camps.STATUS_PUBLISHED:
+                    errors.append(f"Лагерь «{target}» не опубликован.")
+                else:
+                    camp_data = camp.get("data") or {}
+                    locations = camp_data.get("locations") or []
+                    if isinstance(locations, str):
+                        locations = [part.strip() for part in locations.split(",")]
+                    parent = str(camp_data.get("parent_location") or "").strip()
+                    bound = {str(value).strip() for value in locations if str(value).strip()}
+                    if parent:
+                        bound.add(parent)
+                    if owner and owner not in bound:
+                        errors.append(f"Лагерь «{target}» не привязан к локации-владельцу «{owner}».")
+            except Exception as exc:
+                warnings.append(f"Не удалось проверить ссылку на лагерь: {exc}")
+    elif action == "open_sublocation":
+        if not target:
+            errors.append("Для открытия подлокации укажите её ID.")
+        else:
+            sublocation = get_content(KIND_SUBLOCATION, target)
+            if not sublocation:
+                errors.append(f"Подлокация «{target}» не существует.")
+            elif sublocation.get("status") != STATUS_PUBLISHED:
+                errors.append(f"Подлокация «{target}» не опубликована.")
+            elif owner and str((sublocation.get("data") or {}).get("parent_location") or "") != owner:
+                errors.append(f"Подлокация «{target}» не привязана к локации-владельцу «{owner}».")
+    elif action in {"open_npc", "open_dialog"}:
+        npc = get_content(KIND_NPC, target) if target else None
+        if not target:
+            errors.append("Для открытия NPC укажите его ID.")
+        elif not npc:
+            errors.append(f"NPC «{target}» не существует.")
+        elif npc.get("status") != STATUS_PUBLISHED:
+            errors.append(f"NPC «{target}» не опубликован.")
+    elif action == "start_event":
+        event = get_content(KIND_EVENT, target) if target else None
+        if not target:
+            errors.append("Для запуска события укажите его ID.")
+        elif not event:
+            errors.append(f"Событие «{target}» не существует.")
+        elif event.get("status") != STATUS_PUBLISHED:
+            errors.append(f"Событие «{target}» не опубликовано.")
+    elif action == "start_event_group":
+        if not target:
+            errors.append("Для запуска группы событий укажите ID группы.")
+        else:
+            grouped = [row for row in list_content(KIND_EVENT, status=STATUS_PUBLISHED)
+                       if str((row.get("data") or {}).get("event_group") or (row.get("data") or {}).get("random_group") or "") == target]
+            if not grouped:
+                errors.append(f"В группе событий «{target}» нет опубликованных событий.")
+    elif action == "start_battle":
+        mob = get_content(KIND_MOB, target) if target else None
+        if not target:
+            errors.append("Для начала боя укажите ID моба.")
+        elif not mob:
+            errors.append(f"Моб «{target}» не существует.")
+        elif mob.get("status") != STATUS_PUBLISHED:
+            errors.append(f"Моб «{target}» не опубликован.")
+    elif action in {"give_item", "take_item", "use_item"}:
+        if not target:
+            errors.append("Для действия с предметом укажите item_id.")
+        elif not _item_exists(target):
+            errors.append(f"Предмет «{target}» не существует.")
+
+    for key, label in (("show_required_item_id", "Предмет условия"), ("required_item_id", "Требуемый предмет"),
+                       ("give_item_id", "Выдаваемый предмет"), ("take_item_id", "Списываемый предмет")):
+        item_id = _str_field(data, key)
+        if item_id and not _item_exists(item_id):
+            errors.append(f"{label} «{item_id}» не существует.")
+    for key in ("energy_cost", "give_item_amount", "take_item_amount", "min_level", "max_level", "min_reputation"):
+        if data.get(key) not in (None, "") and (_num(data.get(key)) is None or _num(data.get(key)) < 0):
+            errors.append(f"Поле кнопки «{key}» должно быть неотрицательным числом.")
+    for key, label in (("apply_effect_id", "Накладываемый эффект"), ("remove_effect_id", "Снимаемый эффект"),
+                       ("required_effect_id", "Требуемый эффект"), ("hidden_by_effect_id", "Скрывающий эффект")):
+        effect_id = _str_field(data, key)
+        if effect_id:
+            try:
+                from services import effect_constructor_service as effects
+                effect = effects.store().get(effect_id)
+                if not effect or effect.get("status") != effects.STATUS_PUBLISHED:
+                    errors.append(f"{label} «{effect_id}» не найден или не опубликован.")
+            except Exception:
+                warnings.append(f"Не удалось проверить эффект кнопки «{effect_id}».")
 
     order = data.get("order")
     if order not in (None, "") and _num(order) is None:
@@ -1058,6 +1294,16 @@ def _validate_event(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
         errors.append("Не указана локация события.")
     elif not _location_exists(location):
         errors.append(f"Локация «{location}» не существует.")
+    sublocation_id = _str_field(data, "sublocation_id")
+    if sublocation_id and get_content(KIND_SUBLOCATION, sublocation_id) is None:
+        errors.append(f"Подлокация события «{sublocation_id}» не существует.")
+    node_id = _str_field(data, "node_id") or _str_field(data, "sublocation_node_id")
+    if node_id:
+        node = get_content(KIND_SUBLOCATION_NODE, node_id)
+        if not node:
+            errors.append(f"Узел подлокации события «{node_id}» не существует.")
+        elif sublocation_id and str((node.get("data") or {}).get("sublocation_id") or "") != sublocation_id:
+            errors.append(f"Узел «{node_id}» не относится к подлокации «{sublocation_id}».")
 
     ev_type = _str_field(data, "type")
     if ev_type and ev_type not in EVENT_TYPES:
@@ -1072,6 +1318,16 @@ def _validate_event(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
     chance = _num(data.get("chance"))
     if chance is not None and (chance < 0 or chance > 100):
         errors.append("Шанс события должен быть 0–100.")
+    for field, label in (("min_chance", "Минимальный шанс"), ("max_chance", "Максимальный шанс"), ("chance_after_limit", "Шанс после лимита")):
+        value = _num(data.get(field))
+        if value is not None and not 0 <= value <= 100:
+            errors.append(f"{label} события должен быть 0–100.")
+    minimum_chance = _num(data.get("min_chance")); maximum_chance = _num(data.get("max_chance"))
+    if minimum_chance is not None and maximum_chance is not None and minimum_chance > maximum_chance:
+        errors.append("Минимальный шанс события больше максимального.")
+    redistribution = str(data.get("redistribution_mode") or "none")
+    if redistribution not in {"none", "even", "by_weight", "weighted", "same_group"}:
+        errors.append(f"Неизвестный режим перераспределения шанса: {redistribution}.")
     cooldown = _num(data.get("cooldown"))
     if cooldown is not None and cooldown < 0:
         errors.append("Кулдаун не может быть отрицательным.")
@@ -1080,10 +1336,64 @@ def _validate_event(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
     max_level = _num(data.get("max_level"))
     if min_level is not None and max_level is not None and min_level > max_level:
         errors.append("Минимальный уровень события больше максимального.")
+    min_energy = _num(data.get("min_energy"))
+    if min_energy is not None and min_energy < 0:
+        errors.append("Минимальная энергия события не может быть отрицательной.")
+    if data.get("requires_fine") and data.get("requires_no_fine"):
+        errors.append("Событие не может одновременно требовать наличие и отсутствие штрафа.")
+    weekdays = data.get("weekdays") or []
+    if not isinstance(weekdays, list) or any(not isinstance(day, int) or day < 0 or day > 6 for day in weekdays):
+        errors.append("Дни недели события должны быть списком чисел от 0 до 6.")
+    for field, label in (("required_item_id", "Требуемый предмет"), ("required_equipped_item_id", "Требуемый надетый предмет")):
+        _check_item_ref(data, field, label, errors)
 
     _check_item_ref(data, "required_item", "Требуемый предмет", errors)
+    _check_item_ref(data, "required_item_id", "Требуемый предмет", errors)
     _check_item_ref(data, "consumed_item", "Списываемый предмет", errors)
     _check_item_ref(data, "given_item", "Выдаваемый предмет", errors)
+
+    for index, row in enumerate(data.get("rewards") or [], start=1):
+        if not isinstance(row, dict):
+            errors.append(f"Награда события {index}: неверный формат.")
+            continue
+        reward_type = str(row.get("type") or row.get("reward_type") or "item")
+        object_id = str(row.get("object_id") or row.get("item_id") or "").strip()
+        if reward_type in {"item", "unique_item"} and (not object_id or not _item_exists(object_id)):
+            errors.append(f"Награда события {index}: предмет «{object_id or '—'}» не существует.")
+        chance_value = _num(row.get("chance"))
+        if chance_value is not None and not 0 <= chance_value <= 100:
+            errors.append(f"Награда события {index}: шанс должен быть 0–100.")
+        minimum = _num(row.get("min_amount", row.get("min")))
+        maximum = _num(row.get("max_amount", row.get("max")))
+        if minimum is not None and maximum is not None and minimum > maximum:
+            errors.append(f"Награда события {index}: минимум больше максимума.")
+    for index, row in enumerate(data.get("losses") or [], start=1):
+        if not isinstance(row, dict):
+            errors.append(f"Потеря события {index}: неверный формат.")
+            continue
+        loss_type = str(row.get("type") or row.get("loss_type") or "")
+        object_id = str(row.get("object_id") or row.get("item_id") or "").strip()
+        if loss_type == "item" and (not object_id or not _item_exists(object_id)):
+            errors.append(f"Потеря события {index}: предмет «{object_id or '—'}» не существует.")
+        amount_value = _num(row.get("amount", row.get("value")))
+        if amount_value is not None and amount_value < 0:
+            errors.append(f"Потеря события {index}: значение не может быть отрицательным.")
+    consequence_targets = {
+        "next_event": KIND_EVENT, "open_npc": KIND_NPC, "open_sublocation": KIND_SUBLOCATION,
+        "open_location": KIND_LOCATION, "start_battle": KIND_MOB,
+    }
+    for index, row in enumerate(data.get("consequences") or [], start=1):
+        if not isinstance(row, dict):
+            errors.append(f"Последствие события {index}: неверный формат.")
+            continue
+        consequence_type = str(row.get("type") or row.get("action") or "")
+        object_id = str(row.get("object_id") or row.get("target_id") or row.get("target") or "").strip()
+        target_kind = consequence_targets.get(consequence_type)
+        if target_kind and (not object_id or get_content(target_kind, object_id) is None):
+            errors.append(f"Последствие события {index}: цель «{object_id or '—'}» не существует.")
+        chance_value = _num(row.get("chance"))
+        if chance_value is not None and not 0 <= chance_value <= 100:
+            errors.append(f"Последствие события {index}: шанс должен быть 0–100.")
 
     battle_mob = _str_field(data, "battle_mob")
     if battle_mob and not _mob_exists(battle_mob):
@@ -1113,6 +1423,16 @@ def _validate_npc(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
         errors.append(f"Локация «{location}» не существует.")
     elif not location:
         warnings.append("Не указана локация NPC.")
+    for extra_location in data.get("additional_locations") or []:
+        if extra_location and not _location_exists(extra_location):
+            errors.append(f"Дополнительная локация NPC «{extra_location}» не существует.")
+    min_level = _num(data.get("min_level"))
+    max_level = _num(data.get("max_level"))
+    if min_level is not None and min_level < 0 or max_level is not None and max_level < 0:
+        errors.append("Уровни доступа NPC не могут быть отрицательными.")
+    if min_level is not None and max_level is not None and max_level > 0 and min_level > max_level:
+        errors.append("Минимальный уровень NPC больше максимального.")
+    _check_item_ref(data, "required_item_id", "Требуемый предмет NPC", errors)
 
     functions = data.get("functions")
     if functions not in (None, ""):
@@ -1150,12 +1470,97 @@ def _validate_npc(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
                 price = _num(row.get("price"))
                 if price is not None and price < 0:
                     errors.append(f"Торговля {side} строка {index}: цена не может быть отрицательной.")
+    services=data.get("services") or []
+    if not isinstance(services,list):errors.append("Услуги NPC должны быть списком.")
+    else:
+        service_ids=set()
+        for index,row in enumerate(services,1):
+            if not isinstance(row,dict):errors.append(f"Услуга NPC {index}: неверный формат.");continue
+            service_id=str(row.get("service_id") or "").strip();service_type=str(row.get("service_type") or "").strip()
+            if not service_id:errors.append(f"Услуга NPC {index}: не указан ID.")
+            elif service_id in service_ids:errors.append(f"Услуга NPC: ID «{service_id}» повторяется.")
+            service_ids.add(service_id)
+            if not service_type:errors.append(f"Услуга NPC {service_id or index}: не выбран тип.")
+            cost=_num(row.get("cost"))
+            if cost is not None and cost<0:errors.append(f"Услуга NPC {service_id or index}: стоимость отрицательная.")
+            required=str(row.get("required_item_id") or "")
+            if required and not _item_exists(required):errors.append(f"Услуга NPC {service_id or index}: предмет «{required}» не существует.")
     event_ids = data.get("event_ids")
     if isinstance(event_ids, list):
         for ev in event_ids:
             ev = str(ev or "").strip()
             if ev and get_content(KIND_EVENT, ev) is None and get_content(KIND_LOCATION_HIDDEN_EVENT, ev) is None:
                 warnings.append(f"Событие «{ev}» не найдено среди событий/скрытых событий.")
+
+    dialogues = data.get("dialogues") or []
+    if not isinstance(dialogues, list):
+        errors.append("Реплики NPC должны быть списком.")
+    else:
+        ids = [str((row or {}).get("id") or "").strip() for row in dialogues if isinstance(row, dict)]
+        if len([value for value in ids if value]) != len(set(value for value in ids if value)):
+            errors.append("ID реплик NPC должны быть уникальными.")
+        known = set(ids)
+        for index, row in enumerate(dialogues, start=1):
+            if not isinstance(row, dict):
+                errors.append(f"Реплика NPC {index}: неверный формат.")
+                continue
+            row_id = str(row.get("id") or "").strip()
+            if not row_id:
+                errors.append(f"Реплика NPC {index}: не указан ID.")
+            if not str(row.get("npc_text") or row.get("text") or "").strip():
+                errors.append(f"Реплика NPC {row_id or index}: не заполнен текст NPC.")
+            for field, label in (("next_id", "следующая реплика"), ("parent_id", "родительская реплика")):
+                target = str(row.get(field) or "").strip()
+                if target and target not in known:
+                    errors.append(f"Реплика NPC {row_id or index}: {label} «{target}» не существует.")
+            reward_item = str(row.get("reward_item_id") or "").strip()
+            if reward_item and not _item_exists(reward_item):
+                errors.append(f"Реплика NPC {row_id or index}: предмет награды «{reward_item}» не существует.")
+            loss_item=str(row.get("loss_item_id") or "").strip()
+            if loss_item and not _item_exists(loss_item):errors.append(f"Реплика NPC {row_id or index}: предмет потери «{loss_item}» не существует.")
+            effect_id = str(row.get("effect_id") or "").strip()
+            if effect_id:
+                try:
+                    from services import effect_constructor_service as effects
+                    effect = effects.store().get(effect_id)
+                    if not effect or effect.get("status") != effects.STATUS_PUBLISHED:
+                        errors.append(f"Реплика NPC {row_id or index}: эффект «{effect_id}» не найден или не опубликован.")
+                except Exception:
+                    warnings.append(f"Не удалось проверить эффект реплики «{effect_id}».")
+    for quest_id in data.get("quest_ids") or []:
+        if quest_id and get_content(KIND_QUEST, str(quest_id)) is None:
+            errors.append(f"Квест NPC «{quest_id}» не существует.")
+    combat_mob = _str_field(data, "combat_mob_id")
+    if combat_mob and not _mob_exists(combat_mob):
+        errors.append(f"Боевая версия NPC «{combat_mob}» не существует.")
+    for key,label in (("event_appear_id","Событие появления"),("event_disappear_id","Событие исчезновения")):
+        event_id=_str_field(data,key)
+        if event_id and get_content(KIND_EVENT,event_id) is None:errors.append(f"{label} NPC «{event_id}» не существует.")
+    sublocation = _str_field(data, "sublocation_id")
+    if sublocation and not _sublocation_exists(sublocation):
+        errors.append(f"Подлокация NPC «{sublocation}» не существует.")
+    schedule = data.get("schedule") or []
+    if not isinstance(schedule, list):
+        errors.append("Расписание NPC должно быть списком.")
+    else:
+        for index, row in enumerate(schedule, start=1):
+            if not isinstance(row, dict):
+                errors.append(f"Расписание NPC {index}: неверный формат.")
+                continue
+            for key, label in (("start", "начало"), ("end", "окончание")):
+                value = str(row.get(key) or "")
+                if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value):
+                    errors.append(f"Расписание NPC {index}: {label} должно быть в формате ЧЧ:ММ.")
+            days = row.get("weekdays") or []
+            if not isinstance(days, list) or any(not isinstance(day, int) or day < 0 or day > 6 for day in days):
+                errors.append(f"Расписание NPC {index}: дни недели должны быть числами 0–6.")
+
+    if not dialogues and not _str_field(data, "first_message"):
+        warnings.append("NPC не имеет диалогов.")
+    if npc_kind in {"trader"} and not ((trade or {}).get("sells") if isinstance(trade, dict) else None):
+        warnings.append("NPC-торговец не имеет товаров.")
+    if npc_kind == "quest_giver" and not data.get("quest_ids"):
+        warnings.append("NPC-квестодатель не имеет квестов.")
 
     for key in ("name", "description", "first_message"):
         value = _str_field(data, key)
@@ -1277,6 +1682,19 @@ def _effect_exists(effect_id: Any) -> bool:
         return True
 
 
+def _effect_published(effect_id: Any) -> bool:
+    eid = str(effect_id or "").strip()
+    if not eid:
+        return False
+    try:
+        from services.effect_constructor_service import store as effect_store
+
+        row = effect_store().get(eid)
+        return bool(row and row.get("status") == "published")
+    except Exception:
+        return True
+
+
 def _check_chance(data: dict[str, Any], key: str, errors: list[str], label: str) -> float | None:
     """Шанс 0–100 (или None, если поле пустое)."""
     if data.get(key) in (None, ""):
@@ -1331,6 +1749,17 @@ def _validate_location_zone(envelope: dict[str, Any]) -> tuple[list[str], list[s
         errors.append(f"Неизвестный тип зоны: {ztype}.")
     _check_location_ref(data, errors)
     _check_chance(data, "trigger_chance", errors, "Срабатывание зоны")
+
+    effects = data.get("effects") or []
+    if not isinstance(effects, list):
+        errors.append("Эффекты зоны должны быть списком.")
+    else:
+        for index, row in enumerate(effects, start=1):
+            effect_id = _str_field(row, "effect_id") if isinstance(row, dict) else str(row or "").strip()
+            if not effect_id:
+                errors.append(f"Эффект зоны {index}: не указан effect_id.")
+            elif not _effect_published(effect_id):
+                errors.append(f"Эффект зоны {index}: эффект «{effect_id}» не опубликован.")
 
     # Защита от зоны: ссылается на существующие предметы/эффекты (ТЗ §44).
     protections = data.get("protections")
@@ -1850,8 +2279,11 @@ def _validate_sublocation(envelope: dict[str, Any]) -> tuple[list[str], list[str
     if not parent:
         errors.append("Не указана родительская локация.")
     elif not _location_exists(parent):
-        warnings.append(f"Родительская локация «{parent}» не найдена среди локаций "
-                        "(допустимо, если это город/крепость/зона).")
+        try:
+            from services.city_constructor_service import store as city_store
+            city_exists=any(str(x.get("id"))==parent for x in city_store().list())
+        except Exception:city_exists=False
+        if not city_exists:errors.append(f"Родительская локация или город «{parent}» не существует.")
 
     min_level = data.get("min_level")
     max_level = data.get("max_level")
@@ -1879,6 +2311,15 @@ def _validate_sublocation(envelope: dict[str, Any]) -> tuple[list[str], list[str
             errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
     _check_local_image(data, "image", errors)
     _validate_player_message(data.get("scene_message"), "Сообщение при входе", errors, warnings)
+    for row in data.get("npc_ids") or []:
+        if get_content(KIND_NPC,str(row)) is None:errors.append(f"NPC «{row}» не существует.")
+    for row in data.get("event_ids") or []:
+        if get_content(KIND_EVENT,str(row)) is None:errors.append(f"Событие «{row}» не существует.")
+    if not data.get("entry_text"):warnings.append("Не заполнен текст входа.")
+    if not (data.get("button_ids") or data.get("service_types") or data.get("npc_ids") or data.get("event_ids")):warnings.append("В подлокации нет действий.")
+    sub_id=str(envelope.get("id") or "")
+    linked=any(str((x.get("data") or {}).get("action") or "")=="open_sublocation" and str((x.get("data") or {}).get("target") or "")==sub_id for x in list_content(KIND_BUTTON))
+    if sub_id and not linked:warnings.append("Подлокация не привязана к кнопке открытия.")
     return errors, warnings
 
 
@@ -2072,6 +2513,25 @@ def validate_envelope(envelope: dict[str, Any]) -> dict[str, Any]:
     if validator is None:
         return {"ok": True, "errors": [], "warnings": []}
     errors, warnings = validator(envelope)
+    formula_fields = {
+        KIND_LOCATION: ("search_depth_formula_id",),
+        KIND_EVENT: ("chance_formula_id",),
+        KIND_MOB: ("damage_formula_id", "exp_formula_id"),
+    }.get(kind, ())
+    if formula_fields:
+        try:
+            from services import formula_constructor_service as formulas
+            for field in formula_fields:
+                formula_id = str((envelope.get("data") or {}).get(field) or "").strip()
+                if not formula_id:
+                    continue
+                formula = formulas.store().get(formula_id)
+                if not formula:
+                    errors.append(f"Формула {formula_id} из поля {field} не найдена.")
+                elif formula.get("status") != formulas.STATUS_PUBLISHED:
+                    errors.append(f"Формула {formula_id} из поля {field} не опубликована.")
+        except Exception as exc:
+            warnings.append(f"Не удалось проверить связи с формулами: {exc}")
     return {"ok": not errors, "errors": errors, "warnings": warnings}
 
 

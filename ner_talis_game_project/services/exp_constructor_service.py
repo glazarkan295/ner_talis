@@ -13,7 +13,7 @@ from typing import Any
 from services.admin_entity_store import EntityStore
 from services.constructor_status import *  # noqa: F401,F403
 
-SOURCE_TYPES = ("mob_kill", "quest", "event", "craft", "search", "achievement", "boss", "admin")
+SOURCE_TYPES = ("mob_kill", "boss", "pve", "pvp", "quest", "board_quest", "event", "hidden_event", "achievement", "craft", "fishing", "gather", "event_campaign", "world_event", "search", "admin")
 SOURCE_TYPE_LABELS = {
     "mob_kill": "Убийство моба", "quest": "Задание", "event": "Событие", "craft": "Ремесло",
     "search": "Поиск", "achievement": "Достижение", "boss": "Босс", "admin": "Админ",
@@ -51,7 +51,7 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
     source = str(data.get("source_type") or "").strip()
     if source and source not in SOURCE_TYPES:
         errors.append(f"Неизвестный тип источника: {source}.")
-    for key in ("base_exp", "level_scaling_percent"):
+    for key in ("base_exp", "level_scaling_percent", "min_exp", "max_exp", "penalty_percent", "penalty_after_level"):
         if data.get(key) in (None, ""):
             continue
         val = _num(data.get(key))
@@ -61,5 +61,9 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
     name = str(data.get("name") or "")
     if name and (_HTML_RE.search(name) or "<script" in name.lower()):
         errors.append("В поле «name» недопустим HTML.")
+    from services.formula_runtime import validate_references
+    errors.extend(validate_references(data, ("formula_id",)))
+    if data.get("min_exp") not in (None,"") and data.get("max_exp") not in (None,"") and float(data["min_exp"])>float(data["max_exp"]):errors.append("Минимальный опыт больше максимального.")
+    if not data.get("show_player"):warnings.append("Начисление опыта скрыто от игрока.")
 
     return {"ok": not errors, "errors": errors, "warnings": warnings}

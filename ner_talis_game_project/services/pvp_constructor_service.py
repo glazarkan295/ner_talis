@@ -1,9 +1,9 @@
-"""Конструктор будущего PVP (ТЗ 4 §1).
+"""Конструктор PVP и источник правил игрового runtime (ТЗ 4 §1).
 
 Запись = правило/пресет PVP: тип боя (дуэль/арена/осада/…), где разрешён,
 условия входа, кнопки боя, награды/штрафы, посмертные проклятья и тексты
-игроку. Это АВТОРСКИЙ слой: PVP в игре пока нет, рантайм — на вырост; админ-
-панель заранее хранит настройки, чтобы не переписывать систему боя вручную.
+игроку. Опубликованные правила читаются pvp_runtime_service без ручного
+изменения кода.
 
 Хранение — EntityStore (data/pvp_constructor.json). Чистый слой данных +
 валидация + предпросмотр сообщений (TG/VK).
@@ -26,6 +26,10 @@ PVP_TYPES = (
     "guild", "location_defense", "caravan_attack", "event", "sublocation",
     "point_capture", "tournament", "special",
 )
+PVP_SOURCES = ("duel", "ambush", "criminal_contract", "assassin_contract", "event_campaign", "world_event", "button", "npc", "dark_alley", "black_market", "location_event", "revenge", "system_penalty", "admin")
+PVP_ACTIONS = ("attack", "mana_skill", "spirit_skill", "pouch", "potion", "throwable", "defend", "change_target", "help_ally", "npc_command", "flee", "surrender", "execute", "item_skill")
+PVP_OUTCOMES = ("death", "experience", "coins", "item", "fine", "curse", "camp", "fortress", "quest_fail", "reputation", "hidden_reputation", "pvp_points", "achievement", "quest_progress", "criminal_reward", "trophy", "proof_bag", "effect")
+PVP_LAYOUT_MODES = ("compact", "multiple", "header_log", "image_text_buttons", "text_buttons", "message_per_turn", "edit_one", "short", "detailed", "debug")
 PVP_TYPE_LABELS = {
     "duel": "Дуэль 1 на 1", "group_duel": "Групповая дуэль",
     "team_vs_team": "Команда против команды", "free": "Свободный PVP",
@@ -41,7 +45,7 @@ PVP_TYPE_LABELS = {
 PVP_TIMEOUT_ACTIONS = ("skip", "defend", "auto", "kick", "tech_defeat", "penalty")
 ACTION_ORDER_TYPES = (
     "sequential", "by_initiative", "by_speed", "by_level", "random",
-    "simultaneous", "side_a_first", "alternate_sides", "npc_after_owner",
+    "simultaneous", "side_a_first", "defender_first", "side_b_first", "alternate_sides", "participant_separate", "npc_after_owner",
     "npc_end_of_round", "npc_by_initiative", "event_special",
 )
 LOG_MODES = ("full_all", "per_side", "hide_enemy")
@@ -104,9 +108,12 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         errors.append("Не выбран тип PVP.")
     elif pvp_type not in PVP_TYPES:
         errors.append(f"Неизвестный тип PVP: {pvp_type}.")
+    source = str(data.get("pvp_source") or "").strip()
+    if source and source not in PVP_SOURCES: errors.append(f"Неизвестный источник PVP: {source}.")
 
     # Неотрицательные числовые ограничения.
     for key, label in (("min_level", "Минимальный уровень"),
+                       ("max_level", "Максимальный уровень"),
                        ("max_level_diff", "Макс. разница уровней"),
                        ("cooldown_seconds", "Кулдаун (сек)")):
         if data.get(key) not in (None, ""):
@@ -128,6 +135,9 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             errors.append("Шанс посмертного проклятья должен быть 0–100.")
         if not (data.get("postdeath_curses") or []):
             warnings.append("Посмертные проклятья включены, но список проклятий пуст.")
+        if data.get("curse_requires_achievement") and not data.get("curse_achievement_id"): errors.append("Для посмертного проклятья не выбрано требуемое достижение.")
+    for key,label in (("flee_chance","Шанс побега"),("raid_chance","Шанс облавы")):
+        if data.get(key) not in (None,"") and (_num(data.get(key)) is None or not 0<=float(data.get(key))<=100):errors.append(f"{label} должен быть 0–100.")
 
     # Кнопки боя (§1.5).
     for i, btn in enumerate(data.get("buttons") or [], start=1):
@@ -139,6 +149,11 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         cost = btn.get("resource_cost")
         if cost not in (None, "") and (_num(cost) is None or _num(cost) < 0):
             errors.append(f"Кнопка {i}: расход ресурса — неотрицательное число.")
+    for i, action in enumerate(data.get("actions") or [], start=1):
+        if isinstance(action, dict) and str(action.get("action") or "") not in PVP_ACTIONS: errors.append(f"Действие PVP #{i}: неизвестный тип.")
+    for group, label in ((data.get("victory_rewards") or data.get("rewards") or [], "Награда"), (data.get("defeat_consequences") or data.get("penalties") or [], "Последствие"), (data.get("surrender_consequences") or [], "Последствие сдачи")):
+        for i, row in enumerate(group, start=1):
+            if isinstance(row, dict) and str(row.get("type") or "") not in PVP_OUTCOMES: errors.append(f"{label} #{i}: неизвестный тип.")
 
     # Условия (§1.4).
     for i, cond in enumerate(data.get("conditions") or [], start=1):
@@ -171,6 +186,8 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
     log_mode = str(data.get("log_mode") or "").strip()
     if log_mode and log_mode not in LOG_MODES:
         warnings.append(f"Режим лога «{log_mode}» не из списка.")
+    layout = str(data.get("message_layout_mode") or "").strip()
+    if layout and layout not in PVP_LAYOUT_MODES: errors.append(f"Неизвестная компоновка PVP: {layout}.")
 
     # Стороны боя (§5.3): каждая сторона — с названием; сторона без участников — warning.
     sides = data.get("sides") or []
@@ -203,6 +220,10 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
 
     if pvp_type in ("free", "arena", "duel", "contract", "revenge") and data.get("postdeath_curse_enabled"):
         warnings.append("Посмертные PVP-проклятья учитываются достижением «Проклятье? Какое проклятье?» (только PVP-смерть, ТЗ §1.6).")
+    if data.get("death_on_loss") and not data.get("defeat_consequences"): warnings.append("PVP имеет смерть, но не настроены последствия поражения.")
+    if data.get("criminal") and not (data.get("fine_id") or data.get("criminal_reputation_id")): warnings.append("Криминальный PVP не выдаёт штраф или криминальную репутацию.")
+    if data.get("create_proof_bag") and not data.get("proof_item_id"):errors.append("Для мешка с доказательством не выбран предмет.")
+    if not data.get("texts"): warnings.append("Не настроены редактируемые сообщения PVP.")
 
     return {"ok": not errors, "errors": errors, "warnings": warnings}
 
@@ -241,3 +262,19 @@ def preview(data: dict[str, Any]) -> dict[str, Any]:
         "steps": steps,
         "postdeath_curse": bool(data.get("postdeath_curse_enabled")),
     }
+
+
+def active_rule(pvp_type: str = "duel", location_id: str = "") -> dict[str, Any] | None:
+    """Самое приоритетное опубликованное правило, подходящее типу и локации."""
+    candidates: list[dict[str, Any]] = []
+    for env in store().list(status=STATUS_PUBLISHED):  # noqa: F405
+        data = dict(env.get("data") or {})
+        if not data.get("enabled", True) or str(data.get("pvp_type") or "") != str(pvp_type):
+            continue
+        allowed = {str(x) for x in data.get("allowed_locations") or []}
+        forbidden = {str(x) for x in data.get("forbidden_locations") or []}
+        if location_id and (location_id in forbidden or (allowed and location_id not in allowed)):
+            continue
+        candidates.append({"id": env.get("id"), **data})
+    candidates.sort(key=lambda x: int(x.get("priority") or 0), reverse=True)
+    return candidates[0] if candidates else None

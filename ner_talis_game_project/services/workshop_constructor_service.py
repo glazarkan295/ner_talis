@@ -19,6 +19,7 @@ _HTML_RE = re.compile(r"<[^>]+>")
 WORKSHOP_TYPES = (
     "smeltery", "forge", "leatherwork", "alchemy", "jewelry", "enchanting",
     "home", "temporary", "event", "field", "npc",
+    "cooking", "repair", "disassembly", "upgrade", "purification", "camp", "service",
 )
 WORKSHOP_TYPE_LABELS = {
     "smeltery": "Плавильня", "forge": "Кузница", "leatherwork": "Кожевенная мастерская",
@@ -26,6 +27,8 @@ WORKSHOP_TYPE_LABELS = {
     "enchanting": "Чародейская мастерская", "home": "Домашняя мастерская",
     "temporary": "Временная мастерская", "event": "Событийная мастерская",
     "field": "Полевая мастерская", "npc": "NPC-мастерская",
+    "cooking": "Кулинарная", "repair": "Ремонтная", "disassembly": "Разборочная",
+    "upgrade": "Улучшательная", "purification": "Очищающая", "camp": "Лагерная", "service": "Служебная",
 }
 
 _store = EntityStore(
@@ -77,3 +80,42 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         errors.append("Изображение должно быть локальным путём (/assets/…), не URL.")
 
     return {"ok": not errors, "errors": errors, "warnings": warnings}
+
+
+def published_for_action(action: str) -> dict[str, Any] | None:
+    wanted = str(action or "").strip().casefold()
+    for row in store().list(status=STATUS_PUBLISHED):  # noqa: F405
+        data = row.get("data") or {}
+        labels = {str(data.get("name") or ""), str(data.get("player_name") or ""), str(data.get("button_text") or "")}
+        if wanted and wanted in {label.strip().casefold() for label in labels if label.strip()}:
+            return {"id": row.get("id"), **data}
+    return None
+
+
+def player_has_access(player: dict[str, Any], workshop: dict[str, Any]) -> tuple[bool, str]:
+    level = int(player.get("level") or 1)
+    if level < int(workshop.get("min_level") or 0):
+        return False, str(workshop.get("access_denied_text") or "Недостаточный уровень для мастерской.")
+    inventory_ids = {str(row.get("item_id") or row.get("id") or "") for row in player.get("inventory") or [] if isinstance(row, dict)}
+    required_item = str(workshop.get("required_item_id") or "")
+    if required_item and required_item not in inventory_ids:
+        return False, str(workshop.get("access_denied_text") or "Для мастерской требуется специальный предмет.")
+    if workshop.get("requires_no_fine") and (player.get("active_fines") or player.get("fines")):
+        return False, str(workshop.get("access_denied_text") or "Мастерская недоступна при активном штрафе.")
+    for field, state_key in (("required_quest_id", "completed_quests"), ("required_achievement_id", "achievements"), ("required_npc_id", "known_npcs")):
+        required = str(workshop.get(field) or "")
+        state = player.get(state_key) or []
+        if isinstance(state, dict):
+            state = state.keys()
+        if required and required not in {str(x) for x in state}:
+            return False, str(workshop.get("access_denied_text") or "Условие доступа к мастерской не выполнено.")
+    reputation_id = str(workshop.get("required_reputation_id") or "")
+    if reputation_id and int((player.get("reputation") or {}).get(reputation_id, 0)) < int(workshop.get("min_reputation") or 0):
+        return False, str(workshop.get("access_denied_text") or "Недостаточная репутация для мастерской.")
+    locations = {str(x) for x in workshop.get("locations") or []}
+    if workshop.get("location"):
+        locations.add(str(workshop["location"]))
+    current = str(player.get("current_location") or player.get("current_zone") or "")
+    if locations and current not in locations:
+        return False, str(workshop.get("access_denied_text") or "Мастерская недоступна в текущем месте.")
+    return True, ""

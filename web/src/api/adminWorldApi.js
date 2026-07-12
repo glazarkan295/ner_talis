@@ -24,6 +24,17 @@ export function fetchWorldItem(kind, id) {
   return requestAdminJson(`/api/admin/v2/world/${encodeURIComponent(kind)}/${encodeURIComponent(id)}?_=${Date.now()}`);
 }
 
+export function fetchWorldUsage(kind, id) {
+  return requestAdminJson(`/api/admin/v2/world/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/usage?_=${Date.now()}`);
+}
+
+export function deleteWorldItem(kind, id, reason) {
+  return requestAdminJson(`/api/admin/v2/world/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ confirm: id, reason: reason || "" }),
+  });
+}
+
 export function createWorldItem(kind, id, data, reason) {
   return requestAdminJson(`/api/admin/v2/world/${encodeURIComponent(kind)}`, {
     method: "POST",
@@ -93,6 +104,19 @@ export function testRunWorldItem(kind, id) {
   return requestAdminJson(`/api/admin/v2/world/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/test-run`, {
     method: "POST",
     body: JSON.stringify({}),
+  });
+}
+
+export function fetchLocationLimitRuntime(locationId, week = "") {
+  const params = new URLSearchParams({ location_id: locationId, _: String(Date.now()) });
+  if (week) params.set("week", week);
+  return requestAdminJson(`/api/admin/v2/world/limits/runtime?${params.toString()}`);
+}
+
+export function setLocationLimitRemaining(limitId, locationId, value, week, reason) {
+  return requestAdminJson(`/api/admin/v2/world/limits/runtime/${encodeURIComponent(limitId)}/set`, {
+    method: "POST",
+    body: JSON.stringify({ location_id: locationId, value: Number(value), week: week || null, reason: reason || "" }),
   });
 }
 

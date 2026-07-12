@@ -5,6 +5,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -23,6 +24,7 @@ from admin_progression_api import (
 from services import admin_rbac as rbac
 from services import level_constructor_service as level_svc
 from services import race_constructor_service as race_svc
+from services import registration_constructor_service as reg_svc
 from services.admin_panel_service import (
     consume_or_read_admin_session,
     create_admin_panel_activation_token,
@@ -80,6 +82,21 @@ class ProgressionTest(unittest.TestCase):
         self.assertEqual(pub.status_code, 200, pub.text)
         self.assertEqual(pub.json()["item"]["status"], "published")
 
+    def test_published_progression_rule_drives_cap_rewards_source_penalty_and_death(self):
+        from services.progression_service import grant_experience, apply_death_experience_penalty
+        from services import exp_constructor_service as exp_svc
+        rule={"entity_type":"rule","title":"Основная прогрессия","active_rule":True,"start_level":1,"max_level":3,"stat_points_per_level":1,"skill_points_per_level":4,"death_exp_loss_enabled":True,"death_loss_percent":20,"death_loss_from_current":True,"death_loss_max":15,"migration_required":True}
+        env=level_svc.store().create("main_rule",rule);self.assertTrue(level_svc.validate(env)["ok"],level_svc.validate(env)["errors"]);level_svc.store().set_status("main_rule",level_svc.STATUS_PUBLISHED,force=True)
+        for level,required in ((1,100),(2,200),(3,300)):
+            level_svc.store().create(f"level_{level}",{"entity_type":"level","title":f"Уровень {level}","level":level,"exp_required":required,"skill_points":4,"stat_points":1,"level_up_text":f"Новый уровень {level}","migration_required":True})
+            level_svc.store().set_status(f"level_{level}",level_svc.STATUS_PUBLISHED,force=True)
+        exp_svc.store().create("mob_rule",{"name":"Мобы","source_type":"mob_kill","base_exp":100,"penalty_after_level":2,"penalty_percent":50,"min_exp":10,"max_exp":60,"show_player":True})
+        exp_svc.store().set_status("mob_rule",exp_svc.STATUS_PUBLISHED,force=True)
+        player={"level":1,"experience":0,"total_experience":0,"free_skill_points":0,"free_stat_points":0}
+        first=grant_experience(player,100,source_type="mob_kill");self.assertEqual(first["level"],1);self.assertEqual(first["gained"],60)
+        grant_experience(player,40);self.assertEqual(player["level"],2);self.assertEqual(player["free_skill_points"],4)
+        player["experience"]=80;loss=apply_death_experience_penalty(player);self.assertEqual(loss["lost"],15);self.assertEqual(player["experience"],65)
+
     def test_exp_meta_and_create(self):
         token = self._token()
         meta = self.client.get("/api/admin/v2/exp/meta", headers=self._auth(token)).json()
@@ -97,6 +114,26 @@ class ProgressionTest(unittest.TestCase):
         self.assertEqual(rb.status_code, 200, rb.text)
         self.assertEqual(self.client.get("/api/admin/v2/registration/step_name", headers=self._auth(token)).json()["item"]["data"]["label"], "Имя")
 
+    def test_published_registration_scenario_drives_both_platforms_and_start_setup(self):
+        from services.registration_service import create_player, registration_access, registration_text, validate_name
+        scenario = {"entity_type":"scenario","name":"Основная регистрация","system_name":"main_v2","active":True,
+                    "telegram_enabled":True,"vk_enabled":True,"registration_enabled":True,"priority":10,
+                    "name_min_length":4,"name_max_length":12,"forbidden_names":["Злодей"],
+                    "welcome_text":"Добро пожаловать в конструктор.","complete_text":"Готово, {player_name}!",
+                    "steps":[{"id":"name","label":"Имя","step_type":"name","order":1,"required":True},
+                             {"id":"race","label":"Раса","step_type":"race","order":2,"required":True}],
+                    "starting_skills":[{"skill_id":"constructor_strike","all_players":True,"permanent":True}],
+                    "start_city_id":"new_city","start_location_id":"new_road","start_sublocation_id":"new_gate"}
+        env=reg_svc.store().create("main",scenario);self.assertTrue(reg_svc.validate(env)["ok"],reg_svc.validate(env)["errors"])
+        reg_svc.store().set_status("main",reg_svc.STATUS_PUBLISHED,force=True)
+        self.assertTrue(registration_access("telegram")[0]);self.assertEqual(registration_text("vk","welcome_text","x"),"Добро пожаловать в конструктор.")
+        self.assertFalse(validate_name("abc","telegram")[0]);self.assertFalse(validate_name("Злодей","vk")[0])
+        races={"human":{"name":"Человек","stats":{"strength":1,"dexterity":1,"endurance":1,"intelligence":1,"wisdom":1,"perception":1},"bonuses":[]}}
+        player=create_player("P","telegram","1","Герой","human",races)
+        self.assertEqual(player["registration_scenario_id"],"main_v2");self.assertEqual(player["current_city"],"new_city");self.assertEqual(player["current_zone"],"new_gate")
+        self.assertTrue(any(row.get("id")=="constructor_strike" for row in player["skills"]["active"]))
+        preview=reg_svc.preview(scenario);self.assertEqual([row["id"] for row in preview["steps"]],["name","race"])
+
     def test_race_import_from_data(self):
         token = self._token()
         imp = self.client.post("/api/admin/v2/races/import", headers=self._auth(token), json={})
@@ -109,6 +146,37 @@ class ProgressionTest(unittest.TestCase):
     def test_external_url_image_rejected(self):
         env = race_svc.store().create("orc", {"race_name": "Орк", "model_image": "https://evil.example/x.png"})
         self.assertFalse(race_svc.validate(env)["ok"])
+
+    def test_published_custom_race_drives_registration_bonuses_and_confirmed_change(self):
+        from services.registration_service import load_races, create_player
+        from services.race_bonus_service import experience_multiplier, outgoing_damage_multiplier
+        from services.race_runtime import request_change, confirm_change, restriction_error
+        stats = {"strength": 7, "agility": 8, "endurance": 9, "intelligence": 10, "wisdom": 11, "perception": 12}
+        data = {"race_name": "Орк", "player_name": "Орк", "registration_enabled": True,
+                "starting_stats": stats, "start_hp": 140, "start_energy": 80,
+                "bonuses": [{"id": "learn", "name": "Обучаемость", "type": "experience_percent", "target": "experience", "value": 7},
+                            {"id": "rage", "name": "Ярость", "type": "formula", "target": "physical", "formula_id": "race_damage"}],
+                "forbidden_locations": ["elf_grove"], "change_allowed": True, "change_via_service": True,
+                "change_cost": 10, "change_warning_text": "⚠️ Бонусы персонажа будут полностью заменены.",
+                "change_requires_confirmation": True, "preserve_progress": True, "change_success_text": "Вы стали орком."}
+        env = race_svc.store().create("orc", data); self.assertTrue(race_svc.validate(env)["ok"], race_svc.validate(env)["errors"])
+        race_svc.store().set_status("orc", race_svc.STATUS_PUBLISHED, force=True)
+        races = load_races(); self.assertEqual(set(races), {"orc"}); self.assertEqual(races["orc"]["stats"]["dexterity"], 8)
+        player = create_player("P", "telegram", "1", "Воин", "orc", races); self.assertEqual(player["hp"], 140)
+        self.assertAlmostEqual(experience_multiplier(player), 1.07)
+        with patch("services.formula_runtime.evaluate", return_value=9): self.assertAlmostEqual(outgoing_damage_multiplier(player, "physical"), 1.09)
+        self.assertIsNotNone(restriction_error(player, "location", "elf_grove"))
+        # Для проверки смены сначала возвращаем игроку другую расу.
+        player.update({"race_id": "human", "race_name": "Человек", "money": 20})
+        preview = request_change(player, "orc"); self.assertIn("⚠️", preview["warning"])
+        changed = confirm_change(player, preview["confirmation_token"])
+        self.assertEqual(changed["race_id"], "orc"); self.assertEqual(player["money"], 10)
+        with self.assertRaises(ValueError): confirm_change(player, preview["confirmation_token"])
+
+    def test_race_change_without_warning_is_invalid(self):
+        env = race_svc.store().create("unsafe", {"race_name": "X", "change_allowed": True, "change_requires_confirmation": False})
+        result = race_svc.validate(env); self.assertFalse(result["ok"])
+        self.assertIn("предупреждения", " ".join(result["errors"]).lower())
 
     def test_content_cannot_publish_level(self):
         rbac.set_role_override("telegram", "999", rbac.CONTENT)

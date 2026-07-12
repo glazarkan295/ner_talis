@@ -42,12 +42,20 @@ STATUS_RETRY_WAIT = "retry_wait"
 STATUS_CANCELLED = "cancelled"
 STATUS_BLOCKED = "blocked"
 STATUS_EXPIRED = "expired"
+STATUS_WAIT_TIMER = "waiting_timer"
+STATUS_WAIT_BATTLE = "waiting_battle"
+STATUS_WAIT_EVENT = "waiting_event"
+STATUS_WAIT_ACTION = "waiting_action"
+STATUS_NOTIFICATION_PENDING = "notification_pending"
+STATUS_DELETED = "deleted"
 
 STATUSES = (
     STATUS_QUEUED, STATUS_SENDING, STATUS_SENT, STATUS_DELIVERED, STATUS_FAILED,
     STATUS_RETRY_WAIT, STATUS_CANCELLED, STATUS_BLOCKED, STATUS_EXPIRED,
+    STATUS_WAIT_TIMER, STATUS_WAIT_BATTLE, STATUS_WAIT_EVENT, STATUS_WAIT_ACTION,
+    STATUS_NOTIFICATION_PENDING, STATUS_DELETED,
 )
-_TERMINAL = {STATUS_SENT, STATUS_DELIVERED, STATUS_CANCELLED, STATUS_EXPIRED}
+_TERMINAL = {STATUS_SENT, STATUS_DELIVERED, STATUS_CANCELLED, STATUS_EXPIRED, STATUS_DELETED}
 
 # --- Приоритеты (ТЗ §9) -----------------------------------------------------
 PRIORITY_CRITICAL = "critical"
@@ -312,6 +320,17 @@ def enqueue(
     buttons: Any = None,
     attachments: Any = None,
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+    delay_seconds: int = 0,
+    ttl_seconds: int = 0,
+    initial_status: str = STATUS_QUEUED,
+    group_key: str = "",
+    group_header: str = "",
+    group_footer: str = "",
+    max_in_group: int = 0,
+    source_id: str = "",
+    send_at: str = "",
+    retry_interval_seconds: int = 0,
+    delete_after_ttl: bool = False,
 ) -> tuple[dict[str, Any], bool]:
     """Поставить сообщение в очередь немедленной доставки (дедуп по delivery_key)."""
     if priority not in _PRIORITY_RANK:
@@ -327,17 +346,25 @@ def enqueue(
         "buttons": buttons,
         "attachments": attachments,
         "priority": priority,
-        "status": STATUS_QUEUED,
+        "status": initial_status if initial_status in STATUSES else STATUS_QUEUED,
         "attempts": 0,
         "max_attempts": int(max_attempts) if max_attempts else DEFAULT_MAX_ATTEMPTS,
         "created_at": _now_iso(),
         "first_attempt_at": None,
         "last_attempt_at": None,
         "delivered_at": None,
-        "next_attempt_at": _now_iso(),
+        "next_attempt_at": str(send_at or "") or (datetime.now(timezone.utc) + timedelta(seconds=max(0, int(delay_seconds or 0)))).isoformat(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=max(0, int(ttl_seconds or 0)))).isoformat() if ttl_seconds else None,
         "error": "",
         "source": str(source or ""),
+        "source_id": str(source_id or ""),
         "operation_id": str(operation_id or ""),
+        "group_key": str(group_key or ""),
+        "group_header": str(group_header or ""),
+        "group_footer": str(group_footer or ""),
+        "max_in_group": max(0, int(max_in_group or 0)),
+        "retry_interval_seconds":max(0,int(retry_interval_seconds or 0)),
+        "delete_after_ttl":bool(delete_after_ttl),
     }
     return _backend.add_or_get(message)
 
@@ -392,6 +419,48 @@ def cancel(message_id: str) -> dict[str, Any] | None:
     _backend.update(message_id, msg)
     return dict(msg)
 
+def delete(message_id: str) -> dict[str, Any] | None:
+    """Soft-delete keeps the audit trail while hiding the payload from delivery."""
+    msg=_backend.get(message_id)
+    if msg is None:return None
+    msg.update({"status":STATUS_DELETED,"text":"","buttons":None,"attachments":None,"last_attempt_at":_now_iso()})
+    _backend.update(message_id,msg);return dict(msg)
+
+def use_button(message_id:str,button_id:str,*,now:datetime|None=None)->dict[str,Any]:
+    """Resolve a queued-message button with TTL and one-time protection."""
+    msg=_backend.get(message_id)
+    if not msg:return {"ok":False,"error":"Сообщение не найдено."}
+    row=next((b for b in msg.get("buttons") or [] if isinstance(b,dict) and str(b.get("button_id") or "")==str(button_id)),None)
+    if not row:return {"ok":False,"error":"Кнопка не найдена."}
+    current=now or _now();created=_parse_dt(msg.get("created_at")) or current;ttl=int(row.get("ttl_seconds") or 0)
+    if msg.get("status") in {STATUS_EXPIRED,STATUS_DELETED,STATUS_CANCELLED} or ttl and created+timedelta(seconds=ttl)<=current:return {"ok":False,"error":str(row.get("error_text") or "Срок действия кнопки истёк.")}
+    used=msg.setdefault("used_buttons",[])
+    if row.get("one_time") and str(button_id) in used:return {"ok":False,"error":str(row.get("error_text") or "Кнопка уже использована.")}
+    if row.get("one_time"):used.append(str(button_id));_backend.update(message_id,msg)
+    return {"ok":True,"action":row.get("action"),"target":row.get("target"),"condition":row.get("show_condition")}
+
+def release_waiting(game_id:str,trigger:str)->int:
+    """Release messages waiting for a player action, battle or event completion."""
+    wanted={"action":{STATUS_WAIT_ACTION},"message":{STATUS_WAIT_ACTION},"battle":{STATUS_WAIT_BATTLE},"event":{STATUS_WAIT_EVENT}}.get(str(trigger),set())
+    changed=0
+    for msg in _backend.list(game_id=str(game_id),limit=10000,offset=0):
+        if msg.get("status") in wanted:
+            msg["status"]=STATUS_QUEUED;msg["next_attempt_at"]=_now_iso();_backend.update(msg["id"],msg);changed+=1
+    return changed
+
+def bind_pending_recipient(game_id:str,platform:str,recipient:str)->int:
+    """Make platform-less notifications deliverable once an account is linked."""
+    changed=0
+    for msg in _backend.list(game_id=str(game_id),limit=10000,offset=0):
+        if msg.get("status")==STATUS_NOTIFICATION_PENDING:
+            msg.update({"platform":str(platform),"recipient":str(recipient),"status":STATUS_QUEUED,"next_attempt_at":_now_iso()});_backend.update(msg["id"],msg);changed+=1
+    return changed
+
+def _activate_due_timers(now:datetime)->None:
+    for msg in _backend.list(limit=10000,offset=0):
+        if msg.get("status")==STATUS_WAIT_TIMER and ((_parse_dt(msg.get("next_attempt_at")) or now)<=now):
+            msg["status"]=STATUS_QUEUED;_backend.update(msg["id"],msg)
+
 
 def _apply_result(msg: dict[str, Any], result: str, error: str, now: datetime) -> None:
     msg["attempts"] = int(msg.get("attempts") or 0) + 1
@@ -414,7 +483,7 @@ def _apply_result(msg: dict[str, Any], result: str, error: str, now: datetime) -
             msg["error"] = error or "Исчерпаны попытки доставки."
         else:
             msg["status"] = STATUS_RETRY_WAIT
-            delay = _BACKOFF[min(int(msg["attempts"]), len(_BACKOFF) - 1)]
+            delay = int(msg.get("retry_interval_seconds") or 0) or _BACKOFF[min(int(msg["attempts"]), len(_BACKOFF) - 1)]
             msg["next_attempt_at"] = (now + timedelta(seconds=delay)).isoformat()
             msg["error"] = error or "Временная ошибка, повтор запланирован."
 
@@ -426,35 +495,45 @@ def dispatch_once(sender: Callable[[dict[str, Any]], tuple[str, str]] | None = N
     процесс с отправителем одной платформы не «забирал» чужие сообщения и не
     жёг им попытки доставки (Codex P2)."""
     now = now or _now()
+    _activate_due_timers(now)
     send = sender or _SENDER or _default_sender
     counts = {"sent": 0, "failed": 0, "blocked": 0, "retry": 0, "processed": 0}
     due = _backend.claim_due(now_iso=now.isoformat(), limit=limit, platforms=platforms)
 
     last_error = None
     last_success = None
+    handled:set[str]=set()
     for msg in due:
-        try:
-            result, error = send(msg)
-        except Exception as exc:  # noqa: BLE001
-            result, error = RESULT_FAILED_TEMPORARY, str(exc)
-        stored = _backend.get(msg["id"])
-        if not isinstance(stored, dict):
-            continue
-        _apply_result(stored, result, error, now)
-        _backend.update(msg["id"], stored)
-        counts["processed"] += 1
-        if stored["status"] == STATUS_SENT:
-            counts["sent"] += 1
-            last_success = now.isoformat()
-        elif stored["status"] == STATUS_BLOCKED:
-            counts["blocked"] += 1
-            last_error = error
-        elif stored["status"] == STATUS_FAILED:
-            counts["failed"] += 1
-            last_error = error
-        else:
-            counts["retry"] += 1
-            last_error = error
+        if msg["id"] in handled:continue
+        group=[msg];group_key=str(msg.get("group_key") or "")
+        if group_key:
+            cap=max(1,int(msg.get("max_in_group") or len(due)))
+            group=[row for row in due if row["id"] not in handled and row.get("group_key")==group_key and row.get("platform")==msg.get("platform") and row.get("recipient")==msg.get("recipient")][:cap]
+        active=[]
+        for row in group:
+            handled.add(row["id"]);expires=_parse_dt(row.get("expires_at"))
+            if expires is not None and expires<=now:
+                stored=_backend.get(row["id"])
+                if isinstance(stored,dict):stored.update({"status":STATUS_DELETED if stored.get("delete_after_ttl") else STATUS_EXPIRED,"error":"Срок жизни сообщения истёк до отправки.","last_attempt_at":now.isoformat()});_backend.update(row["id"],stored)
+                counts["processed"]+=1;counts["failed"]+=1
+            else:active.append(row)
+        if not active:continue
+        payload=dict(active[0])
+        if len(active)>1:
+            texts=[str(row.get("text") or "") for row in active]
+            payload["text"]="\n".join([str(payload.get("group_header") or ""),*texts,str(payload.get("group_footer") or "")]).strip()
+            payload["grouped_message_ids"]=[row["id"] for row in active]
+        try:result,error=send(payload)
+        except Exception as exc:result,error=RESULT_FAILED_TEMPORARY,str(exc)
+        for row in active:
+            stored=_backend.get(row["id"])
+            if not isinstance(stored,dict):continue
+            if len(active)>1:stored["grouped_with"]=[other["id"] for other in active if other["id"]!=row["id"]]
+            _apply_result(stored,result,error,now);_backend.update(row["id"],stored);counts["processed"]+=1
+            if stored["status"]==STATUS_SENT:counts["sent"]+=1;last_success=now.isoformat()
+            elif stored["status"]==STATUS_BLOCKED:counts["blocked"]+=1;last_error=error
+            elif stored["status"]==STATUS_FAILED:counts["failed"]+=1;last_error=error
+            else:counts["retry"]+=1;last_error=error
 
     meta = dict(_backend.get_meta())
     meta["last_run"] = now.isoformat()

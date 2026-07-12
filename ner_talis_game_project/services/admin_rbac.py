@@ -484,6 +484,24 @@ PERM_QUEST_PUBLISH = "quest.publish"
 PERM_QUEST_DISABLE = "quest.disable"
 PERM_QUEST_ARCHIVE = "quest.archive"
 PERM_QUEST_DELETE = "quest.delete"
+# Конструктор игровых кампаний / эвентов (ТЗ 2.0 файл 08, часть 4).
+PERM_EVENT_VIEW = "event_campaign.view"
+PERM_EVENT_CREATE = "event_campaign.create"
+PERM_EVENT_EDIT = "event_campaign.edit"
+PERM_EVENT_VALIDATE = "event_campaign.validate"
+PERM_EVENT_PUBLISH = "event_campaign.publish"
+PERM_EVENT_DISABLE = "event_campaign.disable"
+PERM_EVENT_ARCHIVE = "event_campaign.archive"
+PERM_EVENT_DELETE = "event_campaign.delete"
+# Полный конструктор рассылок (ТЗ 2.0 файл 08, часть 2).
+PERM_BROADCAST_VIEW = "broadcast_campaign.view"
+PERM_BROADCAST_CREATE = "broadcast_campaign.create"
+PERM_BROADCAST_EDIT = "broadcast_campaign.edit"
+PERM_BROADCAST_VALIDATE = "broadcast_campaign.validate"
+PERM_BROADCAST_PUBLISH = "broadcast_campaign.publish"
+PERM_BROADCAST_DISABLE = "broadcast_campaign.disable"
+PERM_BROADCAST_ARCHIVE = "broadcast_campaign.archive"
+PERM_BROADCAST_DELETE = "broadcast_campaign.delete"
 # Конструктор жилого района / дома игрока (ТЗ 21 §6).
 PERM_HOUSING_VIEW = "housing.view"
 PERM_HOUSING_CREATE = "housing.create"
@@ -613,6 +631,10 @@ ALL_PERMISSIONS = (
     PERM_HOUSING_PUBLISH, PERM_HOUSING_DISABLE, PERM_HOUSING_ARCHIVE, PERM_HOUSING_DELETE,
     PERM_QUEST_VIEW, PERM_QUEST_CREATE, PERM_QUEST_EDIT, PERM_QUEST_VALIDATE,
     PERM_QUEST_PUBLISH, PERM_QUEST_DISABLE, PERM_QUEST_ARCHIVE, PERM_QUEST_DELETE,
+    PERM_EVENT_VIEW, PERM_EVENT_CREATE, PERM_EVENT_EDIT, PERM_EVENT_VALIDATE,
+    PERM_EVENT_PUBLISH, PERM_EVENT_DISABLE, PERM_EVENT_ARCHIVE, PERM_EVENT_DELETE,
+    PERM_BROADCAST_VIEW, PERM_BROADCAST_CREATE, PERM_BROADCAST_EDIT, PERM_BROADCAST_VALIDATE,
+    PERM_BROADCAST_PUBLISH, PERM_BROADCAST_DISABLE, PERM_BROADCAST_ARCHIVE, PERM_BROADCAST_DELETE,
     PERM_MESSAGE_RULE_VIEW, PERM_MESSAGE_RULE_CREATE, PERM_MESSAGE_RULE_EDIT, PERM_MESSAGE_RULE_VALIDATE,
     PERM_MESSAGE_RULE_PUBLISH, PERM_MESSAGE_RULE_DISABLE, PERM_MESSAGE_RULE_ARCHIVE, PERM_MESSAGE_RULE_DELETE,
 )
@@ -627,6 +649,8 @@ DANGEROUS_ACTIONS = frozenset({
     "rewards.bulk_remove",
     "currency.large_change",
     "promo.delete",
+    "broadcast_campaign.start",
+    "broadcast_campaign.stop",
     "asset.image_change",
     "system.maintenance_on",
     "system.feature_flag",
@@ -803,6 +827,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_CASINO_VIEW, PERM_CASINO_CREATE, PERM_CASINO_EDIT, PERM_CASINO_VALIDATE,
         PERM_HOUSING_VIEW, PERM_HOUSING_CREATE, PERM_HOUSING_EDIT, PERM_HOUSING_VALIDATE,
         PERM_QUEST_VIEW, PERM_QUEST_CREATE, PERM_QUEST_EDIT, PERM_QUEST_VALIDATE,
+        PERM_EVENT_VIEW, PERM_EVENT_CREATE, PERM_EVENT_EDIT, PERM_EVENT_VALIDATE,
+        PERM_BROADCAST_VIEW, PERM_BROADCAST_CREATE, PERM_BROADCAST_EDIT, PERM_BROADCAST_VALIDATE,
         PERM_MESSAGE_RULE_VIEW, PERM_MESSAGE_RULE_CREATE, PERM_MESSAGE_RULE_EDIT, PERM_MESSAGE_RULE_VALIDATE,
     },
     # economy подтверждает события с крупными наградами/множителями экономики.
@@ -853,6 +879,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         PERM_WORKSHOP_MSG_VIEW, PERM_REPUTATION_VIEW, PERM_TAVERN_VIEW,
         PERM_TEXT_VIEW, PERM_PVP_VIEW, PERM_COMBAT_VIEW, PERM_NPC_ALLY_VIEW,
         PERM_MOLE_VIEW, PERM_CASINO_VIEW, PERM_HOUSING_VIEW, PERM_QUEST_VIEW,
+        PERM_EVENT_VIEW,
+        PERM_BROADCAST_VIEW,
         PERM_MESSAGE_RULE_VIEW,
     },
 }

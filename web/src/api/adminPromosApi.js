@@ -7,10 +7,10 @@ const base = "/api/admin/v2";
 
 export const fetchPromosMeta = () => requestAdminJson(`${base}/promos/meta?_=${t()}`);
 export const fetchPromos = () => requestAdminJson(`${base}/promos?_=${t()}`);
-export const createPromo = (code, uses_left, duration, rewards, reason) =>
-  post(`${base}/promos`, { code, uses_left, duration, rewards, reason });
+export const createPromo = (code, uses_left, duration, rewards, reason, data = {}) =>
+  post(`${base}/promos`, { code, uses_left, duration, rewards, reason, data });
 export const deletePromo = (code) =>
-  requestAdminJson(`${base}/promos?code=${encodeURIComponent(code)}`, { method: "DELETE" });
+  requestAdminJson(`${base}/promos?code=${encodeURIComponent(code)}&confirm=${encodeURIComponent(code)}`, { method: "DELETE" });
 
 export const previewBroadcast = (audience, specific_players) =>
   post(`${base}/broadcast/preview`, { audience, specific_players });

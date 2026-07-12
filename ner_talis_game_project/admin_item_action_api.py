@@ -10,6 +10,7 @@ from fastapi import APIRouter
 from services import disassemble_constructor_service as disassemble
 from services import enchant_constructor_service as enchant
 from services import upgrade_constructor_service as upgrade
+from services import repair_constructor_service as repair
 from services.admin_constructor_factory import create_entity_constructor_router
 from services.admin_rbac import (
     PERM_RECIPE_ARCHIVE, PERM_RECIPE_CREATE, PERM_RECIPE_DELETE, PERM_RECIPE_DISABLE,
@@ -46,4 +47,12 @@ def create_admin_disassemble_router(get_storage) -> APIRouter:
         get_storage=get_storage, prefix="/api/admin/v2/disassembles", tags=["admin-disassembles"],
         svc=disassemble, perms=_PERMS, target_type="item_disassemble", name_field="name",
         not_found="Правило разборки не найдено.",
+    )
+
+
+def create_admin_repair_router(get_storage) -> APIRouter:
+    return create_entity_constructor_router(
+        get_storage=get_storage, prefix="/api/admin/v2/repairs", tags=["admin-repairs"],
+        svc=repair, perms=_PERMS, target_type="item_repair", name_field="name",
+        not_found="Правило ремонта не найдено.",
     )

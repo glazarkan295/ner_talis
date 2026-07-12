@@ -177,11 +177,11 @@ def create_admin_recipes_router(get_storage) -> APIRouter:
 
     @router.get("/{recipe_id}/usage")
     def usage(recipe_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
-        # «Где используется» предмет-результат рецепта (как ингредиент/результат).
+        # Полный граф зависимостей карточки рецепта (§28.2).
         _require(_session(get_storage(), request, token), PERM_RECIPE_VIEW)
-        item = recipes.store().get(recipe_id)
-        out_id = str((item.get("data") if item else {} or {}).get("output_item_id") or "") if item else ""
-        return {"ok": True, "usedBy": recipes.where_used(out_id) if out_id else []}
+        if recipes.store().get(recipe_id) is None:
+            raise HTTPException(status_code=404, detail="Рецепт не найден.")
+        return {"ok": True, "usedBy": recipes.recipe_usage(recipe_id)}
 
     @router.post("/{recipe_id}/validate")
     def validate_recipe(recipe_id: str, payload: ActionRequest, request: Request) -> dict[str, Any]:
@@ -230,6 +230,8 @@ def create_admin_recipes_router(get_storage) -> APIRouter:
             after_func=lambda r: {"status": r.get("status")}, reason=payload.reason,
             details={"warnings": result["warnings"]},
         )
+        from services.crafting_service import invalidate_crafting_recipe_cache
+        invalidate_crafting_recipe_cache()
         return {"ok": True, "item": item, "validation": result}
 
     def _lifecycle(recipe_id, payload, request, *, perm, action, target_status):
@@ -248,6 +250,8 @@ def create_admin_recipes_router(get_storage) -> APIRouter:
             )
         except EntityError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        from services.crafting_service import invalidate_crafting_recipe_cache
+        invalidate_crafting_recipe_cache()
         return {"ok": True, "item": item}
 
     @router.post("/{recipe_id}/disable")
@@ -274,6 +278,8 @@ def create_admin_recipes_router(get_storage) -> APIRouter:
             before={"status": before.get("status")}, after_func=lambda r: {"deleted": bool(r)},
             reason=payload.reason,
         )
+        from services.crafting_service import invalidate_crafting_recipe_cache
+        invalidate_crafting_recipe_cache()
         return {"ok": True, "deleted": True}
 
     attach_entity_versioning_routes(

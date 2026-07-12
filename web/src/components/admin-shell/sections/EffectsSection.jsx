@@ -15,6 +15,7 @@ import { tr, EFFECT_TYPE, EFFECT_SOURCE, EFFECT_TARGET, EFFECT_ACTIVE_WHEN, EFFE
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 import { VersionHistory } from "../VersionHistory.jsx";
+import { fetchFormulas } from "../../../api/adminFormulaApi.js";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 
@@ -32,6 +33,11 @@ const EMPTY = {
   player_name: "", effect_category: "", target_type: "", trigger_type: "",
   duration_mode: "", visibility_mode: "", priority: "", tags: "",
   log_event: false, linked_hidden_reputation_id: "",
+  value_formula_id: "", duration_formula_id: "", chance_formula_id: "", limit_formula_id: "",
+  tick_period_turns: "", tick_period_seconds: "", tick_value: "", percent_max_hp_heal: "",
+  blocked_slots: "", storage_field: "", storage_min: "", storage_max: "",
+  linked_item_id: "", linked_skill_id: "", removal_condition: "", allow_infinite: false,
+  death_text: "", inventory_error_text: "", script_action: "",
 };
 
 function Field({ label, children }) {
@@ -46,6 +52,7 @@ export function EffectsSection({ guarded, hasPerm }) {
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [usage, setUsage] = useState(null);
+  const [formulaOptions, setFormulaOptions] = useState([]);
 
   const can = useMemo(() => ({
     create: hasPerm("effect.create"), edit: hasPerm("effect.edit"), validate: hasPerm("effect.validate"),
@@ -55,6 +62,7 @@ export function EffectsSection({ guarded, hasPerm }) {
 
   const load = useCallback(async () => { const p = await guarded(() => fetchEffects(statusFilter)); if (p) setList(p.items || []); }, [guarded, statusFilter]);
   useEffect(() => { (async () => { const m = await guarded(() => fetchEffectMeta()); if (m) setMeta(m); })(); }, [guarded]);
+  useEffect(() => { (async () => { const f = await guarded(() => fetchFormulas("published")); if (f) setFormulaOptions((f.items || []).map((x) => ({ value: x.id, label: x.data?.name || x.id }))); })(); }, [guarded]);
   useEffect(() => { load(); }, [load]);
 
   const statuses = meta?.statuses || [];
@@ -149,6 +157,25 @@ export function EffectsSection({ guarded, hasPerm }) {
             {num("reflect_percent", "Отражение %")}{num("absorb_percent_from_damage", "Поглощение %")}
             <Field label="Теги очищения (через запятую)"><input className="ntv2-mono" value={d.cleanse_tags} disabled={disabled} onChange={(e) => set("cleanse_tags", e.target.value)} /></Field>
           </div>
+          <details className="ntv2-panel">
+            <summary className="ntv2-subhead">Периодика, травмы и предметы (§17)</summary>
+            <div className="ntv2-form-row">{num("tick_period_turns", "Тик каждые N ходов")}{num("tick_period_seconds", "Тик каждые N секунд")}{num("tick_value", "Значение тика")}{num("percent_max_hp_heal", "Лечение % max HP")}</div>
+            <div className="ntv2-form-row">
+              <Field label="Блокируемые слоты (через запятую)"><input className="ntv2-mono" value={d.blocked_slots} disabled={disabled} onChange={(e) => set("blocked_slots", e.target.value)} /></Field>
+              <Field label="Поле предмета"><input className="ntv2-mono" placeholder="charges / durability" value={d.storage_field} disabled={disabled} onChange={(e) => set("storage_field", e.target.value)} /></Field>
+              {num("storage_min", "Мин. значения")}{num("storage_max", "Макс. значения")}
+            </div>
+            <div className="ntv2-form-row">
+              <Field label="Связанный предмет"><input className="ntv2-mono" value={d.linked_item_id} disabled={disabled} onChange={(e) => set("linked_item_id", e.target.value)} /></Field>
+              <Field label="Связанный навык"><input className="ntv2-mono" value={d.linked_skill_id} disabled={disabled} onChange={(e) => set("linked_skill_id", e.target.value)} /></Field>
+              <Field label="Условие снятия"><input value={d.removal_condition} disabled={disabled} onChange={(e) => set("removal_condition", e.target.value)} /></Field>
+              {flag("allow_infinite", "Разрешить бессрочный эффект")}
+            </div>
+            <Field label="Действие скриптового эффекта"><input className="ntv2-mono" value={d.script_action} disabled={disabled} onChange={(e) => set("script_action", e.target.value)} /></Field>
+            <Field label="Текст смерти от эффекта"><textarea rows={2} value={d.death_text} disabled={disabled} onChange={(e) => set("death_text", e.target.value)} /></Field>
+            <Field label="Ошибка изменения предмета"><textarea rows={2} value={d.inventory_error_text} disabled={disabled} onChange={(e) => set("inventory_error_text", e.target.value)} /></Field>
+          </details>
+          <div className="ntv2-panel"><h4 className="ntv2-subhead">Формулы эффекта</h4><div className="ntv2-form-row">{[['value_formula_id','Значение'],['duration_formula_id','Длительность'],['chance_formula_id','Шанс'],['limit_formula_id','Лимит/стаки']].map(([key,label]) => <Field key={key} label={label}><select value={d[key] || ''} disabled={disabled} onChange={(e) => set(key,e.target.value)}><option value="">— без формулы —</option>{formulaOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>)}</div></div>
           <div className="ntv2-form-row" style={{ gap: 14 }}>
             {flag("show_to_player", "Показывать игроку")}{flag("can_be_cleansed", "Снимается очищением")}
             {flag("can_trigger_effects", "Запускает эффекты")}{flag("can_be_reflected", "Можно отразить")}
@@ -181,7 +208,7 @@ export function EffectsSection({ guarded, hasPerm }) {
           {!editing.isNew && can.del ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Удалить эффект?", dangerous: true, confirmLabel: "Удалить", body: <p>Полное удаление определения эффекта.</p>, run: async (r) => { await guarded(() => deleteEffect(editing.id, editing.id, r), "Удалено."); setEditing(null); await load(); } })}>Удалить</button> : null}
         </div>
 
-        {!editing.isNew ? <VersionHistory base="effects" id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
+        {!editing.isNew ? <VersionHistory base="effects" id={editing.id} canRollback={can.edit && (editing.status !== "published" || can.publish)} onRolledBack={refreshEditing} /> : null}
 
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />

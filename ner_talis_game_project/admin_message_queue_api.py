@@ -35,6 +35,8 @@ def _meta_extra(_svc: Any) -> dict[str, Any]:
         "sourceTypes": list(svc.SOURCE_TYPES),
         "sendModes": [{"value": m, "label": svc.SEND_MODE_LABELS.get(m, m)} for m in svc.SEND_MODES],
         "platforms": list(svc.PLATFORMS),
+        "templateVariables":list(svc.TEMPLATE_VARIABLES),
+        "buttonActions":list(svc.BUTTON_ACTIONS),
     }
 
 

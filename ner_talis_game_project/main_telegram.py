@@ -115,6 +115,7 @@ def _import_telegram_runtime():
         profile_button,
         profile_command,
         promo_command,
+        promo_dynamic_command,
         receive_gender,
         receive_name,
         receive_race,
@@ -157,6 +158,7 @@ def _import_telegram_runtime():
         "profile_button": profile_button,
         "profile_command": profile_command,
         "promo_command": promo_command,
+        "promo_dynamic_command":promo_dynamic_command,
         "receive_gender": receive_gender,
         "receive_name": receive_name,
         "receive_race": receive_race,
@@ -338,6 +340,7 @@ def build_application():
     application.add_handler(CommandHandler("menu", runtime["menu_command"]))
     if get_bool_env("TG_ENABLE_HIDE_MENU_COMMAND", True):
         application.add_handler(CommandHandler("hide_menu", runtime["hide_menu_command"]))
+    application.add_handler(MessageHandler(filters.COMMAND, runtime["promo_dynamic_command"]))
     application.add_handler(MessageHandler(filters.Regex(r"(?i)^(меню|открыть меню|вернуть меню)$"), runtime["menu_command"]))
     application.add_handler(MessageHandler(filters.Regex("^Профиль$"), runtime["profile_button"]))
     application.add_handler(MessageHandler(filters.Regex("^Профиль на сайте$"), runtime["profile_site_button"]))

@@ -61,6 +61,12 @@ class PlayerActionRequest(BaseModel):
     game_id: str = Field(min_length=2)
     reason: str = ""
 
+class ProgressRequest(PlayerActionRequest):
+    amount:float=1;target:str=""
+
+class DeleteRequest(BaseModel):
+    token:str|None=Field(default=None,min_length=16);confirm:str=Field(min_length=1);reason:str=""
+
 
 def _bearer_token(request: Request | None) -> str:
     if request is None:
@@ -98,6 +104,36 @@ def _actor(session: dict[str, Any]) -> str:
 def create_admin_achievement_router(get_storage) -> APIRouter:
     router = APIRouter(prefix="/api/admin/v2/achievements", tags=["admin-achievements"])
 
+    @router.get("/{achievement_id}/usage")
+    def usage(achievement_id:str,request:Request,token:str|None=Query(default=None,min_length=16))->dict[str,Any]:
+        _require(_session(get_storage(),request,token),PERM_ACHIEVEMENT_VIEW)
+        if not ach.store().get(achievement_id):raise HTTPException(status_code=404,detail="Достижение не найдено.")
+        from services import admin_graph_service as graph
+        detail=graph.node_detail(graph.node_id("achievement",achievement_id)) or {}
+        extra=ach.usage_extra(get_storage(),achievement_id)
+        return {"ok":True,"usage":{"node":detail.get("node"),"incoming":detail.get("incoming",[]),"outgoing":detail.get("outgoing",[]),"used_by":list(dict.fromkeys([*(detail.get("used_by") or []),*extra["used_by"]])),**extra}}
+
+    @router.delete("/{achievement_id}")
+    def delete(achievement_id:str,payload:DeleteRequest,request:Request)->dict[str,Any]:
+        session=_session(get_storage(),request,payload.token);_require(session,PERM_ACHIEVEMENT_ARCHIVE)
+        if payload.confirm!=achievement_id:raise HTTPException(status_code=400,detail="Для удаления введите точный ID достижения.")
+        if not ach.store().get(achievement_id):raise HTTPException(status_code=404,detail="Достижение не найдено.")
+        try:ach.validate_delete(get_storage(),achievement_id)
+        except ValueError as exc:raise HTTPException(status_code=409,detail=str(exc)) from exc
+        from services import admin_graph_service as graph
+        incoming=(graph.node_detail(graph.node_id("achievement",achievement_id)) or {}).get("incoming") or []
+        if incoming:raise HTTPException(status_code=409,detail="Достижение используется другими объектами и не может быть удалено.")
+        deleted=run_admin_operation(session=session,action="achievement.delete",func=lambda:ach.store().delete(achievement_id),target_type="achievement",target_id=achievement_id,reason=payload.reason)
+        return {"ok":True,"deleted":bool(deleted)}
+
+    @router.post("/{achievement_id}/admin-condition")
+    def admin_condition(achievement_id:str,payload:ProgressRequest,request:Request)->dict[str,Any]:
+        session=_session(get_storage(),request,payload.token);_require(session,PERM_ACHIEVEMENT_GRANT_MANUAL);storage=get_storage();player=storage.get_player_by_game_id(payload.game_id)
+        if not player:raise HTTPException(status_code=404,detail="Игрок не найден.")
+        newly=engine.record_progress(storage,player,"admin_condition",payload.amount,payload.target or achievement_id)
+        record_admin_operation(session=session,action="achievement.admin_condition",target_type="player",target_id=payload.game_id,details={"achievement_id":achievement_id,"amount":payload.amount,"target":payload.target},reason=payload.reason)
+        return {"ok":True,"newlyGranted":newly,"progress":engine.admin_player_progress(player)}
+
     @router.get("/meta")
     def meta(request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
         _require(_session(get_storage(), request, token), PERM_ACHIEVEMENT_VIEW)
@@ -108,6 +144,8 @@ def create_admin_achievement_router(get_storage) -> APIRouter:
             "visibilities": list(ach.VISIBILITIES),
             "conditionLogic": list(ach.CONDITION_LOGIC),
             "conditionTypes": list(ach.CONDITION_TYPES),
+            "conditionOperators": list(ach.CONDITION_OPERATORS),
+            "conditionPeriods": list(ach.CONDITION_PERIODS),
             "progressTypes": list(ach.PROGRESS_TYPES),
             "rewardTypes": list(ach.REWARD_TYPES),
             "repeatPeriods": list(ach.REPEAT_PERIODS),

@@ -66,4 +66,11 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         value = str(data.get(key) or "").strip()
         if value and (_HTML_RE.search(value) or "<script" in value.lower()):
             errors.append(f"В поле «{key}» недопустим HTML.")
+    from services.formula_runtime import validate_references
+    errors.extend(validate_references(data, ("success_formula_id", "upgrade_formula_id", "break_risk_formula_id")))
+    effect_id = str(data.get("result_effect") or "")
+    if effect_id:
+        from services.effect_constructor_service import published_definition
+        if not published_definition(effect_id):
+            errors.append(f"Эффект результата «{effect_id}» не опубликован.")
     return {"ok": not errors, "errors": errors, "warnings": warnings}

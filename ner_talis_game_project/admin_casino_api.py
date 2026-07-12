@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Query
 from pydantic import BaseModel, Field
 
 from services import casino_constructor_service as svc
@@ -71,6 +71,13 @@ def create_admin_casino_router(get_storage) -> APIRouter:
         not_found="Казино не найдено.",
         meta_extra=_meta_extra,
     )
+
+    @router.get("/operations/logs")
+    def operation_logs(request: Request, token: str | None = Query(default=None, min_length=16), limit: int = Query(default=200, ge=1, le=2000)) -> dict[str, Any]:
+        _guard(request, token)
+        from services.casino_runtime import read_logs
+        rows=read_logs(limit)
+        return {"ok":True,"items":rows,"suspicious":[row for row in rows if row.get("suspicious")]}
 
     def _guard(request: Request, token: str | None) -> None:
         effective = _bearer(request) or str(token or "").strip()

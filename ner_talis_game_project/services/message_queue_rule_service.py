@@ -2,8 +2,8 @@
 
 Запись = правило очереди: для типа/источника сообщения задаёт приоритет, канал,
 режим отправки, группировку, повторную доставку и срок жизни. Это авторский слой
-поверх рантайма bot_message_queue (который уже ранжирует и группирует сообщения);
-здесь админ описывает правила приоритета без правки кода.
+поверх рантайма bot_message_queue. message_delivery разрешает опубликованное
+правило для каждого сообщения и применяет его без правки кода.
 
 Приоритет — число (§5): 1 — боевые/критичные, 2 — достижения/награды, 3 —
 рассылки/инфо, 0 — ждать следующего сообщения/действия игрока, пусто (None) —
@@ -21,6 +21,9 @@ from services.admin_entity_store import EntityStore
 from services.constructor_status import *  # noqa: F401,F403 - статусы конструктора
 
 _HTML_RE = re.compile(r"<[^>]+>")
+_VAR_RE = re.compile(r"\{\{\s*([a-zA-Z_][\w.]*)\s*\}\}")
+TEMPLATE_VARIABLES = ("player_name","game_id","message","amount","item_name","source_name","error","date","time")
+BUTTON_ACTIONS = ("open_profile","open_quest","open_event","open_location","open_site","callback","dismiss","retry")
 
 # Типы сообщений (§4).
 MESSAGE_TYPES = (
@@ -81,6 +84,9 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
 
+    if not str(envelope.get("id") or "").strip():
+        errors.append("Не задан ID правила очереди.")
+
     if not str(data.get("name") or "").strip():
         errors.append("Не заполнено название правила очереди.")
 
@@ -92,7 +98,7 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
 
     source = str(data.get("source") or "").strip()
     if source and source not in SOURCE_TYPES:
-        warnings.append(f"Источник «{source}» не из списка.")
+        errors.append(f"Источник сообщения «{source}» не существует.")
 
     # Приоритет (§5/§15): число ≥ 0; пусто = после таймера (разрешено).
     if data.get("priority") not in (None, ""):
@@ -141,6 +147,14 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
     for key in ("name", "description"):
         if _has_html(data.get(key)):
             errors.append(f"В поле «{key}» недопустим HTML.")
+    for key in ("message_template","group_header","group_footer","error_text"):
+        unknown=sorted(set(_VAR_RE.findall(str(data.get(key) or "")))-set(TEMPLATE_VARIABLES))
+        if unknown:errors.append(f"Шаблон «{key}» использует неизвестные переменные: {', '.join(unknown)}.")
+    for index,row in enumerate(data.get("buttons") or [],1):
+        if not isinstance(row,dict):continue
+        if not str(row.get("button_id") or "").strip():errors.append(f"Кнопка {index}: не задан ID.")
+        action=str(row.get("action") or "")
+        if action not in BUTTON_ACTIONS:errors.append(f"Кнопка {index}: действие «{action or 'пусто'}» не существует.")
 
     return {"ok": not errors, "errors": errors, "warnings": warnings}
 
@@ -159,4 +173,25 @@ def preview(data: dict[str, Any]) -> dict[str, Any]:
         "platform": data.get("platform") or "both",
         "group_enabled": bool(data.get("group_enabled")),
         "repeat_on_error": bool(data.get("repeat_on_error")),
+        "message_template":data.get("message_template") or "{{message}}",
+        "buttons":data.get("buttons") or [],
     }
+
+
+def resolve_rule(message_type: str, *, source: str = "", platform: str = "") -> dict[str, Any]:
+    """Наиболее специфичное опубликованное правило для сообщения."""
+    ranked: list[tuple[int, int, dict[str, Any]]] = []
+    for env in store().list(status=STATUS_PUBLISHED):  # noqa: F405
+        data = dict(env.get("data") or {})
+        if str(data.get("message_type") or "") != str(message_type):
+            continue
+        rule_source = str(data.get("source") or "")
+        rule_platform = str(data.get("platform") or "both")
+        if rule_source and rule_source != source:
+            continue
+        if platform and rule_platform not in ("both", platform):
+            continue
+        specificity = (2 if rule_source else 0) + (1 if platform and rule_platform == platform else 0)
+        ranked.append((specificity, int(data.get("rule_priority") or 0), {"id": env.get("id"), **data}))
+    ranked.sort(key=lambda row: (row[0], row[1]), reverse=True)
+    return ranked[0][2] if ranked else {}

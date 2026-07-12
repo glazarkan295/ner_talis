@@ -99,18 +99,23 @@ class QuestServiceTest(unittest.TestCase):
         self.assertEqual(prev["quest_type"], "Побочный")
         self.assertEqual(len(prev["stages"]), 1)
 
+    def test_full_conditions_items_choices_validate(self):
+        env=quests.store().create("full",{"name":"Ветка","quest_type":"hidden","reveal_condition":{"type":"item","object_id":"map"},"completion_conditions":["all_tasks_done"],"accept_conditions":[{"type":"reputation","object_id":"guards","amount":5}],"stages":[{"stage_id":"start"},{"stage_id":"left"}],"tasks":[{"task_id":"x","stage_id":"left","task_type":"bring_item","target_id":"letter","required_count":1}],"quest_items":[{"item_id":"letter","count":1,"give_on_accept":True,"take_on_complete":True}],"choices":[{"choice_id":"L","next_stage":"left"}],"rewards":[{"type":"access_market","object_id":"market"}]})
+        self.assertTrue(quests.validate(env)["ok"],quests.validate(env)["errors"])
+
 
 class QuestApiTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         base = Path(self._tmp.name)
-        keys = ("QUEST_CONSTRUCTOR_PATH", "ADMIN_ROLES_PATH", "ADMIN_AUDIT_LOG_PATH", "TELEGRAM_ADMIN_USER_IDS")
+        keys = ("QUEST_CONSTRUCTOR_PATH", "ADMIN_ROLES_PATH", "ADMIN_AUDIT_LOG_PATH", "TELEGRAM_ADMIN_USER_IDS", "WORLD_CONTENT_PATH")
         self._saved = {k: os.environ.get(k) for k in keys}
         os.environ["QUEST_CONSTRUCTOR_PATH"] = str(base / "quests.json")
         os.environ["ADMIN_ROLES_PATH"] = str(base / "roles.json")
         os.environ["ADMIN_AUDIT_LOG_PATH"] = str(base / "audit.log")
         os.environ["TELEGRAM_ADMIN_USER_IDS"] = "999"
+        os.environ["WORLD_CONTENT_PATH"] = str(base / "world.json")
         self.addCleanup(self._restore)
         self.storage = JsonStorage(str(base / "players.json"))
         app = FastAPI()
@@ -162,6 +167,11 @@ class QuestApiTest(unittest.TestCase):
         pv = self.client.post("/api/admin/v2/quests/q2/preview", headers=self._auth(token), json={})
         self.assertEqual(pv.status_code, 200, pv.text)
         self.assertEqual(pv.json()["preview"]["quest_type"], "Сюжетный")
+
+    def test_legacy_import_endpoint_preserves_id(self):
+        from services import world_content_registry as world
+        world.create_content(world.KIND_QUEST,"old_q",{"name":"Старый"})
+        token=self._token();res=self.client.post("/api/admin/v2/quests/import",headers=self._auth(token),json={"reason":"migration"});self.assertEqual(res.status_code,200,res.text);self.assertEqual(res.json()["report"]["created"],1);self.assertIsNotNone(quests.store().get("old_q"))
 
     def test_content_cannot_publish_readonly_cannot_create(self):
         rbac.set_role_override("telegram", "999", rbac.CONTENT)

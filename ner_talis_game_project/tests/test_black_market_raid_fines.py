@@ -146,6 +146,15 @@ class BlackMarketRaidFineTest(unittest.TestCase):
         self.assertEqual(len(player.get("active_fines") or []), 1)
         self.assertIn("крепост", result.text.casefold())
 
+    def test_all_three_sources_share_format_and_city_then_fortress_payment(self):
+        for source in ("black_market_raid","informer_raid","casino_raid"):
+            _tmp,_storage,player=self.make_storage_player(level=20,money=10000)
+            fine=create_raid_fine(player,source,now=1_000_000)
+            for key in ("id","source","source_name","status","base_amount","current_amount","currency","created_at_ts","updated_at_ts","due_day","overdue_day","forced_collection_day","daily_interest_percent","movement_restricted","can_pay_in_city_hall","can_pay_in_fortress_hall","created_by"):self.assertIn(key,fine)
+            pay_fine(player,place="city",now=1_000_000);self.assertFalse(player.get("active_fines"))
+            fine=create_raid_fine(player,source,now=1_000_000);advance_fine_state(player,now=1_000_000+30*SECONDS_PER_FINE_DAY)
+            self.assertEqual(fine["status"],"forced_collection");pay_fine(player,place="fortress",now=1_000_000+30*SECONDS_PER_FINE_DAY);self.assertFalse(player.get("active_fines"))
+
 
 if __name__ == "__main__":
     unittest.main()

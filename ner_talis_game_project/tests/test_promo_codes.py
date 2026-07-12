@@ -9,7 +9,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from services.admin_command_service import execute_admin_command
-from services.promo_service import delete_promo_code, load_promo_data, redeem_promo_code, save_promo_data
+from services.promo_service import add_promo_code, delete_promo_code, load_promo_data, promo_from_command, redeem_promo_code, save_promo_data
 from services.registration_service import create_player, load_races
 from storage.json_storage import JsonStorage
 from storage.sqlite_storage import SQLiteStorage
@@ -130,6 +130,16 @@ class PromoCodeCreationTest(unittest.TestCase):
             self.assertIn("уже использован", second_message)
             player = storage.get_player_by_game_id(game_id)
             self.assertEqual(player["money_copper"], 100)
+
+    def test_configured_command_conditions_special_rewards_and_history(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.environ["PROMO_CODES_PATH"]=str(Path(tmp_dir)/"promo.json");storage=JsonStorage(str(Path(tmp_dir)/"players.json"));game_id=self._make_player(storage,platform="telegram");player=storage.get_player_by_game_id(game_id);player["level"]=5;storage.update_player(player)
+            add_promo_code(code="HERO",uses_left=3,reward={"rewards":[{"type":"reputation","object_id":"guards","amount":4},{"type":"system_flag","object_id":"promo_hero","amount":1}]},storage=storage,config={"command":"/gift","code_after_command":"HERO","platform":"telegram","min_level":5,"max_level":10,"per_player_limit":1,"success_text":"Дар получен"})
+            self.assertEqual(promo_from_command(storage,"/gift","telegram"),("HERO","HERO"));self.assertIsNone(promo_from_command(storage,"/gift","vk"))
+            ok,message=redeem_promo_code(storage,game_id,"HERO",platform="telegram");self.assertTrue(ok);self.assertEqual(message,"Дар получен")
+            player=storage.get_player_by_game_id(game_id);self.assertEqual(player["reputations"]["guards"],4);self.assertTrue(player["system_flags"]["promo_hero"])
+            second,error=redeem_promo_code(storage,game_id,"HERO",platform="telegram");self.assertFalse(second);self.assertTrue(error)
+            history=load_promo_data(storage)["codes"]["HERO"]["activation_history"];self.assertEqual([row["status"] for row in history],["success","error"])
 
     def test_admin_promo_add_works_with_sqlite_storage(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

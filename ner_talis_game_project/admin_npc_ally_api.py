@@ -32,6 +32,8 @@ _PERMS = {
 def _meta_extra(_svc: Any) -> dict[str, Any]:
     return {
         "allyTypes": [{"value": t, "label": svc.ALLY_TYPE_LABELS.get(t, t)} for t in svc.ALLY_TYPES],
+        "allyRoles": list(svc.ALLY_ROLES),
+        "ownActionTypes": list(svc.OWN_ACTION_TYPES),
         "acquireMethods": [{"value": m, "label": svc.ACQUIRE_METHOD_LABELS.get(m, m)} for m in svc.ACQUIRE_METHODS],
         "combatTurnModes": [{"value": t, "label": svc.COMBAT_TURN_LABELS.get(t, t)} for t in svc.COMBAT_TURN_MODES],
         "targetModes": [{"value": t, "label": svc.TARGET_MODE_LABELS.get(t, t)} for t in svc.TARGET_MODES],

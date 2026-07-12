@@ -49,7 +49,7 @@ from services.market_service import (
     sellable_inventory_stack_indexes,
 )
 from services.web_profile import ADMIN_PROFILE_EDIT_SCOPE, PROFILE_SCOPE
-from services.active_skill_service import refresh_unlocked_active_skills, resource_cost_with_modifiers, skill_level, is_skill_weapon_compatible, skill_weapon_requirement_text, can_spend_skill_points_on, player_branch, selected_main_path, selected_secondary_path, path_level, secondary_path_limit
+from services.active_skill_service import refresh_unlocked_active_skills, resource_cost_with_modifiers, skill_level, is_skill_weapon_compatible, skill_weapon_requirement_text, can_spend_skill_points_on, skill_upgrade_cost, player_branch, selected_main_path, selected_secondary_path, path_level, secondary_path_limit
 from services.small_plateau_service import ensure_curse_bearer_effect
 
 FRONT_TO_BACK_STAT = {
@@ -204,12 +204,11 @@ _RACE_STAT_LABELS = (
 )
 
 
-@lru_cache(maxsize=1)
 def _races_catalog() -> dict[str, Any]:
-    """data/races.json, прочитанный один раз (источник истины по расам)."""
+    """Published registration races; legacy JSON is fallback."""
     try:
         from services.registration_service import load_races
-        catalog = load_races("data/races.json")
+        catalog = load_races()
         return catalog if isinstance(catalog, dict) else {}
     except Exception:
         return {}
@@ -256,6 +255,10 @@ class SkillEquipRequest(BaseModel):
     skill_id: str
 
 
+class SkillUseRequest(BaseModel):
+    skill_id: str
+
+
 class EquipItemRequest(BaseModel):
     item_id: str
     slot_key: str | None = None
@@ -269,6 +272,15 @@ class UnequipItemRequest(BaseModel):
 class UseItemRequest(BaseModel):
     item_id: str
     inventory_index: int | None = Field(default=None, ge=0)
+
+
+class ProfileItemActionRequest(UseItemRequest):
+    action: str
+
+
+class CraftOperationRequest(UseItemRequest):
+    operation: str
+    rule_id: str
 
 
 class DropItemRequest(BaseModel):
@@ -290,6 +302,15 @@ class PromoRedeemRequest(BaseModel):
 class EditProfileFieldRequest(BaseModel):
     field: str
     value: str
+
+
+class RaceChangePreviewRequest(BaseModel):
+    target_race_id: str
+    method: str = "service"
+
+
+class RaceChangeConfirmRequest(BaseModel):
+    confirmation_token: str
 
 
 class CourierTransferItem(BaseModel):
@@ -1026,7 +1047,7 @@ def is_inventory_item_usable(item: dict[str, Any]) -> bool:
         return False
     if is_direct_profile_use_disabled(item):
         return False
-    return is_ammunition_item(item) or item_energy_restore(item) > 0 or has_explicit_consumable_effect(item) or resource_max_percent_from_item(item) is not None or inventory_pocket_spec(item) is not None or category == "расходники" or bool(parts & usable_markers)
+    return bool(item.get("can_open") or item.get("grants_npc_helper_id") or (item.get("opens_access") and str(item.get("access_mode") or "on_use")=="on_use")) or is_ammunition_item(item) or item_energy_restore(item) > 0 or has_explicit_consumable_effect(item) or resource_max_percent_from_item(item) is not None or inventory_pocket_spec(item) is not None or category == "расходники" or bool(parts & usable_markers)
 
 def normalize_item(item: dict[str, Any], default_category: str = "Прочее") -> dict[str, Any]:
     item = enrich_inventory_item(item)
@@ -1328,16 +1349,55 @@ def _profile_rating_places(player: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _profile_services(player: dict[str, Any]) -> list[dict[str, Any]]:
     """Доступные сервисы (ТЗ §10). Пустой список → вкладка «Сервисы» скрыта."""
-    return [
-        {"id": "transfer", "label": "Передача"},
-        {"id": "promo", "label": "Промокод"},
-    ]
+    services=[]
+    if player.get("game_id") and not player.get("courier_disabled"):services.append({"id":"transfer","label":"Передача"})
+    if not player.get("promo_disabled"):services.append({"id":"promo","label":"Промокод"})
+    try:
+        from services.pavilion_runtime import access_active
+        if access_active(player):services.append({"id":"pavilion","label":"Торговый павильон"})
+    except Exception:pass
+    return services
 
 
 def _profile_guild(player: dict[str, Any]) -> dict[str, Any] | None:
     """Гильдейский блок профиля (ТЗ §14). None → вкладка «Гильдии» скрыта."""
     guild = player.get("guild")
     return guild if isinstance(guild, dict) and guild else None
+
+
+def _profile_reputations(player: dict[str, Any]) -> list[dict[str, Any]]:
+    try:
+        from services.reputation_runtime_service import player_view
+        return player_view(player)
+    except Exception:
+        return []
+
+
+def _profile_event_campaigns(player: dict[str, Any]) -> list[dict[str, Any]]:
+    states = player.get("event_campaigns") if isinstance(player.get("event_campaigns"), dict) else {}
+    rows=[]
+    for event_id,state in states.items():
+        if not isinstance(state,dict): continue
+        try:
+            from services.event_campaign_service import published
+            data=published(str(event_id)) or {}
+        except Exception: data={}
+        rows.append({"id":str(event_id),"name":data.get("player_name") or data.get("name") or str(event_id),"status":state.get("status"),"stageId":state.get("stage_id"),"points":state.get("points",0),"place":state.get("place")})
+    return rows
+
+
+def _achievement_event(player: dict[str, Any], event_type: str, amount: float = 1,
+                       target: str = "", storage: Any = None) -> None:
+    try:
+        from services.achievement_engine import record_game_event
+        record_game_event(player, event_type, amount, target, storage=storage)
+    except Exception:
+        pass
+    try:
+        from services.quest_runtime_service import progress,trigger_source
+        progress(player,event_type,target,max(1,int(amount)))
+        if event_type=="use_item":trigger_source(player,"item",target)
+    except Exception:pass
 
 
 def _profile_warnings(player: dict[str, Any], *, overflow: int, free_attr: int, free_skill: int, current_energy: int, max_energy: int) -> list[dict[str, Any]]:
@@ -1437,13 +1497,28 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "description": description,
         })
 
+    from services.item_constructor_service import PROFILE_ACTION_LABELS
+
+    def configured_profile_actions(item: dict[str, Any]) -> set[str] | None:
+        raw = item.get("profile_actions")
+        return {str(action) for action in raw} if isinstance(raw, list) else None
+
+    def drop_error(item: dict[str, Any]) -> str | None:
+        configured = configured_profile_actions(item)
+        if configured is not None and "drop" not in configured:
+            return "Выбрасывание этого предмета отключено в настройках."
+        if item.get("protected") or item.get("drop_protected") or item.get("locked"):
+            return "Защищённый предмет нельзя выбросить."
+        return None
+
     equipment = {}
     for slot_key, raw_item in (player.get("equipment") or {}).items():
         if not isinstance(raw_item, dict):
             continue
         item = normalize_item(raw_item, raw_item.get("category", "Снаряжение"))
         item["slotKey"] = slot_key
-        item["actions"] = ["Снять"]
+        configured = configured_profile_actions(item)
+        item["actions"] = ["Снять"] if configured is None or "unequip" in configured else []
         equipment[slot_key] = item
 
     inventory = []
@@ -1454,17 +1529,42 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             continue
         item = normalize_item(raw_item)
         item["inventoryIndex"] = inventory_index
-        if is_profile_equipment_item(item):
+        configured = configured_profile_actions(item)
+        if is_profile_equipment_item(item) and (configured is None or "equip" in configured):
             item["actions"] = ["Надеть"]
-        elif is_inventory_item_usable(item):
-            item["actions"] = ["Использовать"]
+        elif is_inventory_item_usable(item) and (configured is None or "open" in configured or "use" in configured):
+            item["actions"] = ["Открыть" if item.get("can_open") and (configured is None or "open" in configured) else "Использовать"]
         else:
             item.setdefault("actions", [])
-        if inventory_index in sellable_stack_indexes:
+        if inventory_index in sellable_stack_indexes and (configured is None or "sell" in configured):
             item.setdefault("actions", [])
             if "Продать" not in item["actions"]:
                 item["actions"].append("Продать")
             item["marketSellAvailable"] = True
+        current_durability = safe_int(item.get("current_durability", item.get("durability")), 0)
+        max_durability = safe_int(item.get("max_durability", item.get("durability_max")), 0)
+        if item.get("can_be_repaired") and max_durability > 0 and current_durability < max_durability and (configured is None or "repair" in configured):
+            item.setdefault("actions", []).append("Ремонт")
+        if configured is not None:
+            for action in ("inspect", "read", "charge", "discharge", "pouch_store", "pouch_remove", "storage_store", "transfer", "delivery"):
+                if action in configured:
+                    if action == "pouch_store" and item.get("in_pouch") or action == "pouch_remove" and not item.get("in_pouch"):
+                        continue
+                    charges = safe_int(item.get("current_charges", item.get("charges")), 0)
+                    maximum_charges = safe_int(item.get("max_charges"), 0)
+                    if action == "charge" and maximum_charges and charges >= maximum_charges or action == "discharge" and charges <= 0:
+                        continue
+                    item.setdefault("actions", []).append(PROFILE_ACTION_LABELS[action])
+        item["profileCanDrop"] = drop_error(item) is None
+        item["dropWarning"] = "Особый предмет будет потерян безвозвратно." if any((item.get("is_quest"), item.get("quest_item"), item.get("is_unique"), item.get("unique"), item.get("cursed"), item.get("ancient"))) else ""
+        try:
+            from services.craft_operation_runtime import available_rules
+            item["craftOperations"] = available_rules(item)
+            if configured is not None:
+                operation_action = {"upgrade": "upgrade", "enchant": "enchant", "repair": "repair", "disassemble": "disassemble", "purify": "disassemble"}
+                item["craftOperations"] = [row for row in item["craftOperations"] if operation_action.get(str(row.get("operation") or ""), str(row.get("operation") or "")) in configured]
+        except Exception:
+            item["craftOperations"] = []
         inventory.append(item)
 
     skills = player.get("skills", {}) if isinstance(player.get("skills"), dict) else {}
@@ -1479,6 +1579,11 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         normalize_skill(skill, level, bonus_modifiers, "passive", player)
         for skill in skills.get("passive", [])
         if isinstance(skill, dict) and str(skill.get("id") or skill.get("name") or "") not in equipped_skill_keys
+    ]
+    passive_equipped_skills = [
+        normalize_skill(skill, level, bonus_modifiers, "passive_equipped", player)
+        for skill in skills.get("passive_equipped", [])
+        if isinstance(skill, dict)
     ]
 
     crafting_levels = []
@@ -1504,6 +1609,8 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         "status": _profile_status(player),
         "warnings": profile_warnings,
         "ratingPlaces": _profile_rating_places(player),
+        "reputations": _profile_reputations(player),
+        "eventCampaigns": _profile_event_campaigns(player),
         "services": _profile_services(player),
         "guild": _profile_guild(player),
         "profileLayout": _published_profile_layout(),
@@ -1524,6 +1631,10 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "raceKey": race_key,
             "raceName": player.get("race_name", "Человек"),
             "raceInfo": _profile_race_info(race_key),
+            "raceChangeOptions": [{"id": rid, "name": row.get("name") or rid,
+                                   "warning": row.get("change_warning_text") or "⚠️ Смена расы заменит постоянные бонусы.",
+                                   "cost": safe_int(row.get("change_cost"), 0)}
+                                  for rid, row in _races_catalog().items() if rid != race_key and row.get("change_allowed") and row.get("change_via_service")],
             "gender": player.get("gender", "not_selected"),
             "genderLabel": gender_label_ru(player.get("gender"), player.get("gender_label")),
             "profileFieldEdits": profile_field_edit_availability(player),
@@ -1552,6 +1663,8 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
             "skillEquipCapacity": safe_int(player.get("skill_equip_capacity") or player.get("max_equipped_skills"), 2),
             "skillEquipUsed": len(equipped_skills),
             "skillEquipFree": max(0, safe_int(player.get("skill_equip_capacity") or player.get("max_equipped_skills"), 2) - len(equipped_skills)),
+            "passiveSkillSlots": safe_int(player.get("passive_skill_slots"), 2),
+            "passiveSkillSlotsUsed": sum(max(1, safe_int(row.get("passive_slot_cost"), 1)) for row in skills.get("passive_equipped", []) if isinstance(row, dict)),
         },
         "attributes": attributes,
         "parameters": [
@@ -1568,14 +1681,16 @@ def frontend_profile(player: dict[str, Any]) -> dict[str, Any]:
         ],
         "effects": [effect for effect in (normalize_effect_for_frontend(raw_effect) for raw_effect in [*player.get("active_effects", []), *_battle_stimulant_status_effects(player)]) if effect],
         "activeSets": player.get("active_sets", []),
-        "equipmentSlots": equipment_slots_for_frontend(player.get("equipment") or {}),
+        "equipmentSlots": equipment_slots_for_frontend(player.get("equipment") or {}, player=player),
         "equipment": equipment,
         "inventory": inventory,
+        "personalStorage": [dict(normalize_item(item), storageIndex=index) for index, item in enumerate(player.get("personal_storage") or []) if isinstance(item, dict)],
+        "craftDelivery": {"pendingAmount": sum(int(row.get("amount") or 0) for row in player.get("craft_delivery_inbox") or [] if isinstance(row, dict))},
         "market": {
             "sellFromProfile": market_sell_enabled,
             "sellButtonLabel": "Продать",
         },
-        "skills": {"active": active_skills, "equipped": equipped_skills, "passive": passive_skills},
+        "skills": {"active": active_skills, "equipped": equipped_skills, "passive": passive_skills, "passiveEquipped": passive_equipped_skills},
         "courier": {
             "deliveryCostCopper": courier_delivery_cost_copper(level),
             "deliveryCostText": format_price(courier_delivery_cost_copper(level)),
@@ -1665,6 +1780,11 @@ def resolve_profile_write(storage: Any, identifier: str, request: Request | None
     player, session = get_session_and_player_by_token(storage, effective_identifier)
     if player is None or session is None:
         raise HTTPException(status_code=401, detail="Действие доступно только по активной временной ссылке из бота.")
+    try:
+        settings=(_published_profile_layout().get("settings") or {})
+        if settings.get("allow_profile_edit") is False:raise HTTPException(status_code=403,detail=str(settings.get("readonly_text") or "Профиль доступен только для просмотра."))
+    except HTTPException:raise
+    except Exception:pass
     return player, session
 
 
@@ -1702,7 +1822,7 @@ def skill_matches(skill: dict[str, Any], skill_id: str) -> bool:
     return bool(target) and target in {str(skill.get("id") or ""), str(skill.get("name") or "")}
 
 
-def find_player_skill_with_section(player: dict[str, Any], skill_id: str, sections: tuple[str, ...] = ("active", "equipped", "passive")) -> tuple[str, int, dict[str, Any]] | None:
+def find_player_skill_with_section(player: dict[str, Any], skill_id: str, sections: tuple[str, ...] = ("active", "equipped", "passive", "passive_equipped")) -> tuple[str, int, dict[str, Any]] | None:
     skills = player.get("skills")
     if not isinstance(skills, dict):
         return None
@@ -1736,8 +1856,22 @@ def equip_player_skill(player: dict[str, Any], skill_id: str) -> None:
     if found is None:
         raise HTTPException(status_code=404, detail="Навык не найден.")
     source_section, index, skill = found
-    skill_type = str(skill.get("skill_type") or skill.get("type") or source_section).lower()
-    if skill.get("equippable") is False or skill_type in {"passive", "пассивный"}:
+    skill_type = str(skill.get("skill_type") or skill.get("type") or "").lower()
+    if skill_type in {"passive", "пассивный"}:
+        passive_equipped = skills.setdefault("passive_equipped", [])
+        cost = max(1, safe_int(skill.get("passive_slot_cost"), 1))
+        capacity = max(0, safe_int(player.get("passive_skill_slots"), 2))
+        used = sum(max(1, safe_int(row.get("passive_slot_cost"), 1)) for row in passive_equipped if isinstance(row, dict))
+        if used + cost > capacity:
+            raise HTTPException(status_code=400, detail="Нет свободных пассивных слотов.")
+        source_list = skills.get(source_section)
+        if isinstance(source_list, list): source_list.pop(index)
+        skill["source_section"] = source_section
+        passive_equipped.append(skill)
+        return
+    if source_section == "passive":
+        raise HTTPException(status_code=400, detail="Этот пассивный навык нельзя устанавливать в слот.")
+    if skill.get("equippable") is False:
         raise HTTPException(status_code=400, detail="Этот навык нельзя экипировать для использования.")
     if not is_skill_weapon_compatible(player, skill):
         raise HTTPException(status_code=400, detail=f"Для этого навыка нужно подходящее оружие: {skill_weapon_requirement_text(skill)}.")
@@ -1750,11 +1884,11 @@ def equip_player_skill(player: dict[str, Any], skill_id: str) -> None:
 
 def unequip_player_skill(player: dict[str, Any], skill_id: str) -> None:
     skills = player.setdefault("skills", {})
-    found = find_player_skill_with_section(player, skill_id, ("equipped",))
+    found = find_player_skill_with_section(player, skill_id, ("equipped", "passive_equipped"))
     if found is None:
         raise HTTPException(status_code=404, detail="Экипированный навык не найден.")
     _section, index, skill = found
-    equipped = skills.get("equipped", [])
+    equipped = skills.get(_section, [])
     if isinstance(equipped, list):
         equipped.pop(index)
     target_section = skill.pop("source_section", None) or ("passive" if str(skill.get("skill_type") or "").lower() in {"passive", "пассивный"} else "active")
@@ -1899,7 +2033,7 @@ def weapon2_blocked_reason(equipment: dict[str, Any] | None) -> str:
     return f"Второй оружейный слот заблокирован: {item.get('name') or 'двуручное оружие'} занимает обе руки."
 
 
-def equipment_slots_for_frontend(equipment: dict[str, Any] | None) -> list[dict[str, Any]]:
+def equipment_slots_for_frontend(equipment: dict[str, Any] | None, *, player: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     slots = deepcopy(EQUIPMENT_SLOTS)
     reason = weapon2_blocked_reason(equipment)
     if reason:
@@ -1911,8 +2045,7 @@ def equipment_slots_for_frontend(equipment: dict[str, Any] | None) -> list[dict[
                 slot["label"] = "Оружие 2"
                 slot["statusLabel"] = "заблокировано"
                 break
-        return slots
-    if weapon2_has_ranged_quiver_mode(equipment):
+    elif weapon2_has_ranged_quiver_mode(equipment):
         weapon1 = (equipment or {}).get("weapon1") if isinstance(equipment, dict) else None
         weapon_token = equipment_weapon_token(weapon1)
         for slot in slots:
@@ -1923,6 +2056,18 @@ def equipment_slots_for_frontend(equipment: dict[str, Any] | None) -> list[dict[
                 slot["restrictedReason"] = "Во второй слот можно надеть только подходящий колчан."
                 slot["expectedQuiver"] = "arrow_quiver" if weapon_token == "bow" else "bolt_quiver"
                 break
+    if player:
+        try:
+            from services.effect_runtime_service import blocked_slots
+            for slot in slots:
+                blocked_reason = blocked_slots(player).get(str(slot.get("key") or ""))
+                if blocked_reason:
+                    slot["blocked"] = True
+                    slot["blockedBy"] = "trauma"
+                    slot["blockedReason"] = blocked_reason
+                    slot["statusLabel"] = "заблокировано травмой"
+        except Exception:
+            pass
     return slots
 
 
@@ -2224,6 +2369,21 @@ def find_inventory_index_for_site_action(inventory: list[Any], item_id: str, inv
     )
 
 
+def inventory_drop_error(item: dict[str, Any]) -> str | None:
+    actions = item.get("profile_actions")
+    if isinstance(actions, list) and "drop" not in {str(action) for action in actions}:
+        return "Выбрасывание этого предмета отключено в настройках."
+    if item.get("protected") or item.get("drop_protected") or item.get("locked"):
+        return "Защищённый предмет нельзя выбросить."
+    return None
+
+
+def require_configured_profile_action(item: dict[str, Any], *allowed: str) -> None:
+    actions = item.get("profile_actions")
+    if isinstance(actions, list) and not ({str(action) for action in actions} & set(allowed)):
+        raise HTTPException(status_code=400, detail="Это действие отключено для предмета в настройках конструктора.")
+
+
 def spend_points_on_skill(skill: dict[str, Any], modifier_id: str | None, amount: int) -> None:
     if not skill.get("upgradeable"):
         raise HTTPException(status_code=400, detail="Этот навык нельзя улучшить.")
@@ -2256,20 +2416,54 @@ def spend_points_on_skill(skill: dict[str, Any], modifier_id: str | None, amount
 def create_profile_api_router(get_storage) -> APIRouter:
     router = APIRouter(prefix="/api/profile", tags=["profile"])
 
+    def _opened(player, session):
+        storage=get_storage()
+        try:
+            from services.referral_service import process_referral_event
+            process_referral_event(storage,player,"profile_open",1)
+        except Exception:pass
+        return frontend_profile_payload(player,session)
+
     @router.get("/session/{token}")
     def activate_profile_session(token: str) -> dict[str, Any]:
         player, session = resolve_profile_read(get_storage(), token)
-        return frontend_profile_payload(player, session)
+        return _opened(player, session)
 
     @router.get("/me")
     def get_current_profile(request: Request) -> dict[str, Any]:
         player, session = resolve_profile_read(get_storage(), "", request)
-        return frontend_profile_payload(player, session)
+        return _opened(player, session)
 
     @router.get("/{identifier}")
     def get_profile(identifier: str, request: Request) -> dict[str, Any]:
         player, session = resolve_profile_read(get_storage(), identifier, request)
-        return frontend_profile_payload(player, session)
+        return _opened(player, session)
+
+    @router.get("/{identifier}/pavilion-link")
+    def get_profile_pavilion_link(identifier:str,request:Request)->dict[str,Any]:
+        storage=get_storage();player,session=resolve_profile_read(storage,identifier,request)
+        from services.pavilion_runtime import access_active
+        if not access_active(player):raise HTTPException(status_code=403,detail="Торговый павильон игроку недоступен.")
+        from services.web_profile import create_pavilion_site_link
+        return {"ok":True,"url":create_pavilion_site_link(storage,player,str(session.get("platform") or "site"))}
+
+    @router.post("/{identifier}/race/change-preview")
+    def preview_race_change(identifier: str, payload: RaceChangePreviewRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage(); player, session = resolve_profile_write(storage, identifier, request)
+        from services.race_runtime import request_change
+        try: preview = request_change(player, payload.target_race_id, method=payload.method)
+        except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
+        save_player(storage, player)
+        return {"ok": True, "preview": preview, "profile": frontend_profile_payload(player, session)}
+
+    @router.post("/{identifier}/race/change-confirm")
+    def confirm_race_change(identifier: str, payload: RaceChangeConfirmRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage(); player, session = resolve_profile_write(storage, identifier, request)
+        from services.race_runtime import confirm_change
+        try: result = confirm_change(player, payload.confirmation_token)
+        except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
+        save_player(storage, player)
+        return {"ok": True, "result": result, "profile": frontend_profile_payload(player, session)}
 
     @router.post("/{identifier}/attributes/spend")
     def spend_attribute(identifier: str, payload: SpendAttributeRequest, request: Request) -> dict[str, Any]:
@@ -2325,17 +2519,18 @@ def create_profile_api_router(get_storage) -> APIRouter:
     def spend_skill(identifier: str, payload: SpendSkillRequest, request: Request) -> dict[str, Any]:
         storage = get_storage()
         player, session = resolve_profile_write(storage, identifier, request)
-        free_points = safe_int(player.get("free_skill_points"), 0)
-        if payload.amount > free_points:
-            raise HTTPException(status_code=400, detail="Недостаточно свободных очков навыков.")
         skill = find_player_skill(player, payload.skill_id)
         if skill is None:
             raise HTTPException(status_code=404, detail="Навык не найден.")
+        free_points = safe_int(player.get("free_skill_points"), 0)
+        upgrade_cost = skill_upgrade_cost(player, skill, payload.amount)
+        if upgrade_cost > free_points:
+            raise HTTPException(status_code=400, detail=f"Недостаточно свободных очков навыков: нужно {upgrade_cost}.")
         ok, message = can_spend_skill_points_on(player, skill, payload.amount)
         if not ok:
             raise HTTPException(status_code=400, detail=message)
         spend_points_on_skill(skill, payload.modifier_id, payload.amount)
-        player["free_skill_points"] = free_points - payload.amount
+        player["free_skill_points"] = free_points - upgrade_cost
         refresh_unlocked_active_skills(player)
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
@@ -2357,6 +2552,24 @@ def create_profile_api_router(get_storage) -> APIRouter:
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile_payload(player, session)}
 
+    @router.post("/{identifier}/skills/use-outside")
+    def use_skill_outside_endpoint(identifier: str, payload: SkillUseRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        player, session = resolve_profile_write(storage, identifier, request)
+        from services.race_runtime import restriction_error
+        denied = restriction_error(player, "skill", payload.skill_id)
+        if denied: raise HTTPException(status_code=400, detail=denied)
+        if player.get("in_battle") or player.get("active_battle"):
+            raise HTTPException(status_code=400, detail="В бою навык применяется через боевые кнопки.")
+        try:
+            from services.skill_action_runtime import use_outside_battle
+            result = use_outside_battle(player, payload.skill_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        sync_player_parameters_for_bots(player)
+        save_player(storage, player)
+        return {"ok": True, "skill": result, "message": result.get("text"), "profile": frontend_profile_payload(player, session)}
+
     @router.post("/{identifier}/equipment/equip")
     def equip_inventory_item(identifier: str, payload: EquipItemRequest, request: Request) -> dict[str, Any]:
         storage = get_storage()
@@ -2367,10 +2580,14 @@ def create_profile_api_router(get_storage) -> APIRouter:
         item_index = find_inventory_index_for_site_action(inventory, payload.item_id, payload.inventory_index)
         if item_index is None:
             raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
+        require_configured_profile_action(inventory[item_index], "equip")
         item = inventory.pop(item_index)
         try:
             validate_equipment_level_requirement(player, item)
             slot_key = compatible_equipment_slot(item, payload.slot_key, equipment)
+            from services.effect_runtime_service import blocked_slots as trauma_blocked_slots
+            if slot_key in trauma_blocked_slots(player):
+                raise HTTPException(status_code=409, detail=trauma_blocked_slots(player)[slot_key])
             previous_item = equipment.get(slot_key)
             if isinstance(previous_item, dict):
                 previous_item = prepare_item_for_inventory_from_slot(previous_item, slot_key)
@@ -2395,6 +2612,8 @@ def create_profile_api_router(get_storage) -> APIRouter:
             item.pop("targetSlotKey", None)
             _strip_inventory_storage_markers(item)
             equipment[slot_key] = item
+            from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+            trigger_item_effect(player, item, "on_equip", context={"slot": slot_key})
             if slot_key == "weapon1":
                 unequip_incompatible_weapon2(player, slot_key, fail_on_discard=True)
             recalculate_inventory_overflow(player)
@@ -2403,6 +2622,7 @@ def create_profile_api_router(get_storage) -> APIRouter:
             player.clear()
             player.update(original_player)
             raise
+        _achievement_event(player, "equip_item", 1, str(item.get("item_id") or payload.item_id), storage)
         save_player(storage, player)
         return {"ok": True, "profile": frontend_profile_payload(player, session)}
 
@@ -2415,6 +2635,13 @@ def create_profile_api_router(get_storage) -> APIRouter:
         item = equipment.pop(payload.slot_key, None)
         if not isinstance(item, dict):
             raise HTTPException(status_code=404, detail="В этом слоте нет предмета.")
+        try:
+            require_configured_profile_action(item, "unequip")
+        except HTTPException:
+            equipment[payload.slot_key] = item
+            raise
+        from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+        trigger_item_effect(player, item, "on_unequip", context={"slot": payload.slot_key})
         try:
             item = prepare_item_for_inventory_from_slot(item, payload.slot_key)
             _add_inventory_item_or_raise(
@@ -2459,13 +2686,51 @@ def create_profile_api_router(get_storage) -> APIRouter:
         if item_index is None:
             raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
         item = inventory[item_index]
+        require_configured_profile_action(item, "open" if item.get("can_open") else "use")
         if not is_inventory_item_usable(item):
             raise HTTPException(status_code=400, detail="Этот предмет нельзя использовать напрямую из профиля.")
+        item_target = str(item.get("item_id") or item.get("id") or payload.item_id)
+        from services.race_runtime import restriction_error as race_restriction_error
+        denied = race_restriction_error(player, "item", item_target)
+        if denied: raise HTTPException(status_code=400, detail=denied)
+        if item.get("can_open"):
+            from services.container_item_runtime import open_container
+            try:
+                opened = open_container(player, item_index)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            recalculate_inventory_overflow(player); sync_player_parameters_for_bots(player)
+            _achievement_event(player, "use_item", 1, item_target, storage)
+            from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+            trigger_item_effect(player, item, "on_open"); trigger_item_effect(player, item, "on_use")
+            save_player(storage, player)
+            return {"ok": True, "message": str(item.get("open_text") or "Контейнер открыт."), "container": opened, "profile": frontend_profile_payload(player, session)}
+        if item.get("grants_npc_helper_id"):
+            from services.npc_ally_runtime import grant
+            try: helper = grant(player, str(item.get("grants_npc_helper_id")), source=f"item:{item_target}")
+            except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if item.get("consume_on_helper_grant", True): remove_inventory_amount_at_index(inventory, item_index, 1)
+            recalculate_inventory_overflow(player); sync_player_parameters_for_bots(player)
+            _achievement_event(player, "use_item", 1, item_target, storage); save_player(storage, player)
+            return {"ok": True, "message": str(item.get("helper_grant_text") or "NPC-помощник присоединился к вам."), "helper": helper, "profile": frontend_profile_payload(player, session)}
+        if item.get("opens_access") and str(item.get("access_mode") or "on_use") == "on_use":
+            from services.item_access_runtime import grant
+            try: access = grant(player, item)
+            except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if item.get("access_consumed_on_use", True): remove_inventory_amount_at_index(inventory, item_index, 1)
+            recalculate_inventory_overflow(player); sync_player_parameters_for_bots(player)
+            from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+            trigger_item_effect(player, item, "on_use")
+            _achievement_event(player, "use_item", 1, item_target, storage); save_player(storage, player)
+            return {"ok": True, "message": str(item.get("access_text_ok") or "Доступ открыт."), "access": access, "profile": frontend_profile_payload(player, session)}
         if is_ammunition_item(item):
             loaded, message = load_ammo_into_quiver(player, item, safe_int(item.get("amount"), 1))
             remove_inventory_amount_at_index(inventory, item_index, loaded)
             recalculate_inventory_overflow(player)
             sync_player_parameters_for_bots(player)
+            _achievement_event(player, "use_item", loaded, item_target, storage)
+            from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+            trigger_item_effect(player, item, "on_use")
             save_player(storage, player)
             return {"ok": True, "message": message, "loadedAmmo": loaded, "profile": frontend_profile_payload(player, session)}
         if is_battle_stimulant_item(item):
@@ -2473,6 +2738,10 @@ def create_profile_api_router(get_storage) -> APIRouter:
             remove_inventory_amount_at_index(inventory, item_index, 1)
             recalculate_inventory_overflow(player)
             sync_player_parameters_for_bots(player)
+            _achievement_event(player, "use_item", 1, item_target, storage)
+            _achievement_event(player, "gain_effect", 1, str(effect.get("effect_id") or effect.get("id") or "battle_stimulant"), storage)
+            from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+            trigger_item_effect(player, item, "on_use")
             save_player(storage, player)
             return {"ok": True, "message": "Боевой стимулятор принят. Эффект активен 30 минут.", "effect": effect, "profile": frontend_profile_payload(player, session)}
         if inventory_pocket_spec(item) is not None:
@@ -2482,6 +2751,9 @@ def create_profile_api_router(get_storage) -> APIRouter:
             remove_inventory_amount_at_index(inventory, item_index, 1)
             recalculate_inventory_overflow(player)
             sync_player_parameters_for_bots(player)
+            _achievement_event(player, "use_item", 1, item_target, storage)
+            from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+            trigger_item_effect(player, item, "on_use")
             save_player(storage, player)
             return {"ok": True, "message": message, "profile": frontend_profile_payload(player, session)}
         if is_suspicious_potion_item(item):
@@ -2490,6 +2762,10 @@ def create_profile_api_router(get_storage) -> APIRouter:
             remove_inventory_amount_at_index(inventory, item_index, 1)
             recalculate_inventory_overflow(player)
             sync_player_parameters_for_bots(player)
+            _achievement_event(player, "use_item", 1, item_target, storage)
+            _achievement_event(player, "gain_effect", 1, str(effect.get("effect_id") or effect.get("id") or "suspicious_potion"), storage)
+            from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+            trigger_item_effect(player, item, "on_use")
             save_player(storage, player)
             return {"ok": True, "message": str(effect.get("message") or "Подозрительное зелье выпито."), "effect": effect, "profile": frontend_profile_payload(player, session)}
         crystal_effect = resource_crystal_effect_from_item(item)
@@ -2498,23 +2774,176 @@ def create_profile_api_router(get_storage) -> APIRouter:
             remove_inventory_amount_at_index(inventory, item_index, 1)
             recalculate_inventory_overflow(player)
             sync_player_parameters_for_bots(player)
+            _achievement_event(player, "use_item", 1, item_target, storage)
+            _achievement_event(player, "gain_effect", 1, str(crystal_effect.get("effect_id") or crystal_effect.get("id") or item_target), storage)
+            from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+            trigger_item_effect(player, item, "on_use")
             save_player(storage, player)
             minutes = max(1, safe_int(crystal_effect.get("duration_seconds"), 3600) // 60)
             return {"ok": True, "message": f"{crystal_effect.get('name')} использован. Эффект активен {minutes} мин.", "effect": crystal_effect, "profile": frontend_profile_payload(player, session)}
-        restored_energy = apply_energy_restore(player, item)
+        formula_item = item
+        if item.get("use_formula_id"):
+            from services.item_formula_runtime import use_result
+            formula_item = dict(item)
+            formula_item["energy_restore"] = max(0, safe_int(use_result(item, player, item_energy_restore(item)), 0))
+        restored_energy = apply_energy_restore(player, formula_item)
         effect = consumable_effect_from_item(item)
         if effect is not None:
             add_active_consumable_effect(player, effect)
         remove_inventory_amount_at_index(inventory, item_index, 1)
         recalculate_inventory_overflow(player)
         sync_player_parameters_for_bots(player)
+        _achievement_event(player, "use_item", 1, item_target, storage)
+        from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+        trigger_item_effect(player, item, "on_use")
+        if effect is not None:
+            _achievement_event(player, "gain_effect", 1, str(effect.get("effect_id") or effect.get("id") or item_target), storage)
         save_player(storage, player)
         return {"ok": True, "restoredEnergy": restored_energy, "profile": frontend_profile_payload(player, session)}
+
+    @router.post("/{identifier}/inventory/repair")
+    def repair_inventory_item_endpoint(identifier: str, payload: UseItemRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        player, session = resolve_profile_write(storage, identifier, request)
+        inventory = player.setdefault("inventory", [])
+        item_index = find_inventory_index_for_site_action(inventory, payload.item_id, payload.inventory_index)
+        if item_index is None:
+            raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
+        item = inventory[item_index]
+        require_configured_profile_action(item, "repair")
+        try:
+            from services.item_formula_runtime import repair_inventory_item
+            result = repair_inventory_item(player, item)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        item_target = str(item.get("item_id") or item.get("id") or payload.item_id)
+        _achievement_event(player, "repair_item", 1, item_target, storage)
+        recalculate_inventory_overflow(player)
+        sync_player_parameters_for_bots(player)
+        save_player(storage, player)
+        return {"ok": True, "message": f"Предмет отремонтирован. Списано: {result['cost']} медных монет.",
+                "repair": result, "profile": frontend_profile_payload(player, session)}
+
+    @router.post("/{identifier}/inventory/profile-action")
+    def inventory_profile_action(identifier: str, payload: ProfileItemActionRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        player, session = resolve_profile_write(storage, identifier, request)
+        action = str(payload.action or "").strip()
+        if action == "storage_remove":
+            stored = player.setdefault("personal_storage", [])
+            index = payload.inventory_index
+            if index is None or index < 0 or index >= len(stored) or not isinstance(stored[index], dict):
+                raise HTTPException(status_code=404, detail="Предмет в хранилище не найден.")
+            if item_identity(stored[index]) != str(payload.item_id or ""):
+                raise HTTPException(status_code=409, detail="Хранилище изменилось. Обновите профиль и повторите действие.")
+            original = deepcopy(player)
+            item = stored.pop(index)
+            amount = max(1, safe_int(item.get("amount"), 1))
+            item.pop("storageIndex", None)
+            result = add_inventory_item(player, item, amount)
+            if result.added < amount:
+                player.clear(); player.update(original)
+                raise HTTPException(status_code=400, detail="В инвентаре и дополнительных слотах недостаточно места.")
+            message = "Предмет забран из хранилища."
+        else:
+            inventory = player.setdefault("inventory", [])
+            index = find_inventory_index_for_site_action(inventory, payload.item_id, payload.inventory_index)
+            if index is None:
+                raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
+            item = inventory[index]
+            require_configured_profile_action(item, action)
+            if action in {"charge", "discharge"}:
+                if not item.get("has_charges"):
+                    raise HTTPException(status_code=400, detail="У предмета нет зарядов.")
+                maximum = max(1, safe_int(item.get("max_charges"), 1))
+                current = max(0, safe_int(item.get("current_charges", item.get("charges")), 0))
+                if action == "charge":
+                    if current >= maximum:
+                        raise HTTPException(status_code=400, detail="Предмет уже полностью заряжен.")
+                    cost = max(0, safe_int(item.get("charge_cost"), 0))
+                    money_key = "money_copper" if "money_copper" in player else "money"
+                    if safe_int(player.get(money_key), 0) < cost:
+                        raise HTTPException(status_code=400, detail="Недостаточно денег для зарядки предмета.")
+                    player[money_key] = safe_int(player.get(money_key), 0) - cost
+                    amount = max(1, safe_int(item.get("charge_amount"), maximum))
+                    item["current_charges"] = min(maximum, current + amount)
+                    message = f"Предмет заряжен: {item['current_charges']}/{maximum}."
+                else:
+                    if current <= 0:
+                        raise HTTPException(status_code=400, detail="Предмет уже разряжен.")
+                    item["current_charges"] = 0
+                    message = "Предмет разряжен."
+            elif action in {"pouch_store", "pouch_remove"}:
+                if action == "pouch_store":
+                    used = sum(1 for row in inventory if isinstance(row, dict) and row.get("in_pouch"))
+                    capacity = max(0, safe_int(player.get("combat_pouch_capacity"), 5))
+                    if not item.get("in_pouch") and used >= capacity:
+                        raise HTTPException(status_code=400, detail="В боевом подсумке нет свободного места.")
+                    item["in_pouch"] = True
+                    message = "Предмет помещён в боевой подсумок."
+                else:
+                    item["in_pouch"] = False
+                    message = "Предмет убран из боевого подсумка."
+            elif action == "storage_store":
+                original = deepcopy(player)
+                amount = max(1, safe_int(item.get("amount"), 1))
+                capacity = max(0, safe_int(player.get("personal_storage_capacity"), 20))
+                stored = player.setdefault("personal_storage", [])
+                if len(stored) >= capacity:
+                    raise HTTPException(status_code=400, detail="Персональное хранилище заполнено.")
+                moved = inventory.pop(index)
+                moved.pop("inventoryIndex", None)
+                stored.append(moved)
+                if len(stored) > capacity:
+                    player.clear(); player.update(original)
+                    raise HTTPException(status_code=400, detail="Не удалось безопасно переместить предмет в хранилище.")
+                message = f"Предмет помещён в хранилище: ×{amount}."
+            else:
+                raise HTTPException(status_code=400, detail="Неизвестное действие предмета.")
+        recalculate_inventory_overflow(player)
+        sync_player_parameters_for_bots(player)
+        save_player(storage, player)
+        return {"ok": True, "message": message, "profile": frontend_profile_payload(player, session)}
+
+    @router.post("/{identifier}/inventory/craft-operation")
+    def craft_operation_endpoint(identifier: str, payload: CraftOperationRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        player, session = resolve_profile_write(storage, identifier, request)
+        inventory = player.setdefault("inventory", [])
+        item_index = find_inventory_index_for_site_action(inventory, payload.item_id, payload.inventory_index)
+        if item_index is None:
+            raise HTTPException(status_code=404, detail="Целевой предмет в инвентаре не найден.")
+        action_for_operation = {"upgrade": "upgrade", "enchant": "enchant", "repair": "repair", "disassemble": "disassemble", "purify": "disassemble"}.get(payload.operation, payload.operation)
+        require_configured_profile_action(inventory[item_index], action_for_operation)
+        try:
+            from services.craft_operation_runtime import apply
+            result = apply(player, payload.operation, payload.rule_id, item_index)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if result.get("ok"):
+            _achievement_event(player, f"{payload.operation}_item", 1, payload.item_id, storage)
+        recalculate_inventory_overflow(player)
+        sync_player_parameters_for_bots(player)
+        save_player(storage, player)
+        return {"ok": True, "operation": result, "profile": frontend_profile_payload(player, session)}
+
+    @router.post("/{identifier}/inventory/craft-delivery/claim")
+    def claim_craft_delivery_endpoint(identifier: str, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        player, session = resolve_profile_write(storage, identifier, request)
+        from services.craft_result_delivery import claim
+        result = claim(player)
+        recalculate_inventory_overflow(player)
+        sync_player_parameters_for_bots(player)
+        save_player(storage, player)
+        return {"ok": True, "delivery": result, "profile": frontend_profile_payload(player, session)}
 
     @router.post("/{identifier}/profile/edit-field")
     def edit_profile_field(identifier: str, payload: EditProfileFieldRequest, request: Request) -> dict[str, Any]:
         storage = get_storage()
         player, session = resolve_profile_write(storage, identifier, request)
+        if str(payload.field).strip().casefold() == "race":
+            raise HTTPException(status_code=400, detail="Смена расы выполняется только через предупреждение и отдельное подтверждение.")
         label = apply_profile_field_edit(player, payload.field, payload.value, storage=storage)
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
@@ -2526,10 +2955,18 @@ def create_profile_api_router(get_storage) -> APIRouter:
         player, session = resolve_profile_write(storage, identifier, request)
         if not is_profile_market_sell_enabled(player):
             raise HTTPException(status_code=400, detail="Продажа через профиль доступна только в разделе продажи на рынке.")
+        inventory = player.setdefault("inventory", [])
+        item_index = find_inventory_index_for_site_action(inventory, payload.item_id, payload.inventory_index)
+        if item_index is None:
+            raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
+        require_configured_profile_action(inventory[item_index], "sell")
+        sold_item_id=str(inventory[item_index].get("item_id") or inventory[item_index].get("id") or payload.item_id)
         result = sell_item_from_profile(storage, player, payload.item_id, payload.amount, payload.inventory_index)
         if "Продано:" not in result.text:
             raise HTTPException(status_code=400, detail=result.text)
         refreshed = storage.get_player_by_game_id(player.get("game_id")) or player
+        from services.item_access_runtime import revoke_for_item_action
+        revoke_for_item_action(refreshed,sold_item_id,"sell")
         recalculate_inventory_overflow(refreshed)
         sync_player_parameters_for_bots(refreshed)
         save_player(storage, refreshed)
@@ -2545,12 +2982,19 @@ def create_profile_api_router(get_storage) -> APIRouter:
         if item_index is None:
             raise HTTPException(status_code=404, detail="Предмет в инвентаре не найден.")
         item = inventory[item_index]
+        forbidden = inventory_drop_error(item)
+        if forbidden:
+            raise HTTPException(status_code=400, detail=forbidden)
         amount = max(1, safe_int(item.get("amount"), 1))
         drop_amount = min(amount, max(1, safe_int(payload.amount, 1)))
         if amount > drop_amount:
             item["amount"] = amount - drop_amount
         else:
             inventory.pop(item_index)
+        from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+        trigger_item_effect(player, item, "on_drop", context={"item_count": drop_amount})
+        from services.item_access_runtime import revoke_for_item_action
+        revoke_for_item_action(player,str(item.get("item_id") or item.get("id") or payload.item_id),"drop")
         recalculate_inventory_overflow(player)
         sync_player_parameters_for_bots(player)
         save_player(storage, player)
@@ -2591,6 +3035,8 @@ def create_profile_api_router(get_storage) -> APIRouter:
             )
         except CourierError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+        from services.item_access_runtime import revoke_for_item_action
+        for request_item in item_requests:revoke_for_item_action(player,str(request_item.get("item_id") or ""),"transfer")
         # Посылка уже оформлена и СОХРАНЕНА внутри create_courier_transfer
         # (списание durable до постановки в очередь). Повторное сохранение
         # синх-параметров для ботов не должно делать запрос повторяемым: при сбое

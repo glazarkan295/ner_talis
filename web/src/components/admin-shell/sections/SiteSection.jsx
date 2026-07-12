@@ -8,6 +8,7 @@ import {
   siteLifecycle,
   updateSiteItem,
   validateSiteItem,
+  checkSiteLink,
 } from "../../../api/adminSiteApi.js";
 import {
   tr, BANNER_TYPE, GUIDE_DIFFICULTY, SITE_KIND, SITE_BLOCK_TYPE, SITE_PAGE_VISIBILITY,
@@ -22,12 +23,12 @@ import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 const KIND_LABELS = {
   news: "📰 Новости", guide: "📚 Гайды", faq: "❓ FAQ", banner: "🎌 Баннеры", announcement: "📢 Объявления",
   page: "📄 Страницы", page_block: "🧩 Блоки страниц", menu_item: "🧭 Меню", post: "✍️ Посты",
-  rating: "🏆 Рейтинги", lore: "📜 Лор", where_is: "📍 Что где находится", site_theme: "🎨 Оформление",
+  rating: "🏆 Рейтинги", lore: "📜 Лор", where_is: "📍 Что где находится", site_theme: "🎨 Оформление", site_settings: "⚙️ Ссылка и безопасность",
 };
 const KIND_NEW = {
   news: "＋ Новость", guide: "＋ Гайд", faq: "＋ Вопрос", banner: "＋ Баннер", announcement: "＋ Объявление",
   page: "＋ Страница", page_block: "＋ Блок", menu_item: "＋ Пункт меню", post: "＋ Пост",
-  rating: "＋ Рейтинг", lore: "＋ Запись лора", where_is: "＋ Запись", site_theme: "＋ Оформление",
+  rating: "＋ Рейтинг", lore: "＋ Запись лора", where_is: "＋ Запись", site_theme: "＋ Оформление", site_settings: "＋ Настройки сайта",
 };
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", hidden: "ntv2-badge-danger", scheduled: "ntv2-badge-error" };
 
@@ -41,6 +42,7 @@ const KIND_PERMS = {
   banner: _SITE, announcement: _SITE, page: _SITE, page_block: _SITE,
   menu_item: { create: "site.menu_edit", edit: "site.menu_edit", publish: "site.menu_edit", archive: "site.menu_edit" },
   site_theme: { create: "site.settings_edit", edit: "site.settings_edit", publish: "site.settings_edit", archive: "site.settings_edit" },
+  site_settings: { create: "site.settings_edit", edit: "site.settings_edit", publish: "site.settings_edit", archive: "site.settings_edit" },
   rating: { create: "ratings.create", edit: "ratings.edit", publish: "ratings.publish", archive: "ratings.publish" },
 };
 function KIND_CAN(kind, hasPerm) {
@@ -59,10 +61,11 @@ const EMPTY_BY_KIND = {
   page_block: { title: "", block_type: "text", page_id: "", content: "", image: "", bg_color: "", text_color: "", width: "full", align: "left", order: 0, show_pc: true, show_mobile: true },
   menu_item: { label: "", link: "", page_id: "", icon: "", parent_id: "", order: 0, visible: true, condition: "", mobile: true },
   post: { title: "", short_description: "", body: "", category: "", image: "", author: "", tags: "", pinned: false, show_home: false },
-  rating: { title: "", description: "", rating_type: "level", period: "all_time", participants: "", show_fields: "", visible: true },
+  rating: { title: "", description: "", rating_type: "level", period: "all_time", participants: "", show_fields: "", visible: true, show_values: true, allow_wealth: false, limit: 100 },
   lore: { title: "", lore_type: "history", text: "", image: "", related_location: "", related_npc: "", visibility: "public" },
   where_is: { title: "", short_answer: "", description: "", place: "", quarter: "", building: "", npc: "", button: "", image: "" },
   site_theme: { title: "", site_background: "", home_background: "", panel_color: "", card_color: "", button_color: "", text_color: "", link_color: "", warning_color: "", border_style: "", block_opacity: "", heading_style: "", menu_style: "" },
+  site_settings: { title: "", active_url: "", allowed_domains: [], environment: "production", session_ttl_minutes: 1440, maintenance_enabled: false, maintenance_page_id: "", error_page_id: "", priority: 0, bot_profile_path: "/profile", bot_site_path: "/site" },
 };
 
 // Схемы новых типов (§2.3–2.12): поля рендерит GenericSiteForm.
@@ -122,6 +125,9 @@ const SCHEMA_BY_KIND = {
     { k: "title", label: "Название рейтинга", type: "text" },
     { k: "rating_type", label: "Тип рейтинга", type: "meta", metaKey: "ratingTypes", labelMap: SITE_RATING_TYPE },
     { k: "period", label: "Период", type: "meta", metaKey: "ratingPeriods", labelMap: SITE_RATING_PERIOD },
+    { k: "limit", label: "Игроков на странице", type: "number" },
+    { k: "show_values", label: "Показывать точные значения", type: "checkbox" },
+    { k: "allow_wealth", label: "Разрешить публичный рейтинг богатства", type: "checkbox" },
     { k: "description", label: "Описание", type: "textarea" },
     { k: "participants", label: "Кто участвует", type: "text" },
     { k: "show_fields", label: "Какие данные показывать", type: "text" },
@@ -162,6 +168,21 @@ const SCHEMA_BY_KIND = {
     { k: "heading_style", label: "Стиль заголовков", type: "text" },
     { k: "menu_style", label: "Стиль меню", type: "text" },
   ],
+  site_settings: [
+    { k: "title", label: "Название настроек", type: "text" },
+    { k: "active_url", label: "Активная HTTPS-ссылка", type: "text" },
+    { k: "allowed_domains", label: "Разрешённые домены (по одному в строке)", type: "lines" },
+    { k: "environment", label: "Окружение", type: "select", options: ["production", "staging", "development"] },
+    { k: "session_ttl_minutes", label: "Срок активной ссылки, минут", type: "number" },
+    { k: "priority", label: "Приоритет конфигурации", type: "number" },
+    { k: "bot_profile_path", label: "Путь профиля", type: "text" },
+    { k: "bot_site_path", label: "Путь сайта", type: "text" },
+    { k: "maintenance_enabled", label: "Технические работы", type: "checkbox" },
+    { k: "maintenance_page_id", label: "Страница технических работ", type: "text" },
+    { k: "error_page_id", label: "Страница ошибки", type: "text" },
+    { k: "force_https", label: "Принудительный HTTPS", type: "checkbox" },
+    { k: "secure_headers", label: "Защитные HTTP-заголовки", type: "checkbox" },
+  ],
 };
 
 function Field({ label, children }) {
@@ -185,6 +206,12 @@ function GenericSiteForm({ schema, value, onChange, meta, disabled, uploadKey })
         }
         if (f.type === "textarea") {
           return <Field label={f.label} key={f.k}><EmojiTextarea rows={3} value={value[f.k] || ""} disabled={disabled} onChange={(v) => set(f.k, v)} /></Field>;
+        }
+        if (f.type === "lines") {
+          return <Field label={f.label} key={f.k}><textarea rows={3} value={(Array.isArray(value[f.k]) ? value[f.k] : []).join("\n")} disabled={disabled} onChange={(e) => set(f.k, e.target.value.split("\n").map((x) => x.trim()).filter(Boolean))} /></Field>;
+        }
+        if (f.type === "select") {
+          return <Field label={f.label} key={f.k}><select value={value[f.k] || ""} disabled={disabled} onChange={(e) => set(f.k, e.target.value)}>{(f.options || []).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>;
         }
         if (f.type === "meta" || f.type === "metaPlain") {
           const options = (meta && meta[f.metaKey]) || [];
@@ -266,8 +293,10 @@ export function SiteSection({ guarded, hasPerm }) {
   const [statusFilter, setStatusFilter] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [linkCheck, setLinkCheck] = useState(null);
   const [usedBy, setUsedBy] = useState(null);
   const [query, setQuery] = useState("");
+  const [mobilePreview, setMobilePreview] = useState(false);
 
   // Права по типу — зеркало admin_site_api._KIND_CONFIG.
   const can = useMemo(() => KIND_CAN(kind, hasPerm), [kind, hasPerm]);
@@ -323,6 +352,17 @@ export function SiteSection({ guarded, hasPerm }) {
           </div>
         ) : null}
 
+        {kind === "site_settings" && editing.data.active_url ? <div className="ntv2-panel">
+          <div className="ntv2-form-row">
+            <a className="ntv2-btn" href={editing.data.active_url} target="_blank" rel="noreferrer">Открыть сайт</a>
+            <button type="button" className="ntv2-btn" onClick={() => navigator.clipboard?.writeText(editing.data.active_url)}>Скопировать ссылку</button>
+            <button type="button" className="ntv2-btn" onClick={async () => { setLinkCheck(null); const p = await guarded(() => checkSiteLink(editing.data.active_url)); if (p?.result) setLinkCheck(p.result); }}>Проверить доступность</button>
+            <button type="button" className="ntv2-btn" onClick={() => setMobilePreview((x) => !x)}>{mobilePreview ? "Закрыть предпросмотр" : "Предпросмотр мобильной версии"}</button>
+            {linkCheck ? <span className={linkCheck.available ? "ntv2-ok" : "ntv2-error"}>{linkCheck.available ? `Сайт доступен (HTTP ${linkCheck.status})` : "Сайт недоступен"}</span> : null}
+          </div>
+          {mobilePreview ? <iframe title="Предпросмотр мобильного сайта" src={editing.data.active_url} style={{ display: "block", width: 390, maxWidth: "100%", height: 720, margin: "12px auto 0", border: "1px solid #6d604c", borderRadius: 12 }} /> : null}
+        </div> : null}
+
         {!editing.isNew && (kind === "page" || kind === "menu_item") ? (
           <div className="ntv2-panel">
             <div className="ntv2-card-head" style={{ marginBottom: 6 }}>
@@ -352,7 +392,7 @@ export function SiteSection({ guarded, hasPerm }) {
           {!editing.isNew && can.archive ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "В архив?", dangerous: true, confirmLabel: "В архив", body: <p>Материал уйдёт в архив.</p>, run: async (r) => { await guarded(() => siteLifecycle(kind, editing.id, "archive", r), "В архиве."); await refreshEditing(); } })}>В архив</button> : null}
         </div>
 
-        {!editing.isNew ? <VersionHistory base={`site/${kind}`} id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
+        {!editing.isNew ? <VersionHistory base={`site/${kind}`} id={editing.id} canRollback={can.edit && (editing.status !== "published" || can.publish)} onRolledBack={refreshEditing} /> : null}
 
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />

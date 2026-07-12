@@ -2,12 +2,15 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   archiveWorldItem,
   createWorldItem,
+  deleteWorldItem,
   disableWorldItem,
   discardWorldDraft,
   editWorldDraft,
   fetchWorldHistory,
+  fetchWorldUsage,
   fetchWorldItems,
   fetchWorldMeta,
+  fetchLocationLimitRuntime,
   importExistingContent,
   mobTestBattle,
   previewWorldItem,
@@ -15,10 +18,13 @@ import {
   publishWorldItem,
   rollbackWorldItem,
   testRunWorldItem,
+  setLocationLimitRemaining,
   updateWorldItem,
   validateWorldItem,
 } from "../../../api/adminWorldApi.js";
 import { loadCatalog } from "../../../api/adminApi.js";
+import { fetchFormulas } from "../../../api/adminFormulaApi.js";
+import { fetchEffects } from "../../../api/adminEffectApi.js";
 import { trOption, tr, CURRENCY } from "../../../i18n/adminLabels.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { TechnicalData } from "../TechnicalData.jsx";
@@ -68,23 +74,33 @@ const EMPTY_LOCATION = {
   can_search: false, can_camp: false, can_fish: false, can_teleport: false,
   city_functions: false, safe: false,
   // Глубина поиска (ТЗ 09 §19): необязательная настройка.
-  search_depth_enabled: false, search_depth_start: 1, search_depth_max: 0,
+  search_depth_enabled: false, search_depth_start: 1, search_depth_max: 0, search_depth_formula_id: "",
   show_search_depth: false, search_depth_text: "", search_depth_thresholds: [],
 };
 
 const EMPTY_MOB = {
-  name: "", type: "beast", description: "", image: "",
-  min_level: 1, max_level: 5, hp: 100,
+  name: "", player_name:"",system_name:"",short_description:"",full_description:"",technical_description:"", type: "beast", description: "", image: "",icon:"",mob_rank:"normal",family:"",faction:"",tags:[],
+  level:1,min_level: 1, max_level: 5,scale_to_player_level:false,hp: 100,mana:0,spirit:0,energy:0,
   phys_damage: 0, mag_damage: 0, accuracy: 0, evasion: 0,
-  phys_defense: 0, mag_defense: 0, crit_chance: 0, crit_damage: 0,
-  experience: 0, coins: 0, spawn_chance: 100, can_be_enhanced: false,
+  phys_defense: 0, mag_defense: 0,armor:0,crit_chance: 0, crit_damage: 0,initiative:0,player_escape_chance:100,escape_forbidden:false,actions_per_turn:1,main_action:"attack",extra_action:"",
+  strength:0,agility:0,endurance:0,intelligence:0,wisdom:0,perception:0,
+  experience: 0, coins: 0, spawn_chance: 100, can_be_enhanced: false, damage_formula_id: "", exp_formula_id: "",
   locations: "", drop: [],
 };
 
 const EMPTY_BUTTON = {
-  text: "", owner_location: "", action: "goto_location", target: "",
+  text: "", owner_location: "", owner_sublocation: "", owner_event: "", owner_npc: "", owner_dialogue: "", action: "goto_location", target: "",
   show_condition: "", order: 1, uses_energy: false, starts_timer: false,
   starts_event: false, starts_battle: false, show_telegram: true, show_vk: true,
+  system_name: "", admin_description: "", button_type: "transition", category: "world", icon: "", color: "", tags: [],
+  show_site: false, show_profile: false, hidden: false, temporary: false, one_time: false, confirmation: false,
+  min_level: 0, max_level: 0, show_required_item_id: "", required_quest_id: "", required_achievement_id: "",
+  required_reputation_id: "", min_reputation: 0, required_effect_id: "", hidden_by_effect_id: "",
+  required_hidden_reputation_id:"",min_hidden_reputation:0,required_fine_id:"",hidden_by_fine_id:"",show_admin_only:false,show_moderator_only:false,
+  button_group:"",row:0,row_position:0,main_menu:false,bottom_keyboard:false,inline_button:false,profile_button:false,admin_button:false,send_mode:"single",
+  energy_cost: 0, give_item_id: "", give_item_amount: 1, take_item_id: "", take_item_amount: 1,
+  apply_effect_id: "", remove_effect_id: "", open_access: "", message: "", error_text: "",
+  not_enough_energy_text: "", unavailable_text: "", confirm_text: "", cancel_text: "",
 };
 
 const EMPTY_TRANSITION = {
@@ -95,18 +111,25 @@ const EMPTY_TRANSITION = {
 
 const EMPTY_EVENT = {
   name: "", text: "", location: "", type: "found_item", result: "give_item",
-  outcome_type: "", chance: 25, cooldown: 0, min_level: "", max_level: "",
+  outcome_type: "", chance: 25, chance_formula_id: "", cooldown: 0, min_level: "", max_level: "",
   required_item: "", consumed_item: "", given_item: "", battle_mob: "",
-  effect: "", repeatable: true,
+  effect: "", repeatable: true, rewards: [], losses: [], consequences: [],
 };
 
 const EMPTY_NPC = {
-  name: "", role: "", location: "", description: "", image: "",
+  name: "", player_name: "", system_name: "", role: "", roles: [], npc_kind: "regular",
+  faction: "", reputation_group: "", location: "", sublocation_id: "", additional_locations: [],
+  short_description: "", description: "", technical_description: "", hidden_description: "", image: "", icon: "", tags: [],
   first_message: "", functions: [],
   // Вид NPC (доп.§3) + привязка к событиям (доп.§4).
   npc_kind: "regular", event_ids: [], quest_ids: [], asks_questions: false, special_type: "",
   // Торговля (доп.§12).
   trade: { sells: [], buys: [], stock_type: "shared", can_buy_from_player: true, can_sell_to_player: true },
+  dialogues: [], services: [], schedule: [], access_conditions: [], combat_mob_id: "",
+  min_level: 0, max_level: 0, required_race: "", required_item_id: "", required_reputation_id: "", min_reputation: 0,
+  denied_text: "", schedule_closed_text: "", hidden_until_condition: false, temporary: false,
+  appear_condition:"", disappear_condition:"", event_appear_id:"", event_disappear_id:"", moves_between_locations:false,
+  required_hidden_reputation_id:"", min_hidden_reputation:0, combat_skills:[], combat_drop:[], combat_reward:"", kill_fine_id:"", kill_consequences:[],
 };
 
 const EMPTY_QUEST = {
@@ -147,7 +170,11 @@ function LocationSelect({ value, onChange, options, disabled }) {
   );
 }
 
-function LocationForm({ value, onChange, meta, disabled, uploadKey }) {
+function FormulaSelect({ value, onChange, options, disabled }) {
+  return <select value={value || ""} disabled={disabled} onChange={(e) => onChange(e.target.value)}><option value="">— фиксированное значение —</option>{(options || []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>;
+}
+
+function LocationForm({ value, onChange, meta, disabled, uploadKey, formulaOptions }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
   const flag = (key, label) => (
     <label className="ntv2-check" key={key}>
@@ -185,6 +212,7 @@ function LocationForm({ value, onChange, meta, disabled, uploadKey }) {
             <div className="ntv2-form-row">
               <Field label="Стартовая глубина"><input type="number" value={value.search_depth_start} disabled={disabled} onChange={(e) => set("search_depth_start", e.target.value)} /></Field>
               <Field label="Макс. глубина (0 = без лимита)"><input type="number" value={value.search_depth_max} disabled={disabled} onChange={(e) => set("search_depth_max", e.target.value)} /></Field>
+              <Field label="Формула максимальной глубины"><FormulaSelect value={value.search_depth_formula_id} onChange={(v) => set("search_depth_formula_id", v)} options={formulaOptions} disabled={disabled} /></Field>
             </div>
             <Field label="Текст для игрока (при показе глубины)"><textarea rows={2} value={value.search_depth_text} disabled={disabled} onChange={(e) => set("search_depth_text", e.target.value)} /></Field>
             <SearchDepthThresholdsEditor rows={value.search_depth_thresholds || []} disabled={disabled} onChange={(rows) => set("search_depth_thresholds", rows)} />
@@ -254,9 +282,16 @@ function DropEditor({ rows, onChange, disabled }) {
         {list.map((row, i) => (
           <div className="ntv2-list-row ntv2-drop-row" key={i}>
             <input className="ntv2-mono" style={{ flex: 2 }} placeholder="item_id" value={row.item_id} disabled={disabled} onChange={(e) => setRow(i, { item_id: e.target.value })} />
+            <input placeholder="Название" value={row.name || ""} disabled={disabled} onChange={(e)=>setRow(i,{name:e.target.value})}/>
             <input type="number" title="шанс %" style={{ width: 80 }} value={row.chance} disabled={disabled} onChange={(e) => setRow(i, { chance: e.target.value })} />
             <input type="number" title="мин" style={{ width: 70 }} value={row.min_count} disabled={disabled} onChange={(e) => setRow(i, { min_count: e.target.value })} />
             <input type="number" title="макс" style={{ width: 70 }} value={row.max_count} disabled={disabled} onChange={(e) => setRow(i, { max_count: e.target.value })} />
+            <input placeholder="Качество" value={row.quality || ""} disabled={disabled} onChange={(e)=>setRow(i,{quality:e.target.value})}/>
+            <input placeholder="Группа" value={row.drop_group || ""} disabled={disabled} onChange={(e)=>setRow(i,{drop_group:e.target.value})}/>
+            <input placeholder="Условие" value={row.condition || ""} disabled={disabled} onChange={(e)=>setRow(i,{condition:e.target.value})}/>
+            <input type="number" placeholder="Лимит" value={row.drop_limit ?? ""} disabled={disabled} onChange={(e)=>setRow(i,{drop_limit:e.target.value})}/>
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.bind_on_receive)} disabled={disabled} onChange={(e)=>setRow(i,{bind_on_receive:e.target.checked})}/> Привязать</label>
+            <input placeholder="Текст выпадения" value={row.drop_text || ""} disabled={disabled} onChange={(e)=>setRow(i,{drop_text:e.target.value})}/>
             <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.only_enhanced)} disabled={disabled} onChange={(e) => setRow(i, { only_enhanced: e.target.checked })} /> усил.</label>
             <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.only_event)} disabled={disabled} onChange={(e) => setRow(i, { only_event: e.target.checked })} /> событие</label>
             {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => removeRow(i)}>×</button> : null}
@@ -268,30 +303,48 @@ function DropEditor({ rows, onChange, disabled }) {
   );
 }
 
-function MobForm({ value, onChange, meta, disabled }) {
+function MobForm({ value, onChange, meta, disabled, formulaOptions }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
   const num = (key, label) => <Field label={label} key={key}><input type="number" value={value[key]} disabled={disabled} onChange={(e) => set(key, e.target.value)} /></Field>;
   return (
     <div className="ntv2-world-form">
       <div className="ntv2-form-row">
         <Field label="Название"><input value={value.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
+        <Field label="Название игроку"><input value={value.player_name || ""} disabled={disabled} onChange={(e) => set("player_name", e.target.value)} /></Field>
+        <Field label="Системное название"><input value={value.system_name || ""} disabled={disabled} onChange={(e) => set("system_name", e.target.value)} /></Field>
         <Field label="Тип"><select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.mobTypes || []).map((t) => <option key={t} value={t}>{trOption("mobTypes", t)}</option>)}</select></Field>
+        <Field label="Ранг"><input value={value.mob_rank || "normal"} disabled={disabled} onChange={(e) => set("mob_rank",e.target.value)}/></Field>
+        <Field label="Семейство"><input value={value.family || ""} disabled={disabled} onChange={(e) => set("family",e.target.value)}/></Field>
+        <Field label="Фракция"><input value={value.faction || ""} disabled={disabled} onChange={(e) => set("faction",e.target.value)}/></Field>
       </div>
-      <div className="ntv2-form-row">{num("min_level", "Ур. от")}{num("max_level", "Ур. до")}{num("hp", "HP")}{num("spawn_chance", "Шанс появления %")}</div>
+      <div className="ntv2-form-row">{num("level","Уровень")}{num("min_level", "Ур. от")}{num("max_level", "Ур. до")}{num("hp", "HP")}{num("mana","Мана")}{num("spirit","Дух")}{num("energy","Энергия")}{num("spawn_chance", "Шанс появления %")}<label className="ntv2-check"><input type="checkbox" checked={Boolean(value.scale_to_player_level)} disabled={disabled} onChange={(e)=>set("scale_to_player_level",e.target.checked)}/> Масштабировать по игроку</label></div>
       <div className="ntv2-form-row">{num("phys_damage", "Физ. урон")}{num("mag_damage", "Маг. урон")}{num("accuracy", "Точность")}{num("evasion", "Уклонение")}</div>
-      <div className="ntv2-form-row">{num("phys_defense", "Физ. защита")}{num("mag_defense", "Маг. защита")}{num("crit_chance", "Крит %")}{num("crit_damage", "Крит урон")}</div>
+      <div className="ntv2-form-row">{num("phys_defense", "Физ. защита")}{num("mag_defense", "Маг. защита")}{num("armor","Броня")}{num("crit_chance", "Крит %")}{num("crit_damage", "Крит урон")}{num("initiative","Инициатива")}{num("player_escape_chance","Шанс побега игрока")}{num("actions_per_turn","Действий за ход")}</div>
+      <div className="ntv2-form-row">{num("strength","Сила")}{num("agility","Ловкость")}{num("endurance","Выносливость")}{num("intelligence","Интеллект")}{num("wisdom","Мудрость")}{num("perception","Восприятие")}<label className="ntv2-check"><input type="checkbox" checked={Boolean(value.escape_forbidden)} disabled={disabled} onChange={(e)=>set("escape_forbidden",e.target.checked)}/> Запрет побега</label></div>
+      <div className="ntv2-form-row"><Field label="Основное действие"><input value={value.main_action || ""} disabled={disabled} onChange={(e)=>set("main_action",e.target.value)}/></Field><Field label="Дополнительное действие"><input value={value.extra_action || ""} disabled={disabled} onChange={(e)=>set("extra_action",e.target.value)}/></Field><Field label="Теги"><input value={(value.tags || []).join(", ")} disabled={disabled} onChange={(e)=>set("tags",e.target.value.split(",").map(x=>x.trim()).filter(Boolean))}/></Field></div>
       <div className="ntv2-form-row">{num("experience", "Опыт")}{num("coins", "Монеты")}
         <label className="ntv2-check"><input type="checkbox" checked={Boolean(value.can_be_enhanced)} disabled={disabled} onChange={(e) => set("can_be_enhanced", e.target.checked)} /> Может быть усиленным</label>
       </div>
+      <div className="ntv2-form-row">{num("coins_min","Минимум монет")}{num("coins_max","Максимум монет")}{num("extra_reward_chance","Шанс доп. награды")}{num("experience_reduction_after_10","Снижение опыта после 10 ур.")}{num("rank_reward_multiplier","Множитель по рангу")}<Field label="Награда за первую победу"><textarea value={value.first_win_reward || ""} disabled={disabled} onChange={(e)=>set("first_win_reward",e.target.value)}/></Field><Field label="Награда за повторную победу"><textarea value={value.repeat_win_reward || ""} disabled={disabled} onChange={(e)=>set("repeat_win_reward",e.target.value)}/></Field></div>
+      <div className="ntv2-form-row">
+        <Field label="Формула урона"><FormulaSelect value={value.damage_formula_id} onChange={(v) => set("damage_formula_id", v)} options={formulaOptions} disabled={disabled} /></Field>
+        <Field label="Формула опыта"><FormulaSelect value={value.exp_formula_id} onChange={(v) => set("exp_formula_id", v)} options={formulaOptions} disabled={disabled} /></Field>
+      </div>
       <Field label="Локации появления (id через запятую)"><input value={value.locations} disabled={disabled} onChange={(e) => set("locations", e.target.value)} /></Field>
-      <Field label="Описание"><textarea rows={3} value={value.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
-      <Field label="Изображение (URL)"><input value={value.image} disabled={disabled} onChange={(e) => set("image", e.target.value)} /></Field>
+      <Field label="Короткое описание"><textarea rows={2} value={value.short_description || ""} disabled={disabled} onChange={(e) => set("short_description", e.target.value)} /></Field>
+      <Field label="Полное описание"><textarea rows={3} value={value.full_description || value.description || ""} disabled={disabled} onChange={(e) => onChange({...value,full_description:e.target.value,description:e.target.value})} /></Field>
+      <Field label="Техническое описание"><textarea rows={2} value={value.technical_description || ""} disabled={disabled} onChange={(e) => set("technical_description", e.target.value)} /></Field>
+      <div className="ntv2-form-row"><Field label="Изображение (локальный путь)"><input value={value.image} disabled={disabled} onChange={(e) => set("image", e.target.value)} /></Field><Field label="Иконка"><input value={value.icon || ""} disabled={disabled} onChange={(e)=>set("icon",e.target.value)}/></Field></div>
       <DropEditor rows={value.drop} onChange={(drop) => set("drop", drop)} disabled={disabled} />
     </div>
   );
 }
 
-function ButtonForm({ value, onChange, meta, disabled, locationOptions }) {
+function EffectSelect({ value, onChange, options, disabled }) {
+  return <select value={value || ""} disabled={disabled} onChange={(e) => onChange(e.target.value)}><option value="">— нет —</option>{(options || []).map((option) => <option key={option.value} value={option.value}>{option.label} ({option.value})</option>)}</select>;
+}
+
+function ButtonForm({ value, onChange, meta, disabled, locationOptions, refOptions, effectOptions }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
   const flag = (key, label) => (
     <label className="ntv2-check" key={key}>
@@ -301,19 +354,67 @@ function ButtonForm({ value, onChange, meta, disabled, locationOptions }) {
   return (
     <div className="ntv2-world-form">
       <Field label="Текст кнопки"><input value={value.text} disabled={disabled} onChange={(e) => set("text", e.target.value)} /></Field>
+      <div className="ntv2-form-row"><Field label="Системное название"><input value={value.system_name || ""} disabled={disabled} onChange={(e)=>set("system_name",e.target.value)}/></Field><Field label="Описание админу"><input value={value.admin_description || ""} disabled={disabled} onChange={(e)=>set("admin_description",e.target.value)}/></Field><Field label="Тип кнопки"><input value={value.button_type || ""} disabled={disabled} onChange={(e)=>set("button_type",e.target.value)}/></Field><Field label="Категория"><input value={value.category || ""} disabled={disabled} onChange={(e)=>set("category",e.target.value)}/></Field><Field label="Эмодзи"><input value={value.icon || ""} disabled={disabled} onChange={(e)=>set("icon",e.target.value)}/></Field><Field label="Цвет"><input value={value.color || ""} disabled={disabled} onChange={(e)=>set("color",e.target.value)}/></Field></div>
       <div className="ntv2-form-row">
         <Field label="Локация-владелец"><LocationSelect value={value.owner_location} onChange={(v) => set("owner_location", v)} options={locationOptions} disabled={disabled} /></Field>
+        <Field label="Подлокация-владелец"><RefSelect value={value.owner_sublocation || ""} onChange={(v) => set("owner_sublocation", v)} options={refOptions.sublocation || []} disabled={disabled} /></Field>
+        <Field label="Событие-владелец"><RefSelect value={value.owner_event || ""} onChange={(v) => set("owner_event", v)} options={refOptions.event || []} disabled={disabled} /></Field>
+        <Field label="NPC-владелец"><RefSelect value={value.owner_npc || ""} onChange={(v) => set("owner_npc", v)} options={refOptions.npc || []} disabled={disabled} /></Field>
         <Field label="Действие"><select value={value.action} disabled={disabled} onChange={(e) => set("action", e.target.value)}>{(meta.buttonActions || []).map((a) => <option key={a} value={a}>{trOption("buttonActions", a)}</option>)}</select></Field>
         <Field label="Порядок"><input type="number" value={value.order} disabled={disabled} onChange={(e) => set("order", e.target.value)} /></Field>
       </div>
       {value.action === "goto_location" ? (
         <Field label="Куда ведёт"><LocationSelect value={value.target} onChange={(v) => set("target", v)} options={locationOptions} disabled={disabled} /></Field>
-      ) : null}
+      ) : <Field label="ID цели / команда"><input className="ntv2-mono" value={value.target || ""} disabled={disabled} onChange={(e) => set("target", e.target.value)} /></Field>}
       <Field label="Условие показа"><input value={value.show_condition} disabled={disabled} onChange={(e) => set("show_condition", e.target.value)} /></Field>
       <div className="ntv2-form-row" style={{ gap: 14 }}>
         {flag("uses_energy", "Тратит энергию")}{flag("starts_timer", "Запускает таймер")}{flag("starts_event", "Запускает событие")}{flag("starts_battle", "Запускает бой")}
         {flag("show_telegram", "Telegram")}{flag("show_vk", "VK")}
       </div>
+      <div className="ntv2-panel">
+        <h4 className="ntv2-subhead">Отображение и условия</h4>
+        <div className="ntv2-form-row" style={{ flexWrap: "wrap" }}>
+          {flag("show_site", "Сайт")}{flag("show_profile", "Профиль")}{flag("hidden", "Скрытая")}{flag("temporary", "Временная")}{flag("one_time", "Одноразовая")}{flag("confirmation", "Подтверждение")}
+        </div>
+        <div className="ntv2-form-row">
+          <Field label="Уровень от"><input type="number" value={value.min_level ?? 0} disabled={disabled} onChange={(e) => set("min_level", e.target.value)} /></Field>
+          <Field label="Уровень до"><input type="number" value={value.max_level ?? 0} disabled={disabled} onChange={(e) => set("max_level", e.target.value)} /></Field>
+          <Field label="Требуемый предмет"><input className="ntv2-mono" value={value.show_required_item_id || ""} disabled={disabled} onChange={(e) => set("show_required_item_id", e.target.value)} /></Field>
+          <Field label="Квест"><input className="ntv2-mono" value={value.required_quest_id || ""} disabled={disabled} onChange={(e) => set("required_quest_id", e.target.value)} /></Field>
+          <Field label="Достижение"><input className="ntv2-mono" value={value.required_achievement_id || ""} disabled={disabled} onChange={(e) => set("required_achievement_id", e.target.value)} /></Field>
+        </div>
+        <div className="ntv2-form-row">
+          <Field label="Репутация"><input className="ntv2-mono" value={value.required_reputation_id || ""} disabled={disabled} onChange={(e) => set("required_reputation_id", e.target.value)} /></Field>
+          <Field label="Мин. репутация"><input type="number" value={value.min_reputation ?? 0} disabled={disabled} onChange={(e) => set("min_reputation", e.target.value)} /></Field>
+          <Field label="Требуемый эффект"><EffectSelect value={value.required_effect_id} onChange={(v) => set("required_effect_id", v)} options={effectOptions} disabled={disabled} /></Field>
+          <Field label="Скрыть при эффекте"><EffectSelect value={value.hidden_by_effect_id} onChange={(v) => set("hidden_by_effect_id", v)} options={effectOptions} disabled={disabled} /></Field>
+          <Field label="Скрытая репутация"><input value={value.required_hidden_reputation_id || ""} disabled={disabled} onChange={(e)=>set("required_hidden_reputation_id",e.target.value)}/></Field><Field label="Мин. скрытая"><input type="number" value={value.min_hidden_reputation ?? 0} disabled={disabled} onChange={(e)=>set("min_hidden_reputation",e.target.value)}/></Field><Field label="Показывать при штрафе"><input value={value.required_fine_id || ""} disabled={disabled} onChange={(e)=>set("required_fine_id",e.target.value)}/></Field><Field label="Скрывать при штрафе"><input value={value.hidden_by_fine_id || ""} disabled={disabled} onChange={(e)=>set("hidden_by_fine_id",e.target.value)}/></Field>
+        </div>
+      </div>
+      <div className="ntv2-panel">
+        <h4 className="ntv2-subhead">Последствия нажатия</h4>
+        <div className="ntv2-form-row">
+          <Field label="Энергия"><input type="number" value={value.energy_cost ?? 0} disabled={disabled} onChange={(e) => set("energy_cost", e.target.value)} /></Field>
+          <Field label="Выдать item_id"><input className="ntv2-mono" value={value.give_item_id || ""} disabled={disabled} onChange={(e) => set("give_item_id", e.target.value)} /></Field>
+          <Field label="Количество"><input type="number" value={value.give_item_amount ?? 1} disabled={disabled} onChange={(e) => set("give_item_amount", e.target.value)} /></Field>
+          <Field label="Забрать item_id"><input className="ntv2-mono" value={value.take_item_id || ""} disabled={disabled} onChange={(e) => set("take_item_id", e.target.value)} /></Field>
+          <Field label="Количество"><input type="number" value={value.take_item_amount ?? 1} disabled={disabled} onChange={(e) => set("take_item_amount", e.target.value)} /></Field>
+        </div>
+        <div className="ntv2-form-row">
+          <Field label="Наложить эффект"><EffectSelect value={value.apply_effect_id} onChange={(v) => set("apply_effect_id", v)} options={effectOptions} disabled={disabled} /></Field>
+          <Field label="Снять эффект"><EffectSelect value={value.remove_effect_id} onChange={(v) => set("remove_effect_id", v)} options={effectOptions} disabled={disabled} /></Field>
+          <Field label="Открыть доступ"><input className="ntv2-mono" value={value.open_access || ""} disabled={disabled} onChange={(e) => set("open_access", e.target.value)} /></Field>
+        </div>
+      </div>
+      <div className="ntv2-panel">
+        <h4 className="ntv2-subhead">Сообщения</h4>
+        <Field label="При нажатии"><textarea rows={2} value={value.message || ""} disabled={disabled} onChange={(e) => set("message", e.target.value)} /></Field>
+        <Field label="Ошибка"><textarea rows={2} value={value.error_text || ""} disabled={disabled} onChange={(e) => set("error_text", e.target.value)} /></Field>
+        <Field label="Не хватает энергии"><textarea rows={2} value={value.not_enough_energy_text || ""} disabled={disabled} onChange={(e) => set("not_enough_energy_text", e.target.value)} /></Field>
+        <Field label="Недоступна"><textarea rows={2} value={value.unavailable_text || ""} disabled={disabled} onChange={(e) => set("unavailable_text", e.target.value)} /></Field>
+        <Field label="Скрытая кнопка"><textarea rows={2} value={value.hidden_text || ""} disabled={disabled} onChange={(e)=>set("hidden_text",e.target.value)}/></Field><Field label="Подтверждение"><textarea rows={2} value={value.confirm_text || ""} disabled={disabled} onChange={(e)=>set("confirm_text",e.target.value)}/></Field><Field label="Отмена"><textarea rows={2} value={value.cancel_text || ""} disabled={disabled} onChange={(e)=>set("cancel_text",e.target.value)}/></Field><Field label="Режим отправки"><select value={value.send_mode || "single"} disabled={disabled} onChange={(e)=>set("send_mode",e.target.value)}><option value="single">Одним сообщением</option><option value="multiple">Несколькими</option><option value="edit">Редактировать текущее</option></select></Field>
+      </div>
+      <div className="ntv2-panel"><h4 className="ntv2-subhead">Расположение</h4><div className="ntv2-form-row"><Field label="Родительский диалог"><input value={value.owner_dialogue || ""} disabled={disabled} onChange={(e)=>set("owner_dialogue",e.target.value)}/></Field><Field label="Группа"><input value={value.button_group || ""} disabled={disabled} onChange={(e)=>set("button_group",e.target.value)}/></Field><Field label="Ряд"><input type="number" value={value.row ?? 0} disabled={disabled} onChange={(e)=>set("row",e.target.value)}/></Field><Field label="Позиция"><input type="number" value={value.row_position ?? 0} disabled={disabled} onChange={(e)=>set("row_position",e.target.value)}/></Field>{flag("main_menu","Главное меню")}{flag("bottom_keyboard","Нижняя клавиатура")}{flag("inline_button","Inline")}{flag("profile_button","Профиль")}{flag("admin_button","Админская")}</div></div>
     </div>
   );
 }
@@ -356,18 +457,84 @@ function RefSelect({ value, onChange, options, disabled, placeholder = "— не
   );
 }
 
-function EventForm({ value, onChange, meta, disabled, refOptions, uploadKey }) {
+function EventForm({ value, onChange, meta, disabled, refOptions, uploadKey, formulaOptions, effectOptions }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
+  const rewards = Array.isArray(value.rewards) ? value.rewards : [];
+  const losses = Array.isArray(value.losses) ? value.losses : [];
+  const consequences = Array.isArray(value.consequences) ? value.consequences : [];
   return (
     <div className="ntv2-world-form">
       <div className="ntv2-form-row">
         <Field label="Название"><input value={value.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
         <Field label="Тип"><select value={value.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.eventTypes || []).map((t) => <option key={t} value={t}>{trOption("eventTypes", t)}</option>)}</select></Field>
       </div>
+      <RowEditor title="Награды события" rows={rewards} disabled={disabled} onChange={(rows) => set("rewards", rows)} blank={{ type: "item", object_id: "", amount: 1, chance: 100, text: "" }} render={(row, setRow) => <>
+        <select value={row.type || "item"} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{["item","currency","experience","energy","hp","mana","spirit","stat_points","skill_points","reputation","hidden_reputation","location_access","effect","curse","achievement","fine"].map((type) => <option value={type} key={type}>{type}</option>)}</select>
+        <input className="ntv2-mono" placeholder="ID объекта" value={row.object_id || ""} disabled={disabled} onChange={(e) => setRow({ object_id: e.target.value })} />
+        <input type="number" min="0" placeholder="количество" value={row.amount ?? 1} disabled={disabled} onChange={(e) => setRow({ amount: e.target.value })} />
+        <input type="number" min="0" max="100" placeholder="шанс %" value={row.chance ?? 100} disabled={disabled} onChange={(e) => setRow({ chance: e.target.value })} />
+        <input placeholder="текст получения" value={row.text || ""} disabled={disabled} onChange={(e) => setRow({ text: e.target.value })} />
+        <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.bind_on_receive)} disabled={disabled} onChange={(e) => setRow({ bind_on_receive: e.target.checked })} /> Привязать</label>
+      </>} />
+      <RowEditor title="Потери события" rows={losses} disabled={disabled} onChange={(rows) => set("losses", rows)} blank={{ type: "hp", object_id: "", amount: 1, percent: false, text: "" }} render={(row, setRow) => <>
+        <select value={row.type || "hp"} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{["hp","mana","spirit","energy","item","money","experience","reputation"].map((type) => <option value={type} key={type}>{type}</option>)}</select>
+        <input className="ntv2-mono" placeholder="ID предмета/репутации" value={row.object_id || ""} disabled={disabled} onChange={(e) => setRow({ object_id: e.target.value })} />
+        <input type="number" min="0" placeholder="значение" value={row.amount ?? 1} disabled={disabled} onChange={(e) => setRow({ amount: e.target.value })} />
+        <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.percent)} disabled={disabled} onChange={(e) => setRow({ percent: e.target.checked })} /> %</label>
+        <input placeholder="текст потери" value={row.text || ""} disabled={disabled} onChange={(e) => setRow({ text: e.target.value })} />
+      </>} />
+      <RowEditor title="Последствия события" rows={consequences} disabled={disabled} onChange={(rows) => set("consequences", rows)} blank={{ type: "message", object_id: "", chance: 100, text: "" }} render={(row, setRow) => <>
+        <select value={row.type || "message"} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{["next_event","open_npc","open_sublocation","open_location","open_access","close_access","apply_effect","remove_effect","start_battle","quest_progress","achievement","fine","message","chat_message"].map((type) => <option value={type} key={type}>{type}</option>)}</select>
+        <input className="ntv2-mono" placeholder="ID цели" value={row.object_id || ""} disabled={disabled} onChange={(e) => setRow({ object_id: e.target.value })} />
+        <input type="number" min="0" max="100" placeholder="шанс %" value={row.chance ?? 100} disabled={disabled} onChange={(e) => setRow({ chance: e.target.value })} />
+        <input placeholder="текст" value={row.text || ""} disabled={disabled} onChange={(e) => setRow({ text: e.target.value })} />
+        {row.type === "message" || row.type === "chat_message" ? <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.deliver)} disabled={disabled} onChange={(e) => setRow({ deliver: e.target.checked })} /> В очередь сообщений</label> : null}
+      </>} />
+      <Field label="Формула шанса"><FormulaSelect value={value.chance_formula_id} onChange={(v) => set("chance_formula_id", v)} options={formulaOptions} disabled={disabled} /></Field>
       <Field label="Локация"><RefSelect value={value.location} onChange={(v) => set("location", v)} options={refOptions.location} disabled={disabled} /></Field>
+      <div className="ntv2-form-row">
+        <Field label="Подлокация"><RefSelect value={value.sublocation_id || ""} onChange={(v) => set("sublocation_id", v)} options={refOptions.sublocation || []} disabled={disabled} /></Field>
+        <Field label="Узел подлокации (необязательно)"><input className="ntv2-mono" value={value.node_id || ""} disabled={disabled} onChange={(e) => set("node_id", e.target.value)} /></Field>
+        <Field label="Кнопка запуска"><input value={value.button_text || ""} disabled={disabled} onChange={(e) => set("button_text", e.target.value)} /></Field>
+        <Field label="Текст запуска"><input value={value.start_text || ""} disabled={disabled} onChange={(e) => set("start_text", e.target.value)} /></Field>
+      </div>
+      <div className="ntv2-panel">
+        <h4 className="ntv2-subhead">Условия запуска</h4>
+        <div className="ntv2-form-row">
+          <Field label="Мин. энергия"><input type="number" min="0" value={value.min_energy ?? 0} disabled={disabled} onChange={(e) => set("min_energy", e.target.value)} /></Field>
+          <Field label="Раса"><input className="ntv2-mono" value={value.required_race || ""} disabled={disabled} onChange={(e) => set("required_race", e.target.value)} /></Field>
+          <Field label="Надетый предмет"><input className="ntv2-mono" value={value.required_equipped_item_id || ""} disabled={disabled} onChange={(e) => set("required_equipped_item_id", e.target.value)} /></Field>
+          <Field label="Требуемый эффект"><input className="ntv2-mono" value={value.required_effect_id || ""} disabled={disabled} onChange={(e) => set("required_effect_id", e.target.value)} /></Field>
+          <Field label="Запрещающий эффект"><input className="ntv2-mono" value={value.forbidden_effect_id || ""} disabled={disabled} onChange={(e) => set("forbidden_effect_id", e.target.value)} /></Field>
+        </div>
+        <div className="ntv2-form-row">
+          <Field label="Репутация"><input className="ntv2-mono" value={value.required_reputation_id || ""} disabled={disabled} onChange={(e) => set("required_reputation_id", e.target.value)} /></Field>
+          <Field label="Мин. репутация"><input type="number" value={value.min_reputation ?? 0} disabled={disabled} onChange={(e) => set("min_reputation", e.target.value)} /></Field>
+          <Field label="Скрытая репутация"><input className="ntv2-mono" value={value.required_hidden_reputation_id || ""} disabled={disabled} onChange={(e) => set("required_hidden_reputation_id", e.target.value)} /></Field>
+          <Field label="Мин. скрытая"><input type="number" value={value.min_hidden_reputation ?? 0} disabled={disabled} onChange={(e) => set("min_hidden_reputation", e.target.value)} /></Field>
+          <Field label="Квест"><input className="ntv2-mono" value={value.required_quest_id || ""} disabled={disabled} onChange={(e) => set("required_quest_id", e.target.value)} /></Field>
+          <Field label="Достижение"><input className="ntv2-mono" value={value.required_achievement_id || ""} disabled={disabled} onChange={(e) => set("required_achievement_id", e.target.value)} /></Field>
+        </div>
+        <div className="ntv2-form-row">
+          <Field label="Время с"><input type="time" value={value.time_start || ""} disabled={disabled} onChange={(e) => set("time_start", e.target.value)} /></Field>
+          <Field label="Время до"><input type="time" value={value.time_end || ""} disabled={disabled} onChange={(e) => set("time_end", e.target.value)} /></Field>
+          <Field label="Дни недели (0–6)"><input value={(value.weekdays || []).join(",")} disabled={disabled} onChange={(e) => set("weekdays", e.target.value.split(",").map((x) => Number(x.trim())).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6))} /></Field>
+          <label className="ntv2-check"><input type="checkbox" checked={Boolean(value.requires_fine)} disabled={disabled} onChange={(e) => set("requires_fine", e.target.checked)} /> Нужен штраф</label>
+          <label className="ntv2-check"><input type="checkbox" checked={Boolean(value.requires_no_fine)} disabled={disabled} onChange={(e) => set("requires_no_fine", e.target.checked)} /> Без штрафа</label>
+          <label className="ntv2-check"><input type="checkbox" checked={Boolean(value.admin_only)} disabled={disabled} onChange={(e) => set("admin_only", e.target.checked)} /> Только админ</label>
+        </div>
+        <Field label="Текст невыполненного условия"><input value={value.access_denied_text || ""} disabled={disabled} onChange={(e) => set("access_denied_text", e.target.value)} /></Field>
+      </div>
       <Field label="Текст игроку"><textarea rows={3} value={value.text} disabled={disabled} onChange={(e) => set("text", e.target.value)} /></Field>
       <div className="ntv2-form-row">
         <Field label="Шанс %"><input type="number" value={value.chance} disabled={disabled} onChange={(e) => set("chance", e.target.value)} /></Field>
+        <Field label="Вес"><input type="number" value={value.weight ?? 0} disabled={disabled} onChange={(e) => set("weight", e.target.value)} /></Field>
+        <Field label="Группа случайного выбора"><input className="ntv2-mono" value={value.event_group || ""} disabled={disabled} onChange={(e) => set("event_group", e.target.value)} /></Field>
+        <Field label="Мин. шанс"><input type="number" min="0" max="100" value={value.min_chance ?? 0} disabled={disabled} onChange={(e) => set("min_chance", e.target.value)} /></Field>
+        <Field label="Макс. шанс"><input type="number" min="0" max="100" value={value.max_chance ?? 100} disabled={disabled} onChange={(e) => set("max_chance", e.target.value)} /></Field>
+        <Field label="Шанс после лимита"><input type="number" min="0" max="100" value={value.chance_after_limit ?? 0} disabled={disabled} onChange={(e) => set("chance_after_limit", e.target.value)} /></Field>
+        <Field label="Перераспределение"><select value={value.redistribution_mode || "none"} disabled={disabled} onChange={(e) => set("redistribution_mode", e.target.value)}><option value="none">Не менять</option><option value="even">Поровну</option><option value="by_weight">По весу</option><option value="same_group">Внутри группы</option></select></Field>
+        <Field label="Лимит запусков"><input type="number" min="0" value={value.limit ?? 0} disabled={disabled} onChange={(e) => set("limit", e.target.value)} /></Field>
         <Field label="Кулдаун (сек)"><input type="number" value={value.cooldown} disabled={disabled} onChange={(e) => set("cooldown", e.target.value)} /></Field>
         <Field label="Ур. от"><input type="number" value={value.min_level} disabled={disabled} onChange={(e) => set("min_level", e.target.value)} /></Field>
         <Field label="Ур. до"><input type="number" value={value.max_level} disabled={disabled} onChange={(e) => set("max_level", e.target.value)} /></Field>
@@ -380,10 +547,11 @@ function EventForm({ value, onChange, meta, disabled, refOptions, uploadKey }) {
         <Field label="Выдаваемый предмет (item_id)"><input className="ntv2-mono" value={value.given_item} disabled={disabled} onChange={(e) => set("given_item", e.target.value)} /></Field>
         <Field label="Требуемый предмет"><input className="ntv2-mono" value={value.required_item} disabled={disabled} onChange={(e) => set("required_item", e.target.value)} /></Field>
         <Field label="Списываемый предмет"><input className="ntv2-mono" value={value.consumed_item} disabled={disabled} onChange={(e) => set("consumed_item", e.target.value)} /></Field>
+        <Field label="Требуемое открытие"><input className="ntv2-mono" value={value.required_unlock || ""} disabled={disabled} onChange={(e) => set("required_unlock", e.target.value)} /></Field>
       </div>
       <div className="ntv2-form-row">
         <Field label="Запускаемый бой (моб)"><RefSelect value={value.battle_mob} onChange={(v) => set("battle_mob", v)} options={refOptions.mob} disabled={disabled} /></Field>
-        <Field label="Накладываемый эффект"><input value={value.effect} disabled={disabled} onChange={(e) => set("effect", e.target.value)} /></Field>
+        <Field label="Накладываемый эффект"><EffectSelect value={value.effect} onChange={(v) => set("effect", v)} options={effectOptions} disabled={disabled} /></Field>
         <label className="ntv2-check"><input type="checkbox" checked={Boolean(value.repeatable)} disabled={disabled} onChange={(e) => set("repeatable", e.target.checked)} /> Повторяемое</label>
       </div>
       <MessageComposer label="Сообщение игроку (изображение/формат/предпросмотр)" value={value.player_message} category="events" uploadKey={`${uploadKey || "event"}_msg`} disabled={disabled} onChange={(v) => set("player_message", v)} />
@@ -431,10 +599,15 @@ function TradePanel({ value, set, disabled }) {
   );
 }
 
-function NpcForm({ value, onChange, meta, disabled, refOptions, uploadKey }) {
+function NpcForm({ value, onChange, meta, disabled, refOptions, uploadKey, effectOptions }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
   const fns = Array.isArray(value.functions) ? value.functions : [];
   const toggleFn = (fn) => set("functions", fns.includes(fn) ? fns.filter((f) => f !== fn) : [...fns, fn]);
+  const dialogues = Array.isArray(value.dialogues) ? value.dialogues : [];
+  const schedule = Array.isArray(value.schedule) ? value.schedule : [];
+  const services = Array.isArray(value.services) ? value.services : [];
+  const patchService = (index, patch) => set("services", services.map((row, i) => i === index ? { ...row, ...patch } : row));
+  const patchDialogue = (index, patch) => set("dialogues", dialogues.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   return (
     <div className="ntv2-world-form">
       <div className="ntv2-form-row">
@@ -443,9 +616,27 @@ function NpcForm({ value, onChange, meta, disabled, refOptions, uploadKey }) {
         <Field label="Вид NPC"><select value={value.npc_kind || "regular"} disabled={disabled} onChange={(e) => set("npc_kind", e.target.value)}>{(meta.npcKinds || []).map((k) => <option key={k} value={k}>{trOption("npcKinds", k)}</option>)}</select></Field>
         <Field label="Локация"><RefSelect value={value.location} onChange={(v) => set("location", v)} options={refOptions.location} disabled={disabled} /></Field>
       </div>
+      <div className="ntv2-form-row">
+        <Field label="Имя для игрока"><input value={value.player_name || ""} disabled={disabled} onChange={(e) => set("player_name", e.target.value)} /></Field>
+        <Field label="Системное имя"><input value={value.system_name || ""} disabled={disabled} onChange={(e) => set("system_name", e.target.value)} /></Field>
+        <Field label="Фракция"><input value={value.faction || ""} disabled={disabled} onChange={(e) => set("faction", e.target.value)} /></Field>
+        <Field label="Репутационная группа"><input value={value.reputation_group || ""} disabled={disabled} onChange={(e) => set("reputation_group", e.target.value)} /></Field>
+        <Field label="Подлокация"><RefSelect value={value.sublocation_id || ""} onChange={(v) => set("sublocation_id", v)} options={refOptions.sublocation || []} disabled={disabled} /></Field>
+      </div>
+      <div className="ntv2-form-row">
+        <Field label="Мин. уровень"><input type="number" value={value.min_level ?? 0} disabled={disabled} onChange={(e) => set("min_level", e.target.value)} /></Field>
+        <Field label="Макс. уровень"><input type="number" value={value.max_level ?? 0} disabled={disabled} onChange={(e) => set("max_level", e.target.value)} /></Field>
+        <Field label="Требуемая раса"><input className="ntv2-mono" value={value.required_race || ""} disabled={disabled} onChange={(e) => set("required_race", e.target.value)} /></Field>
+        <Field label="Требуемый предмет"><input className="ntv2-mono" value={value.required_item_id || ""} disabled={disabled} onChange={(e) => set("required_item_id", e.target.value)} /></Field>
+        <Field label="Репутация"><input className="ntv2-mono" value={value.required_reputation_id || ""} disabled={disabled} onChange={(e) => set("required_reputation_id", e.target.value)} /></Field>
+        <Field label="Мин. репутация"><input type="number" value={value.min_reputation ?? 0} disabled={disabled} onChange={(e) => set("min_reputation", e.target.value)} /></Field>
+      </div>
+      <Field label="Текст недоступности"><textarea rows={2} value={value.denied_text || ""} disabled={disabled} onChange={(e) => set("denied_text", e.target.value)} /></Field>
       <Field label="Первое сообщение"><textarea rows={2} value={value.first_message} disabled={disabled} onChange={(e) => set("first_message", e.target.value)} /></Field>
       <Field label="Описание"><textarea rows={3} value={value.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
       <Field label="Изображение (URL)"><input value={value.image} disabled={disabled} onChange={(e) => set("image", e.target.value)} /></Field>
+      <div className="ntv2-form-row"><Field label="Короткое описание"><textarea value={value.short_description || ""} disabled={disabled} onChange={(e)=>set("short_description",e.target.value)}/></Field><Field label="Техническое описание"><textarea value={value.technical_description || ""} disabled={disabled} onChange={(e)=>set("technical_description",e.target.value)}/></Field><Field label="Скрытое описание"><textarea value={value.hidden_description || ""} disabled={disabled} onChange={(e)=>set("hidden_description",e.target.value)}/></Field><Field label="Иконка"><input value={value.icon || ""} disabled={disabled} onChange={(e)=>set("icon",e.target.value)}/></Field></div>
+      <div className="ntv2-form-row"><Field label="Условие появления"><input value={value.appear_condition || ""} disabled={disabled} onChange={(e)=>set("appear_condition",e.target.value)}/></Field><Field label="Условие исчезновения"><input value={value.disappear_condition || ""} disabled={disabled} onChange={(e)=>set("disappear_condition",e.target.value)}/></Field><Field label="Появляется во время события"><input value={value.event_appear_id || ""} disabled={disabled} onChange={(e)=>set("event_appear_id",e.target.value)}/></Field><Field label="Исчезает после события"><input value={value.event_disappear_id || ""} disabled={disabled} onChange={(e)=>set("event_disappear_id",e.target.value)}/></Field><label className="ntv2-check"><input type="checkbox" checked={Boolean(value.moves_between_locations)} disabled={disabled} onChange={(e)=>set("moves_between_locations",e.target.checked)}/> Перемещается</label></div>
       {/* Привязка к событиям (доп.§4) + поля по виду NPC (доп.§3). */}
       <Field label="Привязан к событиям (event_id через запятую)"><input className="ntv2-mono" value={(value.event_ids || []).join(", ")} disabled={disabled} onChange={(e) => set("event_ids", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))} /></Field>
       {value.npc_kind === "quest_giver" ? (
@@ -457,7 +648,7 @@ function NpcForm({ value, onChange, meta, disabled, refOptions, uploadKey }) {
       {value.npc_kind === "special" ? (
         <Field label="Тип особого NPC"><input value={value.special_type || ""} disabled={disabled} onChange={(e) => set("special_type", e.target.value)} /></Field>
       ) : null}
-      {value.npc_kind === "trader" ? <TradePanel value={value} set={set} disabled={disabled} /> : null}
+      {value.npc_kind === "trader" || fns.includes("shop") || fns.includes("trade") ? <TradePanel value={value} set={set} disabled={disabled} /> : null}
       <div className="ntv2-panel">
         <h4 className="ntv2-subhead">Функции</h4>
         <div className="ntv2-form-row" style={{ gap: 12 }}>
@@ -465,6 +656,49 @@ function NpcForm({ value, onChange, meta, disabled, refOptions, uploadKey }) {
             <label className="ntv2-check" key={fn}><input type="checkbox" checked={fns.includes(fn)} disabled={disabled} onChange={() => toggleFn(fn)} /> {trOption("npcFunctions", fn)}</label>
           ))}
         </div>
+      </div>
+      <div className="ntv2-panel"><h4 className="ntv2-subhead">Услуги NPC</h4>{services.map((row,index)=><div className="ntv2-list-row" key={index}>
+        <input className="ntv2-mono" placeholder="ID услуги" value={row.service_id || ""} disabled={disabled} onChange={(e)=>patchService(index,{service_id:e.target.value})}/><input placeholder="Название" value={row.name || ""} disabled={disabled} onChange={(e)=>patchService(index,{name:e.target.value})}/>
+        <select value={row.service_type || "shop"} disabled={disabled} onChange={(e)=>patchService(index,{service_type:e.target.value})}>{["shop","black_market","port_market","repair","craft","alchemy","enchant","remove_curse","healing","rest","rumors","find_player","assassin_order","board","reward","exchange_currency","exchange_items","pay_fines","training","guide","battle"].map(x=><option key={x}>{x}</option>)}</select>
+        <input type="number" placeholder="Стоимость" value={row.cost ?? 0} disabled={disabled} onChange={(e)=>patchService(index,{cost:e.target.value})}/><input placeholder="Валюта" value={row.currency || "copper"} disabled={disabled} onChange={(e)=>patchService(index,{currency:e.target.value})}/><input className="ntv2-mono" placeholder="Требуемый предмет" value={row.required_item_id || ""} disabled={disabled} onChange={(e)=>patchService(index,{required_item_id:e.target.value})}/><input placeholder="Условие" value={row.condition || ""} disabled={disabled} onChange={(e)=>patchService(index,{condition:e.target.value})}/><input placeholder="Целевое действие" value={row.target_action || ""} disabled={disabled} onChange={(e)=>patchService(index,{target_action:e.target.value})}/><input placeholder="Успех" value={row.success_text || ""} disabled={disabled} onChange={(e)=>patchService(index,{success_text:e.target.value})}/><input placeholder="Ошибка" value={row.error_text || ""} disabled={disabled} onChange={(e)=>patchService(index,{error_text:e.target.value})}/><label className="ntv2-check"><input type="checkbox" checked={row.active!==false} disabled={disabled} onChange={(e)=>patchService(index,{active:e.target.checked})}/> Активна</label>{!disabled?<button type="button" className="ntv2-btn ntv2-btn-danger" onClick={()=>set("services",services.filter((_,i)=>i!==index))}>×</button>:null}
+      </div>)}{!disabled?<button type="button" className="ntv2-btn" onClick={()=>set("services",[...services,{service_id:`service_${services.length+1}`,name:"Новая услуга",service_type:"shop",cost:0,currency:"copper",active:true}])}>＋ Услуга</button>:null}</div>
+      <div className="ntv2-panel">
+        <h4 className="ntv2-subhead">Диалоговые реплики</h4>
+        {dialogues.map((row, index) => (
+          <div className="ntv2-list-row" key={index} style={{ flexWrap: "wrap" }}>
+            <input className="ntv2-mono" placeholder="ID реплики" value={row.id || ""} disabled={disabled} onChange={(e) => patchDialogue(index, { id: e.target.value })} />
+            <select value={row.dialogue_type || "answer"} disabled={disabled} onChange={(e) => patchDialogue(index, { dialogue_type: e.target.value })}><option value="greeting">Приветствие</option><option value="question">Вопрос</option><option value="answer">Ответ</option><option value="quest">Квестовая</option><option value="trade">Торговая</option><option value="reputation">Репутационная</option><option value="hidden">Скрытая</option><option value="final">Финальная</option></select>
+            <input className="ntv2-mono" placeholder="parent_id" value={row.parent_id || ""} disabled={disabled} onChange={(e) => patchDialogue(index, { parent_id: e.target.value })} />
+            <input placeholder="Кнопка ответа игрока" value={row.player_button || ""} disabled={disabled} onChange={(e) => patchDialogue(index, { player_button: e.target.value })} />
+            <input className="ntv2-mono" placeholder="next_id" value={row.next_id || ""} disabled={disabled} onChange={(e) => patchDialogue(index, { next_id: e.target.value })} />
+            <textarea rows={2} placeholder="Текст NPC" value={row.npc_text || ""} disabled={disabled} onChange={(e) => patchDialogue(index, { npc_text: e.target.value })} />
+            <input type="number" placeholder="мин. уровень" value={row.min_level ?? ""} disabled={disabled} onChange={(e) => patchDialogue(index, { min_level: e.target.value })} />
+            <input className="ntv2-mono" placeholder="reward item_id" value={row.reward_item_id || ""} disabled={disabled} onChange={(e) => patchDialogue(index, { reward_item_id: e.target.value })} />
+            <input type="number" placeholder="кол-во" value={row.reward_amount ?? 1} disabled={disabled} onChange={(e) => patchDialogue(index, { reward_amount: e.target.value })} />
+            <EffectSelect value={row.effect_id} onChange={(v) => patchDialogue(index, { effect_id: v })} options={effectOptions} disabled={disabled} />
+            <input className="ntv2-mono" placeholder="open_access" value={row.open_access || ""} disabled={disabled} onChange={(e) => patchDialogue(index, { open_access: e.target.value })} />
+            <input className="ntv2-mono" placeholder="loss item_id" value={row.loss_item_id || ""} disabled={disabled} onChange={(e)=>patchDialogue(index,{loss_item_id:e.target.value})}/><input type="number" placeholder="потеря" value={row.loss_amount ?? ""} disabled={disabled} onChange={(e)=>patchDialogue(index,{loss_amount:e.target.value})}/><input className="ntv2-mono" placeholder="quest progress ID" value={row.quest_progress_id || ""} disabled={disabled} onChange={(e)=>patchDialogue(index,{quest_progress_id:e.target.value})}/><input className="ntv2-mono" placeholder="reputation ID" value={row.reputation_id || ""} disabled={disabled} onChange={(e)=>patchDialogue(index,{reputation_id:e.target.value})}/><input type="number" placeholder="Δ репутации" value={row.reputation_delta ?? ""} disabled={disabled} onChange={(e)=>patchDialogue(index,{reputation_delta:e.target.value})}/><input placeholder="Техническая заметка" value={row.technical_note || ""} disabled={disabled} onChange={(e)=>patchDialogue(index,{technical_note:e.target.value})}/>
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.ends_dialogue)} disabled={disabled} onChange={(e) => patchDialogue(index, { ends_dialogue: e.target.checked })} /> Завершает</label>
+            {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => set("dialogues", dialogues.filter((_, i) => i !== index))}>×</button> : null}
+          </div>
+        ))}
+        {!disabled ? <button type="button" className="ntv2-btn" onClick={() => set("dialogues", [...dialogues, { id: `line_${dialogues.length + 1}`, dialogue_type: dialogues.length ? "answer" : "greeting", parent_id: "", npc_text: "", player_button: "", next_id: "", ends_dialogue: false }])}>＋ Добавить реплику</button> : null}
+      </div>
+      <div className="ntv2-form-row">
+        <Field label="Боевая версия (mob_id)"><RefSelect value={value.combat_mob_id || ""} onChange={(v) => set("combat_mob_id", v)} options={refOptions.mob || []} disabled={disabled} /></Field>
+        <Field label="Доп. локации (ID через запятую)"><input value={(value.additional_locations || []).join(", ")} disabled={disabled} onChange={(e) => set("additional_locations", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))} /></Field>
+      </div>
+      <div className="ntv2-form-row"><Field label="Скрытая репутация"><input value={value.required_hidden_reputation_id || ""} disabled={disabled} onChange={(e)=>set("required_hidden_reputation_id",e.target.value)}/></Field><Field label="Мин. скрытая репутация"><input type="number" value={value.min_hidden_reputation ?? 0} disabled={disabled} onChange={(e)=>set("min_hidden_reputation",e.target.value)}/></Field><Field label="Навыки NPC в бою"><input value={(value.combat_skills || []).join(", ")} disabled={disabled} onChange={(e)=>set("combat_skills",e.target.value.split(",").map(x=>x.trim()).filter(Boolean))}/></Field><Field label="Дроп NPC (JSON)"><textarea value={JSON.stringify(value.combat_drop || [])} disabled={disabled} onChange={(e)=>{try{set("combat_drop",JSON.parse(e.target.value||"[]"))}catch{}}}/></Field><Field label="Награда за победу"><input value={value.combat_reward || ""} disabled={disabled} onChange={(e)=>set("combat_reward",e.target.value)}/></Field><Field label="Штраф за убийство"><input value={value.kill_fine_id || ""} disabled={disabled} onChange={(e)=>set("kill_fine_id",e.target.value)}/></Field></div>
+      <div className="ntv2-panel">
+        <h4 className="ntv2-subhead">Расписание</h4>
+        {schedule.map((row, index) => <div className="ntv2-list-row" key={index}>
+          <input placeholder="Дни 0–6 через запятую" value={(row.weekdays || []).join(",")} disabled={disabled} onChange={(e) => set("schedule", schedule.map((item, i) => i === index ? { ...item, weekdays: e.target.value.split(",").map((v) => Number(v.trim())).filter((v) => Number.isInteger(v) && v >= 0 && v <= 6) } : item))} />
+          <input type="time" value={row.start || "00:00"} disabled={disabled} onChange={(e) => set("schedule", schedule.map((item, i) => i === index ? { ...item, start: e.target.value } : item))} />
+          <input type="time" value={row.end || "23:59"} disabled={disabled} onChange={(e) => set("schedule", schedule.map((item, i) => i === index ? { ...item, end: e.target.value } : item))} />
+          {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => set("schedule", schedule.filter((_, i) => i !== index))}>×</button> : null}
+        </div>)}
+        {!disabled ? <button type="button" className="ntv2-btn" onClick={() => set("schedule", [...schedule, { weekdays: [0, 1, 2, 3, 4, 5, 6], start: "00:00", end: "23:59", active: true }])}>＋ Интервал</button> : null}
+        <Field label="Текст вне расписания"><input value={value.schedule_closed_text || ""} disabled={disabled} onChange={(e) => set("schedule_closed_text", e.target.value)} /></Field>
       </div>
       <MessageComposer label="Диалог игроку (изображение/формат/предпросмотр)" value={value.dialog_message} category="npc" uploadKey={`${uploadKey || "npc"}_msg`} disabled={disabled} onChange={(v) => set("dialog_message", v)} />
     </div>
@@ -534,6 +768,7 @@ const SUBOBJECT_SCHEMAS = {
     { key: "name", label: "Название", type: "text" },
     { key: "type", label: "Тип зоны", type: "select", metaKey: "zoneTypes" },
     { key: "location", label: "Локация", type: "ref", ref: "location" },
+    { key: "effects", label: "Опубликованные эффекты зоны", type: "effect_list" },
     { key: "trigger_chance", label: "Срабатывание %", type: "number" },
     { key: "player_text", label: "Текст игроку", type: "textarea" },
     { key: "description", label: "Тех. описание", type: "textarea" },
@@ -642,28 +877,53 @@ const SUBOBJECT_SCHEMAS = {
     { key: "name", label: "Название навыка", type: "text" },
     { key: "mob_id", label: "Моб", type: "ref", ref: "mob" },
     { key: "skill_type", label: "Тип навыка", type: "select", metaKey: "mobSkillTypes" },
+    { key: "active", label: "Активный", type: "checkbox" },
+    { key: "passive", label: "Пассивный", type: "checkbox" },
     { key: "use_condition", label: "Условие", type: "select", metaKey: "mobSkillConditions" },
     { key: "use_chance", label: "Шанс использования %", type: "number" },
+    { key: "priority", label: "Приоритет", type: "number" },
     { key: "cooldown", label: "Кулдаун (ходов)", type: "number" },
+    { key: "resource", label: "Ресурс стоимости", type: "text" },
+    { key: "resource_cost", label: "Стоимость ресурса", type: "number" },
+    { key: "target", label: "Цель", type: "text" },
+    { key: "base_damage", label: "Базовый урон", type: "number" },
+    { key: "damage_formula_id", label: "Формула урона", type: "mono" },
+    { key: "apply_effect_id", label: "Накладываемый эффект", type: "effect_ref" },
     { key: "player_text", label: "Текст игроку", type: "textarea" },
   ],
   mob_passive: [
     { key: "name", label: "Название", type: "text" },
     { key: "mob_id", label: "Моб", type: "ref", ref: "mob" },
     { key: "player_description", label: "Описание игроку", type: "textarea" },
+    { key: "passive_type", label: "Тип / черта", type: "text" },
+    { key: "effect_id", label: "Эффект", type: "effect_ref" },
+    { key: "trigger_condition", label: "Условие срабатывания", type: "text" },
+    { key: "value", label: "Значение", type: "number" },
+    { key: "show_player", label: "Показывать игроку", type: "checkbox" },
+    { key: "hidden", label: "Скрытая черта", type: "checkbox" },
   ],
   mob_resistance: [
     { key: "mob_id", label: "Моб", type: "ref", ref: "mob" },
     { key: "resist_type", label: "Тип", type: "select", metaKey: "mobResistTypes" },
     { key: "value", label: "Значение", type: "number" },
     { key: "is_weakness", label: "Это слабость", type: "checkbox" },
+    { key: "weapon_type", label: "Тип оружия уязвимости", type: "text" },
+    { key: "effect_id", label: "Эффект уязвимости", type: "effect_ref" },
+    { key: "weakening_item_id", label: "Предмет ослабления", type: "mono" },
+    { key: "weakening_effect_id", label: "Эффект ослабления", type: "effect_ref" },
+    { key: "weakens", label: "Что ослабляется", type: "text" },
+    { key: "duration", label: "Длительность", type: "number" },
+    { key: "success_text", label: "Текст успешного ослабления", type: "textarea" },
+    { key: "fail_text", label: "Текст неудачи", type: "textarea" },
   ],
   mob_effect: [
     { key: "name", label: "Название эффекта", type: "text" },
     { key: "mob_id", label: "Моб", type: "ref", ref: "mob" },
-    { key: "effect_id", label: "Эффект из конструктора (id)", type: "mono" },
+    { key: "effect_id", label: "Эффект из конструктора", type: "effect_ref" },
+    { key: "trigger", label: "Триггер", type: "text" },
     { key: "chance", label: "Шанс наложения %", type: "number" },
     { key: "duration", label: "Длительность (ходов)", type: "number" },
+    { key: "target", label: "Цель", type: "text" },
     { key: "player_text", label: "Текст игроку", type: "textarea" },
   ],
   mob_event_link: [
@@ -672,6 +932,11 @@ const SUBOBJECT_SCHEMAS = {
     { key: "spawn_chance", label: "Шанс появления %", type: "number" },
     { key: "count", label: "Количество мобов", type: "number" },
     { key: "variant_type", label: "Вариант", type: "select", metaKey: "mobVariantTypes" },
+    { key: "object_type", label: "Тип объекта", type: "text" },
+    { key: "weight", label: "Вес", type: "number" },
+    { key: "conditions", label: "Условия появления", type: "text" },
+    { key: "limit", label: "Лимит", type: "number" },
+    { key: "active", label: "Активен", type: "checkbox" },
   ],
   mob_zone_link: [
     { key: "mob_id", label: "Моб", type: "ref", ref: "mob" },
@@ -683,8 +948,20 @@ const SUBOBJECT_SCHEMAS = {
     { key: "name", label: "Название фазы", type: "text" },
     { key: "mob_id", label: "Моб (босс)", type: "ref", ref: "mob" },
     { key: "start_condition", label: "Условие начала", type: "text" },
+    { key: "phase_number", label: "Номер фазы", type: "number" },
+    { key: "hp_percent", label: "Порог здоровья %", type: "number" },
+    { key: "turn_count", label: "Количество ходов", type: "number" },
+    { key: "entry_event_id", label: "Событие входа", type: "ref", ref: "event" },
     { key: "player_text", label: "Описание игроку", type: "textarea" },
     { key: "transition_message", label: "Сообщение при переходе", type: "textarea" },
+    { key: "stat_changes", label: "Изменение характеристик (JSON)", type: "textarea" },
+    { key: "add_skill_ids", label: "Добавить навыки", type: "list" },
+    { key: "remove_skill_ids", label: "Убрать навыки", type: "list" },
+    { key: "add_effect_ids", label: "Добавить эффекты", type: "list" },
+    { key: "remove_effect_ids", label: "Убрать эффекты", type: "list" },
+    { key: "drop_modifier", label: "Изменение дропа", type: "number" },
+    { key: "forbid_escape", label: "Запретить побег", type: "checkbox" },
+    { key: "special_finish", label: "Особое завершение боя", type: "text" },
   ],
 };
 
@@ -709,7 +986,7 @@ function refKindsForSchema(schema) {
   return [...new Set((schema || []).filter((f) => f.type === "ref").map((f) => f.ref))];
 }
 
-function GenericForm({ value, onChange, meta, refOptions, disabled, schema }) {
+function GenericForm({ value, onChange, meta, refOptions, effectOptions, disabled, schema }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
   return (
     <div className="ntv2-world-form">
@@ -737,6 +1014,10 @@ function GenericForm({ value, onChange, meta, refOptions, disabled, schema }) {
           );
         } else if (f.type === "ref") {
           control = <RefSelect value={value[f.key]} onChange={(v) => set(f.key, v)} options={refOptions[f.ref]} disabled={disabled} />;
+        } else if (f.type === "effect_ref") {
+          control = <EffectSelect value={value[f.key]} onChange={(v) => set(f.key, v)} options={effectOptions} disabled={disabled} />;
+        } else if (f.type === "effect_list") {
+          control = <select multiple value={Array.isArray(value[f.key]) ? value[f.key] : []} disabled={disabled} onChange={(e) => set(f.key, [...e.target.selectedOptions].map((o) => o.value))}>{(effectOptions || []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>;
         } else if (f.type === "list") {
           const text = Array.isArray(value[f.key]) ? value[f.key].join("\n") : (value[f.key] || "");
           control = <textarea rows={3} value={text} disabled={disabled} onChange={(e) => set(f.key, e.target.value.split("\n").map((s) => s.trim()).filter(Boolean))} />;
@@ -763,10 +1044,15 @@ export function WorldSection({ guarded, hasPerm }) {
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [refOptions, setRefOptions] = useState({ location: [], mob: [], npc: [] });
+  const [formulaOptions, setFormulaOptions] = useState([]);
+  const [effectOptions, setEffectOptions] = useState([]);
   const [preview, setPreview] = useState(null);
   const [testReport, setTestReport] = useState(null);
   const [battleReport, setBattleReport] = useState(null);
   const [history, setHistory] = useState(null);
+  const [usage, setUsage] = useState(null);
+  const [limitRuntime, setLimitRuntime] = useState(null);
+  const [limitDraft, setLimitDraft] = useState({});
 
   const can = useMemo(() => ({
     create: hasPerm("world.create_draft"),
@@ -777,6 +1063,8 @@ export function WorldSection({ guarded, hasPerm }) {
     archive: hasPerm("world.archive"),
     testRun: hasPerm("world.test_run"),
     mobTestBattle: hasPerm("mob.test_battle"),
+    limitView: hasPerm("location_limits.view"),
+    limitEdit: hasPerm("location_limits.edit") || hasPerm("location_limits.force_restore") || hasPerm("location_limits.force_deplete"),
   }), [hasPerm]);
 
   const loadList = useCallback(async () => {
@@ -788,8 +1076,8 @@ export function WorldSection({ guarded, hasPerm }) {
   const neededRefs = useMemo(() => {
     if (SUBOBJECT_SCHEMAS[kind]) return refKindsForSchema(SUBOBJECT_SCHEMAS[kind]);
     return ({
-      button: ["location"], transition: ["location"],
-      event: ["location", "mob"], npc: ["location"],
+      button: ["location", "sublocation", "event", "npc"], transition: ["location"],
+      event: ["location", "mob"], npc: ["location", "sublocation", "mob"],
       quest: ["location", "mob", "npc"], raid: ["location", "mob"],
     }[kind] || []);
   }, [kind]);
@@ -803,6 +1091,8 @@ export function WorldSection({ guarded, hasPerm }) {
   }, [guarded]);
 
   useEffect(() => { (async () => { const m = await guarded(() => fetchWorldMeta()); if (m) setMeta(m); })(); }, [guarded]);
+  useEffect(() => { (async () => { const f = await guarded(() => fetchFormulas("published")); if (f) setFormulaOptions((f.items || []).map((x) => ({ value: x.id, label: x.data?.name || x.id }))); })(); }, [guarded]);
+  useEffect(() => { (async () => { const e = await guarded(() => fetchEffects("published")); if (e) setEffectOptions((e.items || []).map((x) => ({ value: x.id, label: x.data?.effect_name || x.id }))); })(); }, [guarded]);
   useEffect(() => { loadList(); }, [loadList]);
   useEffect(() => { if (neededRefs.length) loadRefs(neededRefs); }, [neededRefs, loadRefs]);
 
@@ -810,7 +1100,7 @@ export function WorldSection({ guarded, hasPerm }) {
   const schema = SUBOBJECT_SCHEMAS[kind];
   const Form = FORM_BY_KIND[kind] || LocationForm;
 
-  function resetPanels() { setPreview(null); setTestReport(null); setBattleReport(null); setHistory(null); }
+  function resetPanels() { setPreview(null); setTestReport(null); setBattleReport(null); setHistory(null); setUsage(null); setLimitRuntime(null); setLimitDraft({}); }
 
   async function runMobBattle() {
     const payload = await guarded(() => mobTestBattle(editing.id, { count: 300 }), "Тестовый бой проведён.");
@@ -823,6 +1113,25 @@ export function WorldSection({ guarded, hasPerm }) {
   async function runPreview() {
     const payload = await guarded(() => previewWorldItem(kind, editing.id));
     if (payload?.preview) { setPreview(payload.preview); setTestReport(null); }
+  }
+
+  async function loadUsage() {
+    const payload = await guarded(() => fetchWorldUsage(kind, editing.id));
+    if (payload?.usage) {
+      setUsage(payload.usage);
+      setPreview(null);
+      setTestReport(null);
+    }
+  }
+
+  async function loadLimitRuntime() {
+    const locationId = editing.data?.location;
+    if (!locationId) return;
+    const payload = await guarded(() => fetchLocationLimitRuntime(locationId));
+    if (payload) {
+      setLimitRuntime(payload);
+      setLimitDraft(Object.fromEntries((payload.items || []).map((row) => [row.id, row.remaining ?? 0])));
+    }
   }
 
   async function runTestRun() {
@@ -922,9 +1231,9 @@ export function WorldSection({ guarded, hasPerm }) {
         ) : <p className="ntv2-hint ntv2-mono">{editing.id}</p>}
 
         {schema ? (
-          <GenericForm schema={schema} value={editing.data} onChange={(data) => setEditing({ ...editing, data })} meta={meta} refOptions={refOptions} disabled={!(editing.isNew ? can.create : can.edit)} />
+          <GenericForm schema={schema} value={editing.data} onChange={(data) => setEditing({ ...editing, data })} meta={meta} refOptions={refOptions} effectOptions={effectOptions} disabled={!(editing.isNew ? can.create : can.edit)} />
         ) : (
-          <Form value={editing.data} onChange={(data) => setEditing({ ...editing, data })} meta={meta} locationOptions={refOptions.location} refOptions={refOptions} disabled={!(editing.isNew ? can.create : can.edit)} uploadKey={editing.id || "new"} />
+          <Form value={editing.data} onChange={(data) => setEditing({ ...editing, data })} meta={meta} locationOptions={refOptions.location} refOptions={refOptions} formulaOptions={formulaOptions} effectOptions={effectOptions} disabled={!(editing.isNew ? can.create : can.edit)} uploadKey={editing.id || "new"} />
         )}
 
         {v ? (
@@ -968,6 +1277,8 @@ export function WorldSection({ guarded, hasPerm }) {
           ) : null}
           {!editing.isNew && can.validate ? <button type="button" className="ntv2-btn" onClick={runValidate}>Проверить</button> : null}
           {!editing.isNew ? <button type="button" className="ntv2-btn" onClick={runPreview}>Предпросмотр</button> : null}
+          {!editing.isNew ? <button type="button" className="ntv2-btn" onClick={loadUsage}>Где используется</button> : null}
+          {!editing.isNew && kind === "location_weekly_limit" && can.limitView ? <button type="button" className="ntv2-btn" onClick={loadLimitRuntime}>Остатки недели</button> : null}
           {!editing.isNew ? <button type="button" className="ntv2-btn" onClick={loadHistory}>История версий</button> : null}
           {!editing.isNew && can.testRun ? <button type="button" className="ntv2-btn" onClick={runTestRun}>Тестовый проход</button> : null}
           {!editing.isNew && kind === "mob" && can.mobTestBattle ? <button type="button" className="ntv2-btn" onClick={runMobBattle}>Тестовый бой</button> : null}
@@ -992,7 +1303,64 @@ export function WorldSection({ guarded, hasPerm }) {
               run: async (reason) => { await guarded(() => archiveWorldItem(kind, editing.id, reason), "В архиве."); setEditing(null); await loadList(); },
             })}>В архив</button>
           ) : null}
+          {!editing.isNew && can.archive ? (
+            <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={async () => {
+              const payload = await guarded(() => fetchWorldUsage(kind, editing.id));
+              const found = payload?.usage;
+              setUsage(found || null);
+              if (found?.total) return;
+              setConfirm({
+                title: "Удалить объект безвозвратно?", dangerous: true, confirmLabel: "Удалить",
+                requireConfirmText: editing.id,
+                body: <p>Запись будет удалена из реестра. Историю восстановить нельзя.</p>,
+                run: async (reason) => {
+                  await guarded(() => deleteWorldItem(kind, editing.id, reason), "Объект удалён.");
+                  setEditing(null);
+                  await loadList();
+                },
+              });
+            }}>Удалить</button>
+          ) : null}
         </div>
+
+        {usage ? (
+          <div className={`ntv2-panel ${usage.total ? "ntv2-danger-zone" : ""}`}>
+            <h4 className="ntv2-subhead">Где используется</h4>
+            {!usage.total ? <p className="ntv2-hint">Связей нет — объект можно удалить.</p> : (
+              <div className="ntv2-list">
+                {usage.items.map((row) => (
+                  <div className="ntv2-list-row" key={`${row.kind}:${row.id}`}>
+                    <span className="ntv2-badge">{KIND_LABELS[row.kind] || row.kind}</span>
+                    <b>{row.name}</b>
+                    <span className="ntv2-mono">{row.id}</span>
+                    <span className="ntv2-hint">{row.paths.join(", ")}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {limitRuntime ? (
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Остатки недели: {limitRuntime.location_id}</h4>
+            <div className="ntv2-list">{(limitRuntime.items || []).map((row) => (
+              <div className="ntv2-list-row" key={row.id}>
+                <b>{row.name}</b><span className="ntv2-mono">{row.id}</span>
+                <span>{row.remaining ?? "∞"} / {row.total ?? "∞"}</span>
+                <span className="ntv2-hint">использовано: {row.used ?? "—"}; неделя {row.week}</span>
+                {can.limitEdit && row.total !== null ? <>
+                  <input type="number" min="0" max={row.total} value={limitDraft[row.id] ?? 0} onChange={(e) => setLimitDraft((cur) => ({ ...cur, [row.id]: e.target.value }))} />
+                  <button type="button" className="ntv2-btn" onClick={() => setConfirm({
+                    title: "Изменить остаток недельного лимита?", dangerous: true, confirmLabel: "Применить",
+                    body: <p>Остаток <b>{row.name}</b> будет установлен в {limitDraft[row.id]} из {row.total}.</p>,
+                    run: async (reason) => { await guarded(() => setLocationLimitRemaining(row.id, limitRuntime.location_id, limitDraft[row.id], row.week, reason), "Остаток изменён."); await loadLimitRuntime(); },
+                  })}>Установить</button>
+                </> : null}
+              </div>
+            ))}</div>
+          </div>
+        ) : null}
 
         {testReport ? (
           <div className={`ntv2-panel ${testReport.ok ? "" : "ntv2-danger-zone"}`}>
@@ -1051,6 +1419,7 @@ export function WorldSection({ guarded, hasPerm }) {
         <ConfirmModal
           open={Boolean(confirm)} title={confirm?.title} body={confirm?.body}
           dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
+          requireConfirmText={confirm?.requireConfirmText || ""}
           onConfirm={async (reason) => { await confirm.run(reason); setConfirm(null); }}
           onCancel={() => setConfirm(null)}
         />

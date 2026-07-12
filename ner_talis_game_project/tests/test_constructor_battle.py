@@ -100,6 +100,19 @@ class ConstructorBattleTest(unittest.TestCase):
             self.assertEqual(e["source_mob_id"], "mob_wolf")
             self.assertEqual(e["base_damage"], 12)
 
+    def test_mob_subcards_drive_skills_resistance_phases_and_actions(self):
+        from services.skill_action_runtime import choose_mob_skill
+        self._publish(wcr.KIND_MOB_SKILL,"wolf_bite",{"name":"Рваный укус","mob_id":"mob_wolf","skill_type":"physical","use_condition":"always","use_chance":100,"priority":5,"cooldown":2,"base_damage":20})
+        self._publish(wcr.KIND_MOB_RESISTANCE,"wolf_hide",{"mob_id":"mob_wolf","resist_type":"physical","value":50,"is_weakness":False,"weakening_item_id":"silver_dust"})
+        self._publish(wcr.KIND_MOB_PHASE,"wolf_rage",{"name":"Ярость","mob_id":"mob_wolf","phase_number":2,"hp_percent":50,"stat_changes":{"base_damage":7},"forbid_escape":True,"transition_message":"Волк впадает в ярость!"})
+        wcr.update_content(wcr.KIND_MOB,"mob_wolf",{"actions_per_turn":2,"mana":9,"strength":6});wcr.set_status(wcr.KIND_MOB,"mob_wolf",wcr.STATUS_PUBLISHED,force=True)
+        os.environ["WORLD_CONSTRUCTOR_LIVE"]="1";player=self._player();battle,_=pbs.create_constructor_battle(player,random.Random(1),LOC);enemy=battle["enemies"][0]
+        self.assertEqual(enemy["actions_per_turn"],2);self.assertEqual(enemy["mana"],9);self.assertEqual(enemy["attributes"]["strength"],6)
+        self.assertEqual(choose_mob_skill(enemy,random.Random(1))["name"],"Рваный укус")
+        self.assertEqual(pbs.constructor_damage_multiplier(enemy,DamageType.PHYSICAL,player),0.5)
+        player["inventory"].append({"item_id":"silver_dust","amount":1});self.assertEqual(pbs.constructor_damage_multiplier(enemy,DamageType.PHYSICAL,player),1.0)
+        enemy["current_hp"]=enemy["max_hp"]//2;log=[];pbs.apply_constructor_phase(enemy,battle,log);self.assertFalse(battle["can_escape"]);self.assertIn("ярость",log[0]);self.assertEqual(enemy["base_damage"],19)
+
     def test_count_capped_by_weekly_stock(self):
         os.environ["WORLD_CONSTRUCTOR_LIVE"] = "1"
         self._publish(wcr.KIND_LOCATION_WEEKLY_LIMIT, "lim_wolf", {

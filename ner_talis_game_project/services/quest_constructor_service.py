@@ -1,8 +1,7 @@
 """Конструктор квестов и заданий (ТЗ 2.0, файл 10, часть 2).
 
 Запись = квест/задание: этапы, задачи, диалоги, ветвления, награды, провал,
-повторяемость. Это авторский слой данных + валидация + предпросмотр; рантайм
-выдачи/прогресса квестов — на вырост (бот читает опубликованные записи).
+повторяемость. Опубликованные записи исполняет quest_runtime_service.
 
 Модель хранения — плоские коллекции внутри записи (LibrarySection-friendly):
 ``stages`` (этапы), ``tasks`` (задачи; привязка к этапу через ``stage_id``),
@@ -67,6 +66,7 @@ REPEAT_MODES = (
     "one_time", "repeatable", "daily", "weekly", "monthly", "seasonal", "event",
 )
 CURRENCIES = ("copper", "silver", "gold", "magic_gold", "ancient_coin")
+ACCEPT_CONDITION_TYPES=("item","achievement","previous_quest","completed_quest","failed_quest","reputation","hidden_reputation","location","sublocation","npc","effect","no_fine","has_fine","event_campaign","world_event","time","weekday")
 
 _store = EntityStore(
     env_var="QUEST_CONSTRUCTOR_PATH",
@@ -79,6 +79,13 @@ _store = EntityStore(
 
 def store() -> EntityStore:
     return _store
+
+
+def published_definition(quest_id: str) -> dict[str, Any] | None:
+    env = store().get(str(quest_id or ""))
+    if not env or env.get("status") != STATUS_PUBLISHED:  # noqa: F405
+        return None
+    return {"id": env.get("id"), **dict(env.get("data") or {})}
 
 
 def _num(value: Any) -> float | None:
@@ -202,6 +209,19 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         st = str(t.get("stage_id") or "").strip()
         if st and stage_ids and st not in stage_ids:
             errors.append(f"Задача #{i}: этап «{st}» не существует.")
+    for i,row in enumerate(data.get("accept_conditions") or [],start=1):
+        if isinstance(row,dict) and str(row.get("type") or "") not in ACCEPT_CONDITION_TYPES:errors.append(f"Условие принятия #{i}: неизвестный тип.")
+    for i,row in enumerate(data.get("quest_items") or [],start=1):
+        if not isinstance(row,dict) or not str(row.get("item_id") or ""):errors.append(f"Квестовый предмет #{i}: не указан ID.")
+        elif (_num(row.get("count")) or 0)<=0:errors.append(f"Квестовый предмет #{i}: количество должно быть больше нуля.")
+    choice_ids=set()
+    for i,row in enumerate(data.get("choices") or [],start=1):
+        if not isinstance(row,dict):continue
+        cid=str(row.get("choice_id") or "")
+        if not cid:errors.append(f"Выбор #{i}: не указан ID.")
+        elif cid in choice_ids:errors.append(f"Выбор #{i}: дублируется ID «{cid}».")
+        choice_ids.add(cid)
+        if row.get("next_stage") and str(row["next_stage"]) not in stage_ids:errors.append(f"Выбор #{i}: следующий этап не существует.")
 
     # Награды (§35): тип из списка.
     for i, r in enumerate(data.get("rewards") or [], start=1):
@@ -229,15 +249,26 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         warnings.append("У квеста нет наград.")
     if not str(data.get("source_npc_id") or "").strip() and src == "npc":
         warnings.append("Источник — NPC, но NPC не указан.")
-    if qtype in ("hidden", "secret") and not str(data.get("reveal_condition") or "").strip():
+    if (qtype in ("hidden", "secret") or data.get("hidden")) and not data.get("reveal_condition"):
         warnings.append("Квест скрытый, но нет условия открытия.")
 
     # Тексты без HTML.
-    for key in ("name", "description", "hidden_description"):
+    for key in ("name", "description", "hidden_description", "appear_text", "accept_text", "decline_text", "complete_text", "reward_text", "fail_text", "stage_text", "task_text", "progress_text", "task_complete_text", "unavailable_text", "missing_item_text", "wrong_npc_text", "wrong_location_text", "repeat_text", "reveal_text"):
         if _has_html(data.get(key)):
             errors.append(f"В поле «{key}» недопустим HTML.")
 
     return {"ok": not errors, "errors": errors, "warnings": warnings}
+
+def import_legacy(*,actor:str="")->dict[str,Any]:
+    """Import legacy world quests preserving IDs; player quest state is untouched."""
+    from services import world_content_registry as world
+    created=skipped=0;ids=[]
+    for env in world.list_content(world.KIND_QUEST):
+        qid=str(env.get("id") or "")
+        if not qid or store().get(qid):skipped+=1;continue
+        old=dict(env.get("data") or {});data={"name":old.get("name") or old.get("title") or qid,"quest_type":old.get("quest_type") or "side","description":old.get("description") or old.get("text") or "","source_type":old.get("source_type") or ("npc" if old.get("npc_id") else "auto"),"source_npc_id":old.get("npc_id") or old.get("source_npc_id"),"completion_conditions":old.get("completion_conditions") or ["all_tasks_done"],"stages":old.get("stages") or [{"stage_id":"main","name":"Основной этап"}],"tasks":old.get("tasks") or [],"rewards":old.get("rewards") or [],"repeat_mode":old.get("repeat_mode") or "one_time","legacy_imported":True}
+        store().create(qid,data,actor=actor);store().set_status(qid,STATUS_PUBLISHED,actor=actor,force=True);created+=1;ids.append(qid)
+    return {"created":created,"skipped":skipped,"ids":ids}
 
 
 def preview(data: dict[str, Any]) -> dict[str, Any]:

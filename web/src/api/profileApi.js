@@ -205,10 +205,50 @@ export function useItem(identifier, itemId, inventoryIndex = null) {
   });
 }
 
+export function repairItem(identifier, itemId, inventoryIndex = null) {
+  const payload = { item_id: itemId };
+  if (Number.isInteger(inventoryIndex) && inventoryIndex >= 0) payload.inventory_index = inventoryIndex;
+  return requestJson(profileEndpoint("/inventory/repair"), { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function runProfileItemAction(identifier, itemId, inventoryIndex, action) {
+  const payload = { item_id: itemId, action };
+  if (Number.isInteger(inventoryIndex) && inventoryIndex >= 0) payload.inventory_index = inventoryIndex;
+  return requestJson(profileEndpoint("/inventory/profile-action"), { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function useSkillOutside(identifier, skillId) {
+  return requestJson(profileEndpoint("/skills/use-outside"), { method: "POST", body: JSON.stringify({ skill_id: skillId }) });
+}
+
+export function runCraftOperation(identifier, itemId, inventoryIndex, operation, ruleId) {
+  return requestJson(profileEndpoint("/inventory/craft-operation"), {
+    method: "POST",
+    body: JSON.stringify({ item_id: itemId, inventory_index: inventoryIndex, operation, rule_id: ruleId }),
+  });
+}
+
+export function claimCraftDelivery(identifier) {
+  return requestJson(profileEndpoint("/inventory/craft-delivery/claim"), { method: "POST", body: "{}" });
+}
+
 export function editProfileField(identifier, field, value) {
   return requestJson(profileEndpoint("/profile/edit-field"), {
     method: "POST",
     body: JSON.stringify({ field, value: String(value) }),
+  });
+}
+
+export async function changeRace(identifier, targetRaceId) {
+  const preview = await requestJson(profileEndpoint("/race/change-preview"), {
+    method: "POST", body: JSON.stringify({ target_race_id: targetRaceId, method: "service" }),
+  });
+  const warning = preview?.preview?.warning || "Смена расы заменит постоянные бонусы персонажа.";
+  if (!window.confirm(`${warning}\n\nСтоимость: ${preview?.preview?.cost || 0}. Подтвердить смену?`)) {
+    throw new Error("Смена расы отменена.");
+  }
+  return requestJson(profileEndpoint("/race/change-confirm"), {
+    method: "POST", body: JSON.stringify({ confirmation_token: preview.preview.confirmation_token }),
   });
 }
 

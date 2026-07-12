@@ -59,6 +59,19 @@ NODE_TYPES = (
     "building", "townhall", "market", "workshop", "tavern", "pier", "outpost",
     "stand", "board", "criminal_zone", "residential", "service", "transition",
 )
+CITY_TYPES=("starting","port","fortified","trade","craft","criminal","capital","temporary","event","abandoned","city_fortress","technical")
+CITY_TEXT_FIELDS=("entry_text","exit_text","main_menu_text","quarter_text","quarter_denied_text","market_text","tavern_text","townhall_text","craft_text","port_text","dark_alley_text","raid_text","fine_text","empty_action_text","error_text")
+FORTRESS_TYPES = (
+    "regular", "city_fortress", "gorge", "penalty", "military", "outpost",
+    "prison", "fort", "border", "seekers", "monsters", "abandoned",
+    "event", "technical",
+)
+FORTRESS_TEXT_FIELDS = (
+    "entry_text", "courtyard_text", "townhall_text", "outpost_text",
+    "fine_text", "payment_text", "denied_text", "exit_denied_text",
+    "escape_text", "death_text", "return_text", "city_transition_text",
+    "outside_transition_text",
+)
 # Действия кнопок (§4.3).
 BUTTON_ACTIONS = (
     "goto_node", "open_market", "open_npc", "open_quests", "open_craft",
@@ -134,6 +147,77 @@ def _validate_node(envelope: dict[str, Any]) -> tuple[list[str], list[str]]:
         errors.append("Порядок отображения — не число.")
     if node_type not in ("city", "fortress") and not _str(data, "parent_id"):
         warnings.append("У узла не указан родительский узел (parent_id).")
+    if node_type == "fortress":
+        fortress_type = _str(data, "fortress_type")
+        if fortress_type and fortress_type not in FORTRESS_TYPES:
+            errors.append(f"Неизвестный тип крепости: {fortress_type}.")
+        if not _str(data, "entry_text"):
+            errors.append("Не заполнен текст входа в крепость.")
+        if data.get("penalty") and not any(data.get(k) for k in (
+            "accepts_fined_players", "accepts_after_raid", "accepts_after_third_fine",
+            "allow_fine_payment", "allow_fine_removal_npc", "allow_fine_removal_admin",
+        )):
+            errors.append("Штрафная крепость не имеет правил штрафа и наказания.")
+        if data.get("safe_inside") and data.get("dangerous_inside"):
+            errors.append("Крепость не может быть одновременно безопасной и опасной внутри.")
+        if data.get("pvp_allowed") and data.get("pvp_forbidden"):
+            errors.append("PVP не может быть одновременно разрешён и запрещён.")
+        if data.get("escape_possible") and data.get("escape_impossible"):
+            errors.append("Побег не может быть одновременно возможен и невозможен.")
+        if not data.get("exit_allowed") and not any(data.get(k) for k in (
+            "exit_after_fine_payment", "exit_via_npc", "exit_via_quest", "exit_via_battle", "exit_after_time",
+        )):
+            warnings.append("У крепости не настроен способ выхода.")
+        if not any(data.get(k) for k in ("available_to_all", "only_with_fine", "after_event_id", "after_quest_id", "after_raid", "after_transfer")):
+            warnings.append("Крепость опубликована, но не настроено условие доступа игроков.")
+        if not data.get("npc_ids"):
+            warnings.append("В крепости не указаны NPC.")
+        if not data.get("event_ids"):
+            warnings.append("В крепости не указаны события.")
+        errors += _markup_errors(data, FORTRESS_TEXT_FIELDS)
+    if node_type=="city":
+        city_type=_str(data,"city_type")
+        if city_type and city_type not in CITY_TYPES:errors.append(f"Неизвестный тип города: {city_type}.")
+        if not _str(data,"entry_text") and not _str(data,"main_menu_text"):errors.append("Не заполнен главный текст города.")
+        if not data.get("image"):warnings.append("У города нет изображения.")
+        for collection,required in (("sublocation_links","sublocation_id"),("transition_links","target_id"),("npc_links","npc_id"),("market_links","market_id"),("workshop_links","workshop_id"),("tavern_links","tavern_id"),("event_links","event_id")):
+            for i,row in enumerate(data.get(collection) or [],1):
+                if not isinstance(row,dict) or not str(row.get(required) or "").strip():errors.append(f"{collection} #{i}: не задано поле {required}.")
+        try:
+            from services import world_content_registry as world
+            for collection,field,kind,label in (("sublocation_links","sublocation_id",world.KIND_SUBLOCATION,"подлокацию"),("npc_links","npc_id",world.KIND_NPC,"NPC"),("event_links","event_id",world.KIND_EVENT,"событие")):
+                for row in data.get(collection) or []:
+                    ref=str((row or {}).get(field) or "") if isinstance(row,dict) else ""
+                    if ref and not world.get_content(kind,ref):errors.append(f"Ссылка на {label} «{ref}» ведёт в несуществующий объект.")
+        except Exception:pass
+        try:
+            from services.economy_constructor_service import active_profile
+            market_ids={str(x.get("market_id") or x.get("id") or "") for x in active_profile().get("markets") or [] if isinstance(x,dict)}|{"normal","city_market","port","port_market","black","black_market","tavern","npc","pavilion"}
+            for row in data.get("market_links") or []:
+                ref=str((row or {}).get("market_id") or "")
+                if ref and ref not in market_ids:errors.append(f"Рынок «{ref}» не существует.")
+        except Exception:pass
+        try:
+            from services import workshop_constructor_service as workshops,tavern_constructor_service as taverns
+            for row in data.get("workshop_links") or []:
+                ref=str((row or {}).get("workshop_id") or "")
+                if ref and not workshops.store().get(ref):errors.append(f"Мастерская «{ref}» не существует.")
+            for row in data.get("tavern_links") or []:
+                ref=str((row or {}).get("tavern_id") or "")
+                if ref and not taverns.store().get(ref):errors.append(f"Таверна «{ref}» не существует.")
+        except Exception:pass
+        for row in data.get("transition_links") or []:
+            if not isinstance(row,dict):continue
+            target=str(row.get("target_id") or "");typ=str(row.get("target_type") or "")
+            if typ in {"city","fortress"} and target and not _store.get(target):errors.append(f"Переход ведёт в несуществующую цель «{target}».")
+        errors += _markup_errors(data, CITY_TEXT_FIELDS)
+        city_id=str(envelope.get("id") or "");all_rows=_store.list();node_ids={city_id,*[str(x.get("id")) for x in all_rows if (x.get("data") or {}).get("_kind")==KIND_NODE and str((x.get("data") or {}).get("parent_id") or "")==city_id]}
+        if not any((x.get("data") or {}).get("_kind")==KIND_BUTTON and str((x.get("data") or {}).get("node_id") or "") in node_ids for x in all_rows):errors.append("Город не имеет ни одной настроенной кнопки.")
+        if not data.get("npc_links"):warnings.append("В городе не настроены NPC.")
+        if not data.get("market_links"):warnings.append("В городе не настроены рынки.")
+        if not any(str(row.get("target_type") or "") in {"location","city","fortress"} for row in data.get("transition_links") or [] if isinstance(row,dict)):warnings.append("У города нет выхода наружу.")
+        if data.get("criminal_city") and not _str(data,"dark_alley_text"):warnings.append("В городе есть криминальная зона, но нет текста предупреждения.")
+        if data.get("hidden") or data.get("show_to_players") is False:warnings.append("Город скрыт от игроков.")
     # Вывод сообщения игроку при входе в узел (дополнение к ТЗ): формат/блоки/лимиты.
     msg = data.get("entry_message")
     if msg:

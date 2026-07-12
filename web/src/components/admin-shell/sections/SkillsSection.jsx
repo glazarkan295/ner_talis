@@ -24,6 +24,11 @@ import { ConfirmModal } from "../ConfirmModal.jsx";
 import { VersionHistory } from "../VersionHistory.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
+import { fetchFormulas } from "../../../api/adminFormulaApi.js";
+import { fetchEffects } from "../../../api/adminEffectApi.js";
+import { fetchItems } from "../../../api/adminItemApi.js";
+import { fetchWorldItems } from "../../../api/adminWorldApi.js";
+import { fetchAchievements } from "../../../api/adminAchievementApi.js";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 
@@ -33,7 +38,17 @@ const EMPTY = {
   damage_type: "physical", target_mode: "single_enemy",
   weapon_requirements: ["any"], unlock_path_level: 0, choice_index: 0,
   short_description: "", description: "", base_damage_formula: "",
+  damage_formula_id: "", use_cost_formula_id: "", learn_cost_formula_id: "",
+  upgrade_cost_formula_id: "", level_power_formula_id: "",
+  learn_cost_skill_points: 0,
   modifiers: [],
+  source_type: "standard", linked_item_id: "", linked_mob_id: "", linked_achievement_id: "", linked_button_id: "",
+  special: false, hidden: false, unlock_condition: "", action_type: "damage", works_in_battle: true, works_outside_battle: false,
+  hp_amount: 0, mana_amount: 0, spirit_amount: 0, energy_amount: 0,
+  hp_formula_id: "", mana_formula_id: "", spirit_formula_id: "", energy_formula_id: "",
+  apply_effect_ids: [], remove_effect_ids: [], required_magic_book_id: "", required_hand: "",
+  required_player_state: "", forbidden_player_state: "", passive_slot_cost: 1,
+  ammo_enabled: false, ammo_item_id: "", ammo_per_use: 1,
 };
 
 function Field({ label, children }) {
@@ -47,6 +62,12 @@ export function SkillsSection({ guarded, hasPerm }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [formulaOptions, setFormulaOptions] = useState([]);
+  const [effectOptions, setEffectOptions] = useState([]);
+  const [itemOptions, setItemOptions] = useState([]);
+  const [mobOptions, setMobOptions] = useState([]);
+  const [buttonOptions, setButtonOptions] = useState([]);
+  const [achievementOptions, setAchievementOptions] = useState([]);
 
   const can = useMemo(() => ({
     create: hasPerm("skill_def.create"), edit: hasPerm("skill_def.edit"), validate: hasPerm("skill_def.validate"),
@@ -56,6 +77,14 @@ export function SkillsSection({ guarded, hasPerm }) {
 
   const load = useCallback(async () => { const p = await guarded(() => fetchSkills(statusFilter)); if (p) setList(p.items || []); }, [guarded, statusFilter]);
   useEffect(() => { (async () => { const m = await guarded(() => fetchSkillMeta()); if (m) setMeta(m); })(); }, [guarded]);
+  useEffect(() => { (async () => { const f = await guarded(() => fetchFormulas("published")); if (f) setFormulaOptions((f.items || []).map((x) => ({ value: x.id, label: x.data?.name || x.id }))); })(); }, [guarded]);
+  useEffect(() => { (async () => {
+    const e = await guarded(() => fetchEffects("published")); if (e) setEffectOptions((e.items || []).map((x) => ({ value: x.id, label: x.data?.effect_name || x.id })));
+    const i = await guarded(() => fetchItems("published")); if (i) setItemOptions((i.items || []).map((x) => ({ value: x.id, label: x.data?.name || x.id })));
+    const m = await guarded(() => fetchWorldItems("mob", "published")); if (m) setMobOptions((m.items || []).map((x) => ({ value: x.id, label: x.data?.name || x.id })));
+    const b = await guarded(() => fetchWorldItems("button", "published")); if (b) setButtonOptions((b.items || []).map((x) => ({ value: x.id, label: x.data?.text || x.data?.name || x.id })));
+    const a = await guarded(() => fetchAchievements("published")); if (a) setAchievementOptions((a.items || []).map((x) => ({ value: x.id, label: x.data?.name || x.id })));
+  })(); }, [guarded]);
   useEffect(() => { load(); }, [load]);
 
   const statuses = meta?.statuses || [];
@@ -115,6 +144,16 @@ export function SkillsSection({ guarded, hasPerm }) {
             <Field label="Название"><EmojiInput value={d.name} disabled={disabled} onChange={(v) => set("name", v)} /></Field>
             {sel("skill_type", "Тип навыка", SKILL_TYPE, meta.skillTypes)}
           </div>
+
+          <div className="ntv2-panel"><h4 className="ntv2-subhead">Источник и связи</h4>
+            <div className="ntv2-form-row"><Field label="Источник"><select value={d.source_type || "standard"} disabled={disabled} onChange={(e) => set("source_type", e.target.value)}><option value="standard">Обычный</option><option value="item">Предметный</option><option value="mob">Навык моба</option><option value="achievement">За достижение</option><option value="special">Особый</option></select></Field>
+              {d.source_type === "item" ? <Field label="Предмет"><select value={d.linked_item_id || ""} disabled={disabled} onChange={(e) => set("linked_item_id", e.target.value)}><option value="">—</option>{itemOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field> : null}
+              {d.source_type === "mob" ? <Field label="Моб"><select value={d.linked_mob_id || ""} disabled={disabled} onChange={(e) => set("linked_mob_id", e.target.value)}><option value="">—</option>{mobOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field> : null}
+              {d.source_type === "achievement" ? <Field label="Достижение"><select value={d.linked_achievement_id || ""} disabled={disabled} onChange={(e) => set("linked_achievement_id", e.target.value)}><option value="">—</option>{achievementOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field> : null}
+              <Field label="Кнопка"><select value={d.linked_button_id || ""} disabled={disabled} onChange={(e) => set("linked_button_id", e.target.value)}><option value="">—</option>{buttonOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
+            </div>
+            <div className="ntv2-form-row"><label className="ntv2-check"><input type="checkbox" checked={Boolean(d.special)} disabled={disabled} onChange={(e) => set("special", e.target.checked)} /> Особый</label><label className="ntv2-check"><input type="checkbox" checked={Boolean(d.hidden)} disabled={disabled} onChange={(e) => set("hidden", e.target.checked)} /> Скрытый</label><Field label="Условие открытия"><input value={d.unlock_condition || ""} disabled={disabled} onChange={(e) => set("unlock_condition", e.target.value)} /></Field></div>
+          </div>
           <div className="ntv2-form-row">
             {sel("branch", "Ветвь", SKILL_BRANCH, meta.branches)}
             <Field label="Путь">
@@ -123,6 +162,9 @@ export function SkillsSection({ guarded, hasPerm }) {
               </select>
             </Field>
           </div>
+          <div className="ntv2-form-row"><Field label="Действие"><select value={d.action_type || "damage"} disabled={disabled} onChange={(e) => set("action_type", e.target.value)}><option value="damage">Урон</option><option value="heal">Лечение HP</option><option value="restore_mana">Восстановить ману</option><option value="restore_spirit">Восстановить дух</option><option value="restore_energy">Восстановить энергию</option><option value="apply_effect">Наложить эффект</option><option value="remove_effect">Снять эффект</option></select></Field><label className="ntv2-check"><input type="checkbox" checked={d.works_in_battle !== false} disabled={disabled} onChange={(e) => set("works_in_battle", e.target.checked)} /> В бою</label><label className="ntv2-check"><input type="checkbox" checked={Boolean(d.works_outside_battle)} disabled={disabled} onChange={(e) => set("works_outside_battle", e.target.checked)} /> Вне боя</label></div>
+          <div className="ntv2-form-row">{num("hp_amount", "Лечение HP")}{num("mana_amount", "Восстановление маны")}{num("spirit_amount", "Восстановление духа")}{num("energy_amount", "Восстановление энергии")}</div>
+          <div className="ntv2-form-row"><Field label="Накладываемые эффекты"><select multiple value={d.apply_effect_ids || []} disabled={disabled} onChange={(e) => set("apply_effect_ids", [...e.target.selectedOptions].map((o) => o.value))}>{effectOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field><Field label="Снимаемые эффекты"><select multiple value={d.remove_effect_ids || []} disabled={disabled} onChange={(e) => set("remove_effect_ids", [...e.target.selectedOptions].map((o) => o.value))}>{effectOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field></div>
 
           <h4 className="ntv2-subhead">Боевые параметры</h4>
           <div className="ntv2-form-row">
@@ -135,6 +177,10 @@ export function SkillsSection({ guarded, hasPerm }) {
             {sel("target_mode", "Цель", SKILL_TARGET_MODE, meta.targetModes)}
           </div>
           <Field label="Формула базового урона (текст)"><input value={d.base_damage_formula} disabled={disabled} onChange={(e) => set("base_damage_formula", e.target.value)} /></Field>
+          <div className="ntv2-panel"><h4 className="ntv2-subhead">Опубликованные формулы</h4><div className="ntv2-form-row">
+            {num("learn_cost_skill_points", "Базовая цена изучения, очки")}
+            {[["damage_formula_id","Урон"],["hp_formula_id","Лечение HP"],["mana_formula_id","Мана"],["spirit_formula_id","Дух"],["energy_formula_id","Энергия"],["use_cost_formula_id","Стоимость применения"],["learn_cost_formula_id","Стоимость изучения"],["upgrade_cost_formula_id","Стоимость повышения"],["level_power_formula_id","Усиление по уровню"]].map(([key,label]) => <Field key={key} label={label}><select value={d[key] || ''} disabled={disabled} onChange={(e) => set(key,e.target.value)}><option value="">— без формулы —</option>{formulaOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>)}
+          </div></div>
 
           <div className="ntv2-panel">
             <h4 className="ntv2-subhead">Требования к оружию</h4>
@@ -144,6 +190,7 @@ export function SkillsSection({ guarded, hasPerm }) {
               ))}
             </div>
           </div>
+          <div className="ntv2-panel"><h4 className="ntv2-subhead">Книга, боеприпасы, состояние и руки</h4><div className="ntv2-form-row"><Field label="Магическая книга"><select value={d.required_magic_book_id || ""} disabled={disabled} onChange={(e) => set("required_magic_book_id", e.target.value)}><option value="">— не требуется —</option>{itemOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field><Field label="Требуемая рука"><select value={d.required_hand || ""} disabled={disabled} onChange={(e) => set("required_hand", e.target.value)}><option value="">—</option><option value="left">Левая</option><option value="right">Правая</option><option value="both">Обе</option></select></Field><Field label="Требуемое состояние"><input value={d.required_player_state || ""} disabled={disabled} onChange={(e) => set("required_player_state", e.target.value)} /></Field><Field label="Запрещающее состояние"><input value={d.forbidden_player_state || ""} disabled={disabled} onChange={(e) => set("forbidden_player_state", e.target.value)} /></Field>{isPassive ? num("passive_slot_cost", "Пассивных слотов") : null}</div><div className="ntv2-form-row"><label className="ntv2-check"><input type="checkbox" checked={Boolean(d.ammo_enabled)} disabled={disabled} onChange={(e) => set("ammo_enabled", e.target.checked)} /> Требует боеприпасы</label>{d.ammo_enabled ? <><Field label="Боеприпас"><select value={d.ammo_item_id || ""} disabled={disabled} onChange={(e) => set("ammo_item_id", e.target.value)}><option value="">—</option>{itemOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>{num("ammo_per_use", "За применение")}</> : null}</div></div>
 
           <h4 className="ntv2-subhead">Открытие пути</h4>
           <div className="ntv2-form-row">{num("unlock_path_level", "Порог открытия (уровень пути)")}{num("choice_index", "Индекс выбора")}</div>
@@ -181,7 +228,7 @@ export function SkillsSection({ guarded, hasPerm }) {
           {!editing.isNew && can.del ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Удалить навык?", dangerous: true, confirmLabel: "Удалить", body: <p>Полное удаление определения навыка.</p>, run: async (r) => { await guarded(() => deleteSkill(editing.id, editing.id, r), "Удалено."); setEditing(null); await load(); } })}>Удалить</button> : null}
         </div>
 
-        {!editing.isNew ? <VersionHistory base="skills" id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
+        {!editing.isNew ? <VersionHistory base="skills" id={editing.id} canRollback={can.edit && (editing.status !== "published" || can.publish)} onRolledBack={refreshEditing} /> : null}
 
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />
