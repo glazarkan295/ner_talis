@@ -25,15 +25,16 @@
   --nt-warning: #ffe9bf;         /* предупреждение */
 }
 
-* { box-sizing: border-box; }
-html, body, #root { width: 100%; min-height: 100%; }
-body { margin: 0; background: var(--nt-bg); }
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { width: 100%; min-height: 100%; margin: 0; background: var(--nt-bg); }
+html, body { overflow-x: clip; }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
 
 .nt-profile {
   width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
   /* clip (не hidden): не создаёт прокручиваемый контейнер, поэтому работает
      position: sticky у верхней панели разделов относительно окна. */
   overflow-x: clip;
@@ -253,7 +254,7 @@ button { cursor: pointer; }
   padding: 5px; text-align: center; color: var(--nt-text); background: linear-gradient(180deg, rgba(24,24,22,.48), rgba(0,0,0,.18));
   display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 4px; overflow: hidden; min-height: 0;
 }
-.nt-item-art { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: grid; place-items: center; font-size: 18px; color: #caa967; }
+.nt-item-art { position: relative; width: min(100%, var(--nt-item-image-size, 96px)); height: min(100%, var(--nt-item-image-size, 96px)); min-width: 0; min-height: 0; overflow: hidden; display: grid; place-items: center; font-size: 18px; color: #caa967; }
 .nt-item-art img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
 .nt-item-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8.5px; }
 .nt-item-amount { position: absolute; top: 4px; right: 5px; padding: 1px 5px; border-radius: 999px; background: rgba(0,0,0,.62); color: #d9bd81; font-size: 9px; }
@@ -325,38 +326,55 @@ button { cursor: pointer; }
 .quality-древний, .quality-ancient { border-color: rgba(109, 199, 176, .62) !important; }
 .quality-уникальный, .quality-unique { border-color: rgba(216, 113, 87, .72) !important; }
 
-.nt-modal-layer { position: fixed; inset: 0; z-index: 100; display: block; padding: 0; background: rgba(0,0,0,.12); }
+.nt-modal-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-top: max(12px, env(safe-area-inset-top));
+  padding-right: max(12px, env(safe-area-inset-right));
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-left: max(12px, env(safe-area-inset-left));
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: rgba(0,0,0,.52);
+}
 .nt-modal {
-  width: var(--nt-modal-width, min(500px, calc(100vw - 26px)));
-  max-width: var(--nt-modal-width, min(500px, calc(100vw - 26px)));
-  max-height: var(--nt-modal-max-height, min(82vh, calc(100vh - 24px)));
-  overflow: auto;
+  width: min(100%, 500px);
+  max-width: 500px;
+  max-height: calc(100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid rgba(177,143,83,.42);
   border-radius: 16px;
   padding: 16px;
   background: linear-gradient(145deg, #1f1d19, #080909);
   box-shadow: 0 20px 60px rgba(0,0,0,.70);
-  position: fixed;
-  top: var(--nt-modal-top, 18px);
-  left: var(--nt-modal-left, auto);
-  right: var(--nt-modal-right, 18px);
+  position: relative;
   text-align: left;
 }
-.nt-small-modal { width: var(--nt-modal-width, min(390px, calc(100vw - 26px))); max-width: var(--nt-modal-width, min(390px, calc(100vw - 26px))); }
-/* Диалоги, не привязанные к клику по предмету (редактирование сводки), —
-   по центру экрана, а не сбоку. На телефоне центрирование делает media-query. */
-.nt-center-modal { top: 50%; left: 50%; right: auto; transform: translate(-50%, -50%); width: min(360px, calc(100vw - 26px)); max-width: min(360px, calc(100vw - 26px)); }
+.nt-small-modal { width: min(100%, 390px); max-width: 390px; }
+.nt-center-modal { width: min(100%, 360px); max-width: 360px; }
 .nt-edit-confirm { margin-top: 6px; }
 .nt-edit-confirm p { color: #e0c9a0; font-size: 11px; margin: 0 0 10px; }
 .nt-race-modal, .nt-slot-modal { background: linear-gradient(145deg, rgba(31,29,25,.96), rgba(8,9,9,.98)); }
-.nt-modal-close { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(177,143,83,.35); background: rgba(0,0,0,.28); color: #d7b46f; }
+.nt-modal-close { position: absolute; top: 8px; right: 8px; width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(177,143,83,.35); background: rgba(0,0,0,.28); color: #d7b46f; }
 .nt-modal-title-row { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 10px; }
 .nt-modal-item-icon { width: 54px; height: 54px; overflow: hidden; display: grid; place-items: center; border: 1px solid rgba(165,132,77,.18); border-radius: 12px; background: rgba(0,0,0,.14); }
 .nt-modal-item-icon img { max-width: 92%; max-height: 92%; object-fit: contain; display: block; }
-.nt-modal h3 { margin: 5px 38px 5px 0; color: #d7b46f; font-size: 18px; text-align: left; }
+.nt-modal h3 { margin: 5px 38px 5px 0; color: #d7b46f; font-size: 18px; text-align: left; overflow-wrap: anywhere; }
 .nt-modal-subtitle { color: #9f947f; font-size: 10px; }
+.nt-modal p, .nt-modal li, .nt-modal strong, .nt-modal span { overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
 .nt-modal p { color: #b9aa8a; line-height: 1.35; text-align: left; }
+.nt-modal img { max-width: 100%; height: auto; max-height: min(50dvh, 520px); object-fit: contain; }
 .nt-race-stats { color: #d9bd81 !important; }
 .nt-modal-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 10px 0; }
 .nt-modal-grid span { color: #9f947f; text-align: left; }
@@ -365,7 +383,7 @@ button { cursor: pointer; }
 .nt-modal-block h4 { margin: 0 0 6px; color: #d9bd81; text-align: left; }
 .nt-modal-block ul { margin: 0; padding-left: 18px; color: #b9aa8a; }
 .nt-modal-actions { margin-top: 14px; justify-content: flex-start; flex-wrap: wrap; }
-.nt-modal-actions button { border-radius: 10px; padding: 7px 10px; }
+.nt-modal-actions button { border-radius: 10px; min-height: 44px; padding: 7px 10px; white-space: normal; overflow-wrap: anywhere; }
 .nt-secondary { background: rgba(0,0,0,.22) !important; color: var(--nt-text) !important; }
 
 .nt-slot-modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -382,7 +400,7 @@ button { cursor: pointer; }
 
 .nt-profile-loading { min-height: 100vh; display: grid; place-items: center; color: #d7b46f; background: var(--nt-bg); font-size: 16px; }
 .nt-profile-error, .nt-api-error { color: #ffd0c7; }
-.nt-api-error { position: fixed; z-index: 120; top: 12px; left: 50%; transform: translateX(-50%); width: min(760px, calc(100vw - 24px)); padding: 9px 12px; border-radius: 12px; background: rgba(96, 28, 20, .88); border: 1px solid rgba(255, 140, 120, .35); box-shadow: 0 12px 34px rgba(0,0,0,.45); }
+.nt-api-error { position: fixed; z-index: 4000; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(760px, calc(100vw - 24px)); padding: 9px 12px; border-radius: 12px; background: rgba(96, 28, 20, .88); border: 1px solid rgba(255, 140, 120, .35); box-shadow: 0 12px 34px rgba(0,0,0,.45); overflow-wrap: anywhere; }
 
 @media (max-width: 760px) {
   .nt-profile { padding: 10px 7px 26px; background-attachment: scroll; }
@@ -408,12 +426,6 @@ button { cursor: pointer; }
   .nt-attribute-controls { grid-column: 1 / -1; }
   .nt-skill-card { grid-template-columns: minmax(0, 1fr) 82px; }
   .nt-slot-modal-grid { grid-template-columns: 1fr; }
-  .nt-modal-layer { padding: 0; }
-  .nt-modal {
-    width: var(--nt-modal-width, calc(100vw - 26px));
-    max-width: var(--nt-modal-width, calc(100vw - 26px));
-    max-height: var(--nt-modal-max-height, calc(100vh - 24px));
-  }
 }
 
 .nt-race-row {
@@ -429,14 +441,9 @@ button { cursor: pointer; }
   min-width: 0;
 }
 .nt-race-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 8px;
-  z-index: 70;
-  width: min(324px, calc(100% - 16px));
-  max-height: min(340px, 58vh);
-  overflow: auto;
-  overscroll-behavior: contain;
+  position: relative;
+  width: min(100%, 324px);
+  max-width: 324px;
   padding: 12px;
   border: 1px solid rgba(177,143,83,.44);
   border-radius: 14px;
@@ -452,7 +459,7 @@ button { cursor: pointer; }
 }
 .nt-race-popover .nt-modal-block:first-of-type { margin-top: 6px; }
 .nt-race-popover ul { margin: 0; padding-left: 17px; color: #b9aa8a; }
-.nt-effects-popover { width: min(380px, calc(100% - 16px)); }
+.nt-effects-popover { width: min(100%, 380px); max-width: 380px; }
 .nt-effects-list { display: grid; gap: 8px; }
 .nt-effect-card {
   border: 1px solid rgba(165,132,77,.16);
@@ -472,8 +479,8 @@ button { cursor: pointer; }
   position: absolute;
   top: 8px;
   right: 8px;
-  width: 24px;
-  height: 24px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 1px solid rgba(177,143,83,.35);
   background: rgba(0,0,0,.28);
@@ -494,11 +501,6 @@ button { cursor: pointer; }
 
 @media (max-width: 430px) {
   .nt-race-row { grid-template-columns: minmax(0, 1fr) max-content; }
-  .nt-race-popover {
-    right: 6px;
-    width: calc(100% - 12px);
-    max-height: min(320px, 62vh);
-  }
   .nt-skill-card { grid-template-columns: minmax(0, 1fr) 74px; }
   .nt-skill-side { min-width: 0; }
   .nt-skill-action { min-width: 58px; padding: 3px 4px; }
@@ -563,13 +565,6 @@ button { cursor: pointer; }
 }
 
 @media (max-width: 560px) {
-  .nt-modal-layer {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, .42);
-    padding: 12px;
-  }
   .nt-modal,
   .nt-small-modal,
   .nt-slot-modal {
@@ -581,7 +576,7 @@ button { cursor: pointer; }
     transform: none;
     width: 100%;
     max-width: 420px;
-    max-height: min(85vh, calc(100vh - 24px));
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     border-radius: 16px;
     padding: 18px 14px 14px;
   }
@@ -599,22 +594,10 @@ button { cursor: pointer; }
   .nt-modal-actions button,
   .nt-slot-choice,
   .nt-category-row button {
-    min-height: 38px;
+    min-height: 44px;
   }
   .nt-slot-items-list {
     max-height: 34vh;
-  }
-  .nt-race-popover,
-  .nt-effects-popover {
-    position: fixed;
-    left: 8px;
-    right: 8px;
-    bottom: 8px;
-    top: auto;
-    width: auto;
-    max-height: min(72vh, calc(100vh - 16px));
-    border-radius: 18px;
-    box-shadow: 0 24px 72px rgba(0,0,0,.78), inset 0 1px rgba(255,255,255,.05);
   }
 }
 

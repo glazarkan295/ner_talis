@@ -66,6 +66,8 @@ def _constructor_stats() -> list[dict[str, Any]]:
     add("achievement", "Достижения", "achievements", _store_list("achievement_service"))
     add("recipe", "Рецепты", "recipes", _store_list("recipe_constructor_service"))
     add("reputation", "Репутации", "reputations", _store_list("reputation_constructor_service"))
+    add("event_campaign", "Эвенты", "event-campaigns", _store_list("event_campaign_service"))
+    add("broadcast_campaign", "Рассылки", "broadcast-campaigns", _store_list("broadcast_constructor_service"))
     add("text", "Тексты бота", "texts", _store_list("text_constructor_service"))
     return out
 

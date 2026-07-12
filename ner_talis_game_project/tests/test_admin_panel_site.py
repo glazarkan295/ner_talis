@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -107,7 +108,7 @@ class AdminPanelSiteTest(unittest.TestCase):
 
             promo = client.post("/api/admin/promos", json={
                 "token": session_token,
-                "code": "PANEL100",
+                "code": f"PANEL_{uuid.uuid4().hex[:10].upper()}",
                 "uses_left": 5,
                 "duration": "1h",
                 "rewards": [{"item_id": "money_copper", "amount": 100}],

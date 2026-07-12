@@ -72,5 +72,7 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         value = str(data.get(key) or "").strip()
         if value and (_HTML_RE.search(value) or "<script" in value.lower()):
             errors.append(f"В поле «{key}» недопустим HTML.")
+    from services.formula_runtime import validate_references
+    errors.extend(validate_references(data, ("exp_formula_id", "next_level_formula_id")))
 
     return {"ok": not errors, "errors": errors, "warnings": warnings}

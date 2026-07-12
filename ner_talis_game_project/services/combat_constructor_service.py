@@ -5,8 +5,7 @@
 бой). Управляет таймером хода (по умолчанию 100 с в групповых боях; одиночный PVE
 без таймера, кроме исключений) и порядком действий союзников/противников.
 
-Авторский слой: рантайм боя читает эти профили — на вырост. EntityStore
-(data/combat_constructor.json).
+Опубликованные профили читаются боевым runtime через resolve_profile.
 """
 
 from __future__ import annotations
@@ -62,6 +61,25 @@ MIXED_ORDER_TYPES = (
 # Порядок/цели противников (§4).
 ENEMY_ORDER_TYPES = ("by_initiative", "before_players", "after_players", "all", "part")
 ENEMY_TARGET_RULES = ("random", "aggro", "weakest", "most_dangerous")
+PARTICIPANT_TYPES = (
+    "player", "player_ally", "player_enemy", "npc_ally", "enemy_npc_ally",
+    "mob", "boss", "world_boss", "summon", "clone", "temporary_companion",
+    "shadow", "neutral", "third_party",
+)
+PARTICIPANT_SIDES = (
+    "player", "enemy", "pvp_initiator", "pvp_defender", "neutral",
+    "third_party", "player_allies", "enemy_allies",
+)
+ALLY_BEHAVIORS = (
+    "nearest", "weakest", "most_dangerous", "protect_player", "heal_allies",
+    "buff_allies", "cleanse", "random_skill", "priorities", "player_command", "auto",
+)
+ALLY_COMMANDS = ("attack", "protect", "heal", "use_skill", "wait", "change_target", "retreat")
+PVE_TYPES=("one_on_one","player_vs_mob","player_npc_vs_mobs","player_allies_vs_mobs","mixed_allies_vs_mobs","party_vs_group","raid_boss","world_boss","event_battle","quest_battle","training","service")
+PVE_SOURCES=("location_event","hidden_event","button","npc","quest","world_event","event_campaign","zone","item","ambush","raid","transition","camp","admin")
+TURN_ORDERS=("fixed","initiative","agility","perception","speed","random","player_first","mob_first","allies_after","allies_before","mobs_sequential","side_simultaneous","participant_separate")
+MOB_ESCAPE_CONDITIONS=("hp_percent","hp_value","alone","leader_dead","boss_dead","summoner_dead","allies_dead","rounds","player_damage","level_difference","has_effect","missing_effect","critical_hit","misses","no_damage","objective_done","reinforcement_called","phase","scenario")
+MOB_ESCAPE_MODES=("individual","group","scenario","boss_retreat")
 
 _store = EntityStore(
     env_var="COMBAT_CONSTRUCTOR_PATH",
@@ -133,6 +151,34 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             if num is None or num < 0:
                 errors.append(f"{label}: неотрицательное число.")
 
+    participants = [row for row in (data.get("participants") or []) if isinstance(row, dict)]
+    seen: set[str] = set()
+    for index, row in enumerate(participants, 1):
+        pid = str(row.get("participant_id") or "").strip()
+        if not pid:
+            errors.append(f"Участник {index}: не заполнен ID.")
+        elif pid in seen:
+            errors.append(f"Участник {index}: ID «{pid}» повторяется.")
+        seen.add(pid)
+        ptype = str(row.get("participant_type") or "").strip()
+        if ptype not in PARTICIPANT_TYPES:
+            errors.append(f"Участник {index}: неизвестный тип «{ptype}».")
+        side = str(row.get("side") or "").strip()
+        if side not in PARTICIPANT_SIDES:
+            errors.append(f"Участник {index}: неизвестная сторона «{side}».")
+        behavior = str(row.get("behavior") or "").strip()
+        if behavior and behavior not in ALLY_BEHAVIORS:
+            errors.append(f"Участник {index}: неизвестное поведение «{behavior}».")
+        for key in ("hp", "mana", "spirit", "energy", "damage", "order"):
+            if row.get(key) not in (None, "") and (_num(row.get(key)) is None or _num(row.get(key)) < 0):
+                errors.append(f"Участник {index}: {key} должно быть неотрицательным числом.")
+        if ptype in {"npc_ally", "enemy_npc_ally"} and not str(row.get("source_id") or "").strip():
+            errors.append(f"Участник {index}: для NPC-союзника нужен source_id.")
+    if participants and not any(str(row.get("side")) in {"player", "player_allies", "pvp_initiator"} for row in participants):
+        errors.append("В боевой группе нет участника стороны игрока.")
+    if participants and not any(str(row.get("side")) in {"enemy", "enemy_allies", "pvp_defender", "third_party"} for row in participants):
+        warnings.append("В группе не задан противник; он должен поступить из запускающего моба/PVP-вызова.")
+
     # §14: групповой бой без таймера / одиночный PVE с таймером без причины.
     if data.get("only_group_battles") and not data.get("timer_enabled"):
         warnings.append("Профиль только для групповых боёв, но таймер хода выключен (ТЗ §14).")
@@ -145,5 +191,38 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
     for row in (data.get("texts") or []):
         if isinstance(row, dict) and _has_html(row.get("text")):
             errors.append("В тексте сообщения боя недопустим HTML.")
+    if scope in {"pve","mob","event","sublocation","dungeon","world_boss"}:
+        pve_type=str(data.get("pve_type") or "player_vs_mob");source=str(data.get("battle_source") or "location_event");order=str(data.get("turn_order") or "initiative")
+        if pve_type not in PVE_TYPES:errors.append(f"Неизвестный тип PVE: {pve_type}.")
+        if source not in PVE_SOURCES:errors.append(f"Неизвестный источник PVE: {source}.")
+        if order not in TURN_ORDERS:errors.append(f"Неизвестная очерёдность: {order}.")
+        if data.get("allow_player_allies") and not str(data.get("afk_action") or ""):warnings.append("Разрешены игроки-союзники, но не задана AFK-логика.")
+        for i,row in enumerate(data.get("mob_escape_rules") or [],1):
+            if not isinstance(row,dict):errors.append(f"Побег моба #{i}: неверный формат.");continue
+            if row.get("enabled") and str(row.get("condition_type") or "") not in MOB_ESCAPE_CONDITIONS:errors.append(f"Побег моба #{i}: не задано условие.")
+            if str(row.get("mode") or "individual") not in MOB_ESCAPE_MODES:errors.append(f"Побег моба #{i}: неизвестный режим.")
+            chance=_num(row.get("chance"))
+            if chance is not None and not 0<=chance<=100:errors.append(f"Побег моба #{i}: шанс должен быть 0–100.")
+            if row.get("enabled") and not row.get("success_text"):warnings.append(f"Побег моба #{i}: нет текста успешного побега.")
 
     return {"ok": not errors, "errors": errors, "warnings": warnings}
+
+
+def resolve_profile(scope: str, *, object_id: str = "", group_battle: bool = False) -> dict[str, Any]:
+    """Разрешить live-профиль: точный объект → область → global → defaults."""
+    ranked: list[tuple[int, int, dict[str, Any]]] = []
+    for env in store().list(status=STATUS_PUBLISHED):  # noqa: F405
+        data = dict(env.get("data") or {})
+        current = str(data.get("scope") or "")
+        if current not in (scope, "global"):
+            continue
+        target = str(data.get("scope_id") or data.get("object_id") or "")
+        if target and target != object_id:
+            continue
+        specificity = 2 if target else (1 if current == scope else 0)
+        ranked.append((specificity, int(data.get("priority") or 0), data))
+    if ranked:
+        ranked.sort(key=lambda row: (row[0], row[1]), reverse=True)
+        return ranked[0][2]
+    return {"scope": scope, "timer_enabled": bool(group_battle), "turn_seconds": DEFAULT_TURN_SECONDS,
+            "on_timeout": "skip", "player_order_type": "sequential", "enemy_target_rule": "random"}

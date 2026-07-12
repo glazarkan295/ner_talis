@@ -125,6 +125,22 @@ def create_admin_fines_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=404, detail="Тип штрафа не найден.")
         return {"ok": True, "item": item, "validation": fines.validate(item)}
 
+    @router.get("/{fine_id}/usage")
+    def fine_usage(fine_id:str,request:Request,token:str|None=Query(default=None,min_length=16))->dict[str,Any]:
+        _require(_session(get_storage(),request,token),PERM_FINE_DEF_VIEW)
+        if fines.store().get(fine_id) is None:raise HTTPException(status_code=404,detail="Тип штрафа не найден.")
+        from services.admin_graph_service import graph_around
+        graph=graph_around(f"fine:{fine_id}",depth=2)
+        players=[]
+        storage=get_storage()
+        try:rows=storage.get_all_players()
+        except AttributeError:
+            try:rows=storage.get_all()
+            except AttributeError:rows=[]
+        for player in rows or []:
+            if any(str(row.get("definition_id") or row.get("source") or "")==fine_id for row in (player.get("active_fines") or []) if isinstance(row,dict)):players.append(str(player.get("game_id") or ""))
+        return {"ok":True,"usage":{"graph":graph,"players":players}}
+
     @router.post("")
     def create_fine(payload: IdDataRequest, request: Request) -> dict[str, Any]:
         session = _session(get_storage(), request, payload.token)

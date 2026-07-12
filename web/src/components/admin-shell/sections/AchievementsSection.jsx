@@ -6,6 +6,7 @@ import {
   fetchAchievement,
   fetchAchievementMeta,
   fetchAchievements,
+  fetchAchievementUsage,
   updateAchievement,
 } from "../../../api/adminAchievementApi.js";
 import { tr, ITEM_QUALITY, ACH_TYPE, ACH_VISIBILITY, ACH_CONDITION_LOGIC, ACH_CONDITION_TYPE, ACH_PROGRESS_TYPE, ACH_REWARD_TYPE, ACH_REPEAT_PERIOD } from "../../../i18n/adminLabels.js";
@@ -17,11 +18,12 @@ import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 
 const EMPTY = {
-  name: "", short_description: "", description: "", category: "", type: "normal",
-  rarity: "common", visibility: "open", icon: "", progress_type: "numeric",
+  name: "", player_name: "", system_name: "", short_description: "", description: "", technical_description: "", hidden_description: "", hint: "", category: "", type: "normal",
+  rarity: "common", visibility: "open", icon: "", image: "", color: "", achievement_points: 0, tags: [], progress_type: "numeric",
   condition_logic: "all", condition_n: "", conditions: [], rewards: [], effects: [],
   repeatable: false, repeat_period: "", start_date: "", end_date: "", repeat_yearly: false,
-  stages: [],
+  stages: [], progress_enabled: true, required_progress: 1, show_progress: true, hide_progress: false, show_percent: false, show_number: true, reset_on_death: false, reset_on_event_end: false, reset_on_season_end: false, permanent_progress: true,
+  hidden: false, secret: false, hide_until_earned: false, show_as_question: false, show_hint: false, hide_conditions: false, reveal_after_first_progress: false, reveal_npc_id: "", reveal_item_id: "", reveal_event_id: "", reveal_text: "",
 };
 
 function Field({ label, children }) {
@@ -73,6 +75,7 @@ export function AchievementsSection({ guarded, hasPerm }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [usage, setUsage] = useState(null);
 
   const can = useMemo(() => ({
     create: hasPerm("achievement.create"), edit: hasPerm("achievement.edit"),
@@ -92,7 +95,7 @@ export function AchievementsSection({ guarded, hasPerm }) {
 
   async function openItem(id) {
     const p = await guarded(() => fetchAchievement(id));
-    if (p?.item) setEditing({ id, data: { ...EMPTY, ...(p.item.data || {}) }, status: p.item.status, validation: p.validation, isNew: false });
+    if (p?.item) { setUsage(null); setEditing({ id, data: { ...EMPTY, ...(p.item.data || {}) }, status: p.item.status, validation: p.validation, isNew: false }); }
   }
   function startCreate() { setEditing({ id: "", data: { ...EMPTY }, status: "draft", validation: null, isNew: true }); }
 
@@ -134,7 +137,10 @@ export function AchievementsSection({ guarded, hasPerm }) {
           </div>
           <Field label="Краткое описание"><textarea rows={2} value={d.short_description} disabled={disabled} onChange={(e) => set("short_description", e.target.value)} /></Field>
           <Field label="Полное описание"><textarea rows={3} value={d.description} disabled={disabled} onChange={(e) => set("description", e.target.value)} /></Field>
+          <div className="ntv2-form-row"><Field label="Название игроку"><input value={d.player_name || ""} disabled={disabled} onChange={(e) => set("player_name", e.target.value)} /></Field><Field label="Системное название"><input value={d.system_name || ""} disabled={disabled} onChange={(e) => set("system_name", e.target.value)} /></Field><Field label="Очки достижения"><input type="number" value={d.achievement_points || 0} disabled={disabled} onChange={(e) => set("achievement_points", e.target.value)} /></Field></div>
+          <Field label="Техническое описание"><textarea rows={2} value={d.technical_description || ""} disabled={disabled} onChange={(e) => set("technical_description", e.target.value)} /></Field>
           <Field label="Иконка (URL)"><input value={d.icon} disabled={disabled} onChange={(e) => set("icon", e.target.value)} /></Field>
+          <div className="ntv2-form-row"><Field label="Изображение"><input value={d.image || ""} disabled={disabled} onChange={(e) => set("image", e.target.value)} /></Field><Field label="Цвет"><input value={d.color || ""} disabled={disabled} onChange={(e) => set("color", e.target.value)} /></Field><Field label="Теги (через запятую)"><input value={(d.tags || []).join(", ")} disabled={disabled} onChange={(e) => set("tags", e.target.value.split(",").map((x) => x.trim()).filter(Boolean))} /></Field></div>
           <MessageComposer label="Уведомление о получении (изображение/формат/предпросмотр)" value={d.notify_message} category="achievements" uploadKey={`${editing.id || "ach"}_msg`} disabled={disabled} onChange={(v) => set("notify_message", v)} />
 
           <div className="ntv2-form-row">
@@ -143,29 +149,53 @@ export function AchievementsSection({ guarded, hasPerm }) {
           </div>
         </div>
 
-        <RowEditor title="Условия" rows={d.conditions} disabled={disabled} onChange={(rows) => set("conditions", rows)} blank={{ type: meta.conditionTypes[0], amount: 1, target: "" }}
+        <RowEditor title="Условия" rows={d.conditions} disabled={disabled} onChange={(rows) => set("conditions", rows)} blank={{ type: meta.conditionTypes[0], operator: "gte", amount: 1, target: "", period: "all", minimum: "", maximum: "", required: true, alternative: false, hidden: false, show_to_player: true, text: "", unmet_text: "" }}
           render={(row, setRow) => (<>
             <select value={row.type} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{meta.conditionTypes.map((x) => <option key={x} value={x}>{tr(ACH_CONDITION_TYPE, x)}</option>)}</select>
+            <select title="Оператор" value={row.operator || "gte"} disabled={disabled} onChange={(e) => setRow({ operator: e.target.value })}>{(meta.conditionOperators || []).map((x) => <option key={x} value={x}>{x}</option>)}</select>
             <input type="number" title="кол-во" style={{ width: 90 }} value={row.amount} disabled={disabled} onChange={(e) => setRow({ amount: e.target.value })} />
             <input className="ntv2-mono" placeholder="цель (id, опц.)" value={row.target || ""} disabled={disabled} onChange={(e) => setRow({ target: e.target.value })} />
+            {row.operator === "between" ? <><input type="number" title="Минимум" placeholder="min" value={row.minimum || ""} disabled={disabled} onChange={(e) => setRow({ minimum: e.target.value })} /><input type="number" title="Максимум" placeholder="max" value={row.maximum || ""} disabled={disabled} onChange={(e) => setRow({ maximum: e.target.value })} /></> : null}
+            <select title="Период счётчика" value={row.period || "all"} disabled={disabled} onChange={(e) => setRow({ period: e.target.value })}>{(meta.conditionPeriods || []).map((x) => <option key={x} value={x}>{x}</option>)}</select>
+            <label className="ntv2-check"><input type="checkbox" checked={row.required !== false} disabled={disabled} onChange={(e) => setRow({ required: e.target.checked })} /> обязательное</label>
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.alternative)} disabled={disabled} onChange={(e) => setRow({ alternative: e.target.checked })} /> альтернативное</label>
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.hidden)} disabled={disabled} onChange={(e) => setRow({ hidden: e.target.checked })} /> скрытое</label>
+            <label className="ntv2-check"><input type="checkbox" checked={row.show_to_player !== false} disabled={disabled} onChange={(e) => setRow({ show_to_player: e.target.checked })} /> игроку</label>
+            <input placeholder="Текст условия" value={row.text || ""} disabled={disabled} onChange={(e) => setRow({ text: e.target.value })} />
+            <input placeholder="Текст невыполненного условия" value={row.unmet_text || ""} disabled={disabled} onChange={(e) => setRow({ unmet_text: e.target.value })} />
           </>)} />
 
-        <RowEditor title="Награды" rows={d.rewards} disabled={disabled} onChange={(rows) => set("rewards", rows)} blank={{ type: meta.rewardTypes[0], amount: 1, item_id: "", title_id: "" }}
+        <RowEditor title="Награды" rows={d.rewards} disabled={disabled} onChange={(rows) => set("rewards", rows)} blank={{ type: meta.rewardTypes[0], amount: 1, object_id: "", text: "", duration_seconds: 0, bind_on_receive: false, immediate: true, deliver: false, notify: true, hidden: false }}
           render={(row, setRow) => (<>
             <select value={row.type} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{meta.rewardTypes.map((x) => <option key={x} value={x}>{tr(ACH_REWARD_TYPE, x)}</option>)}</select>
             {(row.type === "item" || row.type === "unique_item") ? <input className="ntv2-mono" placeholder="item_id" value={row.item_id || ""} disabled={disabled} onChange={(e) => setRow({ item_id: e.target.value })} /> : null}
             {row.type === "title" ? <input placeholder="title_id" value={row.title_id || ""} disabled={disabled} onChange={(e) => setRow({ title_id: e.target.value })} /> : null}
+            {row.type === "title" ? <><input placeholder="Название титула" value={row.title_name || ""} disabled={disabled} onChange={(e) => setRow({ title_name: e.target.value })} /><input placeholder="Описание титула" value={row.title_description || ""} disabled={disabled} onChange={(e) => setRow({ title_description: e.target.value })} /><label className="ntv2-check"><input type="checkbox" checked={row.show_profile !== false} disabled={disabled} onChange={(e) => setRow({ show_profile: e.target.checked })} /> профиль</label><label className="ntv2-check"><input type="checkbox" checked={Boolean(row.show_rating)} disabled={disabled} onChange={(e) => setRow({ show_rating: e.target.checked })} /> рейтинг</label><label className="ntv2-check"><input type="checkbox" checked={Boolean(row.active_by_default)} disabled={disabled} onChange={(e) => setRow({ active_by_default: e.target.checked })} /> активен</label></> : null}
+            {row.type === "skill" ? <><input placeholder="skill_id" value={row.skill_id || ""} disabled={disabled} onChange={(e) => setRow({ skill_id: e.target.value })} /><label className="ntv2-check"><input type="checkbox" checked={Boolean(row.activation_required)} disabled={disabled} onChange={(e) => setRow({ activation_required: e.target.checked })} /> нужна активация</label><label className="ntv2-check"><input type="checkbox" checked={row.can_upgrade !== false} disabled={disabled} onChange={(e) => setRow({ can_upgrade: e.target.checked })} /> можно улучшать</label><label className="ntv2-check"><input type="checkbox" checked={Boolean(row.temporary)} disabled={disabled} onChange={(e) => setRow({ temporary: e.target.checked })} /> временный</label></> : null}
             {row.type === "effect" ? <input className="ntv2-mono" placeholder="effect_id" value={row.effect_id || ""} disabled={disabled} onChange={(e) => setRow({ effect_id: e.target.value })} /> : null}
+            <input className="ntv2-mono" placeholder="object_id / skill / access" value={row.object_id || ""} disabled={disabled} onChange={(e) => setRow({ object_id: e.target.value })} />
             <input type="number" title="кол-во" style={{ width: 90 }} value={row.amount} disabled={disabled} onChange={(e) => setRow({ amount: e.target.value })} />
+            <input type="number" title="длительность, сек" placeholder="сек" value={row.duration_seconds || 0} disabled={disabled} onChange={(e) => setRow({ duration_seconds: e.target.value })} />
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.bind_on_receive)} disabled={disabled} onChange={(e) => setRow({ bind_on_receive: e.target.checked })} /> привязать</label>
+            <label className="ntv2-check"><input type="checkbox" checked={row.immediate !== false} disabled={disabled} onChange={(e) => setRow({ immediate: e.target.checked })} /> сразу</label>
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.deliver)} disabled={disabled} onChange={(e) => setRow({ deliver: e.target.checked })} /> доставка</label>
+            <input placeholder="Текст получения" value={row.text || ""} disabled={disabled} onChange={(e) => setRow({ text: e.target.value })} />
           </>)} />
 
         <Field label="Эффекты достижения (effect_id по строкам, ТЗ 09 §17)"><textarea rows={2} value={(Array.isArray(d.effects) ? d.effects : []).join("\n")} disabled={disabled} onChange={(e) => set("effects", e.target.value.split("\n").map((s) => s.trim()).filter(Boolean))} /></Field>
 
-        <RowEditor title="Ступени (многоступенчатое)" rows={d.stages} disabled={disabled} onChange={(rows) => set("stages", rows)} blank={{ name: "", required_progress: 0 }}
+        <RowEditor title="Ступени (многоступенчатое)" rows={d.stages} disabled={disabled} onChange={(rows) => set("stages", rows)} blank={{ stage_id: "", number: 1, name: "", description: "", required_progress: 0, title_id: "", effect_id: "", skill_id: "", achievement_points: 0, receive_text: "", show_to_player: true, hidden: false, rewards: [] }}
           render={(row, setRow) => (<>
+            <input className="ntv2-mono" placeholder="stage_id" value={row.stage_id || ""} disabled={disabled} onChange={(e) => setRow({ stage_id: e.target.value })} />
+            <input type="number" title="номер" value={row.number || 1} disabled={disabled} onChange={(e) => setRow({ number: e.target.value })} />
             <input placeholder="название ступени" value={row.name || ""} disabled={disabled} onChange={(e) => setRow({ name: e.target.value })} />
             <input type="number" title="нужный прогресс" style={{ width: 120 }} value={row.required_progress} disabled={disabled} onChange={(e) => setRow({ required_progress: e.target.value })} />
+            <input placeholder="title_id" value={row.title_id || ""} disabled={disabled} onChange={(e) => setRow({ title_id: e.target.value })} /><input placeholder="effect_id" value={row.effect_id || ""} disabled={disabled} onChange={(e) => setRow({ effect_id: e.target.value })} /><input placeholder="skill_id" value={row.skill_id || ""} disabled={disabled} onChange={(e) => setRow({ skill_id: e.target.value })} /><input placeholder="Текст получения" value={row.receive_text || ""} disabled={disabled} onChange={(e) => setRow({ receive_text: e.target.value })} />
           </>)} />
+
+        <div className="ntv2-panel"><h4 className="ntv2-subhead">Прогресс и скрытость</h4><div className="ntv2-form-row">
+          {[['progress_enabled','Прогресс включён'],['show_progress','Показывать прогресс'],['hide_progress','Скрыть прогресс'],['show_percent','Показывать %'],['show_number','Показывать числом'],['reset_on_death','Сброс при смерти'],['reset_on_event_end','Сброс после события'],['reset_on_season_end','Сброс после сезона'],['permanent_progress','Сохранять навсегда'],['hidden','Скрытое'],['secret','Секретное'],['hide_until_earned','Не показывать до получения'],['show_as_question','Показывать ???'],['show_hint','Показывать намёк'],['hide_conditions','Скрывать условия'],['reveal_after_first_progress','Раскрыть после прогресса']].map(([key,label]) => <label className="ntv2-check" key={key}><input type="checkbox" checked={Boolean(d[key])} disabled={disabled} onChange={(e) => set(key,e.target.checked)} />{label}</label>)}
+        </div><div className="ntv2-form-row"><Field label="Требуемый прогресс"><input type="number" value={d.required_progress || 1} disabled={disabled} onChange={(e) => set("required_progress",e.target.value)} /></Field><Field label="Намёк"><input value={d.hint || ""} disabled={disabled} onChange={(e) => set("hint",e.target.value)} /></Field><Field label="Скрытое описание"><input value={d.hidden_description || ""} disabled={disabled} onChange={(e) => set("hidden_description",e.target.value)} /></Field></div><div className="ntv2-form-row"><Field label="Раскрывает NPC"><input value={d.reveal_npc_id || ""} disabled={disabled} onChange={(e) => set("reveal_npc_id",e.target.value)} /></Field><Field label="Раскрывает предмет"><input value={d.reveal_item_id || ""} disabled={disabled} onChange={(e) => set("reveal_item_id",e.target.value)} /></Field><Field label="Раскрывает событие"><input value={d.reveal_event_id || ""} disabled={disabled} onChange={(e) => set("reveal_event_id",e.target.value)} /></Field></div></div>
 
         <div className="ntv2-panel">
           <h4 className="ntv2-subhead">Повтор / сезон</h4>
@@ -189,12 +219,15 @@ export function AchievementsSection({ guarded, hasPerm }) {
         <div className="ntv2-form-row" style={{ marginTop: 14 }}>
           {(editing.isNew ? can.create : can.edit) ? <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={editing.isNew && !editing.id.trim()} onClick={save}>{editing.isNew ? "Создать" : "Сохранить"}</button> : null}
           {!editing.isNew && can.validate ? <button type="button" className="ntv2-btn" onClick={runValidate}>Проверить</button> : null}
+          {!editing.isNew ? <button type="button" className="ntv2-btn" onClick={async () => { const p = await guarded(() => fetchAchievementUsage(editing.id)); if (p?.usage) setUsage(p.usage); }}>Где используется</button> : null}
           {!editing.isNew && can.publish ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Опубликовать достижение?", dangerous: true, confirmLabel: "Опубликовать", body: <p>Достижение будет проверено и опубликовано.</p>, run: async (r) => { await guarded(() => achievementLifecycle(editing.id, "publish", r), "Опубликовано."); await refreshEditing(); } })}>Опубликовать</button> : null}
           {!editing.isNew && can.disable && editing.status === "published" ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Отключить?", dangerous: true, confirmLabel: "Отключить", body: <p>Достижение перестанет действовать.</p>, run: async (r) => { await guarded(() => achievementLifecycle(editing.id, "disable", r), "Отключено."); await refreshEditing(); } })}>Отключить</button> : null}
           {!editing.isNew && can.archive ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "В архив?", dangerous: true, confirmLabel: "В архив", body: <p>Достижение уйдёт в архив.</p>, run: async (r) => { await guarded(() => achievementLifecycle(editing.id, "archive", r), "В архиве."); setEditing(null); await load(); } })}>В архив</button> : null}
         </div>
 
-        {!editing.isNew ? <VersionHistory base="achievements" id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
+        {usage ? <div className="ntv2-panel"><h4 className="ntv2-subhead">Где используется</h4>{usage.used_by?.length ? <ul>{usage.used_by.map((x) => <li className="ntv2-mono" key={x}>{x}</li>)}</ul> : <p className="ntv2-hint">Связей и прогресса игроков нет.</p>}</div> : null}
+
+        {!editing.isNew ? <VersionHistory base="achievements" id={editing.id} canRollback={can.edit && (editing.status !== "published" || can.publish)} onRolledBack={refreshEditing} /> : null}
 
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />

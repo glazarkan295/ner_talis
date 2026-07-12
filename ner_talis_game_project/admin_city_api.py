@@ -112,6 +112,8 @@ def create_admin_city_router(get_storage) -> APIRouter:
             "ok": True,
             "kinds": list(city.KINDS),
             "nodeTypes": list(city.NODE_TYPES),
+            "cityTypes": list(city.CITY_TYPES),
+            "fortressTypes": list(city.FORTRESS_TYPES),
             "buttonActions": list(city.BUTTON_ACTIONS),
             "shopKinds": list(city.SHOP_KINDS),
             "serviceKinds": list(city.SERVICE_KINDS),

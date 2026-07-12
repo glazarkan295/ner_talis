@@ -8,6 +8,7 @@ const base = "/api/admin/v2/fines";
 export const fetchFineMeta = () => requestAdminJson(`${base}/meta?_=${t()}`);
 export const fetchFines = (status = "") => requestAdminJson(`${base}?${new URLSearchParams(status ? { status } : {}).toString()}&_=${t()}`);
 export const fetchFine = (id) => requestAdminJson(`${base}/${encodeURIComponent(id)}?_=${t()}`);
+export const fetchFineUsage = (id) => requestAdminJson(`${base}/${encodeURIComponent(id)}/usage?_=${t()}`);
 export const createFine = (id, data, reason) => post(base, { id, data, reason });
 export const updateFine = (id, data, reason) => requestAdminJson(`${base}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ data, reason }) });
 export const validateFine = (id, reason) => post(`${base}/${encodeURIComponent(id)}/validate`, { reason });

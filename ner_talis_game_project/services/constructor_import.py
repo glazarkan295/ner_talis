@@ -474,7 +474,11 @@ def import_skills(*, overwrite: bool = False, actor: str = "import", mode: str |
     overwrite = overwrite or _mode_is_overwrite(mode)
     store = scs.store()
     created = updated = skipped = invalid = 0
-    for skill in ass.all_catalog_skills():
+    # Import source must stay the immutable legacy JSON. all_catalog_skills()
+    # also contains published constructor overlays and would duplicate every
+    # imported entry on the second idempotent run.
+    legacy_skills = ass.load_active_skill_registry().get("skills") or []
+    for skill in legacy_skills:
         if not isinstance(skill, dict):
             invalid += 1
             continue

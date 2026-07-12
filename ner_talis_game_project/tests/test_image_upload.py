@@ -43,6 +43,19 @@ class ImageUploadTest(unittest.TestCase):
         # Файл реально записан в том загрузок.
         rel = res["path"].removeprefix("/assets/")
         self.assertTrue((Path(self._tmp.name) / rel).is_file())
+        self.assertEqual((res["width"], res["height"]), (8, 8))
+        self.assertGreater(res["bytes"], 0)
+        self.assertEqual(res["variants"], {})
+
+    def test_creates_proportional_preview_variants_without_upscaling(self):
+        res = aps.save_uploaded_image(category="backgrounds", key="wide", content_base64=_png_b64((1600, 800)))
+        self.assertEqual(set(res["variants"]), {"256", "512", "1024"})
+        from PIL import Image
+        for edge, public_path in res["variants"].items():
+            path = Path(self._tmp.name) / public_path.removeprefix("/assets/")
+            self.assertTrue(path.is_file())
+            with Image.open(path) as image:
+                self.assertEqual(image.size, (int(edge), int(edge) // 2))
 
     def test_accepts_data_uri_prefix(self):
         res = aps.save_uploaded_image(category="items", key="x", content_base64="data:image/png;base64," + _png_b64())

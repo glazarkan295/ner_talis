@@ -13,3 +13,4 @@ export const createSiteItem = (kind, id, data, reason) => post(`${base}/${encode
 export const updateSiteItem = (kind, id, data, reason) => requestAdminJson(`${base}/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ data, reason }) });
 export const validateSiteItem = (kind, id, reason) => post(`${base}/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/validate`, { reason });
 export const siteLifecycle = (kind, id, verb, reason) => post(`${base}/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/${verb}`, { reason });
+export const checkSiteLink = (url) => post(`${base}/site-link/check`, { url });

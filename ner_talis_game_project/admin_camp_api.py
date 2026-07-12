@@ -109,6 +109,8 @@ def create_admin_camp_router(get_storage) -> APIRouter:
         return {
             "ok": True,
             "campTypes": list(camps.CAMP_TYPES),
+            "campCategories": list(camps.CAMP_CATEGORIES),
+            "safetyTypes": list(camps.SAFETY_TYPES),
             "recoveryTargets": list(camps.RECOVERY_TARGETS),
             "campActions": list(camps.CAMP_ACTIONS),
             "statuses": [{"value": s, "label": camps.STATUS_LABELS.get(s, s)} for s in camps.STATUSES],
@@ -131,6 +133,13 @@ def create_admin_camp_router(get_storage) -> APIRouter:
         if item is None:
             raise HTTPException(status_code=404, detail="Лагерь не найден.")
         return {"ok": True, "item": item, "validation": camps.validate(item)}
+
+    @router.get("/{camp_id}/usage")
+    def camp_usage(camp_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        _require(_session(get_storage(), request, token), PERM_CAMP_VIEW)
+        if camps.store().get(camp_id) is None:
+            raise HTTPException(status_code=404, detail="Лагерь не найден.")
+        return {"ok": True, "usage": camps.where_used(camp_id)}
 
     @router.post("")
     def create_camp(payload: IdDataRequest, request: Request) -> dict[str, Any]:
@@ -266,6 +275,12 @@ def create_admin_camp_router(get_storage) -> APIRouter:
         before = camps.store().get(camp_id)
         if before is None:
             raise HTTPException(status_code=404, detail="Лагерь не найден.")
+        usage = camps.where_used(camp_id)
+        if usage.get("total"):
+            raise HTTPException(
+                status_code=409,
+                detail="Лагерь используется. Сначала удалите связи, показанные в «Где используется».",
+            )
         run_admin_operation(
             session=session, action="camp.delete",
             func=lambda: camps.store().delete(camp_id),

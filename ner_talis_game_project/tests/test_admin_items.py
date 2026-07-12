@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -14,6 +15,7 @@ if str(ROOT_DIR) not in sys.path:
 from admin_item_api import create_admin_item_router
 from services import admin_rbac as rbac
 from services import item_constructor_service as items
+from services import item_registry
 from services import world_content_registry as world
 from services.admin_audit import read_admin_audit_records
 from services.admin_panel_service import (
@@ -75,6 +77,32 @@ class ItemServiceTest(unittest.TestCase):
         usage = items.where_used("fang")
         self.assertEqual(usage["total"], 1)
         self.assertTrue(any(m["id"] == "wolf" for m in usage["mob_drops"]))
+
+    def test_where_used_finds_container_promo_and_delivery_links(self):
+        promo_path = Path(self._tmp.name) / "promos.json"
+        courier_path = Path(self._tmp.name) / "courier.json"
+        os.environ["PROMO_CODES_PATH"] = str(promo_path)
+        self.addCleanup(lambda: os.environ.pop("PROMO_CODES_PATH", None))
+
+        items.store().create("fang", {"name": "Клык", "description": "x", "category": "Трофей"})
+        items.store().create("chest", {
+            "name": "Сундук", "description": "x", "category": "Контейнер",
+            "guaranteed_rewards": [{"item_id": "fang", "amount": 1}],
+        })
+        promo_path.write_text(
+            '{"codes":{"FANG":{"reward":{"items":[{"item_id":"fang","amount":1}]}}}}',
+            encoding="utf-8",
+        )
+        courier_path.write_text(
+            '{"transfers":[{"transfer_id":"parcel-1","items":[{"item_id":"fang","amount":1}]}]}',
+            encoding="utf-8",
+        )
+
+        with patch("services.courier_service.transfers_path", return_value=courier_path):
+            usage = items.where_used("fang")
+        self.assertEqual({row["id"] for row in usage["item_links"]}, {"chest"})
+        self.assertEqual({row["id"] for row in usage["promocodes"]}, {"FANG"})
+        self.assertEqual({row["id"] for row in usage["deliveries"]}, {"parcel-1"})
 
     def test_unique_stackable_conflict_is_error(self):
         env = items.store().create("amulet", {
@@ -145,6 +173,23 @@ class ItemServiceTest(unittest.TestCase):
         self.assertIn("валюта", joined)
         self.assertIn("место использования", joined)
 
+    def test_full_tz_card_cross_field_validation(self):
+        env = items.store().create("bad_full_card", {
+            "name": "Предмет", "description": "x", "category": "Оружие",
+            "unique": True, "stackable": True, "max_stack": 2,
+            "global_instance_limit": 0,
+            "base_damage_min": 20, "base_damage_max": 10,
+            "min_price": 500, "max_price": 100,
+            "commission_percent": 101, "use_success_chance": -1,
+            "pity_enabled": True, "pity_count": 0,
+            "inventory_image": "https://example.com/item.png",
+        })
+        result = items.validate(env)
+        self.assertFalse(result["ok"])
+        joined = " ".join(result["errors"]).lower()
+        for expected in ("уникальн", "лимит", "урон", "цена", "комиссия", "гарантирован", "внешние url"):
+            self.assertIn(expected, joined)
+
 
 class ItemApiTest(unittest.TestCase):
     def setUp(self):
@@ -189,6 +234,28 @@ class ItemApiTest(unittest.TestCase):
         self.assertEqual(publish.json()["item"]["status"], "published")
         dangerous = {r["action"] for r in read_admin_audit_records(dangerous_only=True, dangerous_actions=rbac.DANGEROUS_ACTIONS)}
         self.assertIn("item.publish", dangerous)
+
+    def test_published_constructor_item_is_live_runtime_definition(self):
+        token = self._token("999")
+        self._create(token, iid="live_relic", data={
+            "name": "Живая реликвия", "description": "Из конструктора",
+            "category": "Артефакт", "item_type": "artifact", "quality": "celestial",
+            "stackable": False, "icon": "/assets/items/live_relic.png",
+        })
+        published = self.client.post(
+            "/api/admin/v2/items/live_relic/publish", headers=self._auth(token), json={"reason": "live"},
+        )
+        self.assertEqual(published.status_code, 200, published.text)
+        definition = item_registry.get_item_definition_by_id("live_relic")
+        self.assertIsNotNone(definition)
+        self.assertEqual(definition["name"], "Живая реликвия")
+        self.assertTrue(definition["constructor_live"])
+
+        disabled = self.client.post(
+            "/api/admin/v2/items/live_relic/disable", headers=self._auth(token), json={"reason": "off"},
+        )
+        self.assertEqual(disabled.status_code, 200, disabled.text)
+        self.assertIsNone(item_registry.get_item_definition_by_id("live_relic"))
 
     def test_edit_published_makes_draft_with_version(self):
         token = self._token("999")

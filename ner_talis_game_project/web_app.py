@@ -28,6 +28,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from project_paths import resolve_project_path
 from services.web_profile import PAVILION_SCOPE, PROFILE_SCOPE
+from pavilion_api import create_pavilion_router
 from admin_panel_api import create_admin_panel_router
 from admin_panel_v2_api import create_admin_panel_v2_router
 from admin_world_api import create_admin_world_router
@@ -46,10 +47,10 @@ from admin_camp_api import create_admin_camp_router
 from admin_graph_api import create_admin_graph_router
 from admin_sublocation_api import create_admin_sublocation_router
 from admin_formula_api import create_admin_formula_router
-from admin_craft_api import create_admin_profession_router, create_admin_workshop_router
+from admin_craft_api import create_admin_profession_router, create_admin_workshop_router, create_admin_material_group_router
 from admin_workshop_message_api import create_admin_workshop_message_router
 from admin_item_action_api import (
-    create_admin_upgrade_router, create_admin_enchant_router, create_admin_disassemble_router,
+    create_admin_upgrade_router, create_admin_enchant_router, create_admin_disassemble_router, create_admin_repair_router,
 )
 from admin_search_api import create_admin_search_router
 from admin_reputation_api import create_admin_reputation_router
@@ -80,6 +81,12 @@ from admin_message_queue_api import create_admin_message_queue_router
 from admin_dashboard_api import create_admin_dashboard_router
 from admin_uploads_api import create_admin_uploads_router
 from admin_site_api import create_admin_site_router
+from admin_economy_api import create_admin_economy_router
+from admin_referral_api import create_admin_referral_router
+from admin_event_campaign_api import create_admin_event_campaign_router
+from admin_broadcast_campaign_api import create_admin_broadcast_campaign_router
+from pvp_game_api import create_pvp_game_router
+from event_campaign_api import create_event_campaign_router
 from public_site_api import create_public_site_router
 from site_api import (
     create_profile_api_router,
@@ -315,12 +322,18 @@ def _start_web_background_workers() -> None:
     try:
         from services.player_time_service import start_persistent_player_effect_worker
         from services.courier_service import start_persistent_courier_worker
+        from services.broadcast_campaign_runtime import start_worker as start_broadcast_worker
+        from services.world_event_runtime import start_worker as start_world_event_worker
+        from services.reputation_runtime_service import start_worker as start_reputation_worker
 
         st = create_storage()
         effect_interval = int(os.getenv("PLAYER_EFFECT_TICK_INTERVAL_SECONDS", "60") or 60)
         courier_interval = int(os.getenv("COURIER_TICK_INTERVAL_SECONDS", "60") or 60)
         start_persistent_player_effect_worker(st, interval_seconds=effect_interval)
         start_persistent_courier_worker(st, interval_seconds=courier_interval)
+        start_broadcast_worker(st, interval_seconds=int(os.getenv("BROADCAST_TICK_INTERVAL_SECONDS", "10") or 10))
+        start_world_event_worker(st, interval_seconds=int(os.getenv("WORLD_EVENT_TICK_INTERVAL_SECONDS", "30") or 30))
+        start_reputation_worker(st, interval_seconds=int(os.getenv("REPUTATION_DECAY_INTERVAL_SECONDS", "60") or 60))
         _web_background_workers_started = True
         logger.info("Started background workers in web process (effect=%ss, courier=%ss)", effect_interval, courier_interval)
     except Exception:
@@ -371,13 +384,13 @@ def create_app() -> FastAPI:
                 return JSONResponse({"detail": "HTTPS required", "redirect": str(secure_url)}, status_code=426)
         now = time.monotonic()
         window_seconds = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60") or "60")
-        if request.method.upper() == "POST" and path.startswith("/api/profile"):
+        if request.method.upper() == "POST" and (path.startswith("/api/profile") or path.startswith("/api/pavilion")):
             max_requests = int(os.getenv("PROFILE_POST_RATE_LIMIT", "40") or "40")
         elif request.method.upper() == "POST" and path.startswith("/api/admin"):
             max_requests = int(os.getenv("ADMIN_POST_RATE_LIMIT", "60") or "60")
         elif path.startswith("/api/admin"):
             max_requests = int(os.getenv("ADMIN_GET_RATE_LIMIT", "180") or "180")
-        elif path.startswith("/api/profile") or path.startswith("/api/player/profile"):
+        elif path.startswith("/api/profile") or path.startswith("/api/player/profile") or path.startswith("/api/pavilion"):
             max_requests = int(os.getenv("PROFILE_GET_RATE_LIMIT", "120") or "120")
         else:
             max_requests = 0
@@ -458,21 +471,30 @@ def create_app() -> FastAPI:
     app.include_router(create_admin_dashboard_router(storage))
     app.include_router(create_admin_uploads_router(storage))
     app.include_router(create_admin_site_router(storage))
+    app.include_router(create_admin_economy_router(storage))
+    app.include_router(create_admin_referral_router(storage))
+    app.include_router(create_admin_event_campaign_router(storage))
+    app.include_router(create_admin_broadcast_campaign_router(storage))
+    app.include_router(create_pvp_game_router(storage))
+    app.include_router(create_event_campaign_router(storage))
+    app.include_router(create_pavilion_router(storage))
     app.include_router(create_admin_graph_router(storage))
     app.include_router(create_admin_sublocation_router(storage))
     app.include_router(create_admin_formula_router(storage))
     app.include_router(create_admin_profession_router(storage))
     app.include_router(create_admin_workshop_router(storage))
+    app.include_router(create_admin_material_group_router(storage))
     app.include_router(create_admin_workshop_message_router(storage))
     app.include_router(create_admin_upgrade_router(storage))
     app.include_router(create_admin_enchant_router(storage))
     app.include_router(create_admin_disassemble_router(storage))
+    app.include_router(create_admin_repair_router(storage))
     app.include_router(create_admin_search_router(storage))
     app.include_router(create_admin_reputation_router(storage))
     app.include_router(create_admin_addiction_router(storage))
     app.include_router(create_admin_tolerance_router(storage))
     app.include_router(create_admin_tavern_router(storage))
-    app.include_router(create_public_site_router())
+    app.include_router(create_public_site_router(storage))
 
     # Очередь сообщений читает/пишет ту же БД, что и боты (SQLite/Postgres),
     # чтобы админка видела реальный статус доставки. На json-хранилище остаётся
@@ -674,7 +696,23 @@ def create_app() -> FastAPI:
         player, session = get_session_and_player(token, PAVILION_SCOPE)
         if player is None or session is None:
             raise HTTPException(status_code=401, detail="Недействительная или истёкшая ссылка павильона.")
-        return "<h1>Торговый павильон</h1>" f"<p>Вход подтверждён для игрока: {_safe_text(player.get('name'))}</p>" "<p>Полный интерфейс павильона будет подключён отдельным модулем сайта.</p>"
+        active_token = _safe_text(session.get("token") or token)
+        return f"""<!doctype html><html lang='ru'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Торговый павильон</title>
+<style>body{{font:16px system-ui;background:#111827;color:#f3f4f6;max-width:980px;margin:auto;padding:24px}}section{{background:#1f2937;padding:18px;border-radius:14px;margin:14px 0}}input,button{{padding:10px;margin:4px;border-radius:8px;border:1px solid #4b5563}}button{{cursor:pointer}}.item{{border-top:1px solid #4b5563;padding:10px 0}}.error{{color:#fca5a5}}.ok{{color:#86efac}}</style></head>
+<body data-token='{active_token}'><h1>🏪 Торговый павильон</h1><p>Игрок: {_safe_text(player.get('name'))}</p><p id='status'>Загрузка…</p>
+<section><h2>Торговое место</h2><button id='rent'>Оплатить / продлить аренду</button><div id='rentInfo'></div></section>
+<section><h2>Выставить предмет</h2><form id='listingForm'><input name='item_id' placeholder='ID предмета' required><input name='quantity' type='number' min='1' value='1' required><input name='price' type='number' min='1' placeholder='Цена' required><button>Выставить</button></form></section>
+<section><h2>Активные товары</h2><div id='listings'></div></section><script src='/pavilion.js' defer></script></body></html>"""
+
+    @app.get("/pavilion.js", include_in_schema=False)
+    def pavilion_script():
+        script = """const token=document.body.dataset.token;const headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'};
+async function api(path,opt={}){const r=await fetch('/api/pavilion'+path,{...opt,headers});const p=await r.json();if(!r.ok)throw Error(p.detail||'Ошибка');return p}
+function msg(t,ok=true){const e=document.getElementById('status');e.textContent=t;e.className=ok?'ok':'error'}
+async function load(){try{const p=await api('');document.getElementById('rentInfo').textContent=p.accessActive?'Торговое место активно до '+(p.playerState.rent_expires_at||'бессрочно'):'Требуется аренда';const box=document.getElementById('listings');box.replaceChildren();for(const x of p.items){const d=document.createElement('div');d.className='item';d.textContent=`${x.item_name} ×${x.quantity} — ${x.price} медных (${x.seller_name}) `;const b=document.createElement('button');b.textContent='Купить';b.onclick=async()=>{try{await api('/buy',{method:'POST',body:JSON.stringify({listing_id:x.listing_id})});msg('Покупка завершена');load()}catch(e){msg(e.message,false)}};d.append(b);box.append(d)}msg('Данные обновлены')}catch(e){msg(e.message,false)}}
+document.getElementById('rent').onclick=async()=>{try{await api('/rent',{method:'POST'});msg('Аренда продлена');load()}catch(e){msg(e.message,false)}};
+document.getElementById('listingForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{await api('/listings',{method:'POST',body:JSON.stringify({item_id:f.get('item_id'),quantity:Number(f.get('quantity')),price:Number(f.get('price'))})});msg('Товар выставлен');e.target.reset();load()}catch(x){msg(x.message,false)}};load();"""
+        return Response(script, media_type="application/javascript")
 
     @app.get("/pavilion", response_class=HTMLResponse, response_model=None)
     def pavilion_page(token: str = Query(..., min_length=16)):
@@ -690,4 +728,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

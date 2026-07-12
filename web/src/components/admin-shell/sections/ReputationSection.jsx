@@ -2,20 +2,26 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchReputationMeta, fetchReputations, fetchReputation, createReputation,
   updateReputation, reputationLifecycle, previewReputation,
+  fetchReputationUsage,
+  fetchReputationHistory, changePlayerReputation,
 } from "../../../api/adminReputationApi.js";
+import { TechnicalData } from "../TechnicalData.jsx";
 
 // Конструктор репутации (item-reputation §3, эффекты §3): открытая/скрытая/
 // частичная, область, диапазон, стадии, правила изменения, метки, угасание +
 // предпросмотр последствий. Игроку формулы/точное значение скрытой — не видны.
 
 const EMPTY = {
-  name_ru: "", short_name: "", description_player: "", description_admin: "",
+  name_ru: "", player_name: "", system_name: "", short_name: "", category: "", owner: "", faction_id: "", npc_id: "", city_id: "", location_id: "", short_description: "", description_player: "", description_admin: "", technical_description: "", tags: [], reputation_type: "open",
   visibility: "visible", scope_type: "city", scope_id: "",
   min_value: -1000, max_value: 1000, default_value: 0, display_mode: "stage",
   show_to_player: true, show_exact_value: false, show_change_notifications: true,
   stages: [], change_rules: [], marks: [],
   decay_enabled: false, decay_direction: "toward_default", decay_amount: 0,
   decay_interval_seconds: 0,
+  allow_negative: true, use_change_formula: false, change_formula_id: "", show_hints: false, admin_only: false,
+  buy_discount_percent: 0, sell_bonus_percent: 0, bad_reputation_markup_percent: 0, trade_blocked: false, hidden_products: false, fine_modifier_percent: 0, delivery_commission_percent: 0, market_commission_percent: 0, service_price_percent: 0, price_formula_id: "",
+  hidden_use_conditions: true, hidden_use_dialogues: true, hidden_use_markets: true, hidden_use_crime: true, hidden_use_informant: true, hidden_use_assassin_orders: true, hidden_use_events: true,
 };
 
 function Field({ label, children }) {
@@ -26,6 +32,7 @@ export function ReputationSection({ guarded, hasPerm }) {
   const [meta, setMeta] = useState(null);
   const [list, setList] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
   const [selected, setSelected] = useState(null);
   const [data, setData] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -33,6 +40,9 @@ export function ReputationSection({ guarded, hasPerm }) {
   const [preview, setPreview] = useState(null);
   const [pv, setPv] = useState({ value: 0, delta: 100 });
   const [info, setInfo] = useState("");
+  const [usage, setUsage] = useState(null);
+  const [history, setHistory] = useState(null);
+  const [manual, setManual] = useState({ gameId: "", delta: 0, reason: "", sourceId: "" });
 
   const can = useMemo(() => ({
     create: hasPerm("reputation.create"), edit: hasPerm("reputation.edit"),
@@ -74,7 +84,7 @@ export function ReputationSection({ guarded, hasPerm }) {
       <div className="ntrep-list">
         {rows.map((row, i) => (
           <div className="ntrep-row" key={i}>
-            {columns.map((c) => <input key={c.key} placeholder={c.label} value={row[c.key] ?? ""} onChange={(e) => upd(i, c.key, e.target.value)} />)}
+            {columns.map((c) => <input key={c.key} placeholder={c.label} value={c.type === "json" ? JSON.stringify(row[c.key] || []) : row[c.key] ?? ""} onChange={(e) => { if (c.type === "json") { try { upd(i, c.key, JSON.parse(e.target.value || "[]")); } catch {} } else upd(i, c.key, e.target.value); }} />)}
             <button type="button" className="ntv2-btn-mini" onClick={() => setF(key, rows.filter((_, idx) => idx !== i))}>✕</button>
           </div>
         ))}
@@ -100,8 +110,9 @@ export function ReputationSection({ guarded, hasPerm }) {
             <option value="">Все статусы</option>
             {statuses.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}><option value="">Все репутации</option><option value="open">Открытая репутация</option><option value="hidden">Скрытая репутация</option><option value="faction">Фракции</option><option value="npc">NPC-отношения</option><option value="city">Городская</option><option value="criminal">Криминальная</option></select>
           <ul>
-            {list.map((s) => <li key={s.id} className={selected === s.id ? "active" : ""} onClick={() => openItem(s.id)}><b>{s.data?.name_ru || s.id}</b><small>{statusLabel(s.status)}</small></li>)}
+            {list.filter((s) => !typeFilter || (typeFilter === "open" ? (s.data?.visibility || "visible") === "visible" : typeFilter === "hidden" ? s.data?.visibility === "hidden" : s.data?.reputation_type === typeFilter)).map((s) => <li key={s.id} className={selected === s.id ? "active" : ""} onClick={() => openItem(s.id)}><b>{s.data?.name_ru || s.id}</b><small>{statusLabel(s.status)}</small></li>)}
             {!list.length ? <li className="ntrep-empty">Пусто</li> : null}
           </ul>
         </aside>
@@ -114,9 +125,13 @@ export function ReputationSection({ guarded, hasPerm }) {
                 {creating ? <Field label="ID репутации"><input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="guard_suspicion" /></Field> : null}
                 <div className="ntv2-form-row">
                   <Field label="Название"><input value={data.name_ru} onChange={(e) => setF("name_ru", e.target.value)} /></Field>
+                  <Field label="Название для игрока"><input value={data.player_name} onChange={(e) => setF("player_name", e.target.value)} /></Field>
+                  <Field label="Системное название"><input value={data.system_name} onChange={(e) => setF("system_name", e.target.value)} /></Field>
                   <Field label="Короткое имя"><input value={data.short_name} onChange={(e) => setF("short_name", e.target.value)} /></Field>
+                  <Field label="Тип репутации"><select value={data.reputation_type} onChange={(e) => setF("reputation_type", e.target.value)}>{(meta?.reputationTypes || []).map((v) => <option key={v}>{v}</option>)}</select></Field>
                   <Field label="Видимость"><select value={data.visibility} onChange={(e) => setF("visibility", e.target.value)}>{(meta?.visibility || []).map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}</select></Field>
                 </div>
+                <div className="ntv2-form-row"><Field label="Категория"><input value={data.category} onChange={(e) => setF("category", e.target.value)} /></Field><Field label="Владелец"><input value={data.owner} onChange={(e) => setF("owner", e.target.value)} /></Field><Field label="Фракция"><input value={data.faction_id} onChange={(e) => setF("faction_id", e.target.value)} /></Field><Field label="NPC"><input value={data.npc_id} onChange={(e) => setF("npc_id", e.target.value)} /></Field><Field label="Город"><input value={data.city_id} onChange={(e) => setF("city_id", e.target.value)} /></Field><Field label="Локация"><input value={data.location_id} onChange={(e) => setF("location_id", e.target.value)} /></Field></div>
                 <div className="ntv2-form-row">
                   <Field label="Область"><select value={data.scope_type} onChange={(e) => setF("scope_type", e.target.value)}>{(meta?.scopeTypes || []).map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
                   <Field label="ID области"><input value={data.scope_id} onChange={(e) => setF("scope_id", e.target.value)} /></Field>
@@ -131,24 +146,34 @@ export function ReputationSection({ guarded, hasPerm }) {
                   <label className="ntv2-check"><input type="checkbox" checked={data.show_to_player} onChange={(e) => setF("show_to_player", e.target.checked)} /> Видна игроку</label>
                   <label className="ntv2-check"><input type="checkbox" checked={data.show_exact_value} onChange={(e) => setF("show_exact_value", e.target.checked)} /> Показывать точное значение</label>
                   <label className="ntv2-check"><input type="checkbox" checked={data.show_change_notifications} onChange={(e) => setF("show_change_notifications", e.target.checked)} /> Уведомлять об изменении</label>
+                  <label className="ntv2-check"><input type="checkbox" checked={data.allow_negative} onChange={(e) => setF("allow_negative", e.target.checked)} /> Может уходить в минус</label>
+                  <label className="ntv2-check"><input type="checkbox" checked={data.show_hints} onChange={(e) => setF("show_hints", e.target.checked)} /> Только намёки</label>
+                  <label className="ntv2-check"><input type="checkbox" checked={data.admin_only} onChange={(e) => setF("admin_only", e.target.checked)} /> Только админам</label>
                 </div>
+                <div className="ntv2-form-row"><label className="ntv2-check"><input type="checkbox" checked={data.use_change_formula} onChange={(e) => setF("use_change_formula", e.target.checked)} /> Формула изменения</label><Field label="ID формулы"><input value={data.change_formula_id} onChange={(e) => setF("change_formula_id", e.target.value)} /></Field></div>
+                <Field label="Краткое описание"><textarea rows={2} value={data.short_description} onChange={(e) => setF("short_description", e.target.value)} /></Field>
                 <Field label="Описание для игрока"><textarea rows={2} value={data.description_player} onChange={(e) => setF("description_player", e.target.value)} /></Field>
                 <Field label="Описание для админа"><textarea rows={2} value={data.description_admin} onChange={(e) => setF("description_admin", e.target.value)} /></Field>
+                <Field label="Техническое описание"><textarea rows={2} value={data.technical_description} onChange={(e) => setF("technical_description", e.target.value)} /></Field>
+                <Field label="Теги (по строкам)"><textarea rows={2} value={(data.tags || []).join("\n")} onChange={(e) => setF("tags", e.target.value.split("\n").map((x) => x.trim()).filter(Boolean))} /></Field>
 
                 <details className="ntrep-panel" open><summary>Стадии</summary>
                   {listEditor("stages", [
                     { key: "stage_id", label: "id" }, { key: "name_ru", label: "название" },
                     { key: "min_value", label: "от" }, { key: "max_value", label: "до" },
                     { key: "description_player", label: "текст игроку" },
-                  ], { stage_id: "", name_ru: "", min_value: 0, max_value: 0, description_player: "" })}
+                    { key: "color", label: "цвет" }, { key: "icon", label: "иконка" }, { key: "rewards", label: "награды JSON", type: "json" }, { key: "accesses", label: "доступы JSON", type: "json" }, { key: "restrictions", label: "ограничения JSON", type: "json" }, { key: "achievement_text", label: "текст уровня" },
+                  ], { stage_id: "", name_ru: "", min_value: 0, max_value: 0, description_player: "", rewards: [], accesses: [], restrictions: [] })}
                 </details>
                 <details className="ntrep-panel"><summary>Правила изменения</summary>
                   {listEditor("change_rules", [
                     { key: "rule_id", label: "id" }, { key: "trigger", label: "триггер" },
-                    { key: "change_value", label: "±значение" }, { key: "daily_limit", label: "лимит/день" },
-                  ], { rule_id: "", trigger: "", change_value: 0, daily_limit: 0 })}
+                    { key: "source_id", label: "ID источника" }, { key: "change_value", label: "±значение" }, { key: "direction", label: "+/-" }, { key: "change_mode", label: "fixed/percent" }, { key: "formula_id", label: "ID формулы" }, { key: "daily_limit", label: "лимит/день" }, { key: "show_to_player", label: "показать" }, { key: "text", label: "текст" },
+                  ], { rule_id: "", trigger: "", source_id: "", change_value: 0, direction: "positive", change_mode: "fixed", formula_id: "", daily_limit: 0, show_to_player: true, text: "" })}
                   <div className="ntv2-muted" style={{ fontSize: 11 }}>Триггеры: {(meta?.changeTriggers || []).join(", ")}</div>
                 </details>
+                <details className="ntrep-panel"><summary>Экономика и торговля</summary><div className="ntv2-form-row">{[["buy_discount_percent","Скидка покупки %"],["sell_bonus_percent","Бонус продажи %"],["bad_reputation_markup_percent","Наценка %"],["fine_modifier_percent","Штрафы %"],["delivery_commission_percent","Комиссия доставки %"],["market_commission_percent","Комиссия рынка %"],["service_price_percent","Цена услуг %"]].map(([k,l]) => <Field key={k} label={l}><input type="number" value={data[k]} onChange={(e) => setF(k,e.target.value)} /></Field>)}</div><div className="ntv2-form-row"><label className="ntv2-check"><input type="checkbox" checked={data.trade_blocked} onChange={(e) => setF("trade_blocked",e.target.checked)} /> Запрет торговли</label><label className="ntv2-check"><input type="checkbox" checked={data.hidden_products} onChange={(e) => setF("hidden_products",e.target.checked)} /> Скрытые товары</label><Field label="ID формулы цены"><input value={data.price_formula_id} onChange={(e) => setF("price_formula_id",e.target.value)} /></Field></div></details>
+                <details className="ntrep-panel"><summary>Скрытая репутация</summary><div className="ntv2-form-row">{[["hidden_use_conditions","В условиях"],["hidden_use_dialogues","В диалогах"],["hidden_use_markets","В рынках"],["hidden_use_crime","В криминале"],["hidden_use_informant","У информатора"],["hidden_use_assassin_orders","В заказах убийц"],["hidden_use_events","В скрытых событиях"]].map(([k,l]) => <label className="ntv2-check" key={k}><input type="checkbox" checked={data[k]} onChange={(e) => setF(k,e.target.checked)} /> {l}</label>)}</div></details>
                 <details className="ntrep-panel"><summary>Скрытые метки</summary>
                   {listEditor("marks", [
                     { key: "mark_id", label: "id" }, { key: "name_ru", label: "название" },
@@ -171,9 +196,14 @@ export function ReputationSection({ guarded, hasPerm }) {
                       <button type="button" className="ntv2-btn-mini" onClick={() => lifecycle("publish")}>Опубликовать</button>
                       <button type="button" className="ntv2-btn-mini" onClick={() => lifecycle("disable")}>Отключить</button>
                       <button type="button" className="ntv2-btn-mini" onClick={() => lifecycle("archive")}>В архив</button>
+                      <button type="button" className="ntv2-btn-mini" onClick={async () => { const r = await guarded(() => fetchReputationUsage(selected)); if (r) setUsage(r.usage); }}>Где используется</button>
+                      <button type="button" className="ntv2-btn-mini" onClick={async () => { const r = await guarded(() => fetchReputationHistory(selected)); if (r) setHistory(r.history); }}>История изменений</button>
                     </>
                   ) : null}
                 </div>
+                {usage ? <TechnicalData label="Связи репутации" value={usage} /> : null}
+                {history ? <TechnicalData label="История репутации игроков" value={history} /> : null}
+                {!creating && can.edit ? <details className="ntrep-panel"><summary>Ручное изменение игроку</summary><div className="ntv2-form-row"><Field label="NT-ID"><input value={manual.gameId} onChange={(e) => setManual({ ...manual, gameId:e.target.value })} /></Field><Field label="Изменение"><input type="number" value={manual.delta} onChange={(e) => setManual({ ...manual, delta:e.target.value })} /></Field><Field label="ID источника"><input value={manual.sourceId} onChange={(e) => setManual({ ...manual, sourceId:e.target.value })} /></Field><Field label="Причина"><input value={manual.reason} onChange={(e) => setManual({ ...manual, reason:e.target.value })} /></Field><button type="button" className="ntv2-btn" disabled={!manual.gameId || !manual.reason} onClick={async () => { const r=await guarded(() => changePlayerReputation(selected,manual.gameId,Number(manual.delta),manual.reason,manual.sourceId),"Репутация изменена."); if(r){const h=await guarded(() => fetchReputationHistory(selected));if(h)setHistory(h.history);} }}>Применить</button></div></details> : null}
               </div>
 
               <div className="ntrep-preview">

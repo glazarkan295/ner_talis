@@ -8,6 +8,7 @@ const base = "/api/admin/v2/camps";
 export const fetchCampMeta = () => requestAdminJson(`${base}/meta?_=${t()}`);
 export const fetchCamps = (status = "") => requestAdminJson(`${base}?${new URLSearchParams(status ? { status } : {}).toString()}&_=${t()}`);
 export const fetchCamp = (id) => requestAdminJson(`${base}/${encodeURIComponent(id)}?_=${t()}`);
+export const fetchCampUsage = (id) => requestAdminJson(`${base}/${encodeURIComponent(id)}/usage?_=${t()}`);
 export const createCamp = (id, data, reason) => post(base, { id, data, reason });
 export const updateCamp = (id, data, reason) => requestAdminJson(`${base}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ data, reason }) });
 export const validateCamp = (id, reason) => post(`${base}/${encodeURIComponent(id)}/validate`, { reason });

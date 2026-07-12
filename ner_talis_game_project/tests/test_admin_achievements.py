@@ -121,6 +121,39 @@ class AchievementEngineTest(unittest.TestCase):
         # Idempotent: not granted twice.
         self.assertEqual(engine.record_progress(self.storage, player, "kill_mob", 5), [])
 
+    def test_state_event_and_condition_operator(self):
+        ach.store().create("veteran", {"name": "Ветеран", "category": "combat", "conditions": [{"type": "reach_level", "operator": "gte", "amount": 10}]})
+        ach.store().set_status("veteran", ach.STATUS_PUBLISHED, force=True)
+        player = self._player()
+        self.assertEqual(engine.record_game_event(player, "reach_level", 9, storage=self.storage), [])
+        self.assertEqual(engine.record_game_event(player, "reach_level", 10, storage=self.storage), ["veteran"])
+
+    def test_runtime_unlock_and_effect_rewards_are_applied(self):
+        player = self._player()
+        lines, errors = engine.apply_rewards(player, [
+            {"type": "unlock_location", "object_id": "small_plateau"},
+            {"type": "temp_buff", "effect_id": "blessing", "duration_seconds": 60},
+            {"type": "event_currency", "currency_id": "summer", "amount": 3},
+        ])
+        self.assertFalse(errors); self.assertTrue(lines)
+        self.assertTrue(player["unlocks"]["small_plateau"])
+        self.assertEqual(player["active_effects"][-1]["effect_id"], "blessing")
+        self.assertEqual(player["event_currencies"]["summer"], 3)
+
+    def test_ordered_and_repeatable_progress_semantics(self):
+        ach.store().create("sequence", {"name": "По порядку", "category": "combat", "condition_logic": "ordered", "conditions": [{"type": "visit_location", "target": "a", "amount": 1}, {"type": "visit_location", "target": "b", "amount": 1}]})
+        ach.store().set_status("sequence", ach.STATUS_PUBLISHED, force=True)
+        ach.store().create("repeat", {"name": "Повтор", "category": "combat", "repeatable": True, "conditions": [{"type": "kill_mob", "amount": 2}], "rewards": [{"type": "coins", "amount": 1}]})
+        ach.store().set_status("repeat", ach.STATUS_PUBLISHED, force=True)
+        player = self._player()
+        self.assertEqual(engine.record_game_event(player, "visit_location", target="b", storage=self.storage), [])
+        engine.record_game_event(player, "visit_location", target="a", storage=self.storage)
+        self.assertEqual(engine.record_game_event(player, "visit_location", target="b", storage=self.storage), ["sequence"])
+        self.assertNotIn("repeat", engine.record_game_event(player, "kill_mob", storage=self.storage))
+        self.assertIn("repeat", engine.record_game_event(player, "kill_mob", storage=self.storage))
+        self.assertNotIn("repeat", engine.record_game_event(player, "kill_mob", storage=self.storage))
+        self.assertIn("repeat", engine.record_game_event(player, "kill_mob", storage=self.storage))
+
     def test_manual_grant_and_revoke(self):
         player = self._player()
         self.assertTrue(engine.grant(self.storage, player, "hunter", source="manual", by="t:1", reason="приз"))
@@ -139,6 +172,14 @@ class AchievementEngineTest(unittest.TestCase):
         names = [a["name"] for a in view["inProgress"]]
         self.assertIn("???", names)
         self.assertNotIn("Секрет", names)
+    def test_stage_rewards_resets_reveal_and_extended_rewards_are_live(self):
+        ach.store().create("staged",{"name":"Ступени","category":"combat","type":"multi_stage","conditions":[{"type":"kill_mob","amount":3}],"reset_on_death":True,"reveal_after_first_progress":True,"stages":[{"stage_id":"first","name":"Первая","required_progress":2,"title_id":"slayer","achievement_points":5,"receive_text":"Первая ступень!"}]})
+        ach.store().set_status("staged",ach.STATUS_PUBLISHED,force=True);player=self._player()
+        engine.record_game_event(player,"kill_mob",1,storage=self.storage);self.assertTrue(player["achievements"]["progress"]["staged"]["revealed"])
+        engine.record_game_event(player,"kill_mob",1,storage=self.storage);self.assertEqual(player["achievement_points"],5);self.assertEqual(player["titles"][-1]["id"],"slayer");self.assertFalse(engine.is_earned(player,"staged"))
+        engine.record_game_event(player,"death",1,storage=self.storage);self.assertEqual(player["achievements"]["progress"]["staged"]["counts"],{})
+        lines,errors=engine.apply_rewards(player,[{"type":"reputation","object_id":"guards","amount":3},{"type":"unlock_market","object_id":"black"},{"type":"discount","object_id":"tavern","amount":10},{"type":"system_flag","object_id":"hero","value":True},{"type":"special_button","object_id":"portal","label":"Портал"}])
+        self.assertFalse(errors);self.assertTrue(lines);self.assertEqual(player["reputations"]["guards"],3);self.assertTrue(player["unlocks"]["black"]);self.assertEqual(player["achievement_economy_bonuses"]["discount"]["tavern"]["value"],10);self.assertTrue(player["system_flags"]["hero"]);self.assertEqual(player["achievement_buttons"][-1]["id"],"portal")
 
 
 class AchievementApiTest(unittest.TestCase):
@@ -273,6 +314,11 @@ class AchievementApiTest(unittest.TestCase):
         # support has view_player_progress but not grant_manual.
         self.assertEqual(self.client.get(f"/api/admin/v2/achievements/players/{gid}", headers=self._auth(token)).status_code, 200)
         self.assertEqual(self.client.post("/api/admin/v2/achievements/hero/grant", headers=self._auth(token), json={"game_id": gid}).status_code, 403)
+
+    def test_usage_lists_players_and_delete_is_blocked_by_saved_progress(self):
+        token=self._token("999");self._published_achievement(token,"protected");gid=self._make_player();player=self.storage.get_player_by_game_id(gid);player["achievements"]={"earned":{},"progress":{"protected":{"counts":{"0":1}}},"history":[]};self.storage.update_player(player)
+        usage=self.client.get("/api/admin/v2/achievements/protected/usage",headers=self._auth(token));self.assertEqual(usage.status_code,200,usage.text);self.assertIn(gid,usage.json()["usage"]["players_progress"])
+        deleted=self.client.request("DELETE","/api/admin/v2/achievements/protected",headers=self._auth(token),json={"confirm":"protected","reason":"cleanup"});self.assertEqual(deleted.status_code,409,deleted.text);self.assertIn("прогресс",deleted.text.lower())
 
 
 if __name__ == "__main__":

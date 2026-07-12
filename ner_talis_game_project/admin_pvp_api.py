@@ -1,8 +1,8 @@
-"""FastAPI router for the future-PVP constructor (ТЗ 4 §1).
+"""FastAPI router for the live PVP constructor (ТЗ 4 §1).
 
 CRUD/lifecycle/versioning via the shared factory; adds a render-preview endpoint
 (§1.7). Guarded by pvp.* permissions. Mounted under ``/api/admin/v2/pvp``.
-PVP runtime does not exist yet — this is the authoring layer only.
+Published rules are consumed by services.pvp_runtime_service.
 """
 
 from __future__ import annotations
@@ -38,6 +38,10 @@ def _meta_extra(_svc: Any) -> dict[str, Any]:
         "timeoutActions": list(svc.PVP_TIMEOUT_ACTIONS),
         "actionOrderTypes": list(svc.ACTION_ORDER_TYPES),
         "logModes": list(svc.LOG_MODES),
+        "pvpSources": list(svc.PVP_SOURCES),
+        "pvpActions": list(svc.PVP_ACTIONS),
+        "pvpOutcomes": list(svc.PVP_OUTCOMES),
+        "layoutModes": list(svc.PVP_LAYOUT_MODES),
     }
 
 

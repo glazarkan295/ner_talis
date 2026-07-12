@@ -251,6 +251,7 @@ export const CITY_NODE_TYPE = {
   criminal_zone: "Криминальная зона", residential: "Жилой район", service: "Сервис",
   transition: "Переход",
 };
+export const CITY_TYPE = { starting:"Стартовый",port:"Портовый",fortified:"Крепостной",trade:"Торговый",craft:"Ремесленный",criminal:"Криминальный",capital:"Столичный",temporary:"Временный",event:"Событийный",abandoned:"Заброшенный",city_fortress:"Город-крепость",technical:"Технический" };
 export const CITY_BUTTON_ACTION = {
   goto_node: "Перейти в узел", open_market: "Открыть рынок", open_npc: "Открыть NPC",
   open_quests: "Открыть задания", open_craft: "Открыть ремесло", open_alchemy: "Открыть алхимию",
@@ -272,6 +273,9 @@ export const CITY_STOCK_TYPE = {
 
 // --- Мировые события -------------------------------------------------------
 export const WORLD_EVENT_TYPE = {
+  global: "Глобальное", regional: "Региональное", location: "Локационное", repeatable: "Повторяемое",
+  one_time: "Одноразовое", weekly: "Недельное", monthly: "Месячное", yearly: "Годовое",
+  combat: "Боевое", crafting: "Ремесленное", weather: "Погодное", zone: "Зональное", system: "Системное",
   festive: "Праздничное", seasonal: "Сезонное", permanent: "Постоянное", threat: "Угроза",
   world_boss: "Мировой босс", global_raid: "Глобальный рейд", mob_invasion: "Нашествие мобов",
   fair: "Ярмарка", city: "Городское", guild: "Гильдейское", story: "Сюжетное",
@@ -279,12 +283,13 @@ export const WORLD_EVENT_TYPE = {
   new_location: "Новая локация",
 };
 export const EVENT_REPEAT_TYPE = {
-  none: "Не повторять", weekly: "Каждую неделю", monthly: "Каждый месяц", yearly: "Каждый год",
+  none: "Не повторять", daily: "Каждый день", weekly: "Каждую неделю", monthly: "Каждый месяц", yearly: "Каждый год",
 };
 export const EVENT_REWARD_TYPE = {
   experience: "Опыт", coins: "Монеты", item: "Предмет", resource: "Ресурс", effect: "Эффект",
   achievement: "Достижение", special_loot: "Особая добыча", temp_buff: "Временный бонус",
   temp_debuff: "Временный дебаф", event_shop: "Доступ к магазину события", special_location: "Доступ к локации",
+  energy: "Энергия", skill_points: "Очки навыков", stat_points: "Очки характеристик", recipe: "Рецепт", skill: "Навык", reputation: "Репутация",
 };
 export const SPECIAL_LOOT_SOURCE = {
   all_mobs: "Из всех мобов", selected_mobs: "Из выбранных мобов", all_events: "Из всех событий",

@@ -27,7 +27,7 @@ from services.constructor_status import *  # noqa: F401,F403 - статусы к
 _HTML_RE = re.compile(r"<[^>]+>")
 
 # Игры казино (§4.2).
-GAME_TYPES = ("dice", "thimbles", "blackjack", "wheel")
+GAME_TYPES = ("dice", "guess_number", "world_cards", "wheel", "luck_chest", "outcome_bet", "bet_duel", "npc_game", "raid_risk_game", "event_game", "test_game", "thimbles", "blackjack")
 GAME_TYPE_LABELS = {
     "dice": "Кости", "thimbles": "Напёрстки",
     "blackjack": "Карты «Очко»", "wheel": "Колесо Удачи",
@@ -91,8 +91,8 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
 
     if not str(data.get("name") or "").strip():
         errors.append("Не заполнено название казино.")
-    if not str(data.get("location_id") or "").strip() and not str(data.get("city_id") or "").strip():
-        warnings.append("Казино не привязано к локации или городу.")
+    if not any(str(data.get(k) or "").strip() for k in ("location_id","city_id","sublocation_id","tavern_id","criminal_zone_id")):
+        errors.append("Казино не привязано к городу, таверне, локации, подлокации или криминальной зоне.")
 
     # Общие числовые настройки (§4.3).
     for key, label in (("min_level", "Минимальный уровень"),
@@ -115,10 +115,14 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
 
     # Баланс игр (§4.4). Собираем (coefficient, win_chance) для кросс-проверки.
     coef_points: list[tuple[float, float, int]] = []
+    if not any(isinstance(game,dict) and game.get("active",True) for game in data.get("games") or []):
+        errors.append("В казино нет ни одной активной игры.")
     for i, game in enumerate(data.get("games") or [], start=1):
         if not isinstance(game, dict):
             continue
         gtype = str(game.get("game_type") or "").strip()
+        if not str(game.get("game_id") or game.get("id") or "").strip():errors.append(f"Игра #{i}: нет ID.")
+        if not str(game.get("name") or game.get("player_name") or "").strip():warnings.append(f"Игра #{i}: нет названия для игрока.")
         if gtype and gtype not in GAME_TYPES:
             warnings.append(f"Игра #{i}: тип «{gtype}» не из списка.")
         win = _num(game.get("win_chance"))
@@ -135,6 +139,10 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             errors.append(f"Игра #{i}: коэффициент — неотрицательное число.")
         if coef is not None and win is not None:
             coef_points.append((coef, win, i))
+        gmin=_num(game.get("min_bet"));gmax=_num(game.get("max_bet"))
+        if gmin is not None and gmin<0:errors.append(f"Игра #{i}: минимальная ставка отрицательная.")
+        if gmax is not None and gmax<0:errors.append(f"Игра #{i}: максимальная ставка отрицательная.")
+        if gmin is not None and gmax is not None and gmin>gmax:errors.append(f"Игра #{i}: максимальная ставка меньше минимальной.")
         for fkey, flabel in (("commission", "комиссия"),
                              ("min_loss_chance", "мин. шанс проигрыша"),
                              ("max_win_chance", "макс. шанс выигрыша")):
@@ -183,7 +191,7 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             errors.append("Колесо: стоимость прокрутки — неотрицательное число.")
 
     # Тексты без HTML.
-    for key in ("name", "description"):
+    for key in ("name", "player_name", "system_name", "description", "short_description", "full_description", "lore_description", "technical_description", "hidden_description", "entry_text", "hidden_entry_text", "access_denied_text", "main_menu_text", "game_select_text", "bet_text", "not_enough_money_text", "win_text", "big_win_text", "loss_text", "draw_text", "limit_text", "raid_text", "fine_text", "closed_text", "npc_text", "exit_text", "technical_error_text"):
         if _has_html(data.get(key)):
             errors.append(f"В поле «{key}» недопустим HTML.")
 

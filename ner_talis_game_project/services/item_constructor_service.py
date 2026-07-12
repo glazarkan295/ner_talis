@@ -4,9 +4,9 @@
 «где используется». Хранение — генерик EntityStore (data/item_constructor.json).
 Аудит и права — в роутере (admin_item_api) через admin_operation.
 
-Это КОНСТРУКТОР (создать/проверить/опубликовать/версии без кода). Реальное
-чтение опубликованных предметов игрой (рядом со статичным item_registry) —
-отдельный runtime-слой на вырост.
+Это КОНСТРУКТОР (создать/проверить/опубликовать/версии без кода).
+Опубликованные записи подключаются к игровому runtime через item_registry;
+отключённые и архивные записи исключаются из live-реестра автоматически.
 """
 
 from __future__ import annotations
@@ -108,10 +108,9 @@ REQUIREMENT_TYPES = (
 )
 # Связь предмета с эффектом из конструктора эффектов (§2.7).
 EFFECT_LINK_TRIGGERS = (
-    "passive", "active", "on_equip", "on_unequip", "on_use", "on_attack",
-    "on_receive_damage", "on_death", "after_battle", "on_enter_location",
-    "on_search", "on_craft", "on_trade", "on_transfer", "on_rest",
-    "on_hidden_event",
+    "passive", "active", "on_receive_item", "on_equip", "on_unequip", "on_use", "on_open", "on_attack",
+    "on_receive_damage", "on_battle_start", "on_battle_turn", "after_battle", "on_death", "on_sell", "on_transfer", "on_drop",
+    "on_enter_location", "in_zone", "on_search", "on_craft", "on_fishing", "on_gather", "on_trade", "on_rest", "on_hidden_event",
 )
 PRICE_SELL_CAP = 1_000_000_000_000  # 1e12 меди — мягкий предупредительный лимит
 
@@ -129,6 +128,19 @@ OPEN_BEHAVIOR_LABELS = {
 INVENTORY_FULL_BEHAVIORS = (
     "deny", "partial", "to_mailbox", "to_delivery", "keep_unopened", "temp_parcel",
 )
+PROFILE_ACTIONS = (
+    "use", "equip", "unequip", "open", "drop", "transfer", "sell",
+    "disassemble", "upgrade", "enchant", "repair", "inspect", "read",
+    "charge", "discharge", "pouch_store", "pouch_remove", "storage_store", "delivery",
+)
+PROFILE_ACTION_LABELS = {
+    "use": "Использовать", "equip": "Надеть", "unequip": "Снять", "open": "Открыть",
+    "drop": "Выбросить", "transfer": "Передать", "sell": "Продать", "disassemble": "Разобрать",
+    "upgrade": "Улучшить", "enchant": "Зачаровать", "repair": "Починить", "inspect": "Осмотреть",
+    "read": "Прочитать", "charge": "Зарядить", "discharge": "Разрядить",
+    "pouch_store": "Положить в подсумок", "pouch_remove": "Убрать из подсумка",
+    "storage_store": "Положить в хранилище", "delivery": "Отправить доставкой",
+}
 
 _store = EntityStore(
     env_var="ITEM_CONSTRUCTOR_PATH",
@@ -237,19 +249,48 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
                 warnings.append(f"Эффект {i}: тип «{etype}» не из стандартного набора движка.")
 
     # --- Расширение (item-reputation §2, проверки §6.1) ---------------------
-    is_unique = bool(data.get("is_unique") or item_type == "unique")
+    # Старое поле UI называлось unique, расширенная карточка — is_unique.
+    # Считаем их одним флагом для обратной совместимости.
+    is_unique = bool(data.get("is_unique") or data.get("unique") or item_type == "unique")
     is_quest = bool(data.get("is_quest") or item_type == "quest")
     is_bound = bool(data.get("bound") or data.get("bound_on_pickup") or data.get("bound_on_equip"))
     if is_unique and stackable:
         errors.append("Уникальный предмет не может стакаться (ТЗ §6.1).")
+    if is_unique:
+        limit = _num(data.get("global_instance_limit"))
+        if limit is not None and limit < 1:
+            errors.append("Лимит уникального предмета должен быть не меньше 1.")
     if is_quest and (data.get("can_sell") or data.get("sellable")):
         warnings.append("Квестовый предмет помечен продаваемым (ТЗ §6.1).")
     if is_bound and (data.get("can_transfer") or data.get("transferable")):
         warnings.append("Привязанный предмет помечен передаваемым (ТЗ §6.1).")
 
+    profile_actions = data.get("profile_actions")
+    if profile_actions not in (None, ""):
+        if not isinstance(profile_actions, list):
+            errors.append("Действия в профиле должны быть списком.")
+        else:
+            unknown = [str(action) for action in profile_actions if str(action) not in PROFILE_ACTIONS]
+            if unknown:
+                errors.append("Неизвестные действия в профиле: " + ", ".join(unknown) + ".")
+            if "transfer" in profile_actions and (is_bound or is_quest) and not data.get("allow_bound_transfer"):
+                errors.append("Передача запрещена для привязанного или квестового предмета.")
+            if "drop" in profile_actions and (data.get("protected") or data.get("drop_protected")):
+                errors.append("Защищённый предмет нельзя помечать доступным для выбрасывания.")
+
     if data.get("has_charges"):
         if _num(data.get("max_charges")) is None:
             warnings.append("У предмета есть заряды, но не задан max_charges (ТЗ §6.1).")
+        maximum_charges = _num(data.get("max_charges"))
+        current_charges = _num(data.get("current_charges"))
+        if maximum_charges is not None and maximum_charges < 1:
+            errors.append("Максимум зарядов должен быть не меньше 1.")
+        if current_charges is not None and (current_charges < 0 or maximum_charges is not None and current_charges > maximum_charges):
+            errors.append("Начальное число зарядов должно быть в диапазоне 0…max_charges.")
+        for field in ("charge_amount", "charge_cost"):
+            value = _num(data.get(field))
+            if value is not None and value < 0:
+                errors.append(f"Поле {field} не может быть отрицательным.")
         if not data.get("restore_charges_over_time") and not data.get("restore_on_battle_end") \
                 and not data.get("restore_on_day_start"):
             warnings.append("У предмета есть заряды, но нет способа восстановления (ТЗ §6.1).")
@@ -272,11 +313,25 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
 
     for i, link in enumerate(data.get("effect_links") or [], start=1):
         if isinstance(link, dict):
-            if not str(link.get("effect_id") or "").strip():
+            effect_id = str(link.get("effect_id") or "").strip()
+            if not effect_id:
                 errors.append(f"Связь с эффектом {i}: не указан effect_id.")
+            else:
+                from services import effect_constructor_service as effects
+                effect = effects.store().get(effect_id)
+                if not effect:
+                    errors.append(f"Связь с эффектом {i}: эффект {effect_id} не найден.")
+                elif effect.get("status") != effects.STATUS_PUBLISHED:
+                    errors.append(f"Связь с эффектом {i}: эффект {effect_id} не опубликован.")
             trig = str(link.get("trigger") or "").strip()
             if trig and trig not in EFFECT_LINK_TRIGGERS:
-                warnings.append(f"Связь с эффектом {i}: триггер «{trig}» не из списка.")
+                errors.append(f"Связь с эффектом {i}: триггер «{trig}» не из списка.")
+            chance = _num(link.get("chance_percent", link.get("chance")))
+            if chance is not None and not 0 <= chance <= 100:
+                errors.append(f"Связь с эффектом {i}: шанс должен быть 0–100%.")
+            for field in ("duration_seconds", "duration_turns", "max_stacks"):
+                if link.get(field) not in (None, "") and (_num(link.get(field)) is None or _num(link.get(field)) < 0):
+                    errors.append(f"Связь с эффектом {i}: {field} должно быть неотрицательным числом.")
 
     # --- Открываемый предмет (ТЗ 21 §1) ------------------------------------
     if data.get("openable"):
@@ -321,6 +376,69 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
                 "Загрузите ассет и укажите локальный путь вида /assets/…"
             )
 
+    # --- Полная карточка ТЗ 2.0: межблочные инварианты --------------------
+    for key, label in (
+        ("commission_percent", "Комиссия"), ("use_success_chance", "Шанс использования"),
+        ("crit_chance", "Шанс крита"),
+    ):
+        raw = data.get(key)
+        if raw not in (None, ""):
+            value = _num(raw)
+            if value is None or not 0 <= value <= 100:
+                errors.append(f"{label} должна быть в диапазоне 0–100%.")
+
+    for low_key, high_key, label in (
+        ("min_price", "max_price", "Цена"),
+        ("base_damage_min", "base_damage_max", "Урон"),
+    ):
+        low, high = _num(data.get(low_key)), _num(data.get(high_key))
+        if low is not None and low < 0:
+            errors.append(f"{label}: минимальное значение не может быть отрицательным.")
+        if high is not None and high < 0:
+            errors.append(f"{label}: максимальное значение не может быть отрицательным.")
+        if low is not None and high is not None and low > high:
+            errors.append(f"{label}: минимальное значение больше максимального.")
+
+    if data.get("pity_enabled"):
+        pity = _num(data.get("pity_count"))
+        if pity is None or pity < 1:
+            errors.append("Для гарантированной награды укажите количество открытий не меньше 1.")
+    container_rows = [row for row in (data.get("guaranteed_rewards") or data.get("container_contents") or []) if isinstance(row, dict)]
+    for index, row in enumerate(container_rows, 1):
+        if not str(row.get("item_id") or row.get("id") or "").strip():
+            errors.append(f"Содержимое контейнера #{index}: не указан item_id.")
+        chance = _num(row.get("chance"))
+        if chance is not None and not 0 <= chance <= 100:
+            errors.append(f"Содержимое контейнера #{index}: шанс должен быть 0–100%.")
+        low = _num(row.get("min_amount", row.get("min_count")))
+        high = _num(row.get("max_amount", row.get("max_count")))
+        if low is not None and low < 1:
+            errors.append(f"Содержимое контейнера #{index}: минимальное количество меньше 1.")
+        if low is not None and high is not None and low > high:
+            errors.append(f"Содержимое контейнера #{index}: min больше max.")
+    if data.get("can_open") and not container_rows and not data.get("reward_groups"):
+        warnings.append("Контейнер можно открыть, но его содержимое пусто.")
+    if data.get("delivery_allowed") and not (
+        str(data.get("delivery_time_formula_id") or "").strip() or _num(data.get("delivery_time_seconds")) is not None
+    ):
+        warnings.append("Доставка разрешена, но время доставки или формула не заданы.")
+    if data.get("deprecated") and not str(data.get("deprecation_replacement_id") or "").strip():
+        warnings.append("Устаревший предмет не содержит ID предмета-замены.")
+    for key in ("max_upgrade_level", "max_enchants", "inventory_size", "inventory_limit", "weekly_drop_limit"):
+        raw = data.get(key)
+        if raw not in (None, "") and (_num(raw) is None or _num(raw) < 0):
+            errors.append(f"Поле {key} не может быть отрицательным.")
+
+    for key in ("inventory_image", "market_image", "drop_image", "profile_image", "quality_image"):
+        value = str(data.get(key) or "").strip()
+        if value and _is_external_image(value):
+            errors.append(f"Поле «{key}»: внешние URL изображений запрещены.")
+
+    from services.formula_runtime import validate_references
+    errors.extend(validate_references(data, (
+        "price_formula_id", "use_formula_id", "repair_cost_formula_id",
+        "drop_chance_formula_id", "delivery_time_formula_id", "delivery_cost_formula_id",
+    )))
     return {"ok": not errors, "errors": errors, "warnings": warnings}
 
 
@@ -347,10 +465,11 @@ def record_version(item_id: str, *, by: str = "", reason: str = "") -> dict[str,
 
 # --- Индекс «где используется» (ТЗ §20) -------------------------------------
 def where_used(item_id: str) -> dict[str, Any]:
-    """Найти ссылки на предмет в реестрах мира/достижений/крафте."""
+    """Найти ссылки на предмет во всех реестрах, блокирующих hard-delete."""
     item_id = str(item_id or "").strip()
     used: dict[str, list[dict[str, Any]]] = {
         "mob_drops": [], "events": [], "quests": [], "achievements": [], "recipes": [],
+        "item_links": [], "promocodes": [], "markets": [], "deliveries": [],
     }
     if not item_id:
         return used
@@ -370,6 +489,73 @@ def where_used(item_id: str) -> dict[str, Any]:
             d = quest.get("data") or {}
             if d.get("goal_type") in ("bring_item", "deliver_item") and str(d.get("goal_target") or "") == item_id:
                 used["quests"].append({"id": quest.get("id"), "name": d.get("name")})
+    except Exception:
+        pass
+
+    # Контейнеры и прочие предметы могут ссылаться на другой item_id. Проверяем
+    # только известные ссылочные поля, чтобы текст описания не давал ложных
+    # срабатываний.
+    try:
+        scalar_fields = ("required_item", "replacement_item", "related_item")
+        row_fields = (
+            "guaranteed_rewards", "container_contents", "reward_groups",
+            "required_items", "replacement_items", "related_items",
+        )
+
+        def references(value: Any) -> bool:
+            if isinstance(value, dict):
+                if str(value.get("item_id") or value.get("id") or "") == item_id:
+                    return True
+                return any(references(child) for child in value.values())
+            if isinstance(value, list):
+                return any(references(child) for child in value)
+            return False
+
+        for env in _store.list():
+            if str(env.get("id") or "") == item_id:
+                continue
+            data = env.get("data") or {}
+            linked = any(str(data.get(field) or "") == item_id for field in scalar_fields)
+            linked = linked or any(references(data.get(field)) for field in row_fields)
+            if linked:
+                used["item_links"].append({"id": env.get("id"), "name": data.get("name_ru") or data.get("name")})
+    except Exception:
+        pass
+
+    try:
+        from services.promo_service import load_promo_data
+
+        for code, promo in (load_promo_data().get("codes") or {}).items():
+            if references((promo or {}).get("reward")):
+                used["promocodes"].append({"id": code, "name": (promo or {}).get("note") or code})
+    except Exception:
+        pass
+
+    try:
+        from services import market_service as market
+
+        for row in market.PORT_MARKET_POOL:
+            if str((row or {}).get("item_id") or "") == item_id:
+                used["markets"].append({"id": "port_market", "name": (row or {}).get("name")})
+        for kind in (market.MARKET_KIND_NPC, market.MARKET_KIND_BLACK):
+            for row in market.load_market_items(kind):
+                if str(getattr(row, "item_id", "") or "") == item_id:
+                    used["markets"].append({
+                        "id": f"{kind}_market",
+                        "name": getattr(row, "display_name", None),
+                    })
+    except Exception:
+        pass
+
+    try:
+        from services.courier_service import _load_transfers
+
+        for transfer in _load_transfers():
+            if references((transfer or {}).get("items")):
+                used["deliveries"].append({
+                    "id": (transfer or {}).get("transfer_id"),
+                    "name": (transfer or {}).get("receiver_name") or "courier",
+                })
     except Exception:
         pass
 

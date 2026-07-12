@@ -104,6 +104,33 @@ class RepairFinesTest(unittest.TestCase):
         self.assertEqual([f["id"] for f in fs.active_fines(player)], ["legacy1"])
         self.assertEqual(player["active_fine"]["id"], "legacy1")
 
+    def test_repair_normalizes_all_aliases_restores_fields_and_deduplicates(self):
+        aliases=[("seldar_npc_market_black","black_market"),("Крот","informer_krot"),("casino_raid","underground_casino")]
+        for alias,canonical in aliases:
+            broken={"id":"same","source":alias,"source_name":alias,"current_amount":None}
+            player={"level":10,"active_fines":[broken,dict(broken)]}
+            report=fs.repair_player_fines(player,now=1000)
+            self.assertTrue(report["fixed"]);self.assertEqual(len(player["active_fines"]),1)
+            fine=player["active_fines"][0];self.assertEqual(fine["source"],canonical);self.assertGreater(fine["current_amount"],0)
+            for key in ("status","currency","created_at_ts","updated_at_ts","due_day","overdue_day","forced_collection_day","daily_interest_percent","can_pay_in_city_hall","can_pay_in_fortress_hall"):self.assertIn(key,fine)
+            actions={row.get("action") for row in player.get("fine_history") or []};self.assertIn("fine_duplicate_removed",actions);self.assertIn("fine_repaired",actions)
+
+    def test_create_pay_remove_delete_write_unified_history(self):
+        player={"level":1,"money":1000,"money_copper":1000}
+        first=fs.create_raid_fine(player,"black_market_raid",now=100)
+        self.assertEqual(first["source"],"black_market");self.assertEqual(player["fine_history"][-1]["action"],"fine_created")
+        fs.pay_fine(player,place="city",now=100);self.assertIn("fine_paid",{row["action"] for row in player["fine_history"]})
+        second=fs.create_raid_fine(player,"krot",now=200);fs.remove_player_fine(player,second["id"],reason="test");self.assertEqual(player["fine_history"][-1]["action"],"fine_removed_by_admin")
+        third=fs.create_raid_fine(player,"casino",now=300);fs.remove_player_fine(player,third["id"],reason="broken",delete=True);self.assertEqual(player["fine_history"][-1]["action"],"fine_invalid_dropped")
+
+    def test_authored_stages_restrictions_text_and_partial_payment_are_live(self):
+        fine=_fine("staged",amount=100);fine.update({"created_at_ts":1_000_000,"stages":[{"stage":"first","duration_days":1},{"stage":"second","duration_days":1,"percent_increase":50,"text":"Вторая стадия"},{"stage":"permanent","permanent":True,"force_fortress":True,"block_city":True}],"restrictions":[{"code":"block_market"}],"messages":{"on_block":"Запрещено: {restriction}"},"partial_payment_allowed":True,"payment_places":["profile"]})
+        player={"money":100,"money_copper":100,"current_city":"seldar","current_zone":"seldar_central_square","active_fines":[fine]};result=fs.advance_fine_state(player,now=1_000_000+fs.SECONDS_PER_FINE_DAY)
+        self.assertIn("Вторая стадия",result.messages);self.assertEqual(fine["current_amount"],150);self.assertEqual(fine["status"],fs.FINE_STATUS_OVERDUE)
+        self.assertIn("block_market",fs.fine_restrictions(player));self.assertIn("Запрещено",fs.fine_action_block_text(player,"Чёрный рынок"))
+        paid=fs.pay_fine_amount(player,"staged",40,place="profile",now=1_000_100);self.assertEqual(paid["remaining"],110);self.assertEqual(player["money"],60)
+        result=fs.advance_fine_state(player,now=1_000_000+2*fs.SECONDS_PER_FINE_DAY);self.assertTrue(result.moved_to_fortress);self.assertIn("block_city",fs.fine_restrictions(player))
+
 
 if __name__ == "__main__":
     unittest.main()

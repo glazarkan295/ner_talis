@@ -26,6 +26,10 @@ from services.admin_rbac import (
     PERM_WORLD_TEST_RUN,
     PERM_WORLD_VALIDATE,
     PERM_WORLD_VIEW,
+    PERM_LOCATION_LIMITS_VIEW,
+    PERM_LOCATION_LIMITS_EDIT,
+    PERM_LOCATION_LIMITS_FORCE_RESTORE,
+    PERM_LOCATION_LIMITS_FORCE_DEPLETE,
     identity_key,
     require_permission,
 )
@@ -57,6 +61,12 @@ class WorldActionRequest(BaseModel):
     reason: str = ""
 
 
+class WorldDeleteRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    confirm: str
+    reason: str = ""
+
+
 class WorldRollbackRequest(BaseModel):
     token: str | None = Field(default=None, min_length=16)
     version: int
@@ -74,6 +84,14 @@ class MobTestBattleRequest(BaseModel):
     token: str | None = Field(default=None, min_length=16)
     player: dict[str, Any] = Field(default_factory=dict)
     count: int = 200
+    reason: str = ""
+
+
+class LimitRuntimeRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    location_id: str
+    value: int = Field(ge=0)
+    week: str | None = None
     reason: str = ""
 
 
@@ -207,6 +225,59 @@ def create_admin_world_router(get_storage) -> APIRouter:
         )
         return result
 
+    @router.get("/limits/runtime")
+    def list_limit_runtime(request: Request, location_id: str, week: str | None = None,
+                           token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        session = _session(get_storage(), request, token)
+        _require(session, PERM_LOCATION_LIMITS_VIEW)
+        from services import location_runtime
+
+        rows = []
+        for envelope in location_runtime.published_limits(location_id):
+            data = envelope.get("data") or {}
+            total = location_runtime.limit_total(envelope)
+            left = location_runtime.remaining(location_id, envelope, week=week)
+            rows.append({
+                "id": envelope.get("id"), "name": data.get("name") or envelope.get("id"),
+                "limit_type": data.get("limit_type"), "linked_object": data.get("linked_object"),
+                "total": total, "remaining": left,
+                "used": (total - left) if total is not None and left is not None else None,
+                "percent_remaining": round(left * 100 / total, 2) if total and left is not None else None,
+                "week": week or location_runtime.current_week_key(),
+            })
+        return {"ok": True, "location_id": location_id, "items": rows}
+
+    @router.post("/limits/runtime/{limit_id}/set")
+    def set_limit_runtime(limit_id: str, payload: LimitRuntimeRequest, request: Request) -> dict[str, Any]:
+        session = _session(get_storage(), request, payload.token)
+        from services import location_runtime
+
+        envelope = registry.get_content(registry.KIND_LOCATION_WEEKLY_LIMIT, limit_id)
+        if envelope is None or str((envelope.get("data") or {}).get("location") or "") != payload.location_id:
+            raise HTTPException(status_code=404, detail="Недельный лимит локации не найден.")
+        total = location_runtime.limit_total(envelope)
+        value = min(payload.value, total) if total is not None else payload.value
+        current = location_runtime.remaining(payload.location_id, envelope, week=payload.week)
+        if value == 0:
+            permission = PERM_LOCATION_LIMITS_FORCE_DEPLETE
+            action = "location_limits.force_deplete"
+        elif current is not None and value > current:
+            permission = PERM_LOCATION_LIMITS_FORCE_RESTORE
+            action = "location_limits.force_restore"
+        else:
+            permission = PERM_LOCATION_LIMITS_EDIT
+            action = "location_limits.edit_remaining"
+        _require(session, permission)
+        result = run_admin_operation(
+            session=session, action=action,
+            func=lambda: location_runtime.force_set_remaining(payload.location_id, limit_id, value, week=payload.week),
+            target_type="location_weekly_limit", target_id=limit_id,
+            target_name=str((envelope.get("data") or {}).get("name") or limit_id),
+            before={"remaining": current}, after_func=lambda remaining: {"remaining": remaining},
+            reason=payload.reason, details={"location_id": payload.location_id, "week": payload.week},
+        )
+        return {"ok": True, "remaining": result, "total": total, "week": payload.week or location_runtime.current_week_key()}
+
     @router.get("/{kind}")
     def list_kind(kind: str, request: Request, token: str | None = Query(default=None, min_length=16), status: str | None = None) -> dict[str, Any]:
         storage = get_storage()
@@ -225,6 +296,49 @@ def create_admin_world_router(get_storage) -> APIRouter:
         if obj is None:
             raise HTTPException(status_code=404, detail="Объект не найден.")
         return {"ok": True, "item": obj}
+
+    @router.get("/{kind}/{content_id}/usage")
+    def usage(kind: str, content_id: str, request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, token)
+        _require(session, PERM_WORLD_VIEW)
+        _ensure_kind(kind)
+        if registry.get_content(kind, content_id) is None:
+            raise HTTPException(status_code=404, detail="Объект не найден.")
+        return {"ok": True, "usage": registry.where_used(kind, content_id)}
+
+    @router.delete("/{kind}/{content_id}")
+    def hard_delete(kind: str, content_id: str, payload: WorldDeleteRequest, request: Request) -> dict[str, Any]:
+        storage = get_storage()
+        session = _session(storage, request, payload.token)
+        # В world-RBAC отдельного delete-права нет: опасная операция наследует
+        # наиболее строгое имеющееся право world.archive.
+        _require(session, PERM_WORLD_ARCHIVE)
+        _ensure_kind(kind)
+        before = registry.get_content(kind, content_id)
+        if before is None:
+            raise HTTPException(status_code=404, detail="Объект не найден.")
+        if payload.confirm != content_id:
+            raise HTTPException(status_code=400, detail="Для удаления введите точный ID объекта.")
+        usage_result = registry.where_used(kind, content_id)
+        if usage_result.get("total"):
+            raise HTTPException(
+                status_code=409,
+                detail="Объект используется в игре. Сначала удалите все связи, показанные в «Где используется».",
+            )
+        deleted = run_admin_operation(
+            session=session,
+            action="world.delete_hard",
+            func=lambda: registry.delete_content(kind, content_id),
+            target_type=kind,
+            target_id=content_id,
+            target_name=str((before.get("data") or {}).get("name") or content_id),
+            before={"status": before.get("status"), "version": before.get("version")},
+            after_func=lambda result: {"deleted": bool(result)},
+            reason=payload.reason,
+            details={"kind": kind},
+        )
+        return {"ok": True, "deleted": bool(deleted)}
 
     @router.post("/{kind}")
     def create(kind: str, payload: WorldCreateRequest, request: Request) -> dict[str, Any]:

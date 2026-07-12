@@ -2,19 +2,26 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createLibItem,
   deleteLibItem,
+  duplicateLibItem,
   fetchLibItem,
   fetchLibList,
   fetchLibMeta,
+  fetchLibPreview,
+  fetchLibUsage,
   importLib,
   libLifecycle,
   updateLibItem,
   validateLibItem,
+  broadcastRecipientPreview, broadcastStart, broadcastStop, broadcastRunBatch, broadcastRetryFailed, fetchBroadcastRun,
 } from "../../../api/adminLibraryApi.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
 import { VersionHistory } from "../VersionHistory.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 import { fetchFormulas } from "../../../api/adminFormulaApi.js";
+import { fetchEffects } from "../../../api/adminEffectApi.js";
 import { HintTip, HINT_TIP_CSS } from "../HintTip.jsx";
+import { TechnicalData } from "../TechnicalData.jsx";
+import { requestAdminJson } from "../../../api/adminApi.js";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 
@@ -39,15 +46,25 @@ export function LibrarySection({ guarded, hasPerm, config }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [duplicateId, setDuplicateId] = useState("");
+  const [preview, setPreview] = useState(null);
+  const [usage, setUsage] = useState(null);
   const [formulaOptions, setFormulaOptions] = useState([]);
+  const [effectOptions, setEffectOptions] = useState([]);
+  const [runtimeInfo, setRuntimeInfo] = useState(null);
+  const [operationLogs, setOperationLogs] = useState(null);
   const hasFormulaField = useMemo(() => fields.some((f) => f.type === "formularef"), [fields]);
+  const hasEffectField = useMemo(() => fields.some((f) => f.type === "effectref"), [fields]);
 
-  const can = useMemo(() => ({
-    create: hasPerm(`${permPrefix}.create`), edit: hasPerm(`${permPrefix}.edit`),
-    validate: hasPerm(`${permPrefix}.validate`), publish: hasPerm(`${permPrefix}.publish`),
-    disable: hasPerm(`${permPrefix}.disable`), archive: hasPerm(`${permPrefix}.archive`),
-    del: hasPerm(`${permPrefix}.delete`),
-  }), [hasPerm, permPrefix]);
+  const can = useMemo(() => {
+    const managed = config.managePerm ? hasPerm(config.managePerm) : null;
+    return {
+      create: managed ?? hasPerm(`${permPrefix}.create`), edit: managed ?? hasPerm(`${permPrefix}.edit`),
+      validate: managed ?? hasPerm(`${permPrefix}.validate`), publish: managed ?? hasPerm(`${permPrefix}.publish`),
+      disable: managed ?? hasPerm(`${permPrefix}.disable`), archive: managed ?? hasPerm(`${permPrefix}.archive`),
+      del: managed ?? hasPerm(`${permPrefix}.delete`),
+    };
+  }, [hasPerm, permPrefix, config.managePerm]);
 
   const empty = useMemo(() => {
     const o = {};
@@ -59,15 +76,17 @@ export function LibrarySection({ guarded, hasPerm, config }) {
   useEffect(() => { (async () => { const m = await guarded(() => fetchLibMeta(base)); if (m) setMeta(m); })(); }, [guarded, base]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (!hasFormulaField) return; (async () => { const p = await guarded(() => fetchFormulas("published")); if (p) setFormulaOptions((p.items || []).map((f) => ({ value: f.id, label: (f.data?.name || f.id) }))); })(); }, [guarded, hasFormulaField]);
+  useEffect(() => { if (!hasEffectField) return; (async () => { const p = await guarded(() => fetchEffects("published")); if (p) setEffectOptions((p.items || []).map((f) => ({ value: f.id, label: (f.data?.effect_name || f.id) }))); })(); }, [guarded, hasEffectField]);
 
   const statuses = meta?.statuses || [];
   const statusLabel = (v) => statuses.find((s) => (s.value || s) === v)?.label || v;
 
   async function openItem(id) {
     const p = await guarded(() => fetchLibItem(base, id));
-    if (p?.item) setEditing({ id, data: { ...empty, ...(p.item.data || {}) }, status: p.item.status, validation: p.validation, isNew: false });
+    if (p?.item) { setEditing({ id, data: { ...empty, ...(p.item.data || {}) }, status: p.item.status, validation: p.validation, isNew: false }); setPreview(null); setUsage(null); setRuntimeInfo(null); }
   }
   function startCreate() { setEditing({ id: "", data: { ...empty }, status: "draft", validation: null, isNew: true }); }
+  function startDuplicate() { setDuplicateId(`${editing.id}_copy`); }
 
   async function save() {
     const e = editing;
@@ -97,6 +116,22 @@ export function LibrarySection({ guarded, hasPerm, config }) {
           <h2>{editing.isNew ? newLabel : (d[nameField] || editing.id)}</h2>
           {!editing.isNew ? <span className={`ntv2-badge ${STATUS_TONE[editing.status] || ""}`}>{statusLabel(editing.status)}</span> : null}
         </div>
+
+        {!editing.isNew && config.runtimeType === "broadcast" ? (
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Отправка и журнал</h4>
+            <div className="ntv2-form-row">
+              <button type="button" className="ntv2-btn" onClick={async () => { const p = await guarded(() => broadcastRecipientPreview(editing.id)); if (p) setRuntimeInfo({ preview: p }); }}>Получатели до отправки</button>
+              {can.publish && editing.status === "published" ? <button type="button" className="ntv2-btn" onClick={() => setConfirm({ title: "Тестовая отправка администраторам?", confirmLabel: "Отправить тест", body: <p>Сообщение и награды получат только администраторы из аудитории теста.</p>, run: async () => { const p = await guarded(() => broadcastStart(editing.id, true), "Тестовая рассылка запущена."); if (p) setRuntimeInfo(p.run); } })}>Тестовая отправка</button> : null}
+              {can.publish && editing.status === "published" ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Запустить массовую рассылку?", dangerous: true, confirmLabel: "Запустить", body: <p>Получатели рассчитаны по опубликованной карточке. Для наград это является вторым подтверждением.</p>, run: async () => { const p = await guarded(() => broadcastStart(editing.id, false), "Рассылка запущена."); if (p) setRuntimeInfo(p.run); } })}>Запустить рассылку</button> : null}
+              <button type="button" className="ntv2-btn" onClick={async () => { const p = await guarded(() => fetchBroadcastRun(editing.id)); if (p) setRuntimeInfo(p.run); }}>Обновить журнал</button>
+              {can.publish ? <button type="button" className="ntv2-btn" onClick={async () => { const p = await guarded(() => broadcastRunBatch(editing.id), "Следующая пачка обработана."); if (p) setRuntimeInfo(p.run); }}>Обработать пачку</button> : null}
+              {can.publish ? <button type="button" className="ntv2-btn" onClick={async () => { const p = await guarded(() => broadcastRetryFailed(editing.id), "Ошибочные отправки поставлены на повтор."); if (p) setRuntimeInfo(p.run); }}>Повторить ошибки</button> : null}
+              {can.disable ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Остановить рассылку?", dangerous: true, confirmLabel: "Остановить", body: <p>Необработанные получатели не получат сообщение.</p>, run: async () => { const p = await guarded(() => broadcastStop(editing.id), "Рассылка остановлена."); if (p) setRuntimeInfo(p.run); } })}>Остановить</button> : null}
+            </div>
+            {runtimeInfo ? <TechnicalData label="Получатели / состояние / логи" value={runtimeInfo} /> : <p className="ntv2-hint">Перед запуском проверьте аудиторию и тестовую отправку.</p>}
+          </div>
+        ) : null}
         {editing.isNew ? <Field label="ID (латиница)"><input value={editing.id} onChange={(e) => setEditing({ ...editing, id: e.target.value })} /></Field> : <p className="ntv2-hint ntv2-mono">{editing.id}</p>}
 
         <div className="ntv2-world-form">
@@ -106,6 +141,7 @@ export function LibrarySection({ guarded, hasPerm, config }) {
             if (f.type === "checkbox") return <label className="ntv2-check" key={f.key}><input type="checkbox" checked={Boolean(d[f.key])} disabled={disabled} onChange={(e) => set(f.key, e.target.checked)} /> {f.label}<HintTip text={f.hint} /></label>;
             if (f.type === "select") return <Field key={f.key} label={f.label} hint={f.hint}><select value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)}><option value="">—</option>{options(meta, f.metaKey).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>;
             if (f.type === "formularef") return <Field key={f.key} label={f.label} hint={f.hint}><select value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)}><option value="">— без формулы —</option>{formulaOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>;
+            if (f.type === "effectref") return <Field key={f.key} label={f.label} hint={f.hint}><select value={d[f.key] || ""} disabled={disabled} onChange={(e) => set(f.key, e.target.value)}><option value="">— без эффекта —</option>{effectOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>;
             if (f.type === "list") return <Field key={f.key} label={f.label} hint={f.hint}><textarea rows={f.rows || 2} value={(Array.isArray(d[f.key]) ? d[f.key] : []).join("\n")} disabled={disabled} onChange={(e) => set(f.key, e.target.value.split("\n").map((s) => s.trim()).filter(Boolean))} /></Field>;
             if (f.type === "objlist") {
               const rows = Array.isArray(d[f.key]) ? d[f.key] : [];
@@ -157,11 +193,32 @@ export function LibrarySection({ guarded, hasPerm, config }) {
         <div className="ntv2-form-row" style={{ marginTop: 14 }}>
           {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={editing.isNew && !editing.id.trim()} onClick={save}>{editing.isNew ? "Создать" : "Сохранить"}</button> : null}
           {!editing.isNew && can.validate ? <button type="button" className="ntv2-btn" onClick={runValidate}>Проверить</button> : null}
+          {!editing.isNew ? <button type="button" className="ntv2-btn" onClick={async () => { const p = await guarded(() => fetchLibPreview(base, editing.id)); if (p) setPreview(p.preview); }}>Предпросмотр</button> : null}
+          {!editing.isNew ? <button type="button" className="ntv2-btn" onClick={async () => { const p = await guarded(() => fetchLibUsage(base, editing.id)); if (p) setUsage(p.usage); }}>Где используется</button> : null}
+          {config.operationLogs ? <button type="button" className="ntv2-btn" onClick={async () => { const p = await guarded(() => requestAdminJson(`/api/admin/v2/${base}/${config.operationsPath || "operations/logs?limit=500"}`)); if (p) setOperationLogs(p); }}>{config.operationsLabel || "Логи операций"}</button> : null}
+          {!editing.isNew && can.validate && editing.status === "draft" ? <button type="button" className="ntv2-btn" onClick={() => setConfirm({ title: "Отправить на проверку?", confirmLabel: "На проверку", body: <p>Запись будет проверена и получит статус «На проверке».</p>, run: async (r) => { await guarded(() => libLifecycle(base, editing.id, "review", r), "Отправлено на проверку."); await refreshEditing(); } })}>На проверку</button> : null}
+          {!editing.isNew && can.create ? <button type="button" className="ntv2-btn" onClick={startDuplicate}>Дублировать</button> : null}
           {!editing.isNew && can.publish ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Опубликовать?", dangerous: true, confirmLabel: "Опубликовать", body: <p>Запись будет проверена и опубликована.</p>, run: async (r) => { await guarded(() => libLifecycle(base, editing.id, "publish", r), "Опубликовано."); await refreshEditing(); } })}>Опубликовать</button> : null}
           {!editing.isNew && can.disable && editing.status === "published" ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Отключить?", dangerous: true, confirmLabel: "Отключить", body: <p>Запись перестанет действовать.</p>, run: async (r) => { await guarded(() => libLifecycle(base, editing.id, "disable", r), "Отключено."); await refreshEditing(); } })}>Отключить</button> : null}
           {!editing.isNew && can.archive ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "В архив?", dangerous: true, confirmLabel: "В архив", body: <p>Запись уйдёт в архив.</p>, run: async (r) => { await guarded(() => libLifecycle(base, editing.id, "archive", r), "В архиве."); await refreshEditing(); } })}>В архив</button> : null}
+          {!editing.isNew && can.edit && ["archive", "disabled", "error"].includes(editing.status) ? <button type="button" className="ntv2-btn" onClick={() => setConfirm({ title: "Восстановить как черновик?", confirmLabel: "Восстановить", body: <p>Запись вернётся в черновики и не будет включена в игру автоматически.</p>, run: async (r) => { await guarded(() => libLifecycle(base, editing.id, "restore", r), "Восстановлено."); await refreshEditing(); } })}>Восстановить</button> : null}
           {!editing.isNew && can.del ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Удалить?", dangerous: true, confirmLabel: "Удалить", body: <p>Полное удаление записи.</p>, run: async (r) => { await guarded(() => deleteLibItem(base, editing.id, editing.id, r), "Удалено."); setEditing(null); await load(); } })}>Удалить</button> : null}
         </div>
+
+        {preview ? <div className="ntv2-panel"><h4 className="ntv2-subhead">Предпросмотр</h4><h3>{preview.title || d[nameField] || editing.id}</h3>{preview.description ? <p>{preview.description}</p> : null}<TechnicalData label="Данные предпросмотра" value={preview} /></div> : null}
+        {usage ? <div className="ntv2-panel"><h4 className="ntv2-subhead">Где используется</h4>{usage.used_by?.length ? <ul>{usage.used_by.map((id) => <li className="ntv2-mono" key={id}>{id}</li>)}</ul> : <p className="ntv2-hint">Входящих связей не найдено.</p>}<TechnicalData label="Все связи" value={usage} /></div> : null}
+        {operationLogs ? <div className="ntv2-panel"><h4 className="ntv2-subhead">{config.operationsTitle || `Логи операций · подозрительных: ${(operationLogs.suspicious || []).length}`}</h4><TechnicalData label={config.operationsDataLabel || "Операции"} value={operationLogs} /></div> : null}
+
+        {duplicateId ? (
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Дублирование записи</h4>
+            <Field label="ID новой записи"><input className="ntv2-mono" value={duplicateId} onChange={(e) => setDuplicateId(e.target.value)} /></Field>
+            <div className="ntv2-form-row">
+              <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={!duplicateId.trim()} onClick={() => setConfirm({ title: "Создать копию?", confirmLabel: "Дублировать", body: <p>Будет создан независимый черновик с ID <span className="ntv2-mono">{duplicateId}</span>.</p>, run: async (r) => { const p = await guarded(() => duplicateLibItem(base, editing.id, duplicateId.trim(), r), "Копия создана."); if (p?.item) { setDuplicateId(""); await load(); await openItem(p.item.id); } } })}>Создать копию</button>
+              <button type="button" className="ntv2-btn" onClick={() => setDuplicateId("")}>Отмена</button>
+            </div>
+          </div>
+        ) : null}
 
         {/* ТЗ 22 §4: откат опубликованной записи требует и edit, и publish; черновик — только edit. */}
         {!editing.isNew ? <VersionHistory base={base} id={editing.id} canRollback={can.edit && (editing.status !== "published" || can.publish)} onRolledBack={refreshEditing} /> : null}

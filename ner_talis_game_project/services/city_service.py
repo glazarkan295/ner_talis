@@ -100,6 +100,7 @@ CONFIRM_SKILL = "Выбрать навык"
 BACK_TO_SKILL_CHOICE = "Вернуться к выбору навыка"
 SECONDARY_PATH_ACTION = "Выбрать дополнительный путь"
 PROFILE_BUTTON = "Профиль"
+EVENT_CAMPAIGNS_BUTTON = "Эвенты"
 CITY_MANAGER = "Городской управляющий"
 CITY_REWARD_CLAIM_ACTION = "Получить награду"
 logger = logging.getLogger(__name__)
@@ -159,12 +160,22 @@ class WorldActionResult:
 
 
 def central_square_buttons() -> list[list[str]]:
-    return [
+    rows = [
         ["Портовый квартал", "Торговый квартал"],
         ["Ремесленный квартал", "Верхний квартал"],
         ["Городские ворота", "Информационный стенд"],
-        [PROFILE_BUTTON],
+        [PROFILE_BUTTON, EVENT_CAMPAIGNS_BUTTON],
+        ["NPC-помощники"],
     ]
+    try:
+        from services.tavern_runtime import taverns_for_parent
+        rows.extend([[row["name"]] for row in taverns_for_parent("city", "seldar")])
+    except Exception: pass
+    try:
+        from services.casino_runtime import casinos_for_parent
+        rows.extend([[row["name"]] for row in casinos_for_parent("city","seldar")])
+    except Exception: pass
+    return rows
 
 
 def info_stand_buttons() -> list[list[str]]:
@@ -661,7 +672,7 @@ CITY_ACTIONS: dict[str, CityResponse] = {
 
 BRANCH_CHOICE_ACTIONS = frozenset({ORDER_STONE, APPLY_ID_AMULET, CHOOSE_SPIRIT_BRANCH, CHOOSE_MANA_BRANCH, PREVIEW_SPIRIT_BRANCH, PREVIEW_MANA_BRANCH, CONFIRM_BRANCH, BACK_TO_BRANCH_CHOICE, CONFIRM_PATH, BACK_TO_PATHS, CONFIRM_SKILL, BACK_TO_SKILL_CHOICE, SECONDARY_PATH_ACTION})
 FINE_ACTIONS = frozenset({CITY_FINE_PAY_ACTION, CITY_HALL_BACK, FORTRESS_HALL, STAY_IN_FORTRESS, MAINLAND_EXTERNAL})
-CITY_BUTTONS = frozenset(CITY_ACTIONS.keys()) | BRANCH_CHOICE_ACTIONS | EXTERNAL_LOCATION_BUTTONS | MARKET_ACTIONS | CRAFT_ACTIONS | FINE_ACTIONS | FISHING_ACTIONS
+CITY_BUTTONS = frozenset(CITY_ACTIONS.keys()) | BRANCH_CHOICE_ACTIONS | EXTERNAL_LOCATION_BUTTONS | MARKET_ACTIONS | CRAFT_ACTIONS | FINE_ACTIONS | FISHING_ACTIONS | {EVENT_CAMPAIGNS_BUTTON}
 
 
 def _split_stone_and_administrator_text(text: str) -> list[str]:
@@ -917,7 +928,7 @@ def process_branch_choice_action(storage: Any, player: dict[str, Any], action: s
         selected = confirm_pending_skill_choice(player)
         if not selected:
             storage.update_player(player)
-            return WorldActionResult("Навык не выбран или выбор уже недоступен.", [[BACK_TO_SKILL_CHOICE], ["Ратуша"]])
+            return WorldActionResult(str(player.get("last_skill_choice_error") or "Навык не выбран или выбор уже недоступен."), [[BACK_TO_SKILL_CHOICE], ["Ратуша"]])
         next_threshold = next_threshold_for_path(player, str(selected.get("path") or ""))
         messages = load_branch_choice_messages()
         after = messages.get("after_skill_choice") if isinstance(messages.get("after_skill_choice"), dict) else {}
@@ -1052,15 +1063,161 @@ def process_world_action(
     buttons must be able to break stale market context, while item names,
     quantities and the market-local ``Назад`` stay inside the market.
     """
+    try:
+        from services.bot_message_queue import release_waiting
+        release_waiting(str(player.get("game_id") or ""),"action")
+    except Exception:
+        pass
     # Догоняем фоновые время-зависимые эффекты ДО любых ранних возвратов (бой,
     # таймер крафта), иначе бой и «Проверить таймер» не засчитывались бы как
     # активность для суточного счётчика проклятья.
     if advance_player_time(player):
         storage.update_player(player)
+    try:
+        from services.world_event_runtime import apply_player_effects
+        if apply_player_effects(player, context={"location_id": player.get("current_location") or player.get("location_id"), "city_id": player.get("current_city")}): storage.update_player(player)
+    except Exception:
+        pass
+    try:
+        from services.effect_runtime_service import sync_zone_effects
+        if sync_zone_effects(
+            player, str(player.get("constructor_location_id") or player.get("current_location") or player.get("location_id") or ""),
+            city_id=str(player.get("current_city") or ""), region_id=str(player.get("current_region") or ""),
+        ):
+            storage.update_player(player)
+    except Exception:
+        pass
+
+    from services.fine_service import fine_action_block_text
+    fine_block=fine_action_block_text(player,action)
+    if fine_block:return WorldActionResult(fine_block,buttons=_current_context_buttons(player))
+
+    if action in {"Квесты и задания","Доска заданий"}:
+        from services.quest_runtime_service import available,_bucket
+        current=_bucket(player);rows=[f"• {state.get('name') or qid} — активен" for qid,state in current["active"].items()];buttons=[[f"Квест: {qid}"] for qid in current["active"]]
+        source_id=str(player.get("current_npc_id") or player.get("constructor_location_id") or player.get("location_id") or "");source_type="board" if action=="Доска заданий" else "npc" if player.get("current_npc_id") else "location"
+        for quest in available(player,source_type=source_type,source_id=source_id):rows.append(f"• {quest.get('name')} — доступен");buttons.append([f"Квест: {quest.get('id')}"])
+        return WorldActionResult("📜 Квесты и задания\n\n"+("\n".join(rows) if rows else "Доступных квестов сейчас нет."),buttons+[["Назад"]])
+    if str(action).startswith("Квест: "):
+        from services.quest_runtime_service import card
+        try:view=card(player,str(action).removeprefix("Квест: ").strip())
+        except ValueError as exc:return WorldActionResult(str(exc),[["Квесты и задания"]])
+        return WorldActionResult((str(view.get("error"))+"\n\n" if view.get("error") else "")+str(view.get("text") or ""),view.get("buttons") or [])
+    if str(action).startswith("Принять квест: ") and __import__("services.quest_constructor_service",fromlist=["published_definition"]).published_definition(str(action).removeprefix("Принять квест: ").strip()):
+        from services.quest_runtime_service import accept,card
+        qid=str(action).removeprefix("Принять квест: ").strip()
+        try:result=accept(player,qid);storage.update_player(player);view=card(player,qid)
+        except ValueError as exc:return WorldActionResult(f"⚠️ {exc}",[["Квесты и задания"]])
+        return WorldActionResult(str(result.get("text") or "Квест принят."),view.get("buttons") or [["Квесты и задания"]])
+    if str(action).startswith("Выбор квеста: "):
+        from services.quest_runtime_service import choose,card
+        payload=str(action).removeprefix("Выбор квеста: ");qid,_,choice_id=payload.partition(":")
+        try:result=choose(player,qid,choice_id);storage.update_player(player);view=card(player,qid)
+        except ValueError as exc:return WorldActionResult(f"⚠️ {exc}",[["Квесты и задания"]])
+        return WorldActionResult(str(result.get("text") or "Выбор принят."),view.get("buttons") or [["Квесты и задания"]])
+
+    # Общий Telegram/VK вход в тот же published PVP runtime, что использует web.
+    if str(action).startswith("PVP вызов "):
+        opponent_id=str(action).removeprefix("PVP вызов ").strip();opponent=storage.get_player_by_game_id(opponent_id)
+        if not isinstance(opponent,dict):return WorldActionResult("Игрок для PVP не найден.",[])
+        from services import pvp_runtime_service as pvp
+        try:session=pvp.create_challenge(player,opponent,pvp_type="duel",location_id=str(player.get("constructor_location_id") or player.get("location_id") or ""))
+        except ValueError as exc:return WorldActionResult(f"⚠️ {exc}",[])
+        opponent.setdefault("pvp_invites",[]).append(session["id"]);storage.update_player(opponent)
+        return WorldActionResult(_text := f"⚔️ Вызов отправлен игроку {opponent_id}. ID боя: {session['id']}",buttons=[[f"PVP статус {session['id']}"]])
+    if str(action).startswith(("PVP принять ","PVP отклонить ")):
+        from services import pvp_runtime_service as pvp
+        accept=str(action).startswith("PVP принять ");session_id=str(action).split(" ",2)[2].strip()
+        try:session=pvp.respond(session_id,str(player.get("game_id") or ""),accept)
+        except (ValueError,PermissionError) as exc:return WorldActionResult(f"⚠️ {exc}",[])
+        player["active_pvp_session_id"]=session_id if accept else "";storage.update_player(player)
+        buttons=[[f"PVP {session_id} атака",f"PVP {session_id} защита"],[f"PVP {session_id} побег",f"PVP {session_id} сдаться"]] if accept else []
+        return WorldActionResult(pvp.render_session(session,str(player.get("game_id") or "")) if accept else "PVP-вызов отклонён.",buttons)
+    if str(action).startswith("PVP статус "):
+        from services import pvp_runtime_service as pvp
+        session_id=str(action).removeprefix("PVP статус ").strip();session=pvp.get_session(session_id)
+        if not session or str(player.get("game_id") or "") not in {session.get("challenger"),session.get("opponent")}:return WorldActionResult("PVP-бой не найден.",[])
+        return WorldActionResult(pvp.render_session(session,str(player.get("game_id") or "")),[])
+    if str(action).startswith("PVP ") and len(str(action).split(" ",2))==3:
+        from services import pvp_runtime_service as pvp
+        _,session_id,label=str(action).split(" ",2);actions={"атака":"attack","защита":"defend","побег":"flee","сдаться":"surrender"}
+        if label in actions:
+            try:session=pvp.act(session_id,str(player.get("game_id") or ""),actions[label])
+            except (ValueError,PermissionError) as exc:return WorldActionResult(f"⚠️ {exc}",[])
+            if session.get("state")=="finished":session=pvp.apply_result_to_players(storage,session_id)
+            buttons=[] if session.get("state")=="finished" else [[f"PVP {session_id} атака",f"PVP {session_id} защита"],[f"PVP {session_id} побег",f"PVP {session_id} сдаться"]]
+            return WorldActionResult(pvp.render_session(session,str(player.get("game_id") or "")),buttons)
 
     if player.get("in_battle"):
         response = handle_external_location_action(storage, player, action)
         return WorldActionResult(text=response.text, buttons=response.buttons, scheduled_timer=response.scheduled_timer)
+
+    try:
+        from services.tavern_runtime import try_handle as handle_published_tavern
+        tavern_response = handle_published_tavern(player, action, platform=platform)
+    except Exception:
+        tavern_response = None
+    if tavern_response is not None:
+        storage.update_player(player)
+        return WorldActionResult(text=str(tavern_response.get("text") or ""), buttons=tavern_response.get("buttons") or [])
+    try:
+        from services.casino_runtime import try_handle as handle_published_casino
+        casino_response = handle_published_casino(player, action, platform=platform)
+    except Exception:
+        casino_response = None
+    if casino_response is not None:
+        storage.update_player(player)
+        return WorldActionResult(text=str(casino_response.get("text") or ""), buttons=casino_response.get("buttons") or [])
+
+    if action == "NPC-помощники":
+        from services.npc_ally_runtime import _bucket, definition, refresh
+        refresh(player); rows=[]; buttons=[]
+        for ally_id,state in _bucket(player)["owned"].items():
+            if not isinstance(state,dict): continue
+            data=definition(ally_id) or {}; rows.append(f"• {data.get('name') or ally_id} — {state.get('status')} · ур. {state.get('level',1)} · лояльность {state.get('loyalty',0)}")
+            buttons.append([f"Помощник: {ally_id}"])
+        storage.update_player(player)
+        return WorldActionResult(text="🤝 NPC-помощники\n\n"+("\n".join(rows) if rows else "У вас пока нет помощников."),buttons=buttons+[[BACK_TO_CENTRAL]])
+
+    if str(action).startswith("Помощник: "):
+        ally_id=str(action).split(":",1)[1].strip()
+        from services.npc_ally_runtime import _bucket, activate, definition
+        state=_bucket(player)["owned"].get(ally_id); data=definition(ally_id)
+        if not isinstance(state,dict) or not data: return WorldActionResult(text="Помощник не найден.",buttons=[["NPC-помощники"]])
+        if not state.get("active") and state.get("status")=="available":
+            try: activate(player,ally_id); storage.update_player(player)
+            except ValueError as exc: return WorldActionResult(text=f"⚠️ {exc}",buttons=[["NPC-помощники"]])
+        buttons=[[f"Помощник действие: {ally_id}:{kind}"] for kind in data.get("out_of_battle_actions") or []]
+        return WorldActionResult(text=str(data.get("summon_text") or f"🤝 {data.get('name') or ally_id} готов помогать."),buttons=buttons+[["NPC-помощники"]])
+
+    if str(action).startswith("Помощник действие: "):
+        raw=str(action).split(":",1)[1].strip(); ally_id,sep,kind=raw.partition(":")
+        if not sep: return WorldActionResult(text="Некорректная команда помощнику.",buttons=[["NPC-помощники"]])
+        from services.npc_ally_runtime import outside_action
+        try: text=outside_action(player,ally_id.strip(),kind.strip()); storage.update_player(player)
+        except ValueError as exc: text=f"⚠️ {exc}"
+        return WorldActionResult(text=text,buttons=[[f"Помощник: {ally_id.strip()}"],["NPC-помощники"]])
+
+    if action == EVENT_CAMPAIGNS_BUTTON:
+        from services import event_campaign_service as campaigns
+        from services.event_campaign_runtime import eligible
+        rows=[];buttons=[]
+        for env in campaigns.store().list(status=campaigns.STATUS_PUBLISHED):
+            event_id=str(env.get("id"));data=env.get("data") or {};ok,_=eligible(player,event_id)
+            if ok:
+                state=(player.get("event_campaigns") or {}).get(event_id);status="участвуете" if state else "доступен"
+                rows.append(f"• {data.get('player_name') or data.get('name') or event_id} — {status}")
+                buttons.append([f"Эвент: {event_id}"])
+        return WorldActionResult(text="🎪 Эвенты\n\n"+("\n".join(rows) if rows else "Сейчас нет доступных эвентов."),buttons=buttons+[[BACK_TO_CENTRAL]])
+
+    if str(action).startswith("Эвент: "):
+        event_id=str(action).split(":",1)[1].strip()
+        from services.event_campaign_runtime import join
+        try:
+            state=join(player,event_id,storage=storage);storage.update_player(player)
+        except ValueError as exc:
+            return WorldActionResult(text=f"⚠️ {exc}",buttons=[[EVENT_CAMPAIGNS_BUTTON],[BACK_TO_CENTRAL]])
+        return WorldActionResult(text=f"✅ Вы участвуете в эвенте. Этап: {state.get('stage_id')}. Очки: {state.get('points',0)}.",buttons=[[EVENT_CAMPAIGNS_BUTTON],[BACK_TO_CENTRAL]])
 
     # Active crafting timers are a hard lock: no city shortcuts, slash commands
     # or stale navigation buttons may move the player for one inconsistent step.
@@ -1102,6 +1259,103 @@ def process_world_action(
             fine_advance.messages,
         )
 
+    # Опубликованные локации конструктора входят в общий Telegram/VK flow.
+    # При выключенном use_v2_locations/WORLD_CONSTRUCTOR_LIVE обработчик
+    # возвращает None, поэтому legacy-поведение остаётся неизменным.
+    from services import world_runtime
+
+    constructor_response = (
+        world_runtime.try_handle_event_action(player, action, platform=platform)
+        or world_runtime.try_handle_npc_action(player, action, platform=platform)
+        or world_runtime.try_handle_sublocation_action(player, action, platform=platform)
+        or world_runtime.try_handle_location_action(player, action, platform=platform)
+    )
+    if constructor_response is not None:
+        previous_location=str(player.get("constructor_location_id") or "");previous_sublocation=str(player.get("constructor_sublocation_id") or "")
+        location_id = str(constructor_response.get("location_id") or player.get("constructor_location_id") or "")
+        if constructor_response.get("kind") == "open_camp":
+            from services.external_location_service import enter_camp
+
+            camp_response = enter_camp(storage, player, str(constructor_response.get("camp_id") or ""))
+            return _with_extra_messages(
+                WorldActionResult(
+                    text=camp_response.text,
+                    buttons=camp_response.buttons,
+                    scheduled_timer=camp_response.scheduled_timer,
+                ),
+                fine_advance.messages,
+            )
+        if constructor_response.get("kind")=="npc_battle":
+            from services.pve_battle_service import create_battle_for_constructor_mob,battle_buttons
+            try:battle,text=create_battle_for_constructor_mob(player,str(constructor_response.get("mob_id") or ""),location_id=location_id or None)
+            except ValueError as exc:return WorldActionResult(text=str(exc),buttons=[["Завершить разговор"]])
+            battle["source_npc_id"]=str(constructor_response.get("npc_id") or "")
+            storage.update_player(player);return WorldActionResult(text=str(constructor_response.get("text") or "")+"\n\n"+text,buttons=battle_buttons(player))
+        if constructor_response.get("kind")=="button_battle":
+            from services.pve_battle_service import create_battle_for_constructor_mob,battle_buttons
+            try:battle,text=create_battle_for_constructor_mob(player,str(constructor_response.get("mob_id") or ""),location_id=location_id or None)
+            except ValueError as exc:return WorldActionResult(text=str(exc),buttons=[["Назад"]])
+            storage.update_player(player);return WorldActionResult(text=str(constructor_response.get("text") or "")+"\n\n"+text,buttons=battle_buttons(player))
+        if constructor_response.get("kind") == "leave_sublocation":
+            player.pop("constructor_sublocation_id", None)
+            player.pop("constructor_sublocation_node_id", None)
+            rendered = world_runtime.render_location(location_id, platform=platform, player=player)
+            if rendered:
+                constructor_response = rendered
+        elif constructor_response.get("kind") == "leave_event":
+            reward_text = str(constructor_response.get("reward_text") or "")
+            player.pop("constructor_event_id", None)
+            rendered = world_runtime.render_location(location_id, platform=platform, player=player)
+            if rendered:
+                constructor_response = rendered
+                if reward_text:
+                    constructor_response["text"] = reward_text + "\n\n" + str(constructor_response.get("text") or "")
+        elif constructor_response.get("kind") == "leave_event_to_sublocation":
+            player.pop("constructor_event_id", None)
+            player.pop("constructor_event_return_sublocation_id", None)
+            player.pop("constructor_event_return_node_id", None)
+            constructor_response["kind"] = "sublocation"
+        elif constructor_response.get("kind") == "event":
+            player["constructor_event_id"] = constructor_response.get("event_id")
+        elif constructor_response.get("kind") == "leave_npc":
+            player.pop("constructor_npc_id", None)
+            player.pop("constructor_npc_dialogue_id", None)
+            rendered = world_runtime.render_location(location_id, platform=platform, player=player)
+            if rendered:
+                constructor_response = rendered
+        elif constructor_response.get("kind") == "npc":
+            player["constructor_npc_id"] = constructor_response.get("npc_id")
+            player["constructor_npc_dialogue_id"] = constructor_response.get("dialogue_id")
+        elif constructor_response.get("kind") == "sublocation":
+            player["constructor_sublocation_id"] = constructor_response.get("sublocation_id")
+            player["constructor_sublocation_node_id"] = constructor_response.get("node_id")
+        player["constructor_location_id"] = location_id
+        player["current_location"] = location_id
+        player["current_zone"] = location_id
+        player["location_id"] = location_id
+        try:
+            from services.effect_runtime_service import sync_zone_effects
+            sync_zone_effects(player, location_id, city_id=str(player.get("current_city") or ""), region_id=str(player.get("current_region") or ""))
+        except Exception:
+            pass
+        if constructor_response.get("event_id"):
+            player["constructor_event_id"] = constructor_response["event_id"]
+        try:
+            from services.achievement_engine import record_game_event
+            if location_id and location_id!=previous_location:record_game_event(player,"visit_location",1,location_id,storage=storage)
+            current_sub=str(player.get("constructor_sublocation_id") or "")
+            if current_sub and current_sub!=previous_sublocation:record_game_event(player,"visit_sublocation",1,current_sub,storage=storage)
+            if constructor_response.get("kind")=="npc":record_game_event(player,"talk_npc",1,str(constructor_response.get("npc_id") or ""),storage=storage)
+        except Exception:pass
+        storage.update_player(player)
+        return _with_extra_messages(
+            WorldActionResult(
+                text=str(constructor_response.get("text") or ""),
+                buttons=constructor_response.get("buttons") or [],
+            ),
+            fine_advance.messages,
+        )
+
     # «Живой» город из конструктора (ТЗ §4) — только при включённом флаге
     # CITY_CONSTRUCTOR_LIVE. Перехватываем навигацию по ОПУБЛИКОВАННЫМ узлам;
     # если узел/кнопка не найдены — None → обычная (легаси) городская логика.
@@ -1114,8 +1368,10 @@ def process_world_action(
         # 18-CODEX §1: legacy zone передаётся как V2-контекст только если это
         # реальный опубликованный V2-узел (см. _resolve_v2_city_context).
         current_node = _resolve_v2_city_context(player)
-        node_response = city_runtime.try_handle(action, current_node_id=current_node)
+        node_response = city_runtime.try_handle(action, current_node_id=current_node, player=player)
         if node_response is not None:
+            if node_response.get("delegate_action"):
+                return process_world_action(storage, player, str(node_response["delegate_action"]), platform)
             # Сохраняем текущий V2-узел на игроке (handler сохранит его после
             # действия — мутируем тот же объект, см. handlers/city.py).
             player["current_city_node"] = node_response.get("node_id") or current_node

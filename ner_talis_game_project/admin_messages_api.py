@@ -141,15 +141,13 @@ def create_admin_messages_router(get_storage) -> APIRouter:
         if not player:
             raise HTTPException(status_code=404, detail="Игрок не найден.")
         platform, recipient = _resolve_recipient(player)
-        if not recipient:
-            raise HTTPException(status_code=400, detail="У игрока нет привязки Telegram/VK для доставки.")
-
         def _enqueue() -> dict[str, Any]:
             message, _created = mq.enqueue(
                 game_id=payload.game_id, platform=platform, recipient=recipient,
                 text=payload.text, type=payload.type or "admin",
                 priority=payload.priority if payload.priority in mq.PRIORITIES else mq.PRIORITY_HIGH,
                 source="admin_panel_v2",
+                initial_status=mq.STATUS_QUEUED if recipient else mq.STATUS_NOTIFICATION_PENDING,
             )
             return message
 
@@ -160,7 +158,8 @@ def create_admin_messages_router(get_storage) -> APIRouter:
             reason=payload.reason, details={"text": payload.text[:200], "priority": payload.priority},
         )
         # Сразу пробуем доставить (мгновенная доставка — основной путь).
-        mq.dispatch_once(limit=5)
+        if recipient:
+            mq.dispatch_once(limit=5)
         return {"ok": True, "message": message}
 
     @router.post("/{message_id}/retry")
@@ -189,5 +188,15 @@ def create_admin_messages_router(get_storage) -> APIRouter:
             target_id=message_id, after={"status": msg.get("status")}, reason=payload.reason,
         )
         return {"ok": True, "message": msg}
+
+    @router.post("/{message_id}/delete")
+    def delete_message(message_id: str, payload: ActionRequest, request: Request) -> dict[str, Any]:
+        session = _session(get_storage(), request, payload.token)
+        _require(session, PERM_MESSAGES_CANCEL)
+        msg = mq.delete(message_id)
+        if msg is None:
+            raise HTTPException(status_code=404, detail="Сообщение не найдено.")
+        record_admin_operation(session=session,action="messages.delete",target_type="message",target_id=message_id,after={"status":msg.get("status")},reason=payload.reason)
+        return {"ok":True,"message":msg}
 
     return router

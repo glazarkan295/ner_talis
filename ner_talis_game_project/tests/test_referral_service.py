@@ -2,6 +2,7 @@
 
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -10,6 +11,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from services import referral_service as rs
+from services import referral_constructor_service as rcs
 
 
 class _FakeStorage:
@@ -24,6 +26,9 @@ class _FakeStorage:
 
     def update_player(self, player):
         self.players[str(player["game_id"])] = player
+
+    def list_player_audience_rows(self):
+        return [{"game_id": gid, "level": p.get("level", 1)} for gid, p in self.players.items()]
 
 
 class ReferralServiceTest(unittest.TestCase):
@@ -93,12 +98,59 @@ class ReferralServiceTest(unittest.TestCase):
         self.assertEqual(ref["referral_count"], 1)
         self.assertEqual(ref["referrals"].count("NT-NEW"), 1)
 
+    def test_published_registration_rewards_are_applied_once(self):
+        saved = os.environ.get("REFERRAL_CONSTRUCTOR_PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["REFERRAL_CONSTRUCTOR_PATH"] = str(Path(tmp) / "rules.json")
+            try:
+                rcs.store().create("welcome", {
+                    "name": "Старт", "enabled": True, "platform": "telegram",
+                    "trigger": "registration_complete",
+                    "referrer_rewards": [{"type": "currency", "object_id": "copper", "amount": 100}],
+                    "referred_rewards": [{"type": "exp", "amount": 10}],
+                })
+                rcs.store().set_status("welcome", rcs.STATUS_PUBLISHED, force=True)
+                storage = _FakeStorage(); storage.add({"game_id": "NT-R", "money": 0})
+                newbie = {"game_id": "NT-N", "main_platform": "telegram", "experience": 0, "total_experience": 0}
+                rs.mark_referred_by(newbie, "NT-R")
+                self.assertTrue(rs.credit_referrer(storage, newbie))
+                self.assertEqual(storage.get_player_by_game_id("NT-R")["money"], 100)
+                self.assertEqual(newbie["experience"], 10)
+                self.assertFalse(rs.credit_referrer(storage, newbie))
+                self.assertEqual(storage.get_player_by_game_id("NT-R")["money"], 100)
+            finally:
+                if saved is None: os.environ.pop("REFERRAL_CONSTRUCTOR_PATH", None)
+                else: os.environ["REFERRAL_CONSTRUCTOR_PATH"] = saved
+
     def test_referral_summary_shape(self):
         s = rs.referral_summary({"game_id": "NT-9", "referral_count": 3, "referred_by": "NT-1"})
         self.assertEqual(s["code"], "NT-9")
         self.assertEqual(s["count"], 3)
         self.assertEqual(s["referredBy"], "NT-1")
         self.assertIn("vkLink", s)  # ТЗ 2.0 файл 16: обе ссылки в сводке
+
+    def test_delayed_condition_full_rewards_history_and_manual_review(self):
+        saved = os.environ.get("REFERRAL_CONSTRUCTOR_PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["REFERRAL_CONSTRUCTOR_PATH"] = str(Path(tmp) / "rules.json")
+            try:
+                rcs.store().create("level_campaign", {"name":"До третьего уровня","enabled":True,"platform":"telegram","link_type":"personal","trigger":"level_reached","trigger_value":3,"manual_review":True,
+                    "referrer_rewards":[{"type":"skill_points","amount":2}],"referred_rewards":[{"type":"energy","amount":5}]})
+                rcs.store().set_status("level_campaign",rcs.STATUS_PUBLISHED,force=True)
+                storage=_FakeStorage();ref={"game_id":"NT-R"};new={"game_id":"NT-N","main_platform":"telegram","level":1,"energy":10}
+                storage.add(ref);storage.add(new);rs.mark_referred_by(new,"NT-R")
+                self.assertTrue(rs.credit_referrer(storage,new))  # связь сохранена, но условие ещё не выполнено
+                self.assertEqual(ref.get("referral_count",0),0)
+                new["level"]=3
+                self.assertTrue(rs.process_referral_event(storage,new,"level_reached",3))
+                stats=rs.referral_statistics(storage);self.assertEqual(stats["pending"],1)
+                invite=stats["history"][0]["invite_id"]
+                self.assertTrue(rs.review_invitation(storage,invite,True,"проверено"))
+                self.assertEqual(ref["referral_count"],1);self.assertEqual(ref["free_skill_points"],2);self.assertEqual(new["energy"],15)
+                self.assertEqual(rs.referral_statistics(storage)["credited"],1)
+            finally:
+                if saved is None:os.environ.pop("REFERRAL_CONSTRUCTOR_PATH",None)
+                else:os.environ["REFERRAL_CONSTRUCTOR_PATH"]=saved
 
     def test_vk_link(self):
         # ТЗ 2.0 файл 16 §3/§6: VK-ссылка со стабильным ref-кодом.

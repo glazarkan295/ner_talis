@@ -180,6 +180,14 @@ class NpcAllyApiTest(unittest.TestCase):
         self.assertEqual(pv.status_code, 200, pv.text)
         self.assertEqual(pv.json()["preview"]["ally_type"], "Лекарь")
 
+    def test_where_used_includes_live_player_owner(self):
+        token = self._token(); self.assertEqual(self._create(token).status_code, 200)
+        self.storage.save_new_player({"game_id": "P-ALLY", "name": "Helper owner",
+                                      "npc_helpers": {"owned": {"squire": {"active": True, "status": "active"}}}}, "telegram", "55")
+        response = self.client.get("/api/admin/v2/npc-allies/squire/usage", headers=self._auth(token))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIn("player:P-ALLY", response.json()["usage"]["used_by"])
+
     def test_content_cannot_publish_readonly_cannot_create(self):
         rbac.set_role_override("telegram", "999", rbac.CONTENT)
         token = self._token()

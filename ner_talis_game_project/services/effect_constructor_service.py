@@ -162,6 +162,13 @@ def store() -> EntityStore:
     return _store
 
 
+def published_definition(effect_id: str) -> dict[str, Any] | None:
+    env = store().get(str(effect_id or ""))
+    if not env or env.get("status") != STATUS_PUBLISHED:
+        return None
+    return {"effect_id": env.get("id"), "constructor_live": True, **dict(env.get("data") or {})}
+
+
 def _has_markup(value: str) -> bool:
     low = value.lower()
     return "<script" in low or ("<" in value and ">" in value)
@@ -223,7 +230,52 @@ def where_used(effect_id: str) -> list[dict[str, Any]]:
                              "name": str(data.get("name") or env.get("id"))})
     except Exception:
         pass
-    return used
+
+    def references(value: Any, key: str = "") -> bool:
+        if isinstance(value, dict):
+            return any(
+                (str(child or "") == eid if child_key in {
+                    "effect", "effect_id", "apply_effect_id", "remove_effect_id",
+                    "required_effect_id", "hidden_by_effect_id", "combat_effect_id",
+                } else references(child, child_key))
+                for child_key, child in value.items()
+            )
+        if isinstance(value, list):
+            return any(references(child, key) for child in value)
+        return key in {"effects", "effect_ids"} and str(value or "") == eid
+
+    # Полный world-граф: кнопки, NPC-диалоги, мобы, события, зоны и подлокации.
+    try:
+        for kind in wcr.KINDS:
+            for env in wcr.list_content(kind):
+                if references(env.get("data") or {}):
+                    used.append({"kind": kind, "id": env.get("id"), "name": _name(env)})
+    except Exception:
+        pass
+
+    # Ссылки из самостоятельных конструкторов.
+    constructor_modules = (
+        ("item", "item_constructor_service"), ("camp", "camp_constructor_service"),
+        ("skill", "skill_constructor_service"), ("quest", "quest_constructor_service"),
+        ("recipe", "recipe_constructor_service"), ("reputation", "reputation_constructor_service"),
+        ("tavern", "tavern_constructor_service"),
+    )
+    import importlib
+    for kind, module_name in constructor_modules:
+        try:
+            module = importlib.import_module(f"services.{module_name}")
+            for env in module.store().list():
+                if references(env.get("data") or {}):
+                    used.append({"kind": kind, "id": env.get("id"), "name": _name(env)})
+        except Exception:
+            continue
+    deduped: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for row in used:
+        key = (str(row.get("kind")), str(row.get("id")))
+        if key not in seen:
+            seen.add(key); deduped.append(row)
+    return deduped
 
 
 def _effect_ref(entry: Any) -> str:
@@ -263,10 +315,13 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
     chance = _num(data.get("apply_chance_percent"))
     if chance is not None and (chance < 0 or chance > 100):
         errors.append("Шанс наложения должен быть 0–100.")
-    for key in ("duration_turns", "duration_seconds", "max_stacks"):
+    for key in ("duration_turns", "duration_seconds"):
         value = _num(data.get(key))
         if value is not None and value < 0:
             errors.append(f"Поле «{key}» не может быть отрицательным.")
+    max_stacks = _num(data.get("max_stacks"))
+    if max_stacks is not None and max_stacks < 1:
+        errors.append("Максимум стаков должен быть не меньше 1.")
 
     # Тип-специфичные проверки.
     if etype == "stat_modifier" and str(data.get("stat") or "").strip() not in STATS:
@@ -319,12 +374,14 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
     if data.get("priority") not in (None, "") and priority is None:
         errors.append("Приоритет должен быть числом.")
     # §8.3: постоянный эффект должен иметь способ снятия/пересчёта.
-    if duration_mode == "permanent" and not (
+    if duration_mode in {"permanent", "until_admin_remove"} and not (_truthy(data.get("allow_infinite_without_removal")) or _truthy(data.get("allow_infinite"))) and not (
         _truthy(data.get("can_be_cleansed")) or _truthy(data.get("can_be_dispelled"))
         or _truthy(data.get("recalculate_on_hidden_reputation_change"))
         or str(data.get("linked_hidden_reputation_id") or "").strip()
+        or str(data.get("removal_condition") or "").strip()
     ):
-        warnings.append("Постоянный эффект без способа снятия или условия пересчёта (ТЗ §8.3).")
+        errors.append("Бесконечный эффект должен иметь правило снятия или явное разрешение без снятия.")
+        warnings.append("Постоянный эффект не имеет настроенного способа снятия.")
     # §8.3: метка должна ссылаться на скрытую репутацию.
     if etype == "mark_effect" and not str(data.get("linked_hidden_reputation_id") or "").strip():
         warnings.append("Эффект-метка должен иметь linked_hidden_reputation_id (ТЗ §8.3).")
@@ -334,4 +391,40 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
         if value and _has_markup(value):
             errors.append(f"В поле «{key}» недопустимая разметка/HTML.")
 
+    from services.formula_runtime import validate_references
+    errors.extend(validate_references(data, ("value_formula_id", "duration_formula_id", "chance_formula_id", "limit_formula_id")))
+    # Связанные предметы/навыки должны существовать.
+    item_id = str(data.get("linked_item_id") or data.get("required_item_id") or "").strip()
+    if item_id:
+        try:
+            from services.item_registry import get_item_definition_by_id
+            if get_item_definition_by_id(item_id) is None:
+                errors.append(f"Связанный предмет «{item_id}» не существует.")
+        except Exception:
+            errors.append(f"Не удалось проверить связанный предмет «{item_id}».")
+    skill_id = str(data.get("linked_skill_id") or "").strip()
+    if skill_id:
+        try:
+            from services import skill_constructor_service as skills
+            if skills.store().get(skill_id) is None:
+                errors.append(f"Связанный навык «{skill_id}» не существует.")
+        except Exception:
+            errors.append(f"Не удалось проверить связанный навык «{skill_id}».")
+    if etype == "scripted_effect" and not str(data.get("script_action") or data.get("script") or "").strip():
+        errors.append("Скриптовый эффект не имеет механики (script_action).")
+    if etype == "periodic_damage" and not any(_num(data.get(key)) not in (None, 0) for key in ("value", "flat_damage", "percent_max_hp_damage", "tick_value")) and not data.get("value_formula_id"):
+        errors.append("Периодический эффект не имеет механики урона.")
+
+    effect_id = str(envelope.get("id") or "")
+    if effect_id and not where_used(effect_id):
+        warnings.append("Эффект пока нигде не используется.")
+    numeric_value = _num(data.get("value", data.get("value_flat", data.get("value_percent"))))
+    if numeric_value is not None and numeric_value < 0 and data.get("display_as_positive"):
+        warnings.append("Отрицательное значение настроено для отображения как положительное.")
+    if active_when in {"on_death", "after_death"} and not str(data.get("death_text") or "").strip():
+        warnings.append("Эффект влияет на смерть, но не имеет отдельного текста.")
+    if etype in {"trade_modifier", "reputation_modifier"} and data.get("affects_money") and not data.get("max_value"):
+        warnings.append("Эффект влияет на деньги, но не имеет лимита.")
+    if etype == "inventory_slot_bonus" and not str(data.get("inventory_error_text") or "").strip():
+        warnings.append("Эффект влияет на инвентарь, но не имеет текста ошибки.")
     return {"ok": not errors, "errors": errors, "warnings": warnings}

@@ -90,3 +90,8 @@ data/effect_constructor.json.tmp
 data/site_content.json
 data/site_content.json.lock
 data/site_content.json.tmp
+
+# Generated diagnostics and append-only runtime state
+_races_probe.txt
+data/economy_transactions.jsonl
+data/world_event_loot_state.json

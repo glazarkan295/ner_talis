@@ -12,18 +12,22 @@ import { ConfirmModal } from "../ConfirmModal.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { MessageComposer } from "../MessageComposer.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
+import { TechnicalData } from "../TechnicalData.jsx";
+import { fetchGraphNode } from "../../../api/adminGraphApi.js";
 
 const STATUS_TONE = { active: "ntv2-badge-owner", finished: "ntv2-badge-owner", disabled: "ntv2-badge-danger", scheduled: "ntv2-badge-error" };
 
 const EMPTY_EVENT = {
-  name: "", type: "festive", short_description: "", description: "",
-  start_date: "", end_date: "", image: "",
+  name: "", player_name: "", system_name: "", type: "festive", category: "", short_description: "", description: "", technical_description: "", image: "", icon: "", tags: [],
+  start_date: "", end_date: "", endless: false, manual_start: true, manual_end: true, start_by_condition: false, start_condition: "", end_by_condition: false, end_condition: "", timezone: "UTC",
   // Повтор (ТЗ §4.1/§4.2): тип + параметры в зависимости от типа.
   repeat_enabled: false, repeat_type: "yearly", repeat_weekday: "", repeat_day_of_month: "",
   repeat_month: "", repeat_start_hour: "", repeat_end_hour: "",
   repeat_duration_days: "", repeat_start_day: "", repeat_end_month: "", repeat_end_day: "",
   exp_multiplier: "", drop_multiplier: "", coin_multiplier: "",
+  scope_type: "world", scope_id: "", scope_ids: [], player_ids: [], player_group_ids: [], all_world: true, modifiers: [],
   start_message: "", end_message: "",
+  send_start_message: true, send_end_message: true, send_reminder: false, reminder_message: "", reminder_interval_seconds: 0, notify_all: true, buttons: [],
   // Награды (§4.3) и особая добыча (§4.4).
   rewards: [], special_loot: [],
 };
@@ -39,6 +43,7 @@ export function EventsSection({ guarded, hasPerm }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [usage, setUsage] = useState(null);
 
   const can = useMemo(() => ({
     create: hasPerm("world_event.create"), edit: hasPerm("world_event.edit"),
@@ -115,11 +120,51 @@ export function EventsSection({ guarded, hasPerm }) {
         <div className="ntv2-world-form">
           <div className="ntv2-form-row">
             <Field label="Название"><input value={d.name} disabled={disabled} onChange={(e) => set("name", e.target.value)} /></Field>
+            <Field label="Название для игрока"><EmojiInput value={d.player_name || ""} disabled={disabled} onChange={(v) => set("player_name", v)} /></Field>
+            <Field label="Системное название"><input value={d.system_name || ""} disabled={disabled} onChange={(e) => set("system_name", e.target.value)} /></Field>
             <Field label="Тип"><select value={d.type} disabled={disabled} onChange={(e) => set("type", e.target.value)}>{(meta.types || []).map((x) => <option key={x} value={x}>{tr(WORLD_EVENT_TYPE, x)}</option>)}</select></Field>
+            <Field label="Категория"><input value={d.category || ""} disabled={disabled} onChange={(e) => set("category", e.target.value)} /></Field>
+          </div>
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Область действия</h4>
+            <div className="ntv2-form-row">
+              <Field label="Тип области"><select value={d.scope_type || "world"} disabled={disabled} onChange={(e) => set("scope_type", e.target.value)}>{["world","region","city","location","sublocation","camp","market","npc","player_group","players","player"].map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+              <Field label="ID области"><input className="ntv2-mono" value={d.scope_id || ""} disabled={disabled} onChange={(e) => set("scope_id", e.target.value)} /></Field>
+              <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.all_world)} disabled={disabled} onChange={(e) => set("all_world", e.target.checked)} /> Весь мир</label>
+            </div>
+            <Field label="Дополнительные ID области (по строкам)"><textarea rows={2} value={(d.scope_ids || []).join("\n")} disabled={disabled} onChange={(e) => set("scope_ids", e.target.value.split("\n").map((x) => x.trim()).filter(Boolean))} /></Field>
+            <Field label="Конкретные игроки (NT-ID)"><textarea rows={2} value={(d.player_ids || []).join("\n")} disabled={disabled} onChange={(e) => set("player_ids", e.target.value.split("\n").map((x) => x.trim()).filter(Boolean))} /></Field>
+            <Field label="Группы игроков (ID)"><textarea rows={2} value={(d.player_group_ids || []).join("\n")} disabled={disabled} onChange={(e) => set("player_group_ids", e.target.value.split("\n").map((x) => x.trim()).filter(Boolean))} /></Field>
           </div>
           <div className="ntv2-form-row">
             <Field label="Дата начала (ISO)"><input value={d.start_date} disabled={disabled} placeholder="2026-12-31" onChange={(e) => set("start_date", e.target.value)} /></Field>
             <Field label="Дата окончания (ISO)"><input value={d.end_date} disabled={disabled} placeholder="2027-01-10" onChange={(e) => set("end_date", e.target.value)} /></Field>
+          </div>
+          <div className="ntv2-panel"><h4 className="ntv2-subhead">Управление периодом</h4><div className="ntv2-form-row">
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.endless)} disabled={disabled} onChange={(e) => set("endless", e.target.checked)} /> Бессрочно</label>
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.manual_start)} disabled={disabled} onChange={(e) => set("manual_start", e.target.checked)} /> Ручной запуск</label>
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.manual_end)} disabled={disabled} onChange={(e) => set("manual_end", e.target.checked)} /> Ручное завершение</label>
+            <Field label="Часовой пояс"><input value={d.timezone || "UTC"} disabled={disabled} onChange={(e) => set("timezone", e.target.value)} /></Field>
+          </div><div className="ntv2-form-row">
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.start_by_condition)} disabled={disabled} onChange={(e) => set("start_by_condition", e.target.checked)} /> Запуск по условию</label><Field label="Условие старта"><input value={d.start_condition || ""} disabled={disabled} onChange={(e) => set("start_condition", e.target.value)} /></Field>
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.end_by_condition)} disabled={disabled} onChange={(e) => set("end_by_condition", e.target.checked)} /> Завершение по условию</label><Field label="Условие завершения"><input value={d.end_condition || ""} disabled={disabled} onChange={(e) => set("end_condition", e.target.value)} /></Field>
+          </div></div>
+          <div className="ntv2-panel">
+            <h4 className="ntv2-subhead">Модификаторы мира ({(d.modifiers || []).length})</h4>
+            {(d.modifiers || []).map((row, i) => {
+              const upd = (patch) => set("modifiers", d.modifiers.map((r, idx) => idx === i ? { ...r, ...patch } : r));
+              return <div className="ntv2-form-row" key={i}>
+                <Field label="Тип"><select value={row.type || ""} disabled={disabled} onChange={(e) => upd({ type: e.target.value })}>{["event_chance","mob_chance","elite_mob_chance","pvp_chance","pve_chance","drop_chance","resource_amount","buy_price","sell_price","commission","reward","experience","energy","energy_flat","rest_time","craft_time","craft_success","craft_success_percent","location_access","npc_access","active_zone","player_effect"].map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+                <Field label="Значение"><input type="number" value={row.value ?? ""} disabled={disabled} onChange={(e) => upd({ value: e.target.value })} /></Field>
+                <Field label="Режим"><select value={row.value_mode || "percent"} disabled={disabled} onChange={(e) => upd({ value_mode: e.target.value })}><option value="percent">процент</option><option value="multiplier">множитель</option><option value="number">число</option></select></Field>
+                <Field label="ID объекта"><input className="ntv2-mono" value={row.object_id || ""} disabled={disabled} onChange={(e) => upd({ object_id: e.target.value })} /></Field>
+                <Field label="ID формулы"><input className="ntv2-mono" value={row.formula_id || ""} disabled={disabled} onChange={(e) => upd({ formula_id: e.target.value })} /></Field>
+                <Field label="Условие"><input value={row.condition || ""} disabled={disabled} onChange={(e) => upd({ condition: e.target.value })} /></Field>
+                <Field label="Текст игроку"><input value={row.player_text || ""} disabled={disabled} onChange={(e) => upd({ player_text: e.target.value })} /></Field>
+                {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => set("modifiers", d.modifiers.filter((_, idx) => idx !== i))}>×</button> : null}
+              </div>;
+            })}
+            {!disabled ? <button type="button" className="ntv2-btn" onClick={() => set("modifiers", [...(d.modifiers || []), { type: "drop_chance", value: 10, value_mode: "percent" }])}>＋ Модификатор</button> : null}
           </div>
           <div className="ntv2-panel">
             <h4 className="ntv2-subhead">Повтор</h4>
@@ -152,9 +197,14 @@ export function EventsSection({ guarded, hasPerm }) {
           </div>
           <Field label="Краткое описание"><EmojiTextarea rows={2} value={d.short_description} disabled={disabled} onChange={(v) => set("short_description", v)} /></Field>
           <Field label="Полное описание"><EmojiTextarea rows={3} value={d.description} disabled={disabled} onChange={(v) => set("description", v)} /></Field>
+          <Field label="Техническое описание"><textarea rows={3} value={d.technical_description || ""} disabled={disabled} onChange={(e) => set("technical_description", e.target.value)} /></Field>
+          <div className="ntv2-form-row"><Field label="Иконка"><EmojiInput value={d.icon || ""} disabled={disabled} onChange={(v) => set("icon", v)} /></Field><Field label="Теги (по строкам)"><textarea rows={2} value={(d.tags || []).join("\n")} disabled={disabled} onChange={(e) => set("tags", e.target.value.split("\n").map((x) => x.trim()).filter(Boolean))} /></Field></div>
           <Field label="Сообщение о начале"><EmojiTextarea rows={2} value={d.start_message} disabled={disabled} onChange={(v) => set("start_message", v)} /></Field>
           <Field label="Сообщение о завершении"><EmojiTextarea rows={2} value={d.end_message} disabled={disabled} onChange={(v) => set("end_message", v)} /></Field>
+          <div className="ntv2-form-row"><label className="ntv2-check"><input type="checkbox" checked={d.send_start_message !== false} disabled={disabled} onChange={(e) => set("send_start_message", e.target.checked)} /> Сообщать о старте</label><label className="ntv2-check"><input type="checkbox" checked={d.send_end_message !== false} disabled={disabled} onChange={(e) => set("send_end_message", e.target.checked)} /> Сообщать о завершении</label><label className="ntv2-check"><input type="checkbox" checked={Boolean(d.send_reminder)} disabled={disabled} onChange={(e) => set("send_reminder", e.target.checked)} /> Напоминания</label><label className="ntv2-check"><input type="checkbox" checked={d.notify_all !== false} disabled={disabled} onChange={(e) => set("notify_all", e.target.checked)} /> Всем игрокам</label></div>
+          {d.send_reminder ? <div className="ntv2-form-row"><Field label="Текст напоминания"><EmojiTextarea rows={2} value={d.reminder_message || ""} disabled={disabled} onChange={(v) => set("reminder_message", v)} /></Field><Field label="Интервал, сек"><input type="number" value={d.reminder_interval_seconds || 0} disabled={disabled} onChange={(e) => set("reminder_interval_seconds", e.target.value)} /></Field></div> : null}
           <Field label="Изображение (URL)"><input value={d.image} disabled={disabled} onChange={(e) => set("image", e.target.value)} /></Field>
+          <div className="ntv2-panel"><h4 className="ntv2-subhead">Кнопки уведомления</h4>{(d.buttons || []).map((row, i) => { const upd = (patch) => set("buttons", d.buttons.map((r, idx) => idx === i ? { ...r, ...patch } : r)); return <div className="ntv2-form-row" key={i}><Field label="ID"><input value={row.button_id || ""} disabled={disabled} onChange={(e) => upd({ button_id: e.target.value })} /></Field><Field label="Текст"><EmojiInput value={row.text || ""} disabled={disabled} onChange={(v) => upd({ text: v })} /></Field><Field label="Действие"><input value={row.action || ""} disabled={disabled} onChange={(e) => upd({ action: e.target.value })} /></Field><Field label="Цель"><input value={row.target || ""} disabled={disabled} onChange={(e) => upd({ target: e.target.value })} /></Field>{!disabled ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => set("buttons", d.buttons.filter((_, idx) => idx !== i))}>×</button> : null}</div>; })}{!disabled ? <button type="button" className="ntv2-btn" onClick={() => set("buttons", [...(d.buttons || []), { button_id: "", text: "", action: "", target: "" }])}>＋ Кнопка</button> : null}</div>
           <MessageComposer label="Объявление игрокам (изображение/формат/предпросмотр)" value={d.announce_message} category="world_events" uploadKey={`${editing.id || "event"}_msg`} disabled={disabled} onChange={(v) => set("announce_message", v)} />
 
           {/* Награды (§4.3) */}
@@ -217,7 +267,9 @@ export function EventsSection({ guarded, hasPerm }) {
           {!editing.isNew && can.stop && editing.status === "active" ? lifecycleBtn("Завершить", "finish", { dangerous: true }) : null}
           {!editing.isNew && can.reward ? lifecycleBtn("Выдать награды", "reward", { dangerous: true }) : null}
           {!editing.isNew && can.archive ? lifecycleBtn("В архив", "archive", { dangerous: true }) : null}
+          {!editing.isNew ? <button type="button" className="ntv2-btn" onClick={async () => { const p = await guarded(() => fetchGraphNode("world_event", editing.id)); if (p) setUsage(p); }}>Где используется</button> : null}
         </div>
+        {usage ? <TechnicalData label="Связи мирового события" value={usage} /> : null}
 
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (reason) => { await confirm.run(reason); setConfirm(null); }} onCancel={() => setConfirm(null)} />

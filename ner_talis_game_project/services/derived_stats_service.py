@@ -132,6 +132,7 @@ KNOWN_MODIFIER_KEYS = {
 
 EXTERNAL_EFFECT_FIELDS = (
     "active_effects",
+    "active_curses",
     "effects",
     "temporary_effects",
     "location_effects",
@@ -267,13 +268,32 @@ def collect_modifiers_from_value(value: Any, totals: dict[str, int]) -> None:
             if isinstance(nested, (dict, list)):
                 collect_modifiers_from_value(nested, totals)
 
+        # Предмет/навык может хранить только ссылки на опубликованные эффекты.
+        for link in value.get("effect_links") or []:
+            effect_id = str((link or {}).get("effect_id") or "") if isinstance(link, dict) else str(link or "")
+            if not effect_id:
+                continue
+            trigger = str((link or {}).get("trigger") or "passive") if isinstance(link, dict) else "passive"
+            if trigger not in ("passive", "on_equip"):
+                continue
+            try:
+                from services.effect_formula_runtime import resolve
+                definition = resolve(effect_id)
+            except Exception:
+                definition = None
+            if definition:
+                etype = str(definition.get("effect_type") or "")
+                if etype == "stat_modifier":
+                    add_modifier(totals, definition.get("stat"), definition.get("value", definition.get("value_flat", definition.get("value_percent", 0))))
+                collect_modifiers_from_value(definition, totals)
+
         text_fields = ("properties", "enchantments", "effects") if has_explicit_modifiers else ("stats", "properties", "enchantments", "effects")
         for field in text_fields:
             nested = value.get(field)
             if isinstance(nested, (dict, list)):
                 collect_modifiers_from_value(nested, totals)
 
-        skipped_fields = set(explicit_fields) | {"stats", "properties", "enchantments", "effects"}
+        skipped_fields = set(explicit_fields) | {"stats", "properties", "enchantments", "effects", "effect_links"}
         for key, nested_value in value.items():
             if key in skipped_fields:
                 continue
@@ -347,8 +367,28 @@ def collect_active_external_modifiers(value: Any, totals: dict[str, int], now: d
         for item in value:
             collect_active_external_modifiers(item, totals, now)
         return
-    if isinstance(value, dict) and not is_effect_active(value, now):
-        return
+    if isinstance(value, dict):
+        if not is_effect_active(value, now):
+            return
+        effect_id = str(value.get("effect_id") or value.get("id") or "").strip()
+        if effect_id and not value.get("constructor_live"):
+            try:
+                from services.effect_formula_runtime import resolve
+                definition = resolve(effect_id)
+            except Exception:
+                definition = None
+            if definition:
+                merged = {**definition, **value, "constructor_live": True}
+                etype = str(merged.get("effect_type") or "")
+                if etype == "stat_modifier":
+                    stat = str(merged.get("stat") or "")
+                    amount = merged.get("value", merged.get("value_flat", merged.get("value_percent", 0)))
+                    add_modifier(totals, stat, amount)
+                elif etype == "max_resource_modifier":
+                    resource = str(merged.get("resource") or "")
+                    add_modifier(totals, f"bonus_{resource}", merged.get("value", merged.get("value_flat", 0)))
+                collect_modifiers_from_value(merged, totals)
+                return
     collect_modifiers_from_value(value, totals)
 
 
@@ -547,8 +587,22 @@ def calculate_player_skill_raw_damage(player: dict[str, Any], skill: dict[str, A
     skill_name = str(skill.get("name") or "навыком")
     damage_value = skill.get("damage")
 
+    formula_damage = None
+    if skill.get("damage_formula_id"):
+        from services.formula_runtime import evaluate, numeric_context
+        formula_damage = evaluate(skill.get("damage_formula_id"), numeric_context({
+            "base_amount": damage_value if isinstance(damage_value, (int, float)) else 1,
+            "player_level": level, "item_level": skill_level(skill),
+            "strength": stats.get("strength", 0), "agility": stats.get("agility", 0),
+            "intelligence": stats.get("intelligence", 0), "wisdom": stats.get("wisdom", 0),
+        }, player=player), default=None)
+        if formula_damage is not None:
+            damage_value = float(formula_damage)
+
     attribute_profile = skill.get("attribute_profile") if isinstance(skill.get("attribute_profile"), dict) else {}
-    if attribute_profile:
+    if formula_damage is not None:
+        base_damage = float(formula_damage)
+    elif attribute_profile:
         profile_power = skill_profile_power(stats, attribute_profile)
         role_coefficient = float(skill.get("role_coefficient") or 0.5)
         base_damage = profile_power + soft_level(level) * role_coefficient
@@ -566,6 +620,13 @@ def calculate_player_skill_raw_damage(player: dict[str, Any], skill: dict[str, A
     else:
         parsed = modifier_amount(damage_value)
         base_damage = float(parsed) if parsed > 0 else 1.0
+
+    if skill.get("level_power_formula_id"):
+        from services.formula_runtime import evaluate, numeric_context
+        base_damage = float(evaluate(skill.get("level_power_formula_id"), numeric_context({
+            "base_amount": base_damage, "player_level": level,
+            "item_level": skill_level(skill), "multiplier": skill_modifier_multiplier(skill),
+        }, player=player), default=base_damage))
 
     bonus_modifiers = stats.get("bonus_modifiers") or {}
     bonus_damage = equipment_bonus(bonus_modifiers, "bonus_damage")

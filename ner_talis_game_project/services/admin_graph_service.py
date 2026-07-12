@@ -17,6 +17,7 @@ nodes/edges и отдаёт его в разных режимах: вся кар
 from __future__ import annotations
 
 from collections import deque
+import json
 from typing import Any, Callable, Iterable
 
 from services import world_content_registry as wcr
@@ -48,6 +49,11 @@ NODE_TYPE_LABELS: dict[str, str] = {
     "item_upgrade": "Улучшение", "item_enchant": "Зачарование",
     "item_disassemble": "Разборка", "reputation": "Репутация",
     "addiction": "Зависимость", "tolerance": "Привыкание", "tavern": "Таверна",
+    "pvp": "PVP-правило", "combat": "Боевой профиль", "npc_ally": "NPC-союзник",
+    "mole": "Сервис Крота", "casino": "Подпольное казино", "housing": "Жильё",
+    "message_rule": "Правило очереди сообщений", "exp": "Источник опыта",
+    "registration": "Шаг регистрации", "quest": "Квест", "text": "Текст бота",
+    "economy": "Экономический профиль", "referral_rule": "Реферальное правило",
     # Сайт (ТЗ §16) и профиль — из своих реестров с тегом _kind.
     "site_page": "Страница сайта", "site_page_block": "Блок страницы",
     "site_menu_item": "Пункт меню", "site_news": "Новость", "site_guide": "Гайд",
@@ -73,6 +79,7 @@ EDGE_TYPE_LABELS: dict[str, str] = {
     "uses_profession": "требует профессию", "in_workshop": "в мастерской",
     "disassembles": "разбирает", "enchants": "зачаровывает",
     "depends_on_reputation": "зависит от репутации",
+    "gives_helper": "выдаёт помощника", "uses_helper": "использует помощника",
 }
 
 # Поля-ссылки на формулу по типу узла (ТЗ 13 §2.8). Любой конструктор, в data
@@ -110,6 +117,7 @@ REF_SPECS: dict[str, list[tuple]] = {
         (SCALAR, "given_item", "item", "gives_item"),
         (SCALAR, "required_item", "item", "requires_item"),
         (SCALAR, "consumed_item", "item", "consumes_item"),
+        (LISTDICT, "rewards", "npc_ally", "gives_helper", "object_id", "type", ("npc_helper", "npc_ally")),
     ],
     wcr.KIND_NPC: [
         (SCALAR, "location", "location", "in_location"),
@@ -120,6 +128,7 @@ REF_SPECS: dict[str, list[tuple]] = {
     wcr.KIND_QUEST: [
         (SCALAR, "npc_giver", "npc", "given_by"),
         (SCALAR, "location", "location", "in_location"),
+        (LISTDICT, "rewards", "npc_ally", "gives_helper", "object_id", "type", ("npc_helper", "npc_ally")),
     ],
     wcr.KIND_RAID: [
         (SCALAR, "entry_location", "location", "in_location"),
@@ -192,11 +201,17 @@ REF_SPECS: dict[str, list[tuple]] = {
     ],
 }
 
+# Связи NPC-помощников из EntityStore-конструкторов (§65/§68).
+REF_SPECS.setdefault("item", []).append((SCALAR, "grants_npc_helper_id", "npc_ally", "gives_helper"))
+REF_SPECS.setdefault("achievement", []).append((LISTDICT, "rewards", "npc_ally", "gives_helper", "object_id", "type", ("npc_helper", "npc_ally")))
+REF_SPECS.setdefault("combat", []).append((LISTDICT, "participants", "npc_ally", "uses_helper", "source_id", "participant_type", ("npc_ally", "enemy_npc_ally")))
+
 # Конструкторы на EntityStore: (node_type, модуль-сервис, поле-заголовок).
 # Импортируются лениво — каждый стор автономен и может отсутствовать в тестах.
 CONSTRUCTOR_SOURCES: list[tuple[str, str, str]] = [
     ("item", "item_constructor_service", "name"),
     ("recipe", "recipe_constructor_service", "name"),
+    ("craft_material_group", "craft_material_group_service", "name"),
     ("effect", "effect_constructor_service", "effect_name"),
     ("trait", "trait_constructor_service", "trait_name"),
     ("blessing", "blessing_constructor_service", "blessing_name"),
@@ -210,6 +225,8 @@ CONSTRUCTOR_SOURCES: list[tuple[str, str, str]] = [
     # (city_node/city_button/city_shop_item/…), их нельзя схлопывать в один «city».
     ("achievement", "achievement_service", "name"),
     ("world_event", "world_event_service", "name"),
+    ("event_campaign", "event_campaign_service", "name"),
+    ("broadcast_campaign", "broadcast_constructor_service", "name"),
     ("guild", "guild_service", "name"),
     ("formula", "formula_constructor_service", "name"),
     ("profession", "profession_constructor_service", "name"),
@@ -218,10 +235,24 @@ CONSTRUCTOR_SOURCES: list[tuple[str, str, str]] = [
     ("item_upgrade", "upgrade_constructor_service", "name"),
     ("item_enchant", "enchant_constructor_service", "name"),
     ("item_disassemble", "disassemble_constructor_service", "name"),
+    ("item_repair", "repair_constructor_service", "name"),
     ("reputation", "reputation_constructor_service", "name_ru"),
     ("addiction", "addiction_constructor_service", "name_admin"),
     ("tolerance", "tolerance_constructor_service", "name_admin"),
     ("tavern", "tavern_constructor_service", "name"),
+    ("pvp", "pvp_constructor_service", "name"),
+    ("combat", "combat_constructor_service", "name"),
+    ("npc_ally", "npc_ally_constructor_service", "name"),
+    ("mole", "mole_constructor_service", "name"),
+    ("casino", "casino_constructor_service", "name"),
+    ("housing", "housing_constructor_service", "name"),
+    ("message_rule", "message_queue_rule_service", "name"),
+    ("exp", "exp_constructor_service", "name"),
+    ("registration", "registration_constructor_service", "label"),
+    ("quest", "quest_constructor_service", "name"),
+    ("text", "text_constructor_service", "text_key"),
+    ("economy", "economy_constructor_service", "name"),
+    ("referral_rule", "referral_constructor_service", "name"),
 ]
 
 # Реестры с тегом _kind в data (сайт/профиль): один стор — много типов узлов.
@@ -405,7 +436,16 @@ def _extract_refs(spec: tuple, data: dict[str, Any]) -> list[str]:
         out: list[str] = []
         if isinstance(container, list):
             for row in container:
-                if isinstance(row, dict) and str(row.get(subkey) or "").strip():
+                if not isinstance(row, dict):
+                    continue
+                # Опционально: 6-е поле — ключ условия строки, 7-е — допустимое
+                # значение или коллекция значений (например reward.type=npc_ally).
+                if len(spec) >= 7:
+                    actual = str(row.get(spec[5]) or "")
+                    expected = spec[6]
+                    if actual not in ({str(x) for x in expected} if isinstance(expected, (tuple, list, set)) else {str(expected)}):
+                        continue
+                if str(row.get(subkey) or "").strip():
                     out.append(str(row[subkey]).strip())
         return out
     return []
@@ -570,6 +610,8 @@ def _constructor_edges(nodes: dict[str, dict[str, Any]], seen: set[str]) -> list
             for row in (data.get("ingredients") or []):
                 if isinstance(row, dict) and str(row.get("item_id") or "").strip():
                     _add(nid, str(row["item_id"]).strip(), "ingredient")
+                if isinstance(row, dict) and str(row.get("material_group_id") or "").strip():
+                    _add_typed(nid, str(row["material_group_id"]).strip(), "craft_material_group", "ingredient")
             if str(data.get("blueprint_id") or "").strip():
                 _add(nid, str(data["blueprint_id"]).strip(), "blueprint")
             if str(data.get("profession") or "").strip():
@@ -582,12 +624,20 @@ def _constructor_edges(nodes: dict[str, dict[str, Any]], seen: set[str]) -> list
                 _add_typed(nid, str(data["workshop_id"]).strip(), "workshop", "in_workshop")
         elif node["type"] == "achievement":
             data = _node_data(node) or {}
+            condition_targets={"kill_mob":"mob","kill_boss":"mob","kill_world_boss":"mob","damage_world_boss":"mob","visit_location":"location","discover_location":"location","visit_sublocation":"sublocation","open_camp":"camp","finish_event":"event","complete_quest":"quest","start_quest":"quest","find_item":"item","get_unique_item":"item","use_item":"item","equip_item":"item","craft_item":"item","disassemble_item":"item","repair_item":"item","upgrade_item":"item","enchant_item":"item","gather_resource":"item","gain_effect":"effect","remove_effect":"effect","gain_curse":"effect","remove_curse":"effect","get_fine":"fine","reputation":"reputation","hidden_reputation":"reputation"}
+            for row in data.get("conditions") or []:
+                if not isinstance(row,dict):continue
+                ref=str(row.get("target") or row.get("object_id") or "").strip();target=condition_targets.get(str(row.get("type") or ""))
+                if ref and target:_add_typed(nid,ref,target,"linked_to")
             for row in (data.get("rewards") or []):
                 if isinstance(row, dict) and str(row.get("type") or "") in ("item", "unique_item"):
                     if str(row.get("item_id") or "").strip():
                         _add(nid, str(row["item_id"]).strip(), "rewards_item")
                 if isinstance(row, dict) and str(row.get("type") or "") == "effect" and str(row.get("effect_id") or "").strip():
                     _add_typed(nid, str(row["effect_id"]).strip(), "effect", "applies_effect")
+                if isinstance(row,dict):
+                    kind=str(row.get("type") or "");ref=str(row.get("object_id") or row.get("skill_id") or row.get("effect_id") or row.get("item_id") or "").strip();target={"skill":"skill","effect":"effect","temp_buff":"effect","reputation":"reputation","hidden_reputation":"reputation","unlock_location":"location","unlock_sublocation":"sublocation","unlock_npc":"npc","unlock_recipe":"recipe"}.get(kind)
+                    if ref and target:_add_typed(nid,ref,target,"linked_to")
             # Эффекты достижения (ТЗ 09 §17): список effects (id или {effect_id}).
             for entry in (data.get("effects") or []):
                 ref = entry.get("effect_id") if isinstance(entry, dict) else entry
@@ -630,8 +680,132 @@ def _constructor_edges(nodes: dict[str, dict[str, Any]], seen: set[str]) -> list
                            "reputation", "depends_on_reputation")
         elif node["type"] == "tavern":
             data = _node_data(node) or {}
-            if str(data.get("location_id") or "").strip():
-                _add_typed(nid, str(data["location_id"]).strip(), "location", "in_location")
+            for field,target in (("location_id","location"),("sublocation_id","sublocation"),("city_id","city_node"),("fortress_id","city_node"),("camp_id","camp"),("casino_id","casino")):
+                if str(data.get(field) or "").strip():_add_typed(nid,str(data[field]).strip(),target,"in_location" if target in {"location","sublocation","city_node","camp"} else "linked_to")
+            for collection,field,target,edge in (("npc_links","npc_id","npc","linked_to"),("food","effect_id","effect","applies_effect"),("drinks","effect_id","effect","applies_effect"),("rooms","effect_id","effect","applies_effect"),("effects","effect_id","effect","applies_effect"),("quests","quest_id","quest","linked_to"),("events","event_id","event","triggers_event"),("reputation_rules","reputation_id","reputation","depends_on_reputation")):
+                for row in data.get(collection) or []:
+                    if isinstance(row,dict) and str(row.get(field) or "").strip():_add_typed(nid,str(row[field]).strip(),target,edge)
+            for collection in ("food","drinks","menu"):
+                for row in data.get(collection) or []:
+                    if isinstance(row,dict) and str(row.get("linked_item_id") or row.get("item_id") or "").strip():_add_typed(nid,str(row.get("linked_item_id") or row.get("item_id")).strip(),"item","uses_item")
+        elif node["type"] == "casino":
+            data=_node_data(node) or {}
+            for field,target in (("city_id","city_node"),("location_id","location"),("sublocation_id","sublocation"),("tavern_id","tavern"),("criminal_zone_id","criminal_zone"),("owner_npc","npc"),("fine_id","fine"),("required_reputation_id","reputation"),("required_hidden_reputation_id","reputation")):
+                if str(data.get(field) or "").strip():_add_typed(nid,str(data[field]).strip(),target,"linked_to")
+            for collection,field,target,edge in (("npc_links","npc_id","npc","linked_to"),("events","event_id","event","triggers_event"),("achievement_rules","achievement_id","achievement","linked_to"),("reputation_rules","reputation_id","reputation","depends_on_reputation")):
+                for row in data.get(collection) or []:
+                    if isinstance(row,dict) and str(row.get(field) or "").strip():_add_typed(nid,str(row[field]).strip(),target,edge)
+            for collection in ("win_rewards","losses"):
+                for row in data.get(collection) or []:
+                    if not isinstance(row,dict):continue
+                    ref=str(row.get("object_id") or row.get("item_id") or "").strip();kind=str(row.get("type") or "")
+                    target={"item":"item","rare_item":"item","effect":"effect","achievement":"achievement","reputation":"reputation","hidden_reputation":"reputation","fine":"fine"}.get(kind)
+                    if ref and target:_add_typed(nid,ref,target,"linked_to")
+            for game in data.get("games") or []:
+                if not isinstance(game,dict):continue
+                for field in ("win_formula_id","loss_formula_id","bet_formula_id","raid_formula_id"):
+                    if str(game.get(field) or "").strip():_add_typed(nid,str(game[field]).strip(),"formula","uses_formula")
+        elif node["type"] == "city_node":
+            data=_node_data(node) or {}
+            for collection,field,target in (("sublocation_links","sublocation_id","sublocation"),("npc_links","npc_id","npc"),("market_links","market_id","market"),("workshop_links","workshop_id","workshop"),("tavern_links","tavern_id","tavern"),("event_links","event_id","event")):
+                for row in data.get(collection) or []:
+                    if isinstance(row,dict) and str(row.get(field) or "").strip():_add_typed(nid,str(row[field]).strip(),target,"linked_to")
+            for row in data.get("transition_links") or []:
+                if not isinstance(row,dict):continue
+                ref=str(row.get("target_id") or "").strip();target={"city":"city_node","fortress":"city_node","location":"location","sublocation":"sublocation","camp":"camp"}.get(str(row.get("target_type") or ""))
+                if ref and target:_add_typed(nid,ref,target,"leads_to")
+                for field,target_type in (("required_item_id","item"),("required_quest_id","quest"),("required_reputation_id","reputation")):
+                    if str(row.get(field) or "").strip():_add_typed(nid,str(row[field]).strip(),target_type,"depends_on_reputation" if target_type=="reputation" else "linked_to")
+            for row in data.get("governance") or []:
+                if isinstance(row,dict) and str(row.get("reputation_id") or "").strip():_add_typed(nid,str(row["reputation_id"]).strip(),"reputation","depends_on_reputation")
+        elif node["type"] == "reputation":
+            data=_node_data(node) or {}
+            for field,target in (("faction_id","faction"),("npc_id","npc"),("city_id","city_node"),("location_id","location")):
+                if str(data.get(field) or "").strip():_add_typed(nid,str(data[field]).strip(),target,"owned_by")
+            for field in ("change_formula_id","price_formula_id"):
+                if str(data.get(field) or "").strip():_add_typed(nid,str(data[field]).strip(),"formula","uses_formula")
+            for rule in data.get("change_rules") or []:
+                if isinstance(rule,dict) and str(rule.get("formula_id") or "").strip():_add_typed(nid,str(rule["formula_id"]).strip(),"formula","uses_formula")
+            for stage in data.get("stages") or []:
+                if not isinstance(stage,dict):continue
+                for row in stage.get("rewards") or []:
+                    if not isinstance(row,dict):continue
+                    kind=str(row.get("type") or "");ref=str(row.get("object_id") or row.get("item_id") or "").strip();target={"item":"item","effect":"effect","achievement":"achievement","recipe":"recipe","skill":"skill"}.get(kind)
+                    if ref and target:_add_typed(nid,ref,target,"rewards_item" if target=="item" else "linked_to")
+                for row in stage.get("accesses") or []:
+                    if not isinstance(row,dict):continue
+                    typ=str(row.get("type") or "");ref=str(row.get("object_id") or "").strip();target={"location":"location","sublocation":"sublocation","camp":"camp","npc":"npc","market":"market","quest":"quest","recipe":"recipe","skill":"skill","item":"item","achievement":"achievement","event":"event"}.get(typ)
+                    if ref and target:_add_typed(nid,ref,target,"unlocks")
+        elif node["type"] == "world_event":
+            data = _node_data(node) or {}
+            scope=str(data.get("scope_type") or "")
+            scope_target={"region":"region","city":"city_node","location":"location","sublocation":"sublocation","camp":"camp","market":"market","npc":"npc"}.get(scope)
+            if scope_target:
+                for ref in [data.get("scope_id"),*(data.get("scope_ids") or [])]:
+                    if str(ref or "").strip():_add_typed(nid,str(ref).strip(),scope_target,"active_in")
+            for row in data.get("modifiers") or []:
+                if not isinstance(row,dict):continue
+                typ=str(row.get("type") or "");ref=str(row.get("object_id") or row.get("target_id") or "").strip()
+                target={"location_access":"location","npc_access":"npc","active_zone":"sublocation","player_effect":"effect"}.get(typ)
+                if ref and target:_add_typed(nid,ref,target,"applies_effect" if target=="effect" else "modifies")
+                if str(row.get("formula_id") or "").strip():_add_typed(nid,str(row["formula_id"]).strip(),"formula","uses_formula")
+            for row in data.get("rewards") or []:
+                if not isinstance(row,dict):continue
+                kind=str(row.get("type") or "");ref=str(row.get("object_id") or row.get("item_id") or "").strip()
+                target={"item":"item","resource":"item","special_loot":"item","effect":"effect","temp_buff":"effect","temp_debuff":"effect","achievement":"achievement","recipe":"recipe","skill":"skill","reputation":"reputation","special_location":"location"}.get(kind)
+                if ref and target:_add_typed(nid,ref,target,"rewards_item" if target=="item" else "linked_to")
+            for row in data.get("special_loot") or []:
+                if isinstance(row,dict) and str(row.get("item_id") or "").strip():_add_typed(nid,str(row["item_id"]).strip(),"item","rewards_item")
+        elif node["type"] == "event_campaign":
+            data = _node_data(node) or {}
+            for field, target_type in (("locations","location"),("mobs","mob"),("npcs","npc"),("items","item"),("world_event_ids","world_event")):
+                for ref in data.get(field) or []:
+                    if str(ref or "").strip(): _add_typed(nid,str(ref).strip(),target_type,"linked_to")
+            for row in data.get("rewards") or []:
+                if not isinstance(row,dict):continue
+                kind=str(row.get("type") or "");ref=str(row.get("object_id") or row.get("item_id") or "").strip()
+                target={"item":"item","effect":"effect","achievement":"achievement","skill":"skill","recipe":"recipe","reputation":"reputation","hidden_reputation":"reputation"}.get(kind)
+                if ref and target:_add_typed(nid,ref,target,"rewards_item" if target=="item" else "linked_to")
+        elif node["type"] == "broadcast_campaign":
+            data = _node_data(node) or {}
+            for row in data.get("rewards") or []:
+                if not isinstance(row,dict):continue
+                kind=str(row.get("type") or "");ref=str(row.get("object_id") or row.get("item_id") or "").strip()
+                target={"item":"item","effect":"effect","achievement":"achievement","skill":"skill","recipe":"recipe"}.get(kind)
+                if ref and target:_add_typed(nid,ref,target,"rewards_item" if target=="item" else "linked_to")
+        elif node["type"] == "economy":
+            data = _node_data(node) or {}
+            for field in ("price_formula_id", "reward_formula_id"):
+                if str(data.get(field) or "").strip(): _add_typed(nid, str(data[field]).strip(), "formula", "uses_formula")
+            for row in data.get("price_rules") or []:
+                if not isinstance(row, dict): continue
+                if str(row.get("item_id") or "").strip(): _add(nid, str(row["item_id"]).strip(), "prices_item")
+                if str(row.get("formula_id") or "").strip(): _add_typed(nid, str(row["formula_id"]).strip(), "formula", "uses_formula")
+                if str(row.get("reputation_id") or "").strip(): _add_typed(nid, str(row["reputation_id"]).strip(), "reputation", "depends_on_reputation")
+            for market in data.get("markets") or []:
+                if not isinstance(market, dict): continue
+                for field, target in (("location_id","location"),("sublocation_id","sublocation"),("npc_id","npc"),("reputation_id","reputation")):
+                    if str(market.get(field) or "").strip(): _add_typed(nid, str(market[field]).strip(), target, "linked_to")
+                products = market.get("items") or []
+                if isinstance(products, str):
+                    try: products = json.loads(products)
+                    except (TypeError, json.JSONDecodeError): products = []
+                if isinstance(products, dict): products = list(products.values())
+                for product in products if isinstance(products, (list, tuple)) else []:
+                    if not isinstance(product, dict): continue
+                    if str(product.get("item_id") or product.get("id") or "").strip(): _add(nid, str(product.get("item_id") or product.get("id")).strip(), "sells_item")
+                    if str(product.get("price_formula_id") or "").strip(): _add_typed(nid, str(product["price_formula_id"]).strip(), "formula", "uses_formula")
+            for collection in ("delivery_rules", "commissions", "services", "rewards"):
+                for row in data.get(collection) or []:
+                    if not isinstance(row, dict): continue
+                    for field in ("formula_id", "cost_formula_id", "time_formula_id"):
+                        if str(row.get(field) or "").strip(): _add_typed(nid, str(row[field]).strip(), "formula", "uses_formula")
+                    if str(row.get("effect_id") or "").strip(): _add_typed(nid, str(row["effect_id"]).strip(), "effect", "applies_effect")
+                    if str(row.get("reputation_id") or "").strip(): _add_typed(nid, str(row["reputation_id"]).strip(), "reputation", "depends_on_reputation")
+            for row in data.get("casinos") or []:
+                if not isinstance(row,dict):continue
+                for field,target in (("casino_id","casino"),("location_id","location"),("sublocation_id","sublocation")):
+                    if str(row.get(field) or "").strip():_add_typed(nid,str(row[field]).strip(),target,"linked_to")
         elif node["type"] == "item":
             data = _node_data(node) or {}
             for link in (data.get("effect_links") or []):

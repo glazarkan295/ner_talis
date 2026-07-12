@@ -116,6 +116,32 @@ class MessageQueueTest(unittest.TestCase):
         counts = mq.dispatch_once(lambda m: (mq.RESULT_SENT, ""), platforms=[])
         self.assertEqual(counts["processed"], 0)
 
+    def test_waiting_conditions_timer_missing_platform_and_soft_delete(self):
+        battle,_=self._msg(initial_status=mq.STATUS_WAIT_BATTLE)
+        timer,_=self._msg(initial_status=mq.STATUS_WAIT_TIMER,delay_seconds=60)
+        pending,_=self._msg(platform="",recipient="",initial_status=mq.STATUS_NOTIFICATION_PENDING)
+        self.assertEqual(mq.dispatch_once(lambda m:(mq.RESULT_SENT,""))["processed"],0)
+        self.assertEqual(mq.release_waiting("NT-1","battle"),1)
+        self.assertEqual(mq.dispatch_once(lambda m:(mq.RESULT_SENT,""))["sent"],1)
+        self.assertEqual(mq.bind_pending_recipient("NT-1","telegram","222"),1)
+        self.assertEqual(mq.dispatch_once(lambda m:(mq.RESULT_SENT,""))["sent"],1)
+        future=datetime.now(timezone.utc)+timedelta(minutes=2)
+        self.assertEqual(mq.dispatch_once(lambda m:(mq.RESULT_SENT,""),now=future)["sent"],1)
+        deleted=mq.delete(battle["id"]);self.assertEqual(deleted["status"],mq.STATUS_DELETED);self.assertEqual(deleted["text"],"")
+
+    def test_similar_messages_are_sent_as_one_group_and_all_audited(self):
+        for text in ("награда 1","награда 2"):
+            self._msg(text=text,group_key="NT-1:reward:battle",group_header="Награды",group_footer="Итого",max_in_group=5)
+        payloads=[];counts=mq.dispatch_once(lambda m:(payloads.append(m) or (mq.RESULT_SENT,"")))
+        self.assertEqual(len(payloads),1);self.assertIn("награда 1",payloads[0]["text"]);self.assertIn("Итого",payloads[0]["text"])
+        self.assertEqual(counts["sent"],2);self.assertTrue(all(row.get("grouped_with") for row in mq.list_messages()))
+
+    def test_message_button_ttl_and_one_time(self):
+        msg,_=self._msg(buttons=[{"button_id":"open","action":"open_profile","target":"NT-1","one_time":True,"ttl_seconds":10,"error_text":"Недоступно"}])
+        self.assertTrue(mq.use_button(msg["id"],"open")["ok"]);self.assertEqual(mq.use_button(msg["id"],"open")["error"],"Недоступно")
+        other,_=self._msg(buttons=[{"button_id":"late","action":"dismiss","ttl_seconds":1}])
+        self.assertFalse(mq.use_button(other["id"],"late",now=datetime.now(timezone.utc)+timedelta(seconds=2))["ok"])
+
 
 class MessagesApiTest(unittest.TestCase):
     def setUp(self):
@@ -171,10 +197,11 @@ class MessagesApiTest(unittest.TestCase):
         actions = {r["action"] for r in read_admin_audit_records()}
         self.assertIn("messages.send_direct", actions)
 
-    def test_send_direct_requires_linked_account(self):
+    def test_send_direct_without_linked_account_is_preserved_for_later(self):
         token = self._token("999")
-        # Player with no linked account.
-        self.assertEqual(self.client.post("/api/admin/v2/messages/send", headers=self._auth(token), json={"game_id": "NT-NOPE", "text": "x"}).status_code, 404)
+        gid=self._make_player();player=self.storage.get_player_by_game_id(gid);player["linked_accounts"]={};player["main_platform"]="";self.storage.update_player(player)
+        response=self.client.post("/api/admin/v2/messages/send", headers=self._auth(token), json={"game_id":gid,"text":"x"})
+        self.assertEqual(response.status_code,200,response.text);self.assertEqual(response.json()["message"]["status"],mq.STATUS_NOTIFICATION_PENDING)
 
     def test_retry_and_cancel_endpoints(self):
         token = self._token("999")

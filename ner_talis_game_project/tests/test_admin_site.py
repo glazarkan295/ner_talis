@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -116,6 +117,31 @@ class SiteExtendedKindsServiceTest(unittest.TestCase):
         self.assertFalse(site.validate("site_theme", bad)["ok"])
         ok = site.store().create("t_ok", {"_kind": "site_theme", "title": "Тёмная", "block_opacity": 80})
         self.assertTrue(site.validate("site_theme", ok)["ok"], site.validate("site_theme", ok)["errors"])
+
+    def test_site_settings_require_https_and_drive_runtime_url(self):
+        bad = site.store().create("settings_bad", {"_kind": "site_settings", "title": "Prod", "active_url": "http://game.example"})
+        self.assertFalse(site.validate("site_settings", bad)["ok"])
+        site.store().create("site_error", {"_kind": "page", "title": "Ошибка", "slug": "error"})
+        site.store().set_status("site_error", site.STATUS_PUBLISHED, force=True)
+        good = site.store().create("settings", {"_kind": "site_settings", "title": "Prod", "active_url": "https://game.example", "allowed_domains": ["game.example"], "session_ttl_minutes": 30, "error_page_id": "site_error"})
+        self.assertTrue(site.validate("site_settings", good)["ok"], site.validate("site_settings", good)["errors"])
+        site.store().set_status("settings", site.STATUS_PUBLISHED, force=True)
+        from services import web_profile
+        self.assertEqual(web_profile.get_site_base_url(), "https://game.example")
+        self.assertEqual(web_profile.get_web_session_ttl_minutes(), 30)
+
+    def test_site_link_check_blocks_private_network_and_accepts_public_https(self):
+        with patch("services.site_content_registry.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("127.0.0.1", 443))]):
+            with self.assertRaisesRegex(ValueError, "внутреннюю"):
+                site.check_public_https_url("https://localhost")
+        response = unittest.mock.MagicMock()
+        response.__enter__.return_value = response
+        response.status = 200
+        response.geturl.return_value = "https://game.example"
+        with patch("services.site_content_registry.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 443))]), \
+             patch("services.site_content_registry.urllib.request.urlopen", return_value=response):
+            result = site.check_public_https_url("https://game.example")
+        self.assertTrue(result["available"])
 
     def test_where_used(self):
         site.store().create("home", {"_kind": "page", "title": "Главная"})

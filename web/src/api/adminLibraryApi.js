@@ -8,9 +8,18 @@ const post = (base, path, body) => requestAdminJson(`/api/admin/v2/${base}${path
 export const fetchLibMeta = (base) => requestAdminJson(`/api/admin/v2/${base}/meta?_=${t()}`);
 export const fetchLibList = (base, status = "") => requestAdminJson(`/api/admin/v2/${base}?${new URLSearchParams(status ? { status } : {}).toString()}&_=${t()}`);
 export const fetchLibItem = (base, id) => requestAdminJson(`/api/admin/v2/${base}/${encodeURIComponent(id)}?_=${t()}`);
+export const fetchLibUsage = (base, id) => requestAdminJson(`/api/admin/v2/${base}/${encodeURIComponent(id)}/usage?_=${t()}`);
+export const fetchLibPreview = (base, id) => requestAdminJson(`/api/admin/v2/${base}/${encodeURIComponent(id)}/preview?_=${t()}`);
 export const createLibItem = (base, id, data, reason) => post(base, "", { id, data, reason });
 export const updateLibItem = (base, id, data, reason) => requestAdminJson(`/api/admin/v2/${base}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ data, reason }) });
 export const validateLibItem = (base, id, reason) => post(base, `/${encodeURIComponent(id)}/validate`, { reason });
+export const duplicateLibItem = (base, id, newId, reason) => post(base, `/${encodeURIComponent(id)}/duplicate`, { id: newId, reason });
 export const libLifecycle = (base, id, verb, reason) => post(base, `/${encodeURIComponent(id)}/${verb}`, { reason });
 export const deleteLibItem = (base, id, confirm, reason) => requestAdminJson(`/api/admin/v2/${base}/${encodeURIComponent(id)}`, { method: "DELETE", body: JSON.stringify({ confirm, reason }) });
 export const importLib = (base, mode, reason) => post(base, "/import", { mode, reason });
+export const broadcastRecipientPreview = (id) => post("broadcast-campaigns", `/${encodeURIComponent(id)}/recipient-preview`, {});
+export const broadcastStart = (id, testOnly = false) => post("broadcast-campaigns", `/${encodeURIComponent(id)}/${testOnly ? "test-send" : "start"}`, { confirm: true, confirm_rewards: true });
+export const broadcastStop = (id) => post("broadcast-campaigns", `/${encodeURIComponent(id)}/stop`, {});
+export const broadcastRunBatch = (id) => post("broadcast-campaigns", `/${encodeURIComponent(id)}/run-batch`, {});
+export const broadcastRetryFailed = (id) => post("broadcast-campaigns", `/${encodeURIComponent(id)}/retry-failed`, {});
+export const fetchBroadcastRun = (id) => requestAdminJson(`/api/admin/v2/broadcast-campaigns/${encodeURIComponent(id)}/run-state?_=${t()}`);

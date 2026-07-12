@@ -11,12 +11,14 @@ export function ConfirmModal({
   cancelLabel = "Отмена",
   dangerous = false,
   requireReason = false,
+  requireConfirmText = "",
   onConfirm,
   onCancel,
 }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirmText, setConfirmText] = useState("");
   const reasonRef = useRef(null);
 
   useEffect(() => {
@@ -24,6 +26,7 @@ export function ConfirmModal({
       setReason("");
       setBusy(false);
       setError("");
+      setConfirmText("");
       requestAnimationFrame(() => reasonRef.current?.focus());
     }
   }, [open]);
@@ -31,7 +34,9 @@ export function ConfirmModal({
   if (!open) return null;
 
   const needReason = requireReason || dangerous;
-  const canConfirm = !busy && (!needReason || reason.trim().length >= 3);
+  const canConfirm = !busy
+    && (!needReason || reason.trim().length >= 3)
+    && (!requireConfirmText || confirmText === requireConfirmText);
 
   async function confirm() {
     if (!canConfirm) return;
@@ -60,6 +65,16 @@ export function ConfirmModal({
               value={reason}
               placeholder="Зачем выполняется действие — попадёт в журнал аудита"
               onChange={(e) => setReason(e.target.value)}
+            />
+          </label>
+        ) : null}
+        {requireConfirmText ? (
+          <label className="ntv2-field">
+            <span>Введите точный ID: <b className="ntv2-mono">{requireConfirmText}</b></span>
+            <input
+              value={confirmText}
+              autoComplete="off"
+              onChange={(e) => setConfirmText(e.target.value)}
             />
           </label>
         ) : null}

@@ -148,11 +148,19 @@ def grant_item_to_player(player: dict[str, Any], item_id: str, amount: int, *, s
     )
 
 
-def choose_loot_entry(table: list[dict[str, Any]], rng: random.Random) -> dict[str, Any]:
-    return weighted_choice([(entry, int(entry.get("weight", 1) or 1)) for entry in table], rng)
+def choose_loot_entry(table: list[dict[str, Any]], rng: random.Random, player: dict[str, Any] | None = None) -> dict[str, Any]:
+    weighted = []
+    for entry in table:
+        weight = float(entry.get("weight", 1) or 1)
+        item_id = str(entry.get("item_id") or "")
+        if item_id:
+            from services.item_formula_runtime import drop_chance
+            weight = drop_chance(item_id, weight, player=player, context={"location_id": FISHING_ZONE})
+        weighted.append((entry, max(0, int(round(weight)))))
+    return weighted_choice(weighted, rng)
 
 
-def choose_pier_fishing_reward(rng: random.Random | None = None) -> tuple[str, dict[str, Any]]:
+def choose_pier_fishing_reward(rng: random.Random | None = None, player: dict[str, Any] | None = None) -> tuple[str, dict[str, Any]]:
     rng = rng or random.Random()
     config = load_fishing_sources().get("pier_fishing") or {}
     rarity_weights = config.get("rarity_weights") or {"common": 50, "uncommon": 19, "rare": 1, "trash": 30}
@@ -161,7 +169,7 @@ def choose_pier_fishing_reward(rng: random.Random | None = None) -> tuple[str, d
     table = tables.get(rarity) or tables.get("trash") or []
     if not table:
         return str(rarity), {"item_id": "old_torn_boot", "amount": [1, 1], "weight": 1}
-    return str(rarity), choose_loot_entry(table, rng)
+    return str(rarity), choose_loot_entry(table, rng, player)
 
 
 def fishing_intro_text() -> str:
@@ -191,18 +199,30 @@ def _fishing_timer_schedule(player: dict[str, Any], timer: dict[str, Any]) -> di
     }
 
 
-def _grant_fishing_catch(player: dict[str, Any], rng: random.Random) -> str:
-    rarity, entry = choose_pier_fishing_reward(rng)
+def _grant_fishing_catch(player: dict[str, Any], rng: random.Random) -> tuple[str, str, int]:
+    rarity, entry = choose_pier_fishing_reward(rng, player)
     item_id = str(entry.get("item_id") or "old_torn_boot")
     amount = _amount_from_entry(entry, rng)
     add_result = grant_item_to_player(player, item_id, amount, source=FISHING_SOURCE_TEXT, rng=rng)
+    from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+    trigger_item_effect(player, {"item_id": item_id}, "on_receive_item", context={"item_count": amount, "location_id": FISHING_ZONE}, rng=rng)
+    from services.item_effect_trigger_runtime import trigger_owned
+    trigger_owned(player, "on_fishing", context={"item_count": amount, "location_id": FISHING_ZONE}, rng=rng)
     name = item_display_name(item_id)
     rarity_name = {"common": "обычный улов", "uncommon": "необычный улов", "rare": "редкий улов", "trash": "мусор"}.get(rarity, rarity)
     notice = inventory_add_result_notice(add_result, name)
+    extras=[]
+    try:
+        from services.world_event_runtime import roll_special_loot
+        for special in roll_special_loot(player,"fishing",location_id=FISHING_ZONE,object_id=item_id,rng=rng):
+            sid=str(special.get("item_id") or "");count=int(special.get("amount") or 0)
+            if sid and count:
+                extra_result=grant_item_to_player(player,sid,count,source="Мировое событие",rng=rng);extras.append(f"Мировое событие: {item_display_name(sid)} ×{extra_result.added}")
+    except Exception:pass
     return (
         "🎣 Поклёвка! Вы вытягиваете снасть.\n\n"
         f"Категория: {rarity_name}.\n"
-        f"Получено: {name} ×{add_result.added}.{notice}"
+        f"Получено: {name} ×{add_result.added}.{notice}"+("\n"+"\n".join(extras) if extras else ""), item_id, add_result.added
     )
 
 
@@ -224,7 +244,19 @@ def complete_fishing_timer(storage: Any, player: dict[str, Any], timer_id: str |
     player["current_city"] = "seldar"
     player["current_zone"] = FISHING_ZONE
     player["location_id"] = FISHING_ZONE
-    text = _grant_fishing_catch(player, rng)
+    text, item_id, caught = _grant_fishing_catch(player, rng)
+    try:
+        from services.achievement_engine import record_game_event
+        record_game_event(player, "catch_fish", 1, item_id, storage=storage)
+        record_game_event(player, "find_item", caught, item_id, storage=storage)
+        if "clam" in item_id:
+            record_game_event(player, "open_clam", caught, item_id, storage=storage)
+        if "pearl" in item_id:
+            record_game_event(player, "find_pearl", caught, item_id, storage=storage)
+        from services.event_campaign_runtime import progress as event_progress
+        event_progress(player, "catch_fish", item_id, 1, storage=storage)
+    except Exception:
+        pass
     storage.update_player(player)
     return FishingResponse(text, fishing_buttons())
 
@@ -313,6 +345,17 @@ def handle_fishing_action(storage: Any, player: dict[str, Any], action: str, rng
         storage.update_player(player)
         return FishingResponse(f"🎣 Для заброса нужно {FISHING_ENERGY_COST} энергии. Сейчас энергии недостаточно.", fishing_buttons())
 
+    try:
+        from services.economy_runtime import service_price, change, service_rule
+        fishing_cost=service_price("fishing",0,player,{"location_id":FISHING_ZONE})
+        change(player,"copper",-fishing_cost,operation="fishing_service",source="fishing",source_id=FISHING_ZONE)
+    except ValueError:
+        rule=service_rule("fishing",{"location_id":FISHING_ZONE})
+        storage.update_player(player)
+        return FishingResponse(str(rule.get("error_text") or "Недостаточно монет для рыбалки."),fishing_buttons())
+    except ImportError:
+        fishing_cost=0
+
     player["energy"] = energy - FISHING_ENERGY_COST
     player["current_energy"] = player["energy"]
     # Заброс расходует одно использование удочки (10 использований = 1 удочка).
@@ -323,6 +366,7 @@ def handle_fishing_action(storage: Any, player: dict[str, Any], action: str, rng
         "seconds": FISHING_TIMER_SECONDS,
         "ends_at": _now_ts() + FISHING_TIMER_SECONDS,
         "energy_spent": FISHING_ENERGY_COST,
+        "money_spent": fishing_cost,
         "location_id": FISHING_ZONE,
     }
     player["active_timer"] = new_timer

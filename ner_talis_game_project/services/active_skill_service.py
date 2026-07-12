@@ -188,13 +188,47 @@ def load_branch_choice_messages() -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-@lru_cache(maxsize=1)
-def all_catalog_skills() -> tuple[dict[str, Any], ...]:
+def _skill_constructor_stamp() -> tuple[str, int, int]:
+    try:
+        from services import skill_constructor_service as constructor
+        path = constructor.store().path()
+        stat = path.stat()
+        return str(path), stat.st_mtime_ns, stat.st_size
+    except OSError:
+        return "", 0, 0
+
+
+@lru_cache(maxsize=16)
+def _merged_catalog(_path: str, _mtime_ns: int, _size: int) -> tuple[dict[str, Any], ...]:
     skills = load_active_skill_registry().get("skills")
-    return tuple(skill for skill in skills if isinstance(skill, dict)) if isinstance(skills, list) else tuple()
+    by_id = {str(skill.get("id") or ""): deepcopy(skill) for skill in skills or [] if isinstance(skill, dict) and skill.get("id")}
+    try:
+        from services import skill_constructor_service as constructor
+        for envelope in constructor.store().list(status=constructor.STATUS_PUBLISHED):
+            data = deepcopy(envelope.get("data") or {})
+            skill_id = str(envelope.get("id") or "")
+            if not skill_id:
+                continue
+            data["id"] = skill_id
+            data["is_passive"] = str(data.get("skill_type") or "active") == "passive"
+            data["base_formula"] = data.get("base_damage_formula") or data.get("base_formula")
+            data["constructor_live"] = True
+            data["constructor_version"] = envelope.get("version")
+            by_id[skill_id] = data
+    except Exception:
+        pass
+    return tuple(by_id.values())
 
 
-@lru_cache(maxsize=1)
+def all_catalog_skills() -> tuple[dict[str, Any], ...]:
+    return _merged_catalog(*_skill_constructor_stamp())
+
+
+def invalidate_active_skill_catalog() -> None:
+    """Drop live overlay/index caches after admin/import mutations."""
+    _merged_catalog.cache_clear()
+
+
 def _catalog_by_id() -> dict[str, dict[str, Any]]:
     return {str(skill.get("id")): skill for skill in all_catalog_skills() if skill.get("id")}
 
@@ -376,9 +410,14 @@ def runtime_skill_from_catalog(skill: dict[str, Any]) -> dict[str, Any]:
     cooldown = 0 if is_passive else _parse_first_int(source.get("cooldown_turns", source.get("cooldown_turns_text")), 0)
     weapons = _weapon_requirements_for_skill(source)
     modifiers = _catalog_modifier_dicts(source)
+    explicit_ammo = None
+    if source.get("ammo_enabled"):
+        explicit_ammo = {"enabled": True, "direct_inventory": True, "ammo_item_id": source.get("ammo_item_id"), "consume_per_use": max(1, _safe_int(source.get("ammo_per_use"), 1)),
+                         "ammo_name": source.get("ammo_name") or source.get("ammo_item_id"),
+                         "missing_message": source.get("text_missing_ammo") or "Не хватает боеприпасов."}
     description = str(source.get("effect") or source.get("description") or "Навык пути.")
     skill_type = "passive" if is_passive else "active"
-    return {
+    runtime = {
         "id": source.get("id"),
         "name": source.get("name"),
         "level": skill_level({"modifiers": modifiers}) if modifiers else 1,
@@ -402,6 +441,12 @@ def runtime_skill_from_catalog(skill: dict[str, Any]) -> dict[str, Any]:
         "target": "пассивно" if is_passive else "single_enemy",
         "damage_type": _damage_type(source),
         "base_damage_formula": source.get("base_formula"),
+        "damage_formula_id": source.get("damage_formula_id"),
+        "use_cost_formula_id": source.get("use_cost_formula_id"),
+        "learn_cost_formula_id": source.get("learn_cost_formula_id"),
+        "learn_cost_skill_points": _safe_int(source.get("learn_cost_skill_points"), 0),
+        "upgrade_cost_formula_id": source.get("upgrade_cost_formula_id"),
+        "level_power_formula_id": source.get("level_power_formula_id"),
         "attribute_profile": _parse_attribute_profile(source.get("base_formula")),
         "role_coefficient": 0.0,
         "upgradeable": bool(modifiers),
@@ -413,7 +458,7 @@ def runtime_skill_from_catalog(skill: dict[str, Any]) -> dict[str, Any]:
         "weapon_requirements": weapons,
         "required_equipment": source.get("required_equipment"),
         "usage_requirements": source.get("usage_requirements") or [],
-        "ammo_requirements": deepcopy(source.get("ammo_requirements"))
+        "ammo_requirements": explicit_ammo or deepcopy(source.get("ammo_requirements"))
         if isinstance(source.get("ammo_requirements"), dict) and source.get("ammo_requirements")
         else _ammo_requirements(source, weapons),
         "equippable": not is_passive,
@@ -423,6 +468,9 @@ def runtime_skill_from_catalog(skill: dict[str, Any]) -> dict[str, Any]:
         "profile_slot": "Пассивные навыки" if is_passive else "Активные навыки",
         "not_unlocked_by_player_level": True,
     }
+    # Preserve constructor-only action/source/access fields while canonical
+    # runtime values above keep legacy compatibility.
+    return {**source, **runtime}
 
 
 def skill_level(skill: dict[str, Any]) -> int:
@@ -514,7 +562,7 @@ def ensure_active_skill_fields(player: dict[str, Any]) -> bool:
     if not isinstance(skills, dict):
         player["skills"] = skills = {"active": [], "passive": [], "equipped": []}
         changed = True
-    for section in ("active", "passive", "equipped"):
+    for section in ("active", "passive", "equipped", "passive_equipped"):
         if not isinstance(skills.get(section), list):
             skills[section] = []
             changed = True
@@ -524,7 +572,7 @@ def ensure_active_skill_fields(player: dict[str, Any]) -> bool:
     if "unlocked_skill_sources" not in player or not isinstance(player.get("unlocked_skill_sources"), list):
         player["unlocked_skill_sources"] = []
         changed = True
-    for section in ("active", "equipped", "passive"):
+    for section in ("active", "equipped", "passive", "passive_equipped"):
         values = skills.get(section) if isinstance(skills.get(section), list) else []
         filtered = [skill for skill in values if not _is_legacy_concentration_skill(skill)]
         if len(filtered) != len(values):
@@ -599,7 +647,7 @@ def path_level(player: dict[str, Any], path: str) -> int:
     total = 0
     skills = player.get("skills") if isinstance(player.get("skills"), dict) else {}
     seen: set[str] = set()
-    for section in ("active", "equipped", "passive"):
+    for section in ("active", "equipped", "passive", "passive_equipped"):
         for skill in skills.get(section, []) if isinstance(skills.get(section), list) else []:
             if not isinstance(skill, dict):
                 continue
@@ -634,6 +682,22 @@ def can_spend_skill_points_on(player: dict[str, Any], skill: dict[str, Any], amo
     if projected > limit:
         return False, f"Уровень дополнительного пути не может превышать 60% основного пути. Лимит сейчас: {limit}."
     return True, ""
+
+
+def skill_upgrade_cost(player: dict[str, Any], skill: dict[str, Any], amount: int) -> int:
+    base = max(1, _safe_int(amount, 1))
+    from services.formula_runtime import evaluate, numeric_context
+    return max(0, _safe_int(evaluate(skill.get("upgrade_cost_formula_id"), numeric_context({
+        "base_amount": base, "item_count": base, "item_level": skill_level(skill),
+    }, player=player), default=base), base))
+
+
+def skill_learning_cost(player: dict[str, Any], skill: dict[str, Any]) -> int:
+    base = max(0, _safe_int(skill.get("learn_cost_skill_points"), 0))
+    from services.formula_runtime import evaluate, numeric_context
+    return max(0, _safe_int(evaluate(skill.get("learn_cost_formula_id"), numeric_context({
+        "base_amount": base, "item_level": skill_level(skill),
+    }, player=player), default=base), base))
 
 
 def choose_active_skill_branch(player: dict[str, Any], branch: str) -> dict[str, Any]:
@@ -759,6 +823,13 @@ def confirm_pending_skill_choice(player: dict[str, Any]) -> dict[str, Any] | Non
     selected = options.get(preview_id)
     if not selected:
         return None
+    learning_cost = skill_learning_cost(player, selected)
+    free_points = _safe_int(player.get("free_skill_points"), 0)
+    if learning_cost > free_points:
+        player["last_skill_choice_error"] = f"Для изучения нужно {learning_cost} очков навыков. Доступно: {free_points}."
+        return None
+    player["free_skill_points"] = free_points - learning_cost
+    player.pop("last_skill_choice_error", None)
     add_skill_to_player(player, selected)
     groups = player.setdefault("chosen_skill_groups", [])
     group = str(choice["choice_group"])
@@ -783,8 +854,42 @@ def can_choose_active_skill_branch_here(player: dict[str, Any]) -> bool:
 
 def refresh_unlocked_active_skills(player: dict[str, Any]) -> int:
     ensure_active_skill_fields(player)
-    # Choices are intentionally granted only by explicit Order Stone selection.
-    return 0
+    inventory_ids = {str(row.get("item_id") or row.get("id") or "") for row in player.get("inventory") or [] if isinstance(row, dict)}
+    inventory_ids.update(str(row.get("item_id") or row.get("id") or "") for row in (player.get("equipment") or {}).values() if isinstance(row, dict))
+    achievements = player.get("achievements") or {}
+    earned = set()
+    if isinstance(achievements, dict):
+        earned.update(str(key) for key, value in achievements.items() if value and (not isinstance(value, dict) or value.get("earned", True)))
+        earned.update(str(x) for x in achievements.get("earned", []) if x) if isinstance(achievements.get("earned"), list) else None
+    elif isinstance(achievements, list):
+        earned.update(str(x) for x in achievements)
+    unlocks = {str(x) for x in player.get("unlocked_skills") or []}
+    desired: dict[str, dict[str, Any]] = {}
+    for definition in all_catalog_skills():
+        source = str(definition.get("source_type") or "standard")
+        skill_id = str(definition.get("id") or "")
+        available = (
+            source == "item" and str(definition.get("linked_item_id") or "") in inventory_ids
+            or source == "achievement" and str(definition.get("linked_achievement_id") or "") in earned
+            or source == "special" and (skill_id in unlocks or str(definition.get("unlock_condition") or "") in unlocks)
+        )
+        if available and skill_id:
+            runtime = runtime_skill_from_catalog(definition)
+            runtime["dynamic_source"] = source
+            desired[skill_id] = runtime
+    changed = 0
+    skills = player["skills"]
+    for section in ("active", "passive", "equipped"):
+        before = list(skills.get(section) or [])
+        skills[section] = [row for row in before if not isinstance(row, dict) or not row.get("dynamic_source") or str(row.get("id") or "") in desired]
+        changed += len(before) - len(skills[section])
+    existing = {str(row.get("id") or "") for section in ("active", "passive", "equipped") for row in skills.get(section) or [] if isinstance(row, dict)}
+    for skill_id, runtime in desired.items():
+        if skill_id not in existing:
+            target = "passive" if runtime.get("skill_type") == "passive" else "active"
+            skills[target].append(runtime)
+            changed += 1
+    return changed
 
 
 def branch_hint_text() -> str:
@@ -982,7 +1087,11 @@ def skill_weapon_requirement_text(skill: dict[str, Any]) -> str:
 
 def _ammo_requirements_for_weapon(skill: dict[str, Any], weapon_token: str | None) -> dict[str, Any] | None:
     ammo = skill.get("ammo_requirements") if isinstance(skill.get("ammo_requirements"), dict) else {}
-    if not ammo or ammo.get("enabled") is False or not weapon_token:
+    if not ammo or ammo.get("enabled") is False:
+        return None
+    if ammo.get("direct_inventory"):
+        return ammo
+    if not weapon_token:
         return None
     by_weapon = ammo.get("requirements_by_weapon") if isinstance(ammo.get("requirements_by_weapon"), dict) else {}
     requirement = by_weapon.get(weapon_token)
@@ -1040,6 +1149,11 @@ def validate_skill_ammo(player: dict[str, Any], skill: dict[str, Any]) -> tuple[
     _weapon, requirement = skill_ammo_requirement_for_current_weapon(player, skill)
     if not requirement:
         return True, ""
+    if requirement.get("direct_inventory"):
+        item_id = str(requirement.get("ammo_item_id") or "")
+        need = max(1, _safe_int(requirement.get("consume_per_use"), 1))
+        count = sum(_safe_int(row.get("amount"), 1) for row in player.get("inventory") or [] if isinstance(row, dict) and str(row.get("item_id") or row.get("id") or "") == item_id)
+        return (True, "") if count >= need else (False, str(requirement.get("missing_message") or "Не хватает боеприпасов."))
     quiver_requirement = requirement.get("quiver_requirement") if isinstance(requirement.get("quiver_requirement"), dict) else {}
     quiver_slot = str(quiver_requirement.get("quiver_slot") or requirement.get("quiver_slot") or "")
     quiver = _equipped_quiver(player, quiver_slot)
@@ -1062,6 +1176,21 @@ def consume_skill_ammo(player: dict[str, Any], skill: dict[str, Any]) -> tuple[b
     ok, message = validate_skill_ammo(player, skill)
     if not ok:
         return False, message
+    if requirement.get("direct_inventory"):
+        item_id = str(requirement.get("ammo_item_id") or "")
+        need = max(1, _safe_int(requirement.get("consume_per_use"), 1))
+        inventory = player.get("inventory") or []
+        for row in list(inventory):
+            if not isinstance(row, dict) or str(row.get("item_id") or row.get("id") or "") != item_id:
+                continue
+            take = min(need, _safe_int(row.get("amount"), 1))
+            row["amount"] = _safe_int(row.get("amount"), 1) - take
+            need -= take
+            if row["amount"] <= 0:
+                inventory.remove(row)
+            if need <= 0:
+                break
+        return True, f"Израсходованы боеприпасы: {requirement.get('ammo_name') or item_id}."
     quiver_requirement = requirement.get("quiver_requirement") if isinstance(requirement.get("quiver_requirement"), dict) else {}
     quiver_slot = str(quiver_requirement.get("quiver_slot") or requirement.get("quiver_slot") or "")
     quiver = _equipped_quiver(player, quiver_slot)
@@ -1118,10 +1247,18 @@ def _passive_active_for_skill(player: dict[str, Any], passive: dict[str, Any], a
     return is_skill_weapon_compatible(player, passive)
 
 
+def _active_passives(player: dict[str, Any]) -> list[dict[str, Any]]:
+    """Keep old always-on passives compatible; constructor passives require a slot."""
+    skills = player.get("skills") if isinstance(player.get("skills"), dict) else {}
+    legacy = [row for row in skills.get("passive", []) if isinstance(row, dict) and row.get("passive_slot_cost") in {None, "", 0}]
+    equipped = [row for row in skills.get("passive_equipped", []) if isinstance(row, dict)]
+    return legacy + equipped
+
+
 def player_passive_bonus_percent(player: dict[str, Any], active_skill: dict[str, Any] | None, keywords: tuple[str, ...]) -> float:
     skills = player.get("skills") if isinstance(player.get("skills"), dict) else {}
     total = 0.0
-    for passive in skills.get("passive", []) if isinstance(skills.get("passive"), list) else []:
+    for passive in _active_passives(player):
         if not _passive_active_for_skill(player, passive, active_skill):
             continue
         text = f"{passive.get('name') or ''} {passive.get('effect') or ''} {passive.get('description') or ''}".casefold()
@@ -1156,7 +1293,7 @@ def passive_stat_modifiers(player: dict[str, Any]) -> dict[str, int]:
         "bonus_mana": 0,
         "bonus_hp": 0,
     }
-    for passive in skills.get("passive", []) if isinstance(skills.get("passive"), list) else []:
+    for passive in _active_passives(player):
         if not _passive_active_for_skill(player, passive, None):
             continue
         text = f"{passive.get('name') or ''} {passive.get('effect') or ''} {passive.get('description') or ''} {' '.join(str(m.get('name') or '') for m in passive.get('modifiers', []) if isinstance(m, dict))}".casefold()
@@ -1188,6 +1325,12 @@ def passive_stat_modifiers(player: dict[str, Any]) -> dict[str, int]:
 
 def resource_cost_with_modifiers(skill: dict[str, Any], player: dict[str, Any] | None = None) -> tuple[int, int]:
     base_cost = _safe_int(skill.get("base_resource_cost") or skill.get("spirit_cost") or skill.get("mana_cost"), 0)
+    if skill.get("use_cost_formula_id"):
+        from services.formula_runtime import evaluate, numeric_context
+        base_cost = max(0, _safe_int(evaluate(skill.get("use_cost_formula_id"), numeric_context({
+            "base_amount": base_cost, "player_level": (player or {}).get("level", 1),
+            "item_level": skill_level(skill),
+        }, player=player), default=base_cost), base_cost))
     reduction = skill_modifier_bonus_percent(skill, ("ресурс", "расход", "эконом")) / 100.0
     if player is not None:
         reduction += max(0.0, passive_skill_multiplier(player, skill, "resource") - 1.0)

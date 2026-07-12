@@ -4,6 +4,7 @@ import {
   deleteFine,
   fetchFine,
   fetchFineMeta,
+  fetchFineUsage,
   fetchFines,
   fineLifecycle,
   updateFine,
@@ -15,20 +16,23 @@ import { VersionHistory } from "../VersionHistory.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { MessageComposer } from "../MessageComposer.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
+import { fetchFormulas } from "../../../api/adminFormulaApi.js";
 
 const STATUS_TONE = { published: "ntv2-badge-owner", error: "ntv2-badge-error", disabled: "ntv2-badge-danger" };
 
 const EMPTY = {
   name: "", type: "city", source: "black_market_raid", currency: "copper",
   short_description: "", description: "",
-  base_amount: 100, min_amount: "", max_amount: "",
+  base_amount: 100, min_amount: "", max_amount: "", amount_formula_id: "",
   first_deadline_days: 7, second_deadline_days: 23, restriction_start_day: 24,
   interest_enabled: true, interest_percent_per_day: 1, interest_start_day: 8,
   restrictions: [], issuer_roles: [],
   stages: [], payment_places: [], removal_methods: [],
   payment_npc_id: "", payment_commission: "", fortress_id: "", city_id: "",
+  payment_formula_id: "", payment_location_id: "", payment_sublocation_id: "", partial_payment_allowed: false, can_pay: true,
+  consequences: [],
   can_become_permanent: false,
-  messages: { on_issue: "", on_pay: "", on_block: "" },
+  messages: { on_issue: "", reason: "", amount: "", term: "", stage: "", block_city: "", block_location: "", fortress_move: "", payment: "", on_pay: "", insufficient_money: "", removal: "", admin_delete: "", permanent: "", repeat_violation: "", impossible_payment: "", on_block: "" },
 };
 
 function Field({ label, children }) {
@@ -42,6 +46,8 @@ export function FinesSection({ guarded, hasPerm }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [formulaOptions, setFormulaOptions] = useState([]);
+  const [usage, setUsage] = useState(null);
 
   const can = useMemo(() => ({
     create: hasPerm("fine_def.create"), edit: hasPerm("fine_def.edit"), validate: hasPerm("fine_def.validate"),
@@ -51,6 +57,7 @@ export function FinesSection({ guarded, hasPerm }) {
 
   const load = useCallback(async () => { const p = await guarded(() => fetchFines(statusFilter)); if (p) setList(p.items || []); }, [guarded, statusFilter]);
   useEffect(() => { (async () => { const m = await guarded(() => fetchFineMeta()); if (m) setMeta(m); })(); }, [guarded]);
+  useEffect(() => { (async () => { const f = await guarded(() => fetchFormulas("published")); if (f) setFormulaOptions((f.items || []).map((x) => ({ value: x.id, label: x.data?.name || x.id }))); })(); }, [guarded]);
   useEffect(() => { load(); }, [load]);
 
   const statuses = meta?.statuses || [];
@@ -71,7 +78,7 @@ export function FinesSection({ guarded, hasPerm }) {
   async function runValidate() { const p = await guarded(() => validateFine(editing.id, ""), "Проверка выполнена."); if (p?.validation) setEditing((c) => ({ ...c, validation: p.validation })); }
   async function refreshEditing() { await load(); if (editing) await openItem(editing.id); }
 
-  if (!meta) return <section className="ntv2-section"><h2>Конструктор штрафов</h2><p className="ntv2-hint">Загрузка…</p></section>;
+  if (!meta) return <section className="ntv2-section"><h2>Штрафы</h2><p className="ntv2-hint">Загрузка…</p></section>;
 
   if (editing) {
     const d = editing.data;
@@ -109,6 +116,7 @@ export function FinesSection({ guarded, hasPerm }) {
 
           <h4 className="ntv2-subhead">Сумма</h4>
           <div className="ntv2-form-row">{num("base_amount", "Базовая сумма")}{num("min_amount", "Мин. сумма")}{num("max_amount", "Макс. сумма")}</div>
+          <Field label="Формула суммы"><select value={d.amount_formula_id || ""} disabled={disabled} onChange={(e) => set("amount_formula_id", e.target.value)}><option value="">— фиксированная сумма —</option>{formulaOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
 
           <h4 className="ntv2-subhead">Сроки и проценты</h4>
           <div className="ntv2-form-row">{num("first_deadline_days", "1-й срок (дн.)")}{num("second_deadline_days", "2-й срок (дн.)")}{num("restriction_start_day", "Ограничения с дня")}</div>
@@ -153,9 +161,13 @@ export function FinesSection({ guarded, hasPerm }) {
               <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.can_become_permanent)} disabled={disabled} onChange={(e) => set("can_become_permanent", e.target.checked)} /> Может стать бессрочным</label>
               <Field label="NPC оплаты (id)"><input value={d.payment_npc_id || ""} disabled={disabled} onChange={(e) => set("payment_npc_id", e.target.value)} /></Field>
               <Field label="Комиссия оплаты"><input type="number" style={{ width: 100 }} value={d.payment_commission ?? ""} disabled={disabled} onChange={(e) => set("payment_commission", e.target.value)} /></Field>
+              <Field label="Формула оплаты"><select value={d.payment_formula_id || ""} disabled={disabled} onChange={(e) => set("payment_formula_id", e.target.value)}><option value="">— нет —</option>{formulaOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
               <Field label="Крепость (id)"><input value={d.fortress_id || ""} disabled={disabled} onChange={(e) => set("fortress_id", e.target.value)} /></Field>
               <Field label="Город (id)"><input value={d.city_id || ""} disabled={disabled} onChange={(e) => set("city_id", e.target.value)} /></Field>
+              <Field label="Локация оплаты"><input value={d.payment_location_id || ""} disabled={disabled} onChange={(e) => set("payment_location_id", e.target.value)} /></Field>
+              <Field label="Подлокация оплаты"><input value={d.payment_sublocation_id || ""} disabled={disabled} onChange={(e) => set("payment_sublocation_id", e.target.value)} /></Field>
             </div>
+            <div className="ntv2-form-row"><label className="ntv2-check"><input type="checkbox" checked={Boolean(d.can_pay)} disabled={disabled} onChange={(e) => set("can_pay",e.target.checked)} /> Можно оплатить</label><label className="ntv2-check"><input type="checkbox" checked={Boolean(d.partial_payment_allowed)} disabled={disabled} onChange={(e) => set("partial_payment_allowed",e.target.checked)} /> Частичная оплата</label></div>
             <div className="ntv2-subhead" style={{ fontSize: 12, marginTop: 6 }}>Места оплаты</div>
             <div className="ntv2-form-row" style={{ gap: 10 }}>
               {(meta.paymentPlaces || []).map((p) => (
@@ -170,6 +182,8 @@ export function FinesSection({ guarded, hasPerm }) {
             </div>
           </div>
 
+          <div className="ntv2-panel"><h4 className="ntv2-subhead">Последствия штрафа</h4>{(d.consequences || []).map((row,i) => { const upd=(k,v)=>set("consequences",d.consequences.map((r,n)=>n===i?{...r,[k]:v}:r));return <div className="ntv2-form-row" key={i}><Field label="Тип"><select value={row.type || ""} disabled={disabled} onChange={(e)=>upd("type",e.target.value)}><option value="">—</option>{["reputation","hidden_reputation","effect","curse","event","admin_notification","history"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="ID"><input value={row.object_id || ""} disabled={disabled} onChange={(e)=>upd("object_id",e.target.value)} /></Field><Field label="Значение"><input type="number" value={row.amount ?? ""} disabled={disabled} onChange={(e)=>upd("amount",e.target.value)} /></Field>{!disabled?<button type="button" className="ntv2-btn ntv2-btn-danger" onClick={()=>set("consequences",d.consequences.filter((_,n)=>n!==i))}>×</button>:null}</div>})}{!disabled?<button type="button" className="ntv2-btn" onClick={()=>set("consequences",[...(d.consequences || []),{}])}>＋ Последствие</button>:null}</div>
+
           <div className="ntv2-panel">
             <h4 className="ntv2-subhead">Кто может выдать</h4>
             <div className="ntv2-form-row" style={{ gap: 10 }}>
@@ -182,8 +196,7 @@ export function FinesSection({ guarded, hasPerm }) {
           <div className="ntv2-panel">
             <h4 className="ntv2-subhead">Сообщения игроку</h4>
             <Field label="При получении штрафа"><EmojiTextarea rows={2} value={d.messages?.on_issue || ""} disabled={disabled} onChange={(v) => setMsg("on_issue", v)} /></Field>
-            <Field label="При оплате"><EmojiTextarea rows={2} value={d.messages?.on_pay || ""} disabled={disabled} onChange={(v) => setMsg("on_pay", v)} /></Field>
-            <Field label="При запрете входа"><EmojiTextarea rows={2} value={d.messages?.on_block || ""} disabled={disabled} onChange={(v) => setMsg("on_block", v)} /></Field>
+            {[["reason","Причина"],["amount","Сумма"],["term","Срок"],["stage","Стадия"],["block_city","Запрет города"],["block_location","Запрет локации"],["fortress_move","Перенос в крепость"],["payment","Предложение оплаты"],["on_pay","Успешная оплата"],["insufficient_money","Недостаточно денег"],["impossible_payment","Нельзя оплатить"],["removal","Снятие"],["admin_delete","Удаление админом"],["permanent","Бессрочный штраф"],["repeat_violation","Повторное нарушение"],["on_block","Запрет входа"]].map(([key,label])=><Field label={label} key={key}><EmojiTextarea rows={2} value={d.messages?.[key] || ""} disabled={disabled} onChange={(v)=>setMsg(key,v)} /></Field>)}
           </div>
 
           <MessageComposer label="Уведомление о штрафе (изображение/формат/предпросмотр)" value={d.issue_message} category="fines" uploadKey={`${editing.id || "fine"}_msg`} disabled={disabled} onChange={(v) => set("issue_message", v)} />
@@ -200,13 +213,15 @@ export function FinesSection({ guarded, hasPerm }) {
         <div className="ntv2-form-row" style={{ marginTop: 14 }}>
           {!disabled ? <button type="button" className="ntv2-btn ntv2-btn-primary" disabled={editing.isNew && !editing.id.trim()} onClick={save}>{editing.isNew ? "Создать" : "Сохранить"}</button> : null}
           {!editing.isNew && can.validate ? <button type="button" className="ntv2-btn" onClick={runValidate}>Проверить</button> : null}
+          {!editing.isNew ? <button type="button" className="ntv2-btn" onClick={async()=>{const p=await guarded(()=>fetchFineUsage(editing.id));setUsage(p?.usage || p || {});}}>Где используется</button> : null}
           {!editing.isNew && can.publish ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Опубликовать тип штрафа?", dangerous: true, confirmLabel: "Опубликовать", body: <p>Тип штрафа будет проверен и опубликован.</p>, run: async (r) => { await guarded(() => fineLifecycle(editing.id, "publish", r), "Опубликовано."); await refreshEditing(); } })}>Опубликовать</button> : null}
           {!editing.isNew && can.disable && editing.status === "published" ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Отключить?", dangerous: true, confirmLabel: "Отключить", body: <p>Тип штрафа перестанет применяться.</p>, run: async (r) => { await guarded(() => fineLifecycle(editing.id, "disable", r), "Отключено."); await refreshEditing(); } })}>Отключить</button> : null}
           {!editing.isNew && can.archive ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "В архив?", dangerous: true, confirmLabel: "В архив", body: <p>Тип штрафа уйдёт в архив.</p>, run: async (r) => { await guarded(() => fineLifecycle(editing.id, "archive", r), "В архиве."); await refreshEditing(); } })}>В архив</button> : null}
           {!editing.isNew && can.del ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => setConfirm({ title: "Удалить тип штрафа?", dangerous: true, confirmLabel: "Удалить", body: <p>Полное удаление определения типа штрафа.</p>, run: async (r) => { await guarded(() => deleteFine(editing.id, editing.id, r), "Удалено."); setEditing(null); await load(); } })}>Удалить</button> : null}
         </div>
+        {usage ? <div className="ntv2-panel"><h4>Где используется</h4><pre className="ntv2-mono" style={{whiteSpace:"pre-wrap"}}>{JSON.stringify(usage,null,2)}</pre><button type="button" className="ntv2-btn" onClick={()=>setUsage(null)}>Закрыть</button></div> : null}
 
-        {!editing.isNew ? <VersionHistory base="fines" id={editing.id} canRollback={can.edit} onRolledBack={refreshEditing} /> : null}
+        {!editing.isNew ? <VersionHistory base="fines" id={editing.id} canRollback={can.edit && (editing.status !== "published" || can.publish)} onRolledBack={refreshEditing} /> : null}
 
         <ConfirmModal open={Boolean(confirm)} title={confirm?.title} body={confirm?.body} dangerous={confirm?.dangerous} confirmLabel={confirm?.confirmLabel} requireReason
           onConfirm={async (r) => { await confirm.run(r); setConfirm(null); }} onCancel={() => setConfirm(null)} />
@@ -216,7 +231,7 @@ export function FinesSection({ guarded, hasPerm }) {
 
   return (
     <section className="ntv2-section">
-      <h2>Конструктор штрафов</h2>
+      <h2>Штрафы</h2>
       <div className="ntv2-filters">
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">Все статусы</option>

@@ -12,6 +12,7 @@ export const fetchAchievement = (id) => requestAdminJson(`${base}/${encodeURICom
 export const createAchievement = (id, data, reason) => post(base, { id, data, reason });
 export const updateAchievement = (id, data, reason) => put(`${base}/${encodeURIComponent(id)}`, { data, reason });
 export const achievementLifecycle = (id, verb, reason) => post(`${base}/${encodeURIComponent(id)}/${verb}`, { reason });
+export const fetchAchievementUsage = (id) => requestAdminJson(`${base}/${encodeURIComponent(id)}/usage?_=${t()}`);
 
 export const fetchPlayerAchievements = (gameId) => requestAdminJson(`${base}/players/${encodeURIComponent(gameId)}?_=${t()}`);
 export const grantAchievementToPlayer = (achId, gameId, reason) => post(`${base}/${encodeURIComponent(achId)}/grant`, { game_id: gameId, reason });

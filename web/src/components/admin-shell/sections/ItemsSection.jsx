@@ -17,6 +17,9 @@ import { ImageUploadField } from "../ImageUploadField.jsx";
 import { EmojiInput, EmojiTextarea } from "../EmojiField.jsx";
 import { SearchBox, NoResults, filterEntities } from "../SearchFilter.jsx";
 import { TechnicalData } from "../TechnicalData.jsx";
+import { ItemTzFields } from "./ItemTzFields.jsx";
+import { fetchFormulas } from "../../../api/adminFormulaApi.js";
+import { fetchEffects } from "../../../api/adminEffectApi.js";
 
 const STATUS_TONE = {
   published: "ntv2-badge-owner", error: "ntv2-badge-error",
@@ -31,11 +34,13 @@ const EMPTY = {
   usable: false, equippable: false, equip_slot: "", two_handed: false,
   stackable: false, max_stack: 1, inventory_slot: "", tags: [],
   properties: [], effects: [],
+  profile_actions: ["drop"],
   // Изображения (ТЗ §6): иконка (списки/инвентарь) + модель (карточка/витрина).
   icon: "", model_image: "", model_caption: "",
   // Доступ к локации (ТЗ доп.§1).
   opens_access: false, access_target: "", access_mode: "on_use",
   access_consumed_on_use: false, access_temporary: false, access_duration: "",
+  grants_npc_helper_id: "", consume_on_helper_grant: true, helper_grant_text: "",
   access_text_ok: "", access_text_wrong_place: "", access_text_missing: "",
 };
 
@@ -71,6 +76,8 @@ export function ItemsSection({ guarded, hasPerm }) {
   const [usage, setUsage] = useState(null);
   const [craft, setCraft] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [formulaOptions, setFormulaOptions] = useState([]);
+  const [effectOptions, setEffectOptions] = useState([]);
 
   const can = useMemo(() => ({
     create: hasPerm("item.create"), edit: hasPerm("item.edit"), editPub: hasPerm("item.edit_published"),
@@ -82,6 +89,8 @@ export function ItemsSection({ guarded, hasPerm }) {
 
   const load = useCallback(async () => { const p = await guarded(() => fetchItems(statusFilter)); if (p) setList(p.items || []); }, [guarded, statusFilter]);
   useEffect(() => { (async () => { const m = await guarded(() => fetchItemMeta()); if (m) setMeta(m); })(); }, [guarded]);
+  useEffect(() => { (async () => { const f = await guarded(() => fetchFormulas("published")); if (f) setFormulaOptions((f.items || []).map((x) => ({ value: x.id, label: x.data?.name || x.id }))); })(); }, [guarded]);
+  useEffect(() => { (async () => { const e = await guarded(() => fetchEffects("published")); if (e) setEffectOptions((e.items || []).map((x) => ({ value: x.id, label: x.data?.effect_name || x.id }))); })(); }, [guarded]);
   useEffect(() => { load(); }, [load]);
 
   const statuses = meta?.statuses || [];
@@ -187,14 +196,22 @@ export function ItemsSection({ guarded, hasPerm }) {
               <Field label="Текст при неправильном месте"><input value={d.access_text_wrong_place} disabled={disabled} onChange={(e) => set("access_text_wrong_place", e.target.value)} /></Field>
               <Field label="Текст если предмета нет"><input value={d.access_text_missing} disabled={disabled} onChange={(e) => set("access_text_missing", e.target.value)} /></Field>
             </>) : null}
+            <Field label="Выдаёт NPC-помощника (ID)"><input value={d.grants_npc_helper_id || ""} onChange={(e) => set("grants_npc_helper_id", e.target.value)} /></Field>
+            {d.grants_npc_helper_id ? <><label className="ntv2-check"><input type="checkbox" checked={Boolean(d.consume_on_helper_grant)} onChange={(e) => set("consume_on_helper_grant", e.target.checked)} /> Расходовать предмет при выдаче</label><Field label="Текст получения помощника"><EmojiTextarea rows={2} value={d.helper_grant_text || ""} onChange={(v) => set("helper_grant_text", v)} /></Field></> : null}
           </div>
         </div>
 
-        <RowEditor title="Свойства" rows={d.properties} disabled={disabled} onChange={(rows) => set("properties", rows)} blank={{ type: meta.propertyTypes[0], value: 0, percent: false }}
+        <ItemTzFields value={d} disabled={disabled} formulaOptions={formulaOptions} onChange={(next) => setEditing({ ...editing, data: next })} />
+
+        <RowEditor title="Свойства" rows={d.properties} disabled={disabled} onChange={(rows) => set("properties", rows)} blank={{ type: meta.propertyTypes[0], value: 0, percent: false, show_player: true }}
           render={(row, setRow) => (<>
             <select value={row.type} disabled={disabled} onChange={(e) => setRow({ type: e.target.value })}>{meta.propertyTypes.map((x) => <option key={x} value={x}>{tr(ITEM_PROPERTY, x)}</option>)}</select>
             <input type="number" style={{ width: 100 }} value={row.value} disabled={disabled} onChange={(e) => setRow({ value: e.target.value })} />
             <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.percent)} disabled={disabled} onChange={(e) => setRow({ percent: e.target.checked })} /> %</label>
+            <input placeholder="Источник" value={row.source || ""} disabled={disabled} onChange={(e) => setRow({ source: e.target.value })} />
+            <label className="ntv2-check"><input type="checkbox" checked={row.show_player !== false} disabled={disabled} onChange={(e) => setRow({ show_player: e.target.checked })} /> Игроку</label>
+            <input type="number" placeholder="Порядок" value={row.order ?? ""} disabled={disabled} onChange={(e) => setRow({ order: e.target.value })} />
+            <select value={row.active_mode || "always"} disabled={disabled} onChange={(e) => setRow({ active_mode: e.target.value })}><option value="always">Всегда</option><option value="equipped">При экипировке</option><option value="use">При использовании</option><option value="temporary">Временно</option><option value="battle">Только в бою</option><option value="outside_battle">Вне боя</option><option value="condition">По условию</option></select>
           </>)} />
 
         <RowEditor title="Эффекты" rows={d.effects} disabled={disabled} onChange={(rows) => set("effects", rows)} blank={{ type: meta.effectTypes[0], value: "" }}
@@ -203,10 +220,22 @@ export function ItemsSection({ guarded, hasPerm }) {
             <input placeholder="параметр" value={row.value || ""} disabled={disabled} onChange={(e) => setRow({ value: e.target.value })} />
           </>)} />
 
-        <RowEditor title="Связи с эффектами (ТЗ §2.7)" rows={d.effect_links} disabled={disabled} onChange={(rows) => set("effect_links", rows)} blank={{ effect_id: "", trigger: (meta.effectLinkTriggers || ["passive"])[0] }}
+        <RowEditor title="Связи с эффектами (ТЗ §14)" rows={d.effect_links} disabled={disabled} onChange={(rows) => set("effect_links", rows)} blank={{ effect_id: "", trigger: (meta.effectLinkTriggers || ["passive"])[0], chance: 100, show_player: true }}
           render={(row, setRow) => (<>
-            <input className="ntv2-mono" placeholder="effect_id" value={row.effect_id || ""} disabled={disabled} onChange={(e) => setRow({ effect_id: e.target.value })} />
+            <select value={row.effect_id || ""} disabled={disabled} onChange={(e) => setRow({ effect_id: e.target.value })}><option value="">— эффект —</option>{effectOptions.map((o) => <option key={o.value} value={o.value}>{o.label} ({o.value})</option>)}</select>
             <select value={row.trigger || ""} disabled={disabled} onChange={(e) => setRow({ trigger: e.target.value })}>{(meta.effectLinkTriggers || []).map((x) => <option key={x} value={x}>{x}</option>)}</select>
+            <input type="number" placeholder="Шанс %" value={row.chance ?? ""} disabled={disabled} onChange={(e) => setRow({ chance: e.target.value })} />
+            <input type="number" placeholder="Длительность" value={row.duration ?? ""} disabled={disabled} onChange={(e) => setRow({ duration: e.target.value })} />
+            <input type="number" placeholder="Ходов" value={row.turns ?? ""} disabled={disabled} onChange={(e) => setRow({ turns: e.target.value })} />
+            <input type="number" placeholder="Секунд" value={row.seconds ?? ""} disabled={disabled} onChange={(e) => setRow({ seconds: e.target.value })} />
+            <input type="number" placeholder="Сила" value={row.strength ?? ""} disabled={disabled} onChange={(e) => setRow({ strength: e.target.value })} />
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.stackable)} disabled={disabled} onChange={(e) => setRow({ stackable: e.target.checked })} /> Стак</label>
+            <input type="number" placeholder="Макс. стаков" value={row.max_stacks ?? ""} disabled={disabled} onChange={(e) => setRow({ max_stacks: e.target.value })} />
+            <label className="ntv2-check"><input type="checkbox" checked={row.show_player !== false} disabled={disabled} onChange={(e) => setRow({ show_player: e.target.checked })} /> Игроку</label>
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.hidden)} disabled={disabled} onChange={(e) => setRow({ hidden: e.target.checked })} /> Скрытый</label>
+            <input placeholder="Текст срабатывания" value={row.trigger_text || ""} disabled={disabled} onChange={(e) => setRow({ trigger_text: e.target.value })} />
+            <input placeholder="Текст окончания" value={row.end_text || ""} disabled={disabled} onChange={(e) => setRow({ end_text: e.target.value })} />
+            <label className="ntv2-check"><input type="checkbox" checked={Boolean(row.consume_item)} disabled={disabled} onChange={(e) => setRow({ consume_item: e.target.checked })} /> Расходовать</label>
           </>)} />
 
         <RowEditor title="Требования (ТЗ §2.8)" rows={d.requirements} disabled={disabled} onChange={(rows) => set("requirements", rows)} blank={{ type: (meta.requirementTypes || ["level"])[0], operator: ">=", value: "" }}
@@ -215,6 +244,16 @@ export function ItemsSection({ guarded, hasPerm }) {
             <input style={{ width: 60 }} placeholder="оп." value={row.operator || ""} disabled={disabled} onChange={(e) => setRow({ operator: e.target.value })} />
             <input placeholder="значение" value={row.value ?? ""} disabled={disabled} onChange={(e) => setRow({ value: e.target.value })} />
           </>)} />
+
+        <div className="ntv2-panel">
+          <h4 className="ntv2-subhead">Действия в профиле</h4>
+          <div className="ntv2-form-row" style={{ flexWrap: "wrap", gap: 10 }}>
+            {(meta.profileActions || []).map((action) => {
+              const selected = Array.isArray(d.profile_actions) ? d.profile_actions : [];
+              return <label className="ntv2-check" key={action.value}><input type="checkbox" checked={selected.includes(action.value)} disabled={disabled} onChange={(e) => set("profile_actions", e.target.checked ? [...selected, action.value] : selected.filter((value) => value !== action.value))} /> {action.label}</label>;
+            })}
+          </div>
+        </div>
 
         <div className="ntv2-panel">
           <h4 className="ntv2-subhead">Прочность, заряды, валюта (ТЗ §2.10–§2.11)</h4>
@@ -230,6 +269,9 @@ export function ItemsSection({ guarded, hasPerm }) {
           <div className="ntv2-form-row" style={{ gap: 14 }}>
             {flag("has_charges", "Есть заряды")}
             {d.has_charges ? <Field label="Макс. зарядов"><input type="number" value={d.max_charges || ""} disabled={disabled} onChange={(e) => set("max_charges", e.target.value)} /></Field> : null}
+            {d.has_charges ? <Field label="Начальные заряды"><input type="number" min="0" value={d.current_charges ?? 0} disabled={disabled} onChange={(e) => set("current_charges", e.target.value)} /></Field> : null}
+            {d.has_charges ? <Field label="За один раз"><input type="number" min="1" value={d.charge_amount ?? ""} disabled={disabled} onChange={(e) => set("charge_amount", e.target.value)} /></Field> : null}
+            {d.has_charges ? <Field label="Цена зарядки, медь"><input type="number" min="0" value={d.charge_cost ?? 0} disabled={disabled} onChange={(e) => set("charge_cost", e.target.value)} /></Field> : null}
             {d.has_charges ? <label className="ntv2-check"><input type="checkbox" checked={Boolean(d.restore_charges_over_time)} disabled={disabled} onChange={(e) => set("restore_charges_over_time", e.target.checked)} /> Восстанавливаются</label> : null}
           </div>
           <Field label="Валюта"><select value={d.currency_type || ""} disabled={disabled} onChange={(e) => set("currency_type", e.target.value)}><option value="">—</option>{(meta.currencies || []).map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>

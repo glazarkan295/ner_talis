@@ -9,7 +9,7 @@ import "./components/player-profile/PlayerProfile.css";
 import {
   dropItem,
   sellItem,
-  editProfileField,
+  editProfileField, changeRace,
   equipItem,
   equipSkill,
   getProfileIdentifierFromUrl,
@@ -23,6 +23,11 @@ import {
   unequipItem,
   unequipSkill,
   useItem,
+  repairItem,
+  runProfileItemAction,
+  runCraftOperation,
+  useSkillOutside,
+  claimCraftDelivery,
   setAdminProfileToken,
 } from "./api/profileApi.js";
 import { isAdminPanelPath, isAdminViewProfilePath, getAdminViewTokenFromUrl, loadAdminPlayerView } from "./api/adminApi.js";
@@ -79,11 +84,16 @@ function AdminProfileView() {
         onEquipItem={(item, slotKey = null) => runAction(() => equipItem("me", item.id, slotKey, item.inventoryIndex))}
         onUnequipItem={(slotKey) => runAction(() => unequipItem("me", slotKey))}
         onUseItem={(item) => runAction(() => useItem("me", item.id, item.inventoryIndex))}
+        onRepairItem={(item) => runAction(() => repairItem("me", item.id, item.inventoryIndex))}
+        onProfileItemAction={(item, action) => runAction(() => runProfileItemAction("me", item.id, item.inventoryIndex ?? item.storageIndex, action))}
+        onCraftOperation={(item, rule) => runAction(() => runCraftOperation("me", item.id, item.inventoryIndex, rule.operation, rule.rule_id))}
+        onClaimCraftDelivery={() => runAction(() => claimCraftDelivery("me"))}
         onDropItem={(item, amount) => runAction(() => dropItem("me", item.id, amount, item.inventoryIndex))}
         onSellItem={(item, amount) => runAction(() => sellItem("me", item.id, amount, item.inventoryIndex))}
         onEquipSkill={(skill) => runAction(() => equipSkill("me", skill.id || skill.name))}
         onUnequipSkill={(skill) => runAction(() => unequipSkill("me", skill.id || skill.name))}
-        onEditProfileField={(field, value) => runAction(() => editProfileField("me", field, value))}
+        onUseSkillOutside={(skill) => runAction(() => useSkillOutside("me", skill.id || skill.name))}
+        onEditProfileField={(field, value) => runAction(() => field === "race" ? changeRace("me", value) : editProfileField("me", field, value))}
         onAdminRemoveItem={(item) => runAction(() => dropItem("me", item.id, Math.max(1, Number(item.amount) || 1), item.inventoryIndex))}
       />
     </>
@@ -181,6 +191,11 @@ function ProfileApp() {
         onUseItem={(item) => {
           return runProfileAction(() => useItem(profileIdentifier, item.id, item.inventoryIndex));
         }}
+        onRepairItem={(item) => runProfileAction(() => repairItem(profileIdentifier, item.id, item.inventoryIndex))}
+        onProfileItemAction={(item, action) => runProfileAction(() => runProfileItemAction(profileIdentifier, item.id, item.inventoryIndex ?? item.storageIndex, action))}
+        onCraftOperation={(item, rule) => runProfileAction(() => runCraftOperation(profileIdentifier, item.id, item.inventoryIndex, rule.operation, rule.rule_id))}
+        onUseSkillOutside={(skill) => runProfileAction(() => useSkillOutside(profileIdentifier, skill.id || skill.name))}
+        onClaimCraftDelivery={() => runProfileAction(() => claimCraftDelivery(profileIdentifier))}
         onDropItem={(item, amount) => {
           return runProfileAction(() => dropItem(profileIdentifier, item.id, amount, item.inventoryIndex));
         }}
@@ -194,7 +209,7 @@ function ProfileApp() {
           return runProfileAction(() => unequipSkill(profileIdentifier, skill.id || skill.name));
         }}
         onEditProfileField={(field, value) => {
-          return runProfileAction(() => editProfileField(profileIdentifier, field, value));
+          return runProfileAction(() => field === "race" ? changeRace(profileIdentifier, value) : editProfileField(profileIdentifier, field, value));
         }}
         onSearchCourierRecipients={(query) => searchCourierRecipients(query)}
         onSendCourierTransfer={(receiver, items, coins, letter) => {
@@ -207,10 +222,11 @@ function ProfileApp() {
 }
 
 function App() {
-  if (isPublicSitePath()) return <PublicSite />;
-  if (isAdminPanelV2Path()) return <AdminShell />;
-  if (isAdminPanelPath()) return <AdminPanel />;
-  if (isAdminViewProfilePath()) return <AdminProfileView />;
+  if (isPublicSitePath()) { document.title = "Главный сайт — Нер-Талис"; return <PublicSite />; }
+  if (isAdminPanelV2Path()) { document.title = "Админ-панель — Нер-Талис"; return <AdminShell />; }
+  if (isAdminPanelPath()) { document.title = "Админ-панель — Нер-Талис"; return <AdminPanel />; }
+  if (isAdminViewProfilePath()) { document.title = "Админ-панель — профиль игрока"; return <AdminProfileView />; }
+  document.title = "Нер-Талис — профиль";
   return <ProfileApp />;
 }
 

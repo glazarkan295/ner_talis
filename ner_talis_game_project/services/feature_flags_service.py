@@ -48,6 +48,7 @@ FLAG_LABELS: dict[str, str] = {name: label for name, label in FLAG_SPECS}
 RUNTIME_WIRED: frozenset[str] = frozenset({
     "use_v2_locations",  # location_runtime.live_enabled (поиск/бой/лимиты)
     "use_v2_buttons",    # city_runtime.live_enabled (навигация города)
+    "use_v2_texts",      # message_delivery → text_runtime (фоновые уведомления)
 })
 
 _LOCK = threading.Lock()

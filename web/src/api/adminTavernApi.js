@@ -12,3 +12,4 @@ export const createTavern = (id, data, reason) => post(base, { id, data, reason 
 export const updateTavern = (id, data, reason) => requestAdminJson(`${base}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ data, reason }) });
 export const tavernLifecycle = (id, verb, reason) => post(`${base}/${encodeURIComponent(id)}/${verb}`, { reason });
 export const previewTavern = (id, mock) => post(`${base}/${encodeURIComponent(id)}/preview`, { mock });
+export const fetchTavernUsage = (id) => requestAdminJson(`${base}/${encodeURIComponent(id)}/usage?_=${t()}`);

@@ -43,9 +43,30 @@ def _doc_link(env_name: str) -> str:
     return value or "ссылка будет добавлена позже"
 
 
-def consent_message() -> str:
+def registration_text(platform: str, key: str, fallback: str, **values: Any) -> str:
+    try:
+        from services.registration_constructor_service import scenario_text
+        text = scenario_text(platform, key, fallback)
+    except Exception:
+        text = fallback
+    try: return text.format(**values)
+    except (KeyError, ValueError): return text
+
+
+def registration_access(platform: str) -> tuple[bool, str]:
+    try:
+        from services.registration_constructor_service import active_scenario
+        data = active_scenario(platform)
+    except Exception:
+        data = None
+    if data and not data.get("registration_enabled", True):
+        return False, str(data.get("closed_text") or "Регистрация временно закрыта.")
+    return True, ""
+
+
+def consent_message(platform: str = "telegram") -> str:
     """Сообщение-согласие перед регистрацией (со ссылками на документы)."""
-    return (
+    fallback = (
         "Перед началом игры, пожалуйста, ознакомьтесь с:\n\n"
         "📜 Политика конфиденциальности\n"
         f"{_doc_link('LINK_PRIVACY_POLICY')}\n\n"
@@ -53,31 +74,61 @@ def consent_message() -> str:
         f"{_doc_link('LINK_TERMS_OF_SERVICE')}\n\n"
         "И подтвердите, если согласны с ними."
     )
+    return registration_text(platform, "welcome_text", fallback)
 
 
-def load_races(path: str | Path | None = None) -> dict[str, Any]:
+def load_races(path: str | Path | None = None, platform: str | None = None) -> dict[str, Any]:
     races_path = project_path("data", "races.json") if path is None else resolve_project_path(path)
     with races_path.open("r", encoding="utf-8") as file:
-        return json.load(file)
+        legacy = json.load(file)
+    if path is not None:
+        return legacy
+    try:
+        from services.race_constructor_service import registration_races
+        published = registration_races()
+    except Exception:
+        published = {}
+    if not published:
+        return legacy
+    out: dict[str, Any] = {}
+    for rid, data in published.items():
+        old = legacy.get(rid) or {}
+        stats = dict(old.get("stats") or {})
+        authored = data.get("starting_stats") or {}
+        for key, value in authored.items():
+            stats["dexterity" if key == "agility" else key] = value
+        visible = [str(row.get("description") or row.get("name") or row.get("id")) for row in data.get("bonuses") or [] if isinstance(row, dict) and row.get("show_player", True)]
+        out[rid] = {**old, **data, "name": data.get("player_name") or data.get("race_name") or old.get("name") or rid,
+                    "description": data.get("description") or old.get("description") or "", "stats": stats,
+                    "bonuses": visible or old.get("bonuses") or []}
+    if platform:
+        try:
+            from services.registration_constructor_service import active_scenario
+            allowed = {str(x) for x in (active_scenario(platform) or {}).get("available_races") or []}
+            if allowed: out = {rid: row for rid, row in out.items() if rid in allowed}
+        except Exception: pass
+    return out
 
 
 def normalize_name(name: str) -> str:
     return " ".join(name.strip().split())
 
 
-def validate_name(raw_name: str) -> tuple[bool, str]:
+def validate_name(raw_name: str, platform: str = "telegram") -> tuple[bool, str]:
     name = normalize_name(raw_name)
-
-    if len(name) < 3:
-        return False, "Имя слишком короткое. Минимум 3 символа."
-
-    if len(name) > 20:
-        return False, "Имя слишком длинное. Максимум 20 символов."
+    try:
+        from services.registration_constructor_service import active_scenario
+        scenario = active_scenario(platform) or {}
+    except Exception: scenario = {}
+    minimum=max(1,int(float(scenario.get("name_min_length") or 3)));maximum=max(minimum,int(float(scenario.get("name_max_length") or 20)))
+    if len(name) < minimum:return False,registration_text(platform,"name_error_text",f"Имя слишком короткое. Минимум {minimum} символа.")
+    if len(name) > maximum:return False,registration_text(platform,"name_error_text",f"Имя слишком длинное. Максимум {maximum} символов.")
 
     if not NAME_PATTERN.match(name):
         return False, "Имя может содержать только буквы, цифры, пробел и дефис."
 
-    if name.casefold() in FORBIDDEN_NAMES:
+    forbidden=FORBIDDEN_NAMES|{str(x).casefold() for x in scenario.get("forbidden_names") or []}
+    if name.casefold() in forbidden:
         return False, "Это имя нельзя использовать."
 
     if name.startswith("-") or name.endswith("-"):
@@ -130,7 +181,16 @@ def create_player(
     gender_label: str | None = None,
 ) -> dict[str, Any]:
     race = races[race_id]
-    return {
+    try:
+        from services.level_constructor_service import active_rule
+        progression=active_rule()
+    except Exception:progression={}
+    start_level=max(1,int(progression.get("start_level") or 1));start_exp=max(0,int(progression.get("start_experience") or 0))
+    try:
+        from services.progression_service import experience_to_next_level
+        start_next=experience_to_next_level(start_level)
+    except Exception:start_next=start_level*100
+    player = {
         "id": game_id,
         "game_id": game_id,
         "public_id": str(uuid.uuid4()),
@@ -143,17 +203,17 @@ def create_player(
         "gender_label": gender_label or "Не выбран",
         "race_id": race_id,
         "race_name": race["name"],
-        "level": 1,
-        "experience": 0,
-        "experience_to_next": 100,
-        "total_experience": 0,
+        "level": start_level,
+        "experience": start_exp,
+        "experience_to_next": start_next,
+        "total_experience": start_exp,
         "current_city": "seldar",
         "current_zone": "seldar_central_square",
         "location_id": "seldar_central_square",
         "money": 0,
         "debt": 0,
-        "energy": 100,
-        "max_energy": 100,
+        "energy": int(race.get("start_energy") or 100),
+        "max_energy": int(race.get("start_energy") or 100),
         "bonus_max_energy": 0,
         "in_battle": False,
         "is_dead": False,
@@ -176,9 +236,12 @@ def create_player(
         },
         "free_stat_points": 0,
         "free_skill_points": 0,
-        "hp": None,
-        "spirit": None,
-        "mana": None,
+        "hp": race.get("start_hp"),
+        "max_hp": race.get("start_hp"),
+        "spirit": race.get("start_spirit"),
+        "max_spirit": race.get("start_spirit"),
+        "mana": race.get("start_mana"),
+        "max_mana": race.get("start_mana"),
         "branch": "Без ветви",
         "skill_branch": None,
         "main_skill_path": None,
@@ -215,3 +278,17 @@ def create_player(
         "soul_particles_absorbed": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    for key in ("accuracy", "dodge", "crit_chance", "crit_damage", "physical_defense", "magic_defense", "armor", "physical_damage", "magic_damage"):
+        if race.get(key) not in (None, ""):
+            player[key] = int(float(race[key]))
+    try:
+        from services.registration_constructor_service import apply_starting_setup
+        apply_starting_setup(player, platform)
+    except Exception:
+        pass
+    try:
+        from services.race_bonus_service import sync_passive_effects
+        sync_passive_effects(player)
+    except Exception:
+        pass
+    return player

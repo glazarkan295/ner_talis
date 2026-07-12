@@ -18,7 +18,7 @@ from services.admin_panel_service import require_admin_session
 from services.admin_rbac import (
     PERM_QUEST_ARCHIVE, PERM_QUEST_CREATE, PERM_QUEST_DELETE, PERM_QUEST_DISABLE,
     PERM_QUEST_EDIT, PERM_QUEST_PUBLISH, PERM_QUEST_VALIDATE, PERM_QUEST_VIEW,
-    require_permission,
+    require_permission, PERM_QUEST_PUBLISH,
 )
 
 _PERMS = {
@@ -43,6 +43,7 @@ def _meta_extra(_svc: Any) -> dict[str, Any]:
 class _PreviewBody(BaseModel):
     token: str | None = Field(default=None, min_length=16)
     data: dict[str, Any] | None = None
+    reason: str = ""
 
 
 def _bearer(request: Request | None) -> str:
@@ -88,5 +89,12 @@ def create_admin_quest_router(get_storage) -> APIRouter:
     def preview_adhoc(payload: _PreviewBody, request: Request) -> dict[str, Any]:
         _guard(request, payload.token)
         return {"ok": True, "preview": svc.preview(payload.data or {})}
+
+    @router.post("/import")
+    def import_legacy(payload:_PreviewBody,request:Request)->dict[str,Any]:
+        effective=_bearer(request) or str(payload.token or "").strip();session=require_admin_session(get_storage(),effective);require_permission(session,PERM_QUEST_PUBLISH)
+        from services.admin_operation import run_admin_operation
+        report=run_admin_operation(session=session,action="quest.import_existing",func=lambda:svc.import_legacy(actor=f"{session.get('platform')}:{session.get('admin_user_id')}"),target_type="constructor_import",target_id="quest",reason=payload.reason)
+        return {"ok":True,"report":report}
 
     return router

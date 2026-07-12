@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,6 +33,18 @@ def _normalize_code(code: str) -> str:
     both must resolve to the same code. The canonical form has no slash.
     """
     return str(code or "").strip().lstrip("/").strip().upper()
+
+def promo_from_command(storage:Any,text:str,platform:str="")->tuple[str,str]|None:
+    parts=str(text or "").strip().split(maxsplit=1);command=(parts[0] if parts else "").casefold();argument=parts[1].strip() if len(parts)>1 else ""
+    for promo in (load_promo_data(storage).get("codes") or {}).values():
+        configured=str(promo.get("command") or "/promo").strip().casefold()
+        if not configured.startswith("/"):configured="/"+configured
+        allowed=str(promo.get("platform") or "both")
+        if command==configured and allowed in {"","all","both",platform} and promo.get("command_active",True):
+            expected=str(promo.get("code_after_command") or promo.get("code") or "").strip()
+            if configured=="/promo":return promo.get("code"),argument
+            return promo.get("code"),argument or expected
+    return None
 
 
 def _parse_promo_datetime(value: Any) -> datetime | None:
@@ -95,7 +108,7 @@ def save_promo_data(data: dict[str, Any], storage: Any | None = None) -> None:
         json.dump(data, file, ensure_ascii=False, indent=2, default=str)
 
 
-def add_promo_code(*, code: str, uses_left: int, reward: dict[str, Any], expires_at: str | None = None, one_use_per_player: bool = True, note: str = "", storage: Any | None = None) -> dict[str, Any]:
+def add_promo_code(*, code: str, uses_left: int, reward: dict[str, Any], expires_at: str | None = None, one_use_per_player: bool = True, note: str = "", storage: Any | None = None, config:dict[str,Any]|None=None) -> dict[str, Any]:
     normalized_code = _normalize_code(code)
     if not normalized_code:
         raise ValueError("Код промокода пустой.")
@@ -116,6 +129,8 @@ def add_promo_code(*, code: str, uses_left: int, reward: dict[str, Any], expires
         "note": note,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
+        "activation_history": [],
+        **{k:v for k,v in (config or {}).items() if k not in {"code","reward","used_by","activation_history","created_at","updated_at"}},
     }
     # Single-row upsert avoids the "DELETE all + reinsert all" rewrite that could
     # drop a concurrently created code.
@@ -267,10 +282,14 @@ def _promo_reward_inventory_item(item: dict[str, Any], amount: int) -> dict[str,
 def apply_reward_to_player(player: dict[str, Any], reward: dict[str, Any]) -> dict[str, Any]:
     money_reward = int(reward.get("money_copper", reward.get("money", 0)) or 0)
     if money_reward:
-        current_money = int(player.get("money_copper", player.get("money", 0)) or 0)
-        new_money = max(0, current_money + money_reward)
-        player["money_copper"] = new_money
-        player["money"] = new_money
+        try:
+            from services.economy_runtime import change,reward_amount
+            money_reward=reward_amount("promo",money_reward,{"player_level":player.get("level",1)});change(player,"copper",money_reward,operation="promo_reward",source="promo")
+        except (ImportError,ValueError,OSError):
+            current_money = int(player.get("money_copper", player.get("money", 0)) or 0)
+            new_money = max(0, current_money + money_reward)
+            player["money_copper"] = new_money
+            player["money"] = new_money
 
     energy_reward = int(reward.get("current_energy", reward.get("energy", 0)) or 0)
     if energy_reward:
@@ -297,8 +316,105 @@ def apply_reward_to_player(player: dict[str, Any], reward: dict[str, Any]) -> di
                 continue
             prepared_item = _promo_reward_inventory_item(item, amount)
             add_inventory_item(player, prepared_item, amount, default_source="promo_code")
+    for row in reward.get("rewards") or []:
+        if not isinstance(row,dict):continue
+        kind=str(row.get("type") or "");oid=str(row.get("object_id") or row.get("item_id") or row.get("effect_id") or "");minimum=max(1,int(row.get("min_amount") or row.get("amount") or 1));maximum=max(minimum,int(row.get("max_amount") or minimum));amount=random.randint(minimum,maximum)
+        if kind=="item" and oid:
+            prepared=_promo_reward_inventory_item({**row,"item_id":oid},amount);mode=str(row.get("delivery_mode") or "inventory")
+            if row.get("bind_on_receive"):prepared["bound_on_receive"]=True
+            if mode=="delivery":player.setdefault("promo_delivery_inbox",[]).append({"item":prepared,"amount":amount,"text":row.get("text")})
+            else:
+                if mode=="reject":
+                    from copy import deepcopy
+                    simulated=deepcopy(player);preview=add_inventory_item(simulated,prepared,amount,default_source="promo_code")
+                    if preview.added<amount:raise ValueError("Инвентарь заполнен, награду промокода получить нельзя.")
+                add_inventory_item(player,prepared,amount,default_source="promo_code")
+        elif kind in {"currency","coins"}:
+            from services.economy_runtime import change,reward_amount
+            change(player,str(row.get("currency") or oid or "copper"),reward_amount("promo",amount),operation="promo_reward",source="promo")
+        elif kind in {"experience","exp"}:grant_experience(player,amount)
+        elif kind=="energy":
+            stats=calculate_energy_stats(player);player["energy"]=player["current_energy"]=min(int(stats["max_energy"]),int(stats["current_energy"])+amount)
+        elif kind in {"skill_points","stat_points"}:player["free_skill_points" if kind=="skill_points" else "free_stat_points"]=int(player.get("free_skill_points" if kind=="skill_points" else "free_stat_points") or 0)+amount
+        elif kind in {"effect","curse"}:
+            from services.effect_formula_runtime import apply_to_player
+            apply_to_player(player,oid,source="promo",context={"duration_seconds":row.get("duration_seconds")})
+        elif kind=="achievement":
+            from services.achievement_engine import grant
+            grant(None,player,oid,source="promo",save=False,notify=False)
+        elif kind in {"reputation","hidden_reputation"}:
+            bucket=player.setdefault("hidden_reputations" if kind=="hidden_reputation" else "reputations",{});bucket[oid]=int(bucket.get(oid) or 0)+amount
+        elif kind in {"access","location","sublocation","npc","recipe","skill"}:player.setdefault("unlocks",{})[oid]=True
+        elif kind=="system_flag":player.setdefault("system_flags",{})[oid]=row.get("value",True)
     recalculate_inventory_overflow(player)
     return player
+
+def _promo_condition_error(player:dict[str,Any],promo:dict[str,Any],*,platform:str="") -> str:
+    now=datetime.now(timezone.utc);start=_parse_promo_datetime(promo.get("starts_at"))
+    if start and now<start:return str(promo.get("not_started_text") or "Промокод ещё не активен.")
+    actual_platform=platform or str(player.get("platform") or next(iter((player.get("linked_accounts") or {})),""))
+    allowed=str(promo.get("platform") or "both")
+    if allowed not in {"","all","both",actual_platform}:return str(promo.get("condition_error_text") or "Промокод недоступен на этой платформе.")
+    level=int(player.get("level") or 1)
+    if level<int(promo.get("min_level") or 0) or int(promo.get("max_level") or 0) and level>int(promo.get("max_level")):return str(promo.get("condition_error_text") or "Уровень игрока не подходит.")
+    if promo.get("required_race") and str(player.get("race_id") or "")!=str(promo["required_race"]):return str(promo.get("condition_error_text") or "Раса игрока не подходит.")
+    gid=str(player.get("game_id") or player.get("id") or "");only={str(x) for x in promo.get("allowed_players") or []};excluded={str(x) for x in promo.get("excluded_players") or []}
+    if only and gid not in only or gid in excluded:return str(promo.get("condition_error_text") or "Промокод недоступен этому игроку.")
+    history=[row for row in promo.get("activation_history") or [] if isinstance(row,dict) and row.get("status")=="success"]
+    personal=[row for row in history if str(row.get("game_id"))==gid];now_day=now.date();year,week,_=now.isocalendar()
+    if int(promo.get("per_player_limit") or 0) and len(personal)>=int(promo["per_player_limit"]):return str(promo.get("already_used_text") or "Лимит активаций для игрока исчерпан.")
+    daily=sum(1 for row in personal if (_parse_promo_datetime(row.get("at")) or datetime.min.replace(tzinfo=timezone.utc)).date()==now_day)
+    weekly=sum(1 for row in personal if (_parse_promo_datetime(row.get("at")) or datetime.min.replace(tzinfo=timezone.utc)).isocalendar()[:2]==(year,week))
+    if int(promo.get("daily_limit") or 0) and daily>=int(promo["daily_limit"]):return str(promo.get("limit_text") or "Дневной лимит промокода исчерпан.")
+    if int(promo.get("weekly_limit") or 0) and weekly>=int(promo["weekly_limit"]):return str(promo.get("limit_text") or "Недельный лимит промокода исчерпан.")
+    if promo.get("required_item_id") and not any(str((x or {}).get("item_id") or (x or {}).get("id") or "")==str(promo["required_item_id"]) for x in player.get("inventory") or [] if isinstance(x,dict)):return str(promo.get("condition_error_text") or "Нет требуемого предмета.")
+    if promo.get("required_achievement_id"):
+        state=player.get("achievements") or {};earned=state.get("earned",{}) if isinstance(state,dict) else state
+        if str(promo["required_achievement_id"]) not in earned:return str(promo.get("condition_error_text") or "Нет требуемого достижения.")
+    if promo.get("required_quest_id") and str(promo["required_quest_id"]) not in ((player.get("quests") or {}).get("completed") or {}):return str(promo.get("condition_error_text") or "Не выполнен требуемый квест.")
+    if promo.get("required_location_id") and str(player.get("location_id") or player.get("current_location") or "")!=str(promo["required_location_id"]):return str(promo.get("condition_error_text") or "Промокод недоступен в этой локации.")
+    if promo.get("required_effect_id") and str(promo["required_effect_id"]) not in {str(x.get("effect_id") or x.get("id") or "") for x in [*(player.get("active_effects") or []),*(player.get("active_curses") or [])] if isinstance(x,dict)}:return str(promo.get("condition_error_text") or "Нет требуемого эффекта.")
+    created=_parse_promo_datetime(player.get("created_at"));age_days=(now-created).days if created else 9999;threshold=max(1,int(promo.get("new_player_days") or 7))
+    if promo.get("new_players_only") and age_days>threshold or promo.get("old_players_only") and age_days<=threshold:return str(promo.get("condition_error_text") or "Возраст персонажа не подходит.")
+    platform_count=sum(1 for row in history if str(row.get("platform") or "")==actual_platform)
+    if int(promo.get("platform_limit") or 0) and platform_count>=int(promo["platform_limit"]):return str(promo.get("limit_text") or "Лимит активаций платформы исчерпан.")
+    if promo.get("requires_no_fine") or promo.get("requires_fine"):
+        try:
+            from services.fine_service import active_fines
+            fined=bool(active_fines(player))
+        except Exception:fined=False
+        if promo.get("requires_no_fine") and fined or promo.get("requires_fine") and not fined:return str(promo.get("condition_error_text") or "Условия по штрафам не выполнены.")
+    for field,bucket_name in (("required_reputation_id","reputations"),("required_hidden_reputation_id","hidden_reputations")):
+        rid=str(promo.get(field) or "")
+        if rid and float((player.get(bucket_name) or {}).get(rid) or 0)<float(promo.get("required_reputation_value") or 0):return str(promo.get("condition_error_text") or "Недостаточная репутация.")
+    return ""
+
+def validate_promo(code:str,uses_left:int,reward:dict[str,Any],config:dict[str,Any]|None=None,storage:Any|None=None)->dict[str,Any]:
+    cfg=config or {};errors=[];warnings=[];normalized=_normalize_code(code)
+    if not normalized:errors.append("Не заполнен код промокода.")
+    if not str(cfg.get("command") or "/promo").strip():errors.append("Не заполнена команда промокода.")
+    if int(uses_left)<0:errors.append("Лимит использований не может быть отрицательным.")
+    start=_parse_promo_datetime(cfg.get("starts_at"));end=_parse_promo_datetime(cfg.get("expires_at"))
+    if start and end and end<=start:errors.append("Дата окончания должна быть позже даты начала.")
+    if storage is not None and normalized in (load_promo_data(storage).get("codes") or {}):errors.append("Промокод с таким кодом уже существует.")
+    rows=reward.get("rewards") or []
+    if not reward:errors.append("Активный промокод должен содержать хотя бы одну награду.")
+    for i,row in enumerate(rows,1):
+        if not isinstance(row,dict):errors.append(f"Награда #{i}: неверный формат.");continue
+        kind=str(row.get("type") or "");oid=str(row.get("object_id") or row.get("item_id") or row.get("effect_id") or "")
+        if kind=="item" and not get_item_definition_by_id(oid):errors.append(f"Награда #{i}: предмет «{oid}» не существует или не опубликован.")
+        if kind in {"effect","curse"}:
+            from services.effect_constructor_service import published_definition
+            if not published_definition(oid):errors.append(f"Награда #{i}: эффект «{oid}» не существует или не опубликован.")
+            if kind=="curse":warnings.append(f"Награда #{i} выдаёт проклятье.")
+    if not end:warnings.append("Промокод не имеет срока окончания.")
+    return {"ok":not errors,"errors":errors,"warnings":warnings}
+
+def _record_activation(storage:Any,code:str,player:dict[str,Any],reward:dict[str,Any],status:str="success",error:str="",platform:str="")->None:
+    data=load_promo_data(storage);promo=(data.get("codes") or {}).get(_normalize_code(code))
+    if not promo:return
+    promo.setdefault("activation_history",[]).append({"game_id":str(player.get("game_id") or player.get("id") or ""),"nt_id":str(player.get("game_id") or ""),"platform":platform or player.get("platform"),"at":datetime.now(timezone.utc).isoformat(),"reward":reward,"status":status,"error":error})
+    promo["activation_history"]=promo["activation_history"][-5000:];save_promo_data(data,storage)
 
 
 _CLAIM_FAILURE_MESSAGES = {
@@ -311,7 +427,7 @@ _CLAIM_FAILURE_MESSAGES = {
 }
 
 
-def _redeem_with_atomic_claim(storage: Any, game_id: str, code: str) -> tuple[bool, str]:
+def _redeem_with_atomic_claim(storage: Any, game_id: str, code: str,platform:str="") -> tuple[bool, str]:
     """Atomic redemption: storage reserves one use before the reward is granted.
 
     The storage-level claim (SELECT ... FOR UPDATE / BEGIN IMMEDIATE / lock)
@@ -322,29 +438,41 @@ def _redeem_with_atomic_claim(storage: Any, game_id: str, code: str) -> tuple[bo
     player = storage.get_player_by_game_id(game_id)
     if player is None:
         return False, "Игрок не найден."
+    promo=(load_promo_data(storage).get("codes") or {}).get(_normalize_code(code)) or {};condition_error=_promo_condition_error(player,promo,platform=platform)
+    if condition_error:_record_activation(storage,code,player,promo.get("reward") or {},"error",condition_error,platform);return False,condition_error
 
     # Pass the canonical code so the storage claim matches the stored key
     # regardless of case or a leading slash the player/admin may have typed.
     ok, reason, reward = storage.claim_promo_use(_normalize_code(code), str(game_id))
     if not ok:
-        return False, _CLAIM_FAILURE_MESSAGES.get(reason, "Промокод не найден или отключён.")
+        message=_CLAIM_FAILURE_MESSAGES.get(reason, "Промокод не найден или отключён.");_record_activation(storage,code,player,promo.get("reward") or {},"error",message,platform);return False,message
 
     try:
         player = apply_reward_to_player(player, reward or {})
+        try:
+            from services.achievement_engine import record_game_event
+            record_game_event(player, "use_promo", 1, _normalize_code(code), storage=storage)
+            from services.reputation_runtime_service import apply_trigger
+            apply_trigger(player,"promo",_normalize_code(code),reason="Активация промокода")
+            from services.event_campaign_runtime import progress as event_progress
+            event_progress(player, "use_promo", _normalize_code(code), 1, storage=storage)
+        except Exception:
+            pass
         storage.update_player(player)
+        _record_activation(storage,code,player,reward or {},platform=platform)
     except Exception:
         try:
             storage.refund_promo_use(_normalize_code(code), str(game_id))
         except Exception:
             pass
         raise
-    return True, "Промокод успешно применён."
+    return True, _promo_text(promo.get("success_text") or "Промокод успешно применён.")
 
 
-def redeem_promo_code(storage: Any, game_id: str, code: str) -> tuple[bool, str]:
+def redeem_promo_code(storage: Any, game_id: str, code: str,*,platform:str="") -> tuple[bool, str]:
     # Preferred path: the storage exposes an atomic claim/refund pair.
     if callable(getattr(storage, "claim_promo_use", None)) and callable(getattr(storage, "refund_promo_use", None)):
-        return _redeem_with_atomic_claim(storage, game_id, code)
+        return _redeem_with_atomic_claim(storage, game_id, code,platform)
 
     # File fallback: guard read-modify-write with a file lock.
     with _file_locked() if not _storage_supports_promo(storage) else _null_context():
@@ -373,12 +501,32 @@ def redeem_promo_code(storage: Any, game_id: str, code: str) -> tuple[bool, str]
         player = storage.get_player_by_game_id(game_id)
         if player is None:
             return False, "Игрок не найден."
+        condition_error=_promo_condition_error(player,promo,platform=platform)
+        if condition_error:promo.setdefault("activation_history",[]).append({"game_id":str(game_id),"platform":platform,"at":datetime.now(timezone.utc).isoformat(),"status":"error","error":condition_error});save_promo_data(data,storage);return False,condition_error
 
         player = apply_reward_to_player(player, promo.get("reward") or {})
+        try:
+            from services.achievement_engine import record_game_event
+            record_game_event(player, "use_promo", 1, normalized_code, storage=storage)
+            from services.reputation_runtime_service import apply_trigger
+            apply_trigger(player,"promo",normalized_code,reason="Активация промокода")
+            from services.event_campaign_runtime import progress as event_progress
+            event_progress(player, "use_promo", normalized_code, 1, storage=storage)
+        except Exception:
+            pass
         storage.update_player(player)
 
         promo.setdefault("used_by", []).append(str(game_id))
         promo["uses_left"] = uses_left - 1
         promo["updated_at"] = datetime.now(timezone.utc).isoformat()
+        promo.setdefault("activation_history",[]).append({"game_id":str(game_id),"nt_id":str(game_id),"platform":platform or player.get("platform"),"at":datetime.now(timezone.utc).isoformat(),"reward":promo.get("reward") or {},"status":"success","error":""})
         save_promo_data(data, storage)
-        return True, "Промокод успешно применён."
+        return True, _promo_text(promo.get("success_text") or "Промокод успешно применён.")
+def _promo_text(value:Any)->str:
+    text=str(value or "")
+    try:
+        from services.web_profile import get_site_base_url
+        base=get_site_base_url().rstrip("/")
+    except Exception:
+        base=""
+    return text.replace("{site_url}",base).replace("{{site_url}}",base)

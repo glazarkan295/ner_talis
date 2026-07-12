@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   cancelMessage,
+  deleteMessage,
   fetchMessages,
   fetchMessagesMeta,
   fetchMessagesStats,
@@ -14,6 +15,7 @@ const STATUS_TONE = {
   failed: "ntv2-badge-error", blocked: "ntv2-badge-error",
   retry_wait: "ntv2-badge-error", cancelled: "ntv2-badge-danger",
 };
+const STATUS_LABEL={queued:"Ожидает очередь",sending:"Отправляется",sent:"Отправлено",delivered:"Доставлено",failed:"Ошибка отправки",retry_wait:"Ожидает повтор",cancelled:"Отменено",blocked:"Платформа недоступна",expired:"Истекло",waiting_timer:"Ожидает таймер",waiting_battle:"Ожидает завершение боя",waiting_event:"Ожидает завершение события",waiting_action:"Ожидает действие игрока",notification_pending:"Нет доступной платформы",deleted:"Удалено админом"};
 
 export function MessagesSection({ guarded, hasPerm }) {
   const [meta, setMeta] = useState(null);
@@ -64,7 +66,7 @@ export function MessagesSection({ guarded, hasPerm }) {
       <div className="ntv2-filters" style={{ marginTop: 12 }}>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">Все статусы</option>
-          {meta.statuses.map((s) => <option key={s} value={s}>{s}</option>)}
+          {meta.statuses.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
         </select>
         <label className="ntv2-check"><input type="checkbox" checked={errorsOnly} onChange={(e) => setErrorsOnly(e.target.checked)} /> Только ошибки</label>
         <button type="button" className="ntv2-btn" onClick={refresh}>Обновить</button>
@@ -76,7 +78,7 @@ export function MessagesSection({ guarded, hasPerm }) {
         {items.map((m) => (
           <div className="ntv2-audit-row" key={m.id}>
             <div className="ntv2-audit-head">
-              <span className={`ntv2-badge ${STATUS_TONE[m.status] || ""}`}>{m.status}</span>
+              <span className={`ntv2-badge ${STATUS_TONE[m.status] || ""}`}>{STATUS_LABEL[m.status] || m.status}</span>
               <span className="ntv2-audit-action">{m.type}</span>
               <span className="ntv2-badge">{m.priority}</span>
               <span className="ntv2-audit-time">{m.platform}:{m.recipient}</span>
@@ -90,6 +92,7 @@ export function MessagesSection({ guarded, hasPerm }) {
             <div className="ntv2-form-row" style={{ marginTop: 6 }}>
               {can.retry && m.status !== "sent" ? <button type="button" className="ntv2-btn" onClick={() => guarded(() => retryMessage(m.id, "ручной повтор"), "Поставлено на повтор.").then(refresh)}>Повторить</button> : null}
               {can.cancel && !["sent", "cancelled"].includes(m.status) ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => guarded(() => cancelMessage(m.id, "отмена"), "Отменено.").then(refresh)}>Отменить</button> : null}
+              {can.cancel && m.status !== "deleted" ? <button type="button" className="ntv2-btn ntv2-btn-danger" onClick={() => guarded(() => deleteMessage(m.id, "удаление администратором"), "Удалено.").then(refresh)}>Удалить</button> : null}
             </div>
             <TechnicalData label="Данные сообщения" value={m} />
           </div>

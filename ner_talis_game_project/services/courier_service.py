@@ -205,6 +205,57 @@ def delivery_cost_copper(level: Any) -> int:
     return max(BASE_COST_COPPER, cost)
 
 
+def _item_delivery_values(planned: list[tuple[int, int, dict[str, Any]]], sender: dict[str, Any],
+                          base_cost: int, base_seconds: int) -> tuple[int, int]:
+    """Apply published per-item delivery rules to the whole parcel."""
+    cost_values: list[int] = []
+    time_values: list[int] = []
+    from services.formula_runtime import evaluate, numeric_context
+    from services.item_registry import get_item_definition_by_id
+    for _index, amount, item in planned:
+        definition = get_item_definition_by_id(_item_key(item)) or {}
+        if definition.get("delivery_allowed") is False:
+            raise CourierError(f"Предмет «{item.get('name', 'предмет')}» нельзя доставлять курьером.")
+        context = numeric_context({
+            "base_amount": base_cost, "price": base_cost, "item_count": amount,
+            "item_level": item.get("item_level", item.get("level", 1)),
+            "quality": item.get("quality_value", 0), "weight": item.get("weight", definition.get("weight", 0)),
+        }, player=sender)
+        if definition.get("delivery_cost_formula_id"):
+            cost_values.append(max(0, safe_int(evaluate(definition.get("delivery_cost_formula_id"), context, default=base_cost), base_cost)))
+        if definition.get("delivery_time_formula_id"):
+            time_context = {**context, "base_amount": base_seconds}
+            time_values.append(max(1, safe_int(evaluate(definition.get("delivery_time_formula_id"), time_context, default=base_seconds), base_seconds)))
+        elif definition.get("delivery_time_seconds") not in (None, ""):
+            time_values.append(max(1, safe_int(definition.get("delivery_time_seconds"), base_seconds)))
+    cost, seconds = max(cost_values, default=base_cost), max(time_values, default=base_seconds)
+    try:
+        from services.economy_constructor_service import active_profile
+        profile = active_profile()
+        rule = next((row for row in profile.get("delivery_rules") or [] if isinstance(row, dict) and row.get("enabled", True)), None)
+        if rule:
+            item_count = sum(amount for _index, amount, _item in planned)
+            context = numeric_context({"base_amount": safe_int(rule.get("base_cost"), cost), "price": cost,
+                                       "item_count": item_count, "stack_count": len(planned)}, player=sender)
+            if rule.get("cost_formula_id"):
+                cost = max(0, safe_int(evaluate(rule["cost_formula_id"], context, default=cost), cost))
+            else:
+                cost = safe_int(rule.get("base_cost"), cost) + item_count * safe_int(rule.get("item_cost"), 0) + len(planned) * safe_int(rule.get("stack_cost"), 0)
+            cost = int(round(cost * (100 + max(0, float(rule.get("commission_percent") or profile.get("delivery_commission_percent") or 0))) / 100))
+            cost = max(safe_int(rule.get("min_cost"), 0), cost)
+            if safe_int(rule.get("max_cost"), 0): cost = min(safe_int(rule.get("max_cost")), cost)
+            if rule.get("time_formula_id"):
+                seconds = max(1, safe_int(evaluate(rule["time_formula_id"], {**context, "base_amount": seconds}, default=seconds), seconds))
+            elif rule.get("time_seconds") not in (None, ""): seconds = max(1, safe_int(rule.get("time_seconds"), seconds))
+            seconds = max(safe_int(rule.get("min_time_seconds"), 1), seconds)
+            if safe_int(rule.get("max_time_seconds"), 0): seconds = min(safe_int(rule.get("max_time_seconds")), seconds)
+        from services.economy_runtime import commission_adjusted
+        cost=commission_adjusted(cost,"delivery",sender,{"item_count":sum(amount for _index,amount,_item in planned),"stack_count":len(planned)})
+    except (ImportError, TypeError, ValueError):
+        pass
+    return cost, seconds
+
+
 def courier_warning_text(level: Any) -> str:
     return WARNING_TEXT.format(delivery_cost=format_price(delivery_cost_copper(level)))
 
@@ -446,7 +497,7 @@ def _create_courier_transfer_impl(
     level = safe_int(sender.get("level"), 1)
     cost = delivery_cost_copper(level)
     money = _wallet(sender)
-    if money < cost + coins:
+    if money < coins:
         raise CourierError("Недостаточно монет для оплаты доставки и вложенных монет.")
 
     inventory = sender.setdefault("inventory", [])
@@ -479,6 +530,11 @@ def _create_courier_transfer_impl(
         used_indexes.add(index)
         planned.append((index, amount, item))
 
+    base_seconds = rng.randint(DELIVERY_MIN_MINUTES, DELIVERY_MAX_MINUTES) * 60
+    cost, delivery_seconds = _item_delivery_values(planned, sender, cost, base_seconds)
+    if money < cost + coins:
+        raise CourierError("Недостаточно монет для оплаты доставки и вложенных монет.")
+
     # 2) Снимок предметов и фактическое списание из инвентаря.
     items_snapshot: list[dict[str, Any]] = []
     for index, amount, item in planned:
@@ -508,9 +564,7 @@ def _create_courier_transfer_impl(
     _set_wallet(sender, money - cost - coins)
     recalculate_inventory_overflow(sender)
 
-    deliver_at = now + timedelta(
-        minutes=rng.randint(DELIVERY_MIN_MINUTES, DELIVERY_MAX_MINUTES)
-    )
+    deliver_at = now + timedelta(seconds=delivery_seconds)
     transfer = {
         "transfer_id": str(uuid.uuid4()),
         "sender_game_id": sender_id,
@@ -550,10 +604,36 @@ def _create_courier_transfer_impl(
                 pass
         raise CourierError("Не удалось оформить посылку. Попробуйте позже.") from exc
 
+    try:
+        from services.economy_runtime import record
+        record(sender, "delivery", "copper", -(cost + coins), money, _wallet(sender), source="courier", source_id=transfer["transfer_id"])
+    except Exception:
+        pass
+
+    from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+    for entry in items_snapshot:
+        snapshot = entry.get("item")
+        if isinstance(snapshot, dict):
+            trigger_item_effect(sender, snapshot, "on_transfer", context={"item_count": entry.get("amount", 1)})
+    if callable(update_player):
+        try: update_player(sender)
+        except Exception: pass  # transfer is already durably queued; never report it as failed
+
     message = SENDER_CONFIRM_TEXT.format(
         receiver_name=transfer["receiver_name"],
         delivery_cost=format_price(cost),
     )
+    try:
+        from services.event_campaign_runtime import progress as event_progress
+        for entry in items_snapshot:
+            item = entry.get("item") if isinstance(entry, dict) else None
+            if isinstance(item, dict): event_progress(sender, "send_item", str(item.get("item_id") or item.get("id") or ""), max(1, safe_int(entry.get("amount"), 1)), storage=storage)
+    except Exception:
+        pass
+    try:
+        from services.achievement_engine import record_game_event
+        record_game_event(sender,"delivery",1,receiver_id,storage=storage)
+    except Exception:pass
     return {"message": message, "transfer": transfer}
 
 
@@ -601,6 +681,8 @@ def _deliver_items_to(
         if not isinstance(snapshot, dict):
             continue
         result = add_inventory_item(player, deepcopy(snapshot), amount)
+        from services.item_effect_trigger_runtime import trigger as trigger_item_effect
+        trigger_item_effect(player, snapshot, "on_receive_item", context={"item_count": amount})
         discarded = max(0, safe_int(getattr(result, "discarded", 0), 0))
         if discarded > 0:
             leftover = dict(entry)

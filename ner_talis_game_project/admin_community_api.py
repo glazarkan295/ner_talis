@@ -207,6 +207,15 @@ def create_admin_community_router(get_storage) -> APIRouter:
             )
         except EntityError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        storage = get_storage()
+        player = storage.get_player_by_game_id(payload.user_id) if hasattr(storage, "get_player_by_game_id") else None
+        if isinstance(player, dict):
+            try:
+                from services.achievement_engine import record_game_event
+                record_game_event(player, "join_guild", 1, guild_id, storage=storage)
+                storage.update_player(player)
+            except Exception:
+                pass
         return {"ok": True, "item": item}
 
     @router.post("/guilds/{guild_id}/members/set-role")
@@ -355,11 +364,12 @@ def create_admin_community_router(get_storage) -> APIRouter:
             raise HTTPException(status_code=404, detail="Событие не найдено.")
         item = run_admin_operation(
             session=session, action="world_event.reward",
-            func=lambda: events.store().update(event_id, {"rewards_distributed": True}, actor=_actor(session)),
+            func=lambda: events.distribute_rewards(get_storage(), event_id),
             target_type="world_event", target_id=event_id,
             target_name=str(before.get("data", {}).get("name") or event_id),
-            after_func=lambda r: {"rewards_distributed": True}, reason=payload.reason,
+            after_func=lambda r: r, reason=payload.reason,
         )
-        return {"ok": True, "item": item}
+        events.store().update(event_id, {"rewards_distributed": True, "reward_report": item}, actor=_actor(session))
+        return {"ok": True, "report": item, "item": events.store().get(event_id)}
 
     return router

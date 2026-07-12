@@ -16,6 +16,7 @@ const K_NODE = "sublocation_node";
 const K_TR = "sublocation_transition";
 
 const SUB_TYPE_LABEL = {
+  normal:"Обычная", market:"Рыночная", craft:"Ремесленная", tavern:"Таверна", npc_zone:"NPC-зона", criminal:"Криминальная зона", transition:"Переходная точка", rest:"Зона отдыха", quest_zone:"Зона квестов", event_zone:"Зона событий", battle_zone:"Зона боя", hidden:"Скрытая", closed:"Закрытая", service:"Служебная",
   cave: "Пещера", dungeon: "Подземелье", labyrinth: "Лабиринт", ruins: "Руины",
   house: "Дом", building: "Здание", mine: "Шахта", catacombs: "Катакомбы",
   raid_dungeon: "Данж", tower: "Башня", camp: "Лагерь", hidden_zone: "Скрытая зона",
@@ -42,6 +43,10 @@ function Field({ label, children }) {
 
 const EMPTY_SUB = {
   name: "", type: "cave", parent_location: "", short_description: "", description: "",
+  player_name:"", system_name:"", category:"", technical_description:"", hidden_description:"", icon:"", display_order:0, visibility:"public",
+  available_to_all:true, hidden_until_condition:false, required_item:"", required_quest:"", required_npc:"", required_reputation_id:"", required_reputation_value:"", require_no_fine:false, required_time_start:"", required_time_end:"", required_event:"",
+  button_ids:[], npc_ids:[], event_ids:[], service_types:[],
+  entry_text:"", exit_text:"", look_text:"", denied_text:"", empty_text:"", action_error_text:"", hidden_text:"", unlock_text:"",
   image: "", danger: "", min_level: 1, max_level: "", can_leave: true, can_die: true,
   death_return_location: "", use_pve: true, use_camp: false, use_resources: true,
   use_events: true, use_mobs: true, use_traps: false, use_chests: false, use_boss: false,
@@ -178,6 +183,7 @@ export function SublocationsSection({ guarded, hasPerm }) {
                 <div className="ntsub-form">
                   {creating ? <Field label="ID подлокации"><input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="old_cave" /></Field> : null}
                   <Field label="Название"><input value={card.name} onChange={(e) => setF("name", e.target.value)} /></Field>
+                  <div className="ntv2-form-row"><Field label="Название для игрока"><input value={card.player_name} onChange={(e)=>setF("player_name",e.target.value)} /></Field><Field label="Системное название"><input value={card.system_name} onChange={(e)=>setF("system_name",e.target.value)} /></Field><Field label="Категория"><input value={card.category} onChange={(e)=>setF("category",e.target.value)} /></Field></div>
                   <div className="ntv2-form-row">
                     <Field label="Тип"><select value={card.type} onChange={(e) => setF("type", e.target.value)}>{(meta?.sublocationTypes || []).map((t) => <option key={t} value={t}>{SUB_TYPE_LABEL[t] || t}</option>)}</select></Field>
                     <Field label="Родительская локация"><select value={card.parent_location} onChange={(e) => setF("parent_location", e.target.value)}><option value="">—</option>{locOptions.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select></Field>
@@ -190,7 +196,17 @@ export function SublocationsSection({ guarded, hasPerm }) {
                   </div>
                   <Field label="Краткое описание"><textarea rows={2} value={card.short_description} onChange={(e) => setF("short_description", e.target.value)} /></Field>
                   <Field label="Полное описание"><textarea rows={3} value={card.description} onChange={(e) => setF("description", e.target.value)} /></Field>
+                  <Field label="Техническое описание"><textarea rows={2} value={card.technical_description} onChange={(e)=>setF("technical_description",e.target.value)} /></Field>
+                  <Field label="Скрытое описание"><textarea rows={2} value={card.hidden_description} onChange={(e)=>setF("hidden_description",e.target.value)} /></Field>
+                  <div className="ntv2-form-row"><Field label="Иконка"><input value={card.icon} onChange={(e)=>setF("icon",e.target.value)} /></Field><Field label="Порядок"><input type="number" value={card.display_order} onChange={(e)=>setF("display_order",e.target.value)} /></Field><Field label="Видимость"><select value={card.visibility} onChange={(e)=>setF("visibility",e.target.value)}><option value="public">Публичная</option><option value="conditional">По условию</option><option value="hidden">Скрытая</option></select></Field></div>
                   <Field label="Изображение (/assets/…)"><input value={card.image} onChange={(e) => setF("image", e.target.value)} /></Field>
+                  <h4>Доступ</h4>
+                  <div className="ntv2-form-row" style={{gap:12,flexWrap:"wrap"}}>{flag("available_to_all","Доступна всем")}{flag("hidden_until_condition","Скрыта до условия")}{flag("require_no_fine","Требуется отсутствие штрафа")}</div>
+                  <div className="ntv2-form-row"><Field label="Требуется предмет"><input value={card.required_item} onChange={(e)=>setF("required_item",e.target.value)} /></Field><Field label="Требуется квест"><input value={card.required_quest} onChange={(e)=>setF("required_quest",e.target.value)} /></Field><Field label="Требуется NPC"><input value={card.required_npc} onChange={(e)=>setF("required_npc",e.target.value)} /></Field><Field label="Требуется событие"><input value={card.required_event} onChange={(e)=>setF("required_event",e.target.value)} /></Field></div>
+                  <div className="ntv2-form-row"><Field label="Репутация ID"><input value={card.required_reputation_id} onChange={(e)=>setF("required_reputation_id",e.target.value)} /></Field><Field label="Значение репутации"><input type="number" value={card.required_reputation_value} onChange={(e)=>setF("required_reputation_value",e.target.value)} /></Field><Field label="Время от (HH:MM)"><input value={card.required_time_start} onChange={(e)=>setF("required_time_start",e.target.value)} /></Field><Field label="Время до"><input value={card.required_time_end} onChange={(e)=>setF("required_time_end",e.target.value)} /></Field></div>
+                  {[['button_ids','Кнопки (ID по строкам)'],['npc_ids','NPC (ID по строкам)'],['event_ids','События (ID по строкам)'],['service_types','Рынки и услуги (типы по строкам)']].map(([k,l])=><Field key={k} label={l}><textarea rows={3} value={(card[k]||[]).join("\n")} onChange={(e)=>setF(k,e.target.value.split("\n").map(x=>x.trim()).filter(Boolean))} /></Field>)}
+                  <h4>Тексты</h4>
+                  {[['entry_text','Вход'],['exit_text','Выход'],['look_text','Осмотр'],['denied_text','Недоступность'],['empty_text','Пустая подлокация'],['action_error_text','Ошибка действия'],['hidden_text','Скрытая подлокация'],['unlock_text','Открытие подлокации']].map(([k,l])=><Field key={k} label={l}><textarea rows={2} value={card[k]} onChange={(e)=>setF(k,e.target.value)} /></Field>)}
                   <div className="ntv2-form-row" style={{ gap: 12, flexWrap: "wrap" }}>
                     {flag("can_leave", "Можно покинуть")}{flag("can_die", "Можно умереть")}{flag("use_pve", "PVE")}
                     {flag("use_camp", "Лагерь")}{flag("use_resources", "Ресурсы")}{flag("use_events", "События")}

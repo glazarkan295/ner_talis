@@ -34,8 +34,18 @@ from services.admin_rbac import (
 
 
 class RewardItem(BaseModel):
-    item_id: str
+    item_id: str = ""
+    type:str=""
+    object_id:str=""
+    currency:str=""
     amount: int = Field(gt=0)
+    min_amount:int|None=None
+    max_amount:int|None=None
+    quality:str=""
+    item_level:int|None=None
+    bind_on_receive:bool=False
+    delivery_mode:str="inventory"
+    text:str=""
 
 
 class PromoCreateRequest(BaseModel):
@@ -45,6 +55,7 @@ class PromoCreateRequest(BaseModel):
     duration: str = "never"
     rewards: list[RewardItem] = Field(default_factory=list)
     reason: str = ""
+    data:dict[str,Any]=Field(default_factory=dict)
 
 
 class BroadcastPreviewRequest(BaseModel):
@@ -135,17 +146,19 @@ def create_admin_promos_router(get_storage) -> APIRouter:
                 storage, code=payload.code, uses_left=payload.uses_left,
                 duration=payload.duration, rewards=_reward_dicts(payload.rewards),
                 admin_session=session,
+                config=payload.data,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"ok": True, "promo": promo}
 
     @router.delete("/promos")
-    def delete_promo(request: Request, code: str = Query(..., min_length=1), token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
+    def delete_promo(request: Request, code: str = Query(..., min_length=1), confirm: str = Query(...,min_length=1), token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:
         # Код в query, а не в path: промокоды могут содержать слэши/пробелы.
         storage = get_storage()
         session = _session(storage, request, token)
         _require(session, PERM_PROMOS_MANAGE)
+        if str(confirm).strip().casefold()!=str(code).strip().casefold():raise HTTPException(status_code=400,detail="Для удаления введите точный код промокода.")
         if not delete_admin_promo(storage, code=code, admin_session=session):
             raise HTTPException(status_code=404, detail="Промокод не найден.")
         return {"ok": True, "code": code}

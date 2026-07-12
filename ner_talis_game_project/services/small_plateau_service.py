@@ -235,8 +235,12 @@ def add_currency(player_state: dict[str, Any], currency: str, amount: int) -> No
     wallet[currency] = int(wallet.get(currency, 0) or 0) + amount
     copper_delta = amount * COPPER_PER_SILVER if currency == "silver" else amount if currency == "copper" else 0
     if copper_delta:
-        player_state["money_copper"] = int(player_state.get("money_copper", player_state.get("money", 0)) or 0) + copper_delta
+        before=int(player_state.get("money_copper",player_state.get("money",0)) or 0);player_state["money_copper"]=before+copper_delta
         player_state["money"] = player_state["money_copper"]
+        try:
+            from services.economy_runtime import record
+            record(player_state,"location_reward","copper",copper_delta,before,player_state["money_copper"],source="small_plateau")
+        except (ImportError,OSError):pass
 
 
 def spend_currency(player_state: dict[str, Any], currency: str, amount: int) -> bool:
@@ -251,6 +255,10 @@ def spend_currency(player_state: dict[str, Any], currency: str, amount: int) -> 
             player_state["money"] = player_state["money_copper"]
             wallet = _currency_dict(player_state)
             wallet[currency] = max(0, int(wallet.get(currency, 0) or 0) - amount)
+            try:
+                from services.economy_runtime import record
+                record(player_state,"location_payment","copper",-copper_cost,money,player_state["money_copper"],source="small_plateau")
+            except (ImportError,OSError):pass
             return True
     wallet = _currency_dict(player_state)
     if int(wallet.get(currency, 0) or 0) < amount:

@@ -73,9 +73,12 @@ class CityNodeEntryMessageTest(unittest.TestCase):
 
     def test_node_entry_message_validated(self):
         from services import city_constructor_service as city
-        good = city.store().create("n_ok", {"_kind": "city_node", "name": "Узел", "node_type": "city", "entry_message": {"format": "single", "text": "Добро пожаловать!"}})
+        base = {"_kind": "city_node", "name": "Узел", "node_type": "city", "entry_text": "Главная площадь."}
+        good = city.store().create("n_ok", {**base, "entry_message": {"format": "single", "text": "Добро пожаловать!"}})
+        city.store().create("b_ok", {"_kind": "city_button", "node_id": "n_ok", "text": "Осмотреться", "action": "show_message"})
         self.assertTrue(city.validate("city_node", good)["ok"], city.validate("city_node", good)["errors"])
-        bad = city.store().create("n_bad", {"_kind": "city_node", "name": "Узел", "node_type": "city", "entry_message": {"format": "single", "text": "T", "image": "http://x/y.png"}})
+        bad = city.store().create("n_bad", {**base, "entry_message": {"format": "single", "text": "T", "image": "http://x/y.png"}})
+        city.store().create("b_bad", {"_kind": "city_button", "node_id": "n_bad", "text": "Осмотреться", "action": "show_message"})
         res = city.validate("city_node", bad)
         self.assertFalse(res["ok"])
         self.assertTrue(any("Сообщение при входе" in e for e in res["errors"]))

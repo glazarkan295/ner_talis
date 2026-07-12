@@ -9,6 +9,7 @@ async function getJson(url) {
 
 export const fetchMenu = () => getJson(`${base}/menu`);
 export const fetchTheme = () => getJson(`${base}/theme`);
+export const fetchSettings = () => getJson(`${base}/settings`);
 export const fetchPages = () => getJson(`${base}/pages`);
 export const fetchPage = (slug) => getJson(`${base}/page/${encodeURIComponent(slug)}`);
 export const fetchNews = () => getJson(`${base}/news`);

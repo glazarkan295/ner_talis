@@ -29,6 +29,9 @@ class CampServiceTest(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self._saved = os.environ.get("CAMP_CONSTRUCTOR_PATH")
         os.environ["CAMP_CONSTRUCTOR_PATH"] = str(Path(self._tmp.name) / "camps.json")
+        os.environ["WORLD_CONTENT_PATH"] = str(Path(self._tmp.name) / "world.json")
+        from services import world_content_registry as world
+        world.create_content("location", "hilly_meadows", {"name": "Луга", "type": "wild"})
         self.addCleanup(self._restore)
 
     def _restore(self):
@@ -36,9 +39,10 @@ class CampServiceTest(unittest.TestCase):
             os.environ.pop("CAMP_CONSTRUCTOR_PATH", None)
         else:
             os.environ["CAMP_CONSTRUCTOR_PATH"] = self._saved
+        os.environ.pop("WORLD_CONTENT_PATH", None)
 
     def test_validate_requires_name_and_type(self):
-        ok = camps.store().create("safe_glade", {"name": "Поляна", "camp_type": "safe"})
+        ok = camps.store().create("safe_glade", {"name": "Поляна", "camp_type": "safe", "locations": ["hilly_meadows"]})
         self.assertTrue(camps.validate(ok)["ok"], camps.validate(ok)["errors"])
         bad = camps.store().create("bad", {"name": "", "camp_type": "teleport"})
         res = camps.validate(bad)
@@ -51,20 +55,37 @@ class CampServiceTest(unittest.TestCase):
         self.assertTrue(any(c["id"] == "c1" for c in found))
         self.assertEqual(camps.published_for_location("nowhere"), [])
 
+    def test_where_used_includes_location_death_and_world_button(self):
+        os.environ["WORLD_CONTENT_PATH"] = str(Path(self._tmp.name) / "world.json")
+        self.addCleanup(lambda: os.environ.pop("WORLD_CONTENT_PATH", None))
+        from services import world_content_registry as world
+
+        camps.store().create("c1", {
+            "name": "Лагерь", "camp_type": "safe", "locations": ["forest"],
+            "death_camp": True,
+        })
+        world.create_content("button", "open_c1", {"text": "В лагерь", "action": "open_camp", "target": "c1"})
+        usage = camps.where_used("c1")
+        self.assertEqual({row["kind"] for row in usage["items"]}, {"location", "death", "button"})
+
 
 class CampApiTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         base = Path(self._tmp.name)
-        keys = ("CAMP_CONSTRUCTOR_PATH", "ADMIN_ROLES_PATH", "ADMIN_AUDIT_LOG_PATH", "TELEGRAM_ADMIN_USER_IDS")
+        keys = ("CAMP_CONSTRUCTOR_PATH", "WORLD_CONTENT_PATH", "ADMIN_ROLES_PATH", "ADMIN_AUDIT_LOG_PATH", "TELEGRAM_ADMIN_USER_IDS")
         self._saved = {k: os.environ.get(k) for k in keys}
         os.environ["CAMP_CONSTRUCTOR_PATH"] = str(base / "camps.json")
+        os.environ["WORLD_CONTENT_PATH"] = str(base / "world.json")
         os.environ["ADMIN_ROLES_PATH"] = str(base / "roles.json")
         os.environ["ADMIN_AUDIT_LOG_PATH"] = str(base / "audit.log")
         os.environ["TELEGRAM_ADMIN_USER_IDS"] = "999"
         self.addCleanup(self._restore)
         self.storage = JsonStorage(str(base / "players.json"))
+        from services import world_content_registry as world
+        world.create_content("location", "hilly_meadows", {"name": "Луга", "type": "wild"})
+        world.create_content("location", "forest", {"name": "Лес", "type": "wild"})
         app = FastAPI()
         app.include_router(create_admin_camp_router(lambda: self.storage))
         self.client = TestClient(app)
@@ -84,7 +105,7 @@ class CampApiTest(unittest.TestCase):
         return {"Authorization": f"Bearer {token}"}
 
     def _create(self, token, cid="safe_glade", data=None):
-        return self.client.post("/api/admin/v2/camps", headers=self._auth(token), json={"id": cid, "data": data or {"name": "Поляна", "camp_type": "safe"}})
+        return self.client.post("/api/admin/v2/camps", headers=self._auth(token), json={"id": cid, "data": data or {"name": "Поляна", "camp_type": "safe", "locations": ["hilly_meadows"]}})
 
     def test_meta_and_publish_flow(self):
         token = self._token()
@@ -128,6 +149,27 @@ class CampApiTest(unittest.TestCase):
         ct = self._token()
         self.assertEqual(self.client.put("/api/admin/v2/camps/cdrft", headers=self._auth(ct), json={"data": {"name": "Черновик 2"}}).status_code, 200)
         self.assertEqual(self.client.put("/api/admin/v2/camps/safe_glade", headers=self._auth(ct), json={"data": {"name": "X"}}).status_code, 403)
+
+    def test_usage_blocks_delete_until_unlinked(self):
+        token = self._token()
+        self.assertEqual(self._create(token, data={"name": "Поляна", "camp_type": "safe", "locations": ["forest"]}).status_code, 200)
+        usage = self.client.get("/api/admin/v2/camps/safe_glade/usage", headers=self._auth(token))
+        self.assertEqual(usage.status_code, 200, usage.text)
+        self.assertEqual(usage.json()["usage"]["total"], 1)
+        blocked = self.client.request(
+            "DELETE", "/api/admin/v2/camps/safe_glade", headers=self._auth(token),
+            json={"confirm": "safe_glade", "reason": "cleanup"},
+        )
+        self.assertEqual(blocked.status_code, 409, blocked.text)
+        self.client.put(
+            "/api/admin/v2/camps/safe_glade", headers=self._auth(token),
+            json={"data": {"name": "Поляна", "camp_type": "safe", "locations": []}},
+        )
+        deleted = self.client.request(
+            "DELETE", "/api/admin/v2/camps/safe_glade", headers=self._auth(token),
+            json={"confirm": "safe_glade", "reason": "cleanup"},
+        )
+        self.assertEqual(deleted.status_code, 200, deleted.text)
 
 
 if __name__ == "__main__":

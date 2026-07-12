@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { profileMockData } from "./profileMockData.js";
 import {
   itemTypeRu, itemCategoryRu, itemQualityRu, itemSlotRu, itemSourceRu, yesNo,
@@ -10,7 +11,7 @@ const TABS = [
   { id: "character", label: "Персонаж", icon: "head" },
   { id: "inventory", label: "Инвентарь", icon: "bag" },
   { id: "skills", label: "Навыки", icon: "star" },
-  { id: "info", label: "Журнал", icon: "scroll" },
+  { id: "info", label: "Информация", icon: "scroll" },
 ];
 
 // Вкладка «Сервисы» объединяет Передачу (гонец) и Промокод. Список доступных
@@ -78,6 +79,85 @@ const RACE_NAME_TO_KEY = {
   ящеролюд: "lizardfolk",
 };
 
+let profileModalLocks = 0;
+let profileModalScrollY = 0;
+let profileModalBodyStyles = null;
+
+function lockProfileScroll() {
+  if (typeof document === "undefined" || profileModalLocks++ > 0) return;
+  profileModalScrollY = window.scrollY || 0;
+  profileModalBodyStyles = {
+    position: document.body.style.position,
+    top: document.body.style.top,
+    width: document.body.style.width,
+    overflow: document.body.style.overflow,
+  };
+  document.body.style.position = "fixed";
+  document.body.style.top = `-${profileModalScrollY}px`;
+  document.body.style.width = "100%";
+  document.body.style.overflow = "hidden";
+}
+
+function unlockProfileScroll() {
+  if (typeof document === "undefined" || profileModalLocks === 0 || --profileModalLocks > 0) return;
+  const saved = profileModalBodyStyles || {};
+  document.body.style.position = saved.position || "";
+  document.body.style.top = saved.top || "";
+  document.body.style.width = saved.width || "";
+  document.body.style.overflow = saved.overflow || "";
+  window.scrollTo(0, profileModalScrollY);
+  profileModalBodyStyles = null;
+}
+
+function ProfileModal({ children, className = "", onClose, closeOnBackdrop = true, label = "Диалог", layerClassName = "" }) {
+  const dialogRef = useRef(null);
+  const returnFocusRef = useRef(null);
+  const [viewport, setViewport] = useState(null);
+
+  useEffect(() => {
+    returnFocusRef.current = document.activeElement;
+    lockProfileScroll();
+    const updateViewport = () => {
+      const vv = window.visualViewport;
+      setViewport(vv ? { height: vv.height, top: vv.offsetTop } : null);
+    };
+    updateViewport();
+    window.visualViewport?.addEventListener("resize", updateViewport);
+    window.visualViewport?.addEventListener("scroll", updateViewport);
+    const dialog = dialogRef.current;
+    const focusables = dialog?.querySelectorAll?.('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])');
+    (focusables?.[0] || dialog)?.focus?.({ preventScroll: true });
+    return () => {
+      window.visualViewport?.removeEventListener("resize", updateViewport);
+      window.visualViewport?.removeEventListener("scroll", updateViewport);
+      unlockProfileScroll();
+      returnFocusRef.current?.focus?.({ preventScroll: true });
+    };
+  }, []);
+
+  function onKeyDown(event) {
+    if (event.key === "Escape") { event.preventDefault(); onClose?.(); return; }
+    if (event.key !== "Tab") return;
+    const focusables = [...(dialogRef.current?.querySelectorAll?.('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])') || [])];
+    if (!focusables.length) { event.preventDefault(); dialogRef.current?.focus(); return; }
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
+
+  if (typeof document === "undefined") return null;
+  const layerStyle = viewport ? { height: `${viewport.height}px`, minHeight: `${viewport.height}px`, top: `${viewport.top}px`, bottom: "auto" } : undefined;
+  return createPortal(
+    <div className={`nt-modal-layer ${layerClassName}`.trim()} style={layerStyle} onMouseDown={(event) => { if (closeOnBackdrop && event.target === event.currentTarget) onClose?.(); }}>
+      <article ref={dialogRef} className={`nt-modal ${className}`.trim()} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} onKeyDown={onKeyDown} onMouseDown={(event) => event.stopPropagation()}>
+        {children}
+      </article>
+    </div>,
+    document.body,
+  );
+}
+
 function TabIcon({ type }) {
   const common = {
     viewBox: "0 0 24 24",
@@ -137,89 +217,6 @@ function TabIcon({ type }) {
 function clamp(value, min, max) {
   return Math.max(min, Math.min(value, max));
 }
-
-function getProfileBounds(target, gap) {
-  if (typeof window === "undefined") {
-    return { left: gap, top: gap, right: 560, bottom: 720, width: 560, height: 720 };
-  }
-
-  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 360;
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 640;
-  const shell = target?.closest?.(".nt-shell");
-  const rect = shell?.getBoundingClientRect?.();
-
-  const rawBounds = rect && rect.width > 0 && rect.height > 0
-    ? rect
-    : { left: 0, top: 0, right: viewportWidth, bottom: viewportHeight, width: viewportWidth, height: viewportHeight };
-
-  const left = clamp(rawBounds.left, gap, viewportWidth - gap);
-  const top = clamp(rawBounds.top, gap, viewportHeight - gap);
-  const right = clamp(rawBounds.right, left + 1, viewportWidth - gap);
-  const bottom = clamp(rawBounds.bottom, top + 1, viewportHeight - gap);
-
-  return { left, top, right, bottom, width: right - left, height: bottom - top };
-}
-
-function getFloatingPosition(event, preferredWidth = 500, preferredHeight = 420) {
-  if (!event?.currentTarget || typeof window === "undefined") {
-    return null;
-  }
-
-  const target = event.currentTarget;
-  const anchor = target.getBoundingClientRect();
-  const gap = 8;
-  const bounds = getProfileBounds(target, gap);
-  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || preferredWidth;
-  const isMobile = viewportWidth <= 560;
-
-  const modalWidth = Math.max(260, Math.min(preferredWidth, bounds.width - gap * 2));
-  const modalMaxHeight = Math.max(220, Math.min(preferredHeight, bounds.height - gap * 2));
-
-  let left;
-  if (isMobile || bounds.width < preferredWidth + gap * 2) {
-    left = bounds.left + gap;
-  } else {
-    left = anchor.right + gap;
-    if (left + modalWidth > bounds.right - gap) {
-      left = anchor.left - modalWidth - gap;
-    }
-  }
-  left = clamp(left, bounds.left + gap, bounds.right - modalWidth - gap);
-
-  let top = anchor.top;
-  const preferredBottom = anchor.bottom + gap;
-  const preferredAbove = anchor.top - modalMaxHeight - gap;
-
-  if (isMobile) {
-    top = preferredBottom;
-    if (top + modalMaxHeight > bounds.bottom - gap) {
-      top = preferredAbove;
-    }
-  } else if (top + modalMaxHeight > bounds.bottom - gap && preferredAbove >= bounds.top + gap) {
-    top = preferredAbove;
-  }
-
-  top = clamp(top, bounds.top + gap, bounds.bottom - modalMaxHeight - gap);
-
-  return {
-    top,
-    left,
-    width: modalWidth,
-    maxHeight: modalMaxHeight,
-  };
-}
-
-function floatingModalStyle(position) {
-  if (!position) return undefined;
-  return {
-    "--nt-modal-top": `${Math.round(position.top)}px`,
-    "--nt-modal-left": `${Math.round(position.left)}px`,
-    "--nt-modal-width": `${Math.round(position.width)}px`,
-    "--nt-modal-max-height": `${Math.round(position.maxHeight)}px`,
-    "--nt-modal-right": "auto",
-  };
-}
-
 
 function profileOrMock(profile) {
   return profile || profileMockData;
@@ -326,7 +323,19 @@ function canSellText(item) {
 
 // Применить опубликованную раскладку (ТЗ §3) к базовым вкладкам: порядок/подпись/
 // иконка/скрытие для известных вкладок. Аддитивно: при пустой раскладке — как есть.
-function applyProfileLayoutTabs(baseTabs, layout) {
+function profileCondition(condition, profile) {
+  const value = String(condition || "").trim(); if (!value) return true;
+  if (value === "has_services") return Boolean(profile?.services?.length);
+  if (value === "has_fines") return Boolean(profile?.information?.activity?.fineList?.length);
+  if (value === "has_achievements") return Boolean(profile?.information?.achievements?.length);
+  if (value === "has_pavilion") return Boolean(profile?.services?.some((s) => s.id === "pavilion"));
+  if (value === "admin_only") return Boolean(profile?.adminView);
+  const match = value.match(/^level\s*>=\s*(\d+)$/); if (match) return Number(profile?.player?.level || 0) >= Number(match[1]);
+  return true;
+}
+function applyProfileLayoutTabs(baseTabs, layout, profile) {
+  const enabled = String(layout?.settings?.enabled_tabs || "").split(",").map((v) => v.trim()).filter(Boolean);
+  if (enabled.length) baseTabs = baseTabs.filter((tab) => enabled.includes(tab.id));
   const tabs = Array.isArray(layout?.tabs) ? layout.tabs : [];
   if (!tabs.length) return baseTabs;
   const byId = new Map(baseTabs.map((t) => [t.id, t]));
@@ -335,7 +344,7 @@ function applyProfileLayoutTabs(baseTabs, layout) {
   for (const lt of tabs) {
     const base = byId.get(String(lt.key || "").trim());
     if (!base) continue;                       // нет рендера для такого ключа — пропускаем
-    if (String(lt.visibility || "") === "hidden") { used.add(base.id); continue; }
+    if (String(lt.visibility || "") === "hidden" || (profile?.adminView ? lt.show_admin === false : lt.show_player === false || lt.hide_player) || !profileCondition(lt.condition, profile)) { used.add(base.id); continue; }
     result.push({ ...base, label: lt.label || base.label, emoji: lt.icon || null });
     used.add(base.id);
   }
@@ -350,7 +359,7 @@ function applyProfileLayoutTabs(baseTabs, layout) {
 // заданном порядке, неизвестные раскладке блоки сохраняются в конце (контент не
 // теряется). Нет раскладки для вкладки → дефолтный порядок без изменений.
 // defaultBlocks: [{ type, node }]. layout: data.profileLayout.
-function planProfileBlocks(tabKey, layout, defaultBlocks) {
+function planProfileBlocks(tabKey, layout, defaultBlocks, profile = null) {
   const layoutTab = (Array.isArray(layout?.tabs) ? layout.tabs : []).find(
     (t) => String(t.key || "").trim() === tabKey,
   );
@@ -363,7 +372,7 @@ function planProfileBlocks(tabKey, layout, defaultBlocks) {
     const base = byType.get(String(lb.type || "").trim());
     if (!base) continue;                 // нет такого блока в рендере — игнорируем
     used.add(base.type);                 // упомянут (даже скрытый) — не дублируем ниже
-    if (String(lb.visibility || "") === "hidden") continue;
+    if (String(lb.visibility || "") === "hidden" || (profile?.adminView ? lb.show_admin === false : lb.show_player === false || lb.hide_player) || !profileCondition(lb.condition, profile)) continue;
     result.push(base);
   }
   for (const base of defaultBlocks) if (!used.has(base.type)) result.push(base);
@@ -378,6 +387,16 @@ function profileThemeStyle(theme) {
   if (theme.button_color) v["--nt-gold"] = theme.button_color;
   if (theme.text_color) v["--nt-text"] = theme.text_color;
   if (theme.border_color) v["--nt-line"] = theme.border_color;
+  if (theme.primary_color) v["--nt-primary"] = theme.primary_color;
+  if (theme.secondary_color) v["--nt-secondary"] = theme.secondary_color;
+  if (theme.background_color) v["--nt-bg"] = theme.background_color;
+  if (theme.positive_color) v["--nt-positive"] = theme.positive_color;
+  if (theme.negative_color) v["--nt-negative"] = theme.negative_color;
+  if (theme.warning_color) v["--nt-warning"] = theme.warning_color;
+  if (theme.danger_color) v["--nt-danger"] = theme.danger_color;
+  if (theme.border_radius) v["--nt-radius"] = `${Math.max(0, Number(theme.border_radius))}px`;
+  if (theme.icon_size) v["--nt-icon-size"] = `${Math.max(16, Math.min(96, Number(theme.icon_size)))}px`;
+  if (theme.item_image_size) v["--nt-item-image-size"] = `${Math.max(48, Math.min(180, Number(theme.item_image_size)))}px`;
   return v;
 }
 
@@ -516,7 +535,7 @@ function effectExpiresText(effect) {
 function EffectsPopover({ effects = [], onClose }) {
   const list = Array.isArray(effects) ? effects : [];
   return (
-    <aside className="nt-race-popover nt-effects-popover" role="dialog" aria-label="Активные эффекты">
+    <ProfileModal className="nt-race-popover nt-effects-popover" onClose={onClose} label="Активные эффекты">
       <button className="nt-popover-close" type="button" onClick={onClose} aria-label="Закрыть">×</button>
       <div className="nt-modal-kicker">Активные эффекты</div>
       <h3>Эффекты персонажа</h3>
@@ -537,7 +556,7 @@ function EffectsPopover({ effects = [], onClose }) {
           ))}
         </div>
       ) : <p className="nt-empty-text">Активных положительных или отрицательных эффектов нет.</p>}
-    </aside>
+    </ProfileModal>
   );
 }
 
@@ -623,7 +642,7 @@ function RaceInfoPopover({ profile, onClose }) {
     bonuses: (backend?.bonuses && backend.bonuses.length) ? backend.bonuses : fallback.bonuses,
   };
   return (
-    <aside className="nt-race-popover" role="dialog" aria-label="Бонусы расы">
+    <ProfileModal className="nt-race-popover" onClose={onClose} label="Бонусы расы">
       <button className="nt-popover-close" type="button" onClick={onClose} aria-label="Закрыть">×</button>
       <div className="nt-modal-kicker">Бонусы расы</div>
       <h3>{race.name}</h3>
@@ -636,18 +655,19 @@ function RaceInfoPopover({ profile, onClose }) {
         <h4>Бонусы</h4>
         <ul>{race.bonuses.map((bonus) => <li key={bonus}>{bonus}</li>)}</ul>
       </div>
-    </aside>
+    </ProfileModal>
   );
 }
 
-function ItemModal({ item, slotKey, position, readOnly = false, adminEdit = false, onClose, onEquipItem, onUnequipItem, onUseItem, onRequestDrop, onRequestSell, onAdminRemoveItem }) {
+function ItemModal({ item, slotKey, position, readOnly = false, adminEdit = false, actionPermissions = {}, onClose, onEquipItem, onUnequipItem, onUseItem, onRepairItem, onProfileItemAction, onOpenTransfer, onCraftOperation, onRequestDrop, onRequestSell, onAdminRemoveItem }) {
+  const [profileActionText, setProfileActionText] = useState("");
+  useEffect(() => { setProfileActionText(""); }, [item?.id, item?.inventoryIndex]);
   if (!item) return null;
   const actions = item.actions || [];
   const itemStats = statLines(item);
   const sellPriceText = itemSellPriceText(item);
   return (
-    <div className="nt-modal-layer" onMouseDown={onClose}>
-      <article className={`nt-modal ${qualityClass(item.quality)}`} style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
+    <ProfileModal className={qualityClass(item.quality)} onClose={onClose} label={item.name || "Карточка предмета"}>
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
         <div className="nt-modal-kicker">{itemCategoryRu(item.category) || "Предмет"}</div>
         <div className="nt-modal-title-row">
@@ -674,10 +694,17 @@ function ItemModal({ item, slotKey, position, readOnly = false, adminEdit = fals
         {Array.isArray(item.enchantments) && item.enchantments.length ? (
           <div className="nt-modal-block"><h4>Зачарования</h4><StatLines lines={item.enchantments} /></div>
         ) : null}
+        {profileActionText ? <div className="nt-modal-block"><h4>Предмет</h4><p>{profileActionText}</p></div> : null}
         <footer className="nt-modal-actions">
-          {!readOnly && (actions.includes("Надеть") || (!slotKey && itemSlot(item))) ? <button type="button" onClick={() => onEquipItem?.(item)}>Надеть</button> : null}
-          {!readOnly && (actions.includes("Снять") || slotKey) ? <button type="button" onClick={() => onUnequipItem?.(slotKey || itemSlot(item), item)}>Снять</button> : null}
-          {!readOnly && actions.includes("Использовать") ? <button type="button" onClick={() => onUseItem?.(item)}>Использовать</button> : null}
+          {!readOnly && actionPermissions.allow_equip !== false && (actions.includes("Надеть") || (!slotKey && itemSlot(item))) ? <button type="button" onClick={() => onEquipItem?.(item)}>Надеть</button> : null}
+          {!readOnly && actionPermissions.allow_equip !== false && (actions.includes("Снять") || slotKey) ? <button type="button" onClick={() => onUnequipItem?.(slotKey || itemSlot(item), item)}>Снять</button> : null}
+          {!readOnly && actionPermissions.allow_item_use !== false && (actions.includes("Использовать") || actions.includes("Открыть")) ? <button type="button" onClick={() => onUseItem?.(item)}>{actions.includes("Открыть") ? "Открыть" : "Использовать"}</button> : null}
+          {!readOnly && actionPermissions.allow_craft_actions !== false && actions.includes("Ремонт") ? <button type="button" onClick={() => onRepairItem?.(item)}>Отремонтировать</button> : null}
+          {!readOnly && actions.includes("Осмотреть") ? <button type="button" onClick={() => setProfileActionText(item.inspect_text || item.technical_description || item.description || "Вы внимательно осмотрели предмет.")}>Осмотреть</button> : null}
+          {!readOnly && actions.includes("Прочитать") ? <button type="button" onClick={() => setProfileActionText(item.read_text || item.content_text || item.description || "На предмете нет читаемого текста.")}>Прочитать</button> : null}
+          {!readOnly && [["Зарядить","charge"],["Разрядить","discharge"],["Положить в подсумок","pouch_store"],["Убрать из подсумка","pouch_remove"],["Положить в хранилище","storage_store"]].map(([label, action]) => actions.includes(label) ? <button type="button" key={action} onClick={() => onProfileItemAction?.(item, action)}>{label}</button> : null)}
+          {!readOnly && actionPermissions.allow_transfer !== false && (actions.includes("Передать") || actions.includes("Отправить доставкой")) ? <button type="button" onClick={() => onOpenTransfer?.(item)}>Передать доставкой</button> : null}
+          {!readOnly && actionPermissions.allow_craft_actions !== false && (item.craftOperations || []).map((rule) => <button type="button" key={`${rule.operation}:${rule.rule_id}`} onClick={() => onCraftOperation?.(item, rule)}>{rule.operation === "upgrade" ? "Улучшить" : rule.operation === "enchant" ? "Зачаровать" : rule.operation === "purify" ? "Очистить" : rule.operation === "repair" ? "Починить" : "Разобрать"}: {rule.name}</button>)}
           {!readOnly && !slotKey && actions.includes("Продать") ? <button type="button" onClick={() => onRequestSell?.(item)}>Продать</button> : null}
           {readOnly ? <span className="nt-readonly-note">Только просмотр</span> : null}
           <button className="nt-secondary" type="button" onClick={onClose}>Закрыть</button>
@@ -686,13 +713,12 @@ function ItemModal({ item, slotKey, position, readOnly = false, adminEdit = fals
           <div className="nt-danger-zone">
             <span className="nt-danger-zone-label">Опасная зона</span>
             <div className="nt-danger-zone-actions">
-              {!readOnly && !slotKey ? <button className="nt-danger" type="button" onClick={() => onRequestDrop?.(item)}>Выбросить</button> : null}
+              {!readOnly && actionPermissions.allow_item_drop !== false && !slotKey && item.profileCanDrop !== false ? <button className="nt-danger" type="button" onClick={() => onRequestDrop?.(item)}>Выбросить</button> : null}
               {adminEdit && !slotKey ? <button className="nt-danger" type="button" onClick={() => onAdminRemoveItem?.(item)}>Удалить из профиля игрока</button> : null}
             </div>
           </div>
         ) : null}
-      </article>
-    </div>
+    </ProfileModal>
   );
 }
 
@@ -707,7 +733,7 @@ function DropItemModal({ item, position, onClose, onConfirm }) {
 
   // Rare and above are easy to lose by accident, so they require an explicit
   // second confirmation before the «Выбросить» button unlocks.
-  const precious = qualityRank(item) >= 2;
+  const precious = qualityRank(item) >= 2 || Boolean(item.dropWarning);
   const blocked = precious && !confirmed;
 
   function submit() {
@@ -716,8 +742,7 @@ function DropItemModal({ item, position, onClose, onConfirm }) {
   }
 
   return (
-    <div className="nt-modal-layer" onMouseDown={onClose}>
-      <article className="nt-modal nt-small-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
+    <ProfileModal className="nt-small-modal" onClose={onClose} closeOnBackdrop={false} label="Подтверждение выброса предмета">
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
         <div className="nt-modal-kicker">Выброс предмета</div>
         <h3 className={qualityClass(item.quality)}>{item.name}</h3>
@@ -729,15 +754,14 @@ function DropItemModal({ item, position, onClose, onConfirm }) {
         {precious ? (
           <label className="nt-confirm-check">
             <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-            <span>Это <strong>{itemQualityRu(item.quality)}</strong> предмет. Я понимаю, что выброшенный предмет восстановить нельзя.</span>
+            <span>{item.dropWarning || <>Это <strong>{itemQualityRu(item.quality)}</strong> предмет.</>} Я понимаю, что выброшенный предмет восстановить нельзя.</span>
           </label>
         ) : null}
         <footer className="nt-modal-actions">
           <button className="nt-danger" type="button" onClick={submit} disabled={blocked}>Выбросить</button>
           <button className="nt-secondary" type="button" onClick={onClose}>Отмена</button>
         </footer>
-      </article>
-    </div>
+    </ProfileModal>
   );
 }
 
@@ -754,8 +778,7 @@ function SellItemModal({ item, position, onClose, onConfirm }) {
   }
 
   return (
-    <div className="nt-modal-layer" onMouseDown={onClose}>
-      <article className="nt-modal nt-small-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
+    <ProfileModal className="nt-small-modal" onClose={onClose} closeOnBackdrop={false} label="Продажа предмета">
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
         <div className="nt-modal-kicker">Продажа на рынке</div>
         <h3>{item.name}</h3>
@@ -772,16 +795,14 @@ function SellItemModal({ item, position, onClose, onConfirm }) {
           <button type="button" onClick={submit}>Продать</button>
           <button className="nt-secondary" type="button" onClick={onClose}>Отмена</button>
         </footer>
-      </article>
-    </div>
+    </ProfileModal>
   );
 }
 
 function SlotItemsModal({ slot, items, selectedItem, position, readOnly = false, onSelectItem, onClose, onEquipItem }) {
   if (!slot) return null;
   return (
-    <div className="nt-modal-layer" onMouseDown={onClose}>
-      <article className="nt-modal nt-slot-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
+    <ProfileModal className="nt-slot-modal" onClose={onClose} label="Выбор предмета для слота">
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
         <div className="nt-modal-kicker">Пустой слот</div>
         <h3>{slot.label}</h3>
@@ -809,8 +830,7 @@ function SlotItemsModal({ slot, items, selectedItem, position, readOnly = false,
             </div>
           </div>
         ) : <p className="nt-empty-text">В инвентаре нет предметов для этого слота.</p>}
-      </article>
-    </div>
+    </ProfileModal>
   );
 }
 
@@ -850,7 +870,7 @@ function EditPencil({ onClick }) {
   );
 }
 
-const RACE_EDIT_CHOICES = [["human", "Человек"], ["elf", "Эльф"], ["dwarf", "Дворф"], ["undead", "Нежить"], ["lizardfolk", "Ящеролюд"]];
+const LEGACY_RACE_EDIT_CHOICES = [["human", "Человек"], ["elf", "Эльф"], ["dwarf", "Дворф"], ["undead", "Нежить"], ["lizardfolk", "Ящеролюд"]];
 const GENDER_EDIT_CHOICES = [["male", "Муж."], ["female", "Жен."]];
 
 function ProfileEditModal({ field, player, onClose, onSubmit }) {
@@ -858,9 +878,9 @@ function ProfileEditModal({ field, player, onClose, onSubmit }) {
   // Подтверждение: единственная бесплатная попытка тратится только после «Да».
   const [pending, setPending] = useState(null); // { value, label }
   const titles = { name: "Изменить имя", race: "Изменить расу", gender: "Изменить пол" };
+  const raceChoices = (player?.raceChangeOptions || []).length ? player.raceChangeOptions.map((row) => [row.id, row.name]) : LEGACY_RACE_EDIT_CHOICES;
   return (
-    <div className="nt-modal-layer" onMouseDown={onClose}>
-      <article className="nt-modal nt-small-modal nt-center-modal" onMouseDown={(event) => event.stopPropagation()}>
+    <ProfileModal className="nt-small-modal" onClose={onClose} closeOnBackdrop={false} label="Редактирование сводки">
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
         <div className="nt-modal-kicker">Сводка</div>
         <h3>{titles[field] || "Изменить"}</h3>
@@ -885,12 +905,11 @@ function ProfileEditModal({ field, player, onClose, onSubmit }) {
               <div className="nt-edit-choices">{GENDER_EDIT_CHOICES.map(([id, label]) => <button key={id} className="nt-edit-choice" type="button" onClick={() => setPending({ value: id, label })}>{label}</button>)}</div>
             ) : null}
             {field === "race" ? (
-              <div className="nt-edit-choices">{RACE_EDIT_CHOICES.map(([id, label]) => <button key={id} className="nt-edit-choice" type="button" onClick={() => setPending({ value: id, label })}>{label}</button>)}</div>
+              <div className="nt-edit-choices">{raceChoices.map(([id, label]) => <button key={id} className="nt-edit-choice" type="button" onClick={() => setPending({ value: id, label })}>{label}</button>)}</div>
             ) : null}
           </>
         )}
-      </article>
-    </div>
+    </ProfileModal>
   );
 }
 
@@ -939,7 +958,7 @@ function CharacterTab({ profile, readOnly = false, onOpenItem, onOpenSlot, onCon
       return;
     }
     setEditNotice("");
-    setEditField({ field, position: getFloatingPosition(event, 320, 300) });
+    setEditField({ field });
   }
 
   async function submitFieldEdit(field, value) {
@@ -1045,7 +1064,7 @@ function CharacterTab({ profile, readOnly = false, onOpenItem, onOpenSlot, onCon
       </Panel>
     ) },
   ];
-  const blocks = planProfileBlocks("character", profile.profileLayout, defaultBlocks);
+  const blocks = planProfileBlocks("character", profile.profileLayout, defaultBlocks, profile);
   return (
     <div className="nt-stack">
       {blocks.map((b) => <React.Fragment key={b.type}>{b.node}</React.Fragment>)}
@@ -1054,7 +1073,7 @@ function CharacterTab({ profile, readOnly = false, onOpenItem, onOpenSlot, onCon
   );
 }
 
-function InventoryTab({ profile, onOpenItem }) {
+function InventoryTab({ profile, onOpenItem, readOnly = false, onClaimCraftDelivery, onProfileItemAction }) {
   const [category, setCategory] = useState("Всё");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("new");
@@ -1076,6 +1095,7 @@ function InventoryTab({ profile, onOpenItem }) {
   return (
     <div className="nt-stack">
       {overloaded ? <div className="nt-warning nt-warning-warning"><span className="nt-warning-dot" />Инвентарь перегружен: {overflowCount} предметов находятся в дополнительных слотах.</div> : null}
+      {profile.craftDelivery?.pendingAmount > 0 ? <div className="nt-warning nt-warning-warning"><span className="nt-warning-dot" />В доставке ремесла: ×{profile.craftDelivery.pendingAmount}. {!readOnly ? <button type="button" className="ntv2-btn" onClick={() => onClaimCraftDelivery?.()}>Получить доступное</button> : null}</div> : null}
       <Panel title="Инвентарь" right={<span className="nt-badge">Свободно: {freeSlots} / {capacity}</span>}>
         {!profile.readOnly && !profile.adminView && profile.market?.sellFromProfile ? <p className="nt-market-sell-hint">Вы на рынке в разделе продажи: откройте предмет и нажмите «Продать».</p> : null}
         <div className="nt-toolbar">
@@ -1098,6 +1118,9 @@ function InventoryTab({ profile, onOpenItem }) {
         </div>
         {!filtered.length ? <p className="nt-empty-text">Предметов не найдено.</p> : null}
       </Panel>
+      {(profile.personalStorage || []).length ? <Panel title="Персональное хранилище" right={<span className="nt-badge">{(profile.personalStorage || []).length}</span>}>
+        <div className="nt-inventory-grid">{profile.personalStorage.map((item) => <article className={`nt-item-icon-card ${qualityClass(item.quality)}`} key={`${item.id}:${item.storageIndex}`}><ItemArt item={item} /><span>{item.name}</span>{!readOnly ? <button type="button" onClick={() => onProfileItemAction?.(item, "storage_remove")}>Забрать</button> : null}</article>)}</div>
+      </Panel> : null}
     </div>
   );
 }
@@ -1105,15 +1128,13 @@ function InventoryTab({ profile, onOpenItem }) {
 function ModifierHelpModal({ modifier, position, onClose }) {
   if (!modifier) return null;
   return (
-    <div className="nt-modal-layer" onMouseDown={onClose}>
-      <article className="nt-modal nt-small-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
+    <ProfileModal className="nt-small-modal" onClose={onClose} label="Информация о модификаторе">
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
         <div className="nt-modal-kicker">Модификатор</div>
         <h3>{modifier.name || modifier.label}</h3>
         <p>{modifier.description || modifier.effect || "Описание модификатора пока не добавлено."}</p>
         <div className="nt-modal-grid"><span>Уровень</span><strong>{modifier.level || modifier.points || 0}</strong></div>
-      </article>
-    </div>
+    </ProfileModal>
   );
 }
 
@@ -1133,8 +1154,7 @@ function SkillUpgradeModal({ skill, freePoints, position, onClose, onSpendSkillP
   }
 
   return (
-    <div className="nt-modal-layer" onMouseDown={onClose}>
-      <article className="nt-modal nt-small-modal" style={floatingModalStyle(position)} onMouseDown={(event) => event.stopPropagation()}>
+    <ProfileModal className="nt-small-modal" onClose={onClose} closeOnBackdrop={false} label="Улучшение навыка">
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
         <div className="nt-modal-kicker">Улучшение навыка</div>
         <h3>{skill.name}</h3>
@@ -1144,12 +1164,11 @@ function SkillUpgradeModal({ skill, freePoints, position, onClose, onSpendSkillP
         ) : null}
         <label className="nt-field-label"><span>Сколько очков вложить</span><input type="number" min="1" max={freePoints} value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
         <footer className="nt-modal-actions"><button type="button" onClick={submit}>Вложить</button><button className="nt-secondary" type="button" onClick={onClose}>Отмена</button></footer>
-      </article>
-    </div>
+    </ProfileModal>
   );
 }
 
-function SkillCard({ skill, freePoints, mode = "available", readOnly = false, onShowModifier, onOpenUpgrade, onEquipSkill, onUnequipSkill }) {
+function SkillCard({ skill, freePoints, mode = "available", readOnly = false, onShowModifier, onOpenUpgrade, onEquipSkill, onUnequipSkill, onUseSkillOutside }) {
   const modifiers = skill.modifiers || [];
   const canUpgrade = !readOnly && freePoints > 0 && skill.upgradeable;
   const details = [
@@ -1157,11 +1176,12 @@ function SkillCard({ skill, freePoints, mode = "available", readOnly = false, on
     skillCostText(skill),
     skillCooldownText(skill),
   ].filter(Boolean);
-  const actionLabel = mode === "equipped" ? "Снять" : "В слот";
-  const actionHandler = mode === "equipped" ? onUnequipSkill : onEquipSkill;
+  const isEquipped = mode === "equipped" || mode === "passive_equipped";
+  const actionLabel = isEquipped ? "Снять" : mode === "passive" ? "В пассивный слот" : "В слот";
+  const actionHandler = isEquipped ? onUnequipSkill : onEquipSkill;
   // Несовместимое с текущим оружием — только в списке доступных (в слоте уже стоит).
-  const weaponBlocked = mode !== "equipped" && skill.weaponRequirementText && skill.weaponCompatible === false;
-  const showAction = !readOnly && (mode === "equipped" || (canEquipSkill(skill) && !weaponBlocked));
+  const weaponBlocked = !isEquipped && skill.weaponRequirementText && skill.weaponCompatible === false;
+  const showAction = !readOnly && (isEquipped || mode === "passive" || (canEquipSkill(skill) && !weaponBlocked));
   return (
     <article className="nt-skill-card">
       <div className="nt-skill-main">
@@ -1179,12 +1199,13 @@ function SkillCard({ skill, freePoints, mode = "available", readOnly = false, on
         <div className="nt-skill-level"><span>Уровень</span><strong>{skill.level || 0}</strong></div>
         {canUpgrade ? <button className="nt-skill-plus" type="button" onClick={(event) => onOpenUpgrade(skill, event)}>+</button> : null}
         {showAction ? <button className="nt-skill-action" type="button" onClick={() => actionHandler?.(skill)}>{actionLabel}</button> : null}
+        {!readOnly && skill.works_outside_battle ? <button className="nt-skill-action" type="button" onClick={() => onUseSkillOutside?.(skill)}>Применить</button> : null}
       </div>
     </article>
   );
 }
 
-function SkillsTab({ profile, readOnly = false, onSpendSkillPoints, onEquipSkill, onUnequipSkill }) {
+function SkillsTab({ profile, readOnly = false, onSpendSkillPoints, onEquipSkill, onUnequipSkill, onUseSkillOutside }) {
   const [modifierHelp, setModifierHelp] = useState(null);
   const [upgradeSkill, setUpgradeSkill] = useState(null);
   const freePoints = profile.player?.freeSkillPoints || 0;
@@ -1192,13 +1213,15 @@ function SkillsTab({ profile, readOnly = false, onSpendSkillPoints, onEquipSkill
   const equippedKeys = new Set(equipped.map(skillKey));
   const active = (profile.skills?.active || []).filter((skill) => !equippedKeys.has(skillKey(skill)));
   const passive = (profile.skills?.passive || []).filter((skill) => !equippedKeys.has(skillKey(skill)));
+  const passiveEquipped = profile.skills?.passiveEquipped || [];
   const sharedProps = {
     freePoints,
     readOnly,
-    onShowModifier: (modifier, event) => setModifierHelp({ modifier, position: getFloatingPosition(event, 360, 300) }),
-    onOpenUpgrade: !readOnly ? (skillToUpgrade, event) => setUpgradeSkill({ skill: skillToUpgrade, position: getFloatingPosition(event, 390, 360) }) : undefined,
+    onShowModifier: (modifier) => setModifierHelp({ modifier }),
+    onOpenUpgrade: !readOnly ? (skillToUpgrade) => setUpgradeSkill({ skill: skillToUpgrade }) : undefined,
     onEquipSkill: !readOnly ? onEquipSkill : undefined,
     onUnequipSkill: !readOnly ? onUnequipSkill : undefined,
+    onUseSkillOutside: !readOnly ? onUseSkillOutside : undefined,
   };
   const equipCapacity = skillEquipCapacity(profile);
   const equipUsed = skillEquipUsed(profile, equipped);
@@ -1225,7 +1248,8 @@ function SkillsTab({ profile, readOnly = false, onSpendSkillPoints, onEquipSkill
         </div>
       </Panel>
       <CollapsiblePanel title="Активные навыки"><div className="nt-skills-list">{active.length ? active.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Активных навыков пока нет.</p>}</div></CollapsiblePanel>
-      <CollapsiblePanel title="Пассивные навыки"><div className="nt-skills-list">{passive.length ? passive.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="available" {...sharedProps} />) : <p className="nt-empty-text">Пассивных навыков пока нет.</p>}</div></CollapsiblePanel>
+      <CollapsiblePanel title="Пассивные слоты" right={<span className="nt-badge">{profile.player?.passiveSkillSlotsUsed || 0} / {profile.player?.passiveSkillSlots || 2}</span>}><div className="nt-skills-list">{passiveEquipped.length ? passiveEquipped.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="passive_equipped" {...sharedProps} />) : <p className="nt-empty-text">Пассивные слоты пусты.</p>}</div></CollapsiblePanel>
+      <CollapsiblePanel title="Пассивные навыки"><div className="nt-skills-list">{passive.length ? passive.map((skill) => <SkillCard key={skill.id || skill.name} skill={skill} mode="passive" {...sharedProps} />) : <p className="nt-empty-text">Пассивных навыков пока нет.</p>}</div></CollapsiblePanel>
       <ModifierHelpModal modifier={modifierHelp?.modifier} position={modifierHelp?.position} onClose={() => setModifierHelp(null)} />
       {!readOnly ? <SkillUpgradeModal skill={upgradeSkill?.skill} freePoints={freePoints} position={upgradeSkill?.position} onClose={() => setUpgradeSkill(null)} onSpendSkillPoints={onSpendSkillPoints} /> : null}
     </div>
@@ -1233,9 +1257,10 @@ function SkillsTab({ profile, readOnly = false, onSpendSkillPoints, onEquipSkill
 }
 
 function FinesModal({ fines, onClose }) {
+  const placeRu = { city: "городской Управляющий", fortress: "Крепостной Управляющий", profile: "профиль", npc: "NPC", button: "кнопка" };
+  const restrictionRu = { block_city: "закрыт город", block_starting: "закрыты стартовые локации", block_market: "закрыт рынок", block_black_market: "закрыт чёрный рынок", block_casino: "закрыто казино", block_transfer: "запрещена передача", block_craft: "запрещено ремесло", force_fortress: "принудительное взыскание" };
   return (
-    <div className="nt-modal-layer" onMouseDown={onClose}>
-      <article className="nt-modal nt-small-modal nt-center-modal" onMouseDown={(event) => event.stopPropagation()}>
+    <ProfileModal className="nt-small-modal" onClose={onClose} label="Городские штрафы">
         <button className="nt-modal-close" type="button" onClick={onClose}>×</button>
         <div className="nt-modal-kicker">Городские штрафы</div>
         <h3>Активные штрафы</h3>
@@ -1245,11 +1270,16 @@ function FinesModal({ fines, onClose }) {
             <div className="nt-modal-grid">
               <span>Сумма</span><strong>{fine.amount}</strong>
               <span>Срок</span><strong>{fine.term}</strong>
+              <span>Стадия</span><strong>{fine.stage || fine.status}</strong>
+              <span>Получен</span><strong>{fine.createdAt || "—"}</strong>
+              <span>Статус</span><strong>{fine.permanent ? "Бессрочный" : fine.status}</strong>
+              <span>Где оплатить</span><strong>{(fine.paymentPlaces || []).map((x) => placeRu[x] || x).join(", ") || "—"}</strong>
+              {(fine.restrictions || []).length ? <><span>Запреты</span><strong>{fine.restrictions.map((x) => restrictionRu[x] || x).join(", ")}</strong></> : null}
+              {(fine.consequences || []).length ? <><span>Последствия</span><strong>{fine.consequences.join(", ")}</strong></> : null}
             </div>
           </div>
         )) : <p>Активных штрафов нет.</p>}
-      </article>
-    </div>
+    </ProfileModal>
   );
 }
 
@@ -1257,16 +1287,19 @@ function InfoTab({ profile }) {
   const info = profile.information || {};
   const activity = info.activity || {};
   const crafts = activity.craftingLevels || [];
-  const fineList = activity.fineList || [];
+  const settings=profile.profileLayout?.settings || {};
+  const fineList = settings.show_fines === false ? [] : (activity.fineList || []);
   const status = profile.status || null;
   const places = (profile.ratingPlaces || []).filter((p) => p.place !== "—" && p.place != null);
+  const reputations = Array.isArray(profile.reputations) ? profile.reputations : [];
+  const eventCampaigns = Array.isArray(profile.eventCampaigns) ? profile.eventCampaigns : [];
   const [finesModal, setFinesModal] = useState(null);
   // Блоки вкладки «Журнал» в дефолтном порядке; раскладка может скрыть/переставить.
   const defaultBlocks = [
     // Предупреждения/статус/рейтинги перенесены из убранной вкладки «Обзор» (ТЗ §1).
     { type: "warnings", node: <ProfileWarnings warnings={profile.warnings} /> },
     { type: "activity", node: (
-      <Panel title="Активность"><div className="nt-lines">{status ? <Row label="Статус" value={status.label} /> : null}<Row label="Дата регистрации" value={profile.player?.registrationDate || "—"} /><Row label="PVE убийства" value={activity.pveKills || 0} /><Row label="PVP убийства" value={activity.pvpKills || 0} /><Row label="Частицы душ" value={activity.soulParticlesAbsorbed || 0} /><div className="nt-row"><span>Штрафы</span>{fineList.length ? <button type="button" className="nt-fines-button" onClick={(event) => setFinesModal({ position: getFloatingPosition(event, 390, 360) })}>{`${fineList.length} активн. — подробнее`}</button> : <strong>нет активных штрафов</strong>}</div></div></Panel>
+      <Panel title="Активность"><div className="nt-lines">{status ? <Row label="Статус" value={status.label} /> : null}<Row label="Дата регистрации" value={profile.player?.registrationDate || "—"} /><Row label="PVE убийства" value={activity.pveKills || 0} /><Row label="PVP убийства" value={activity.pvpKills || 0} /><Row label="Частицы душ" value={activity.soulParticlesAbsorbed || 0} /><div className="nt-row"><span>Штрафы</span>{fineList.length ? <button type="button" className="nt-fines-button" onClick={() => setFinesModal({ open: true })}>{`${fineList.length} активн. — подробнее`}</button> : <strong>нет активных штрафов</strong>}</div></div></Panel>
     ) },
     { type: "ratings", node: places.length ? (
       <Panel title="Мои места в рейтингах">
@@ -1275,6 +1308,12 @@ function InfoTab({ profile }) {
         </div>
       </Panel>
     ) : null },
+    { type: "reputation", node: reputations.length ? (
+      <CollapsiblePanel title="Репутация"><div className="nt-card-list nt-column-list">{reputations.map((row) => <div key={row.id} className="nt-mini-card"><CardRow label={row.name || row.id} value={row.stage || (row.value ?? "—")} />{row.value !== undefined && row.stage ? <p>Значение: {row.value}</p> : null}</div>)}</div></CollapsiblePanel>
+    ) : null },
+    { type: "events", node: eventCampaigns.length ? (
+      <CollapsiblePanel title="Эвенты"><div className="nt-card-list nt-column-list">{eventCampaigns.map((row) => <div key={row.id} className="nt-mini-card"><CardRow label={row.name} value={row.status === "completed" ? "Завершён" : `Этап: ${row.stageId || "—"}`} /><p>Очки: {row.points || 0}{row.place ? ` · место: ${row.place}` : ""}</p></div>)}</div></CollapsiblePanel>
+    ) : null },
     { type: "crafting", node: (
       <CollapsiblePanel title="Ремёсла"><div className="nt-card-list nt-column-list">{crafts.length ? crafts.map((craft) => <div key={craft.name} className="nt-mini-card"><CardRow label={craft.name} value={`ур. ${craft.level}`} /><p>{craft.exp}</p></div>) : <p className="nt-empty-text">Ремёсла пока не развиты.</p>}</div></CollapsiblePanel>
     ) },
@@ -1282,7 +1321,8 @@ function InfoTab({ profile }) {
       <CollapsiblePanel title="Достижения"><div className="nt-card-list nt-column-list">{(info.achievements || []).length ? info.achievements.map((achievement) => <div key={achievement.name || achievement} className="nt-mini-card"><CardRow label={achievement.name || achievement} value="Получено" /><p>{achievement.description || "—"}</p></div>) : <p className="nt-empty-text">Достижений пока нет.</p>}</div></CollapsiblePanel>
     ) },
   ];
-  const blocks = planProfileBlocks("info", profile.profileLayout, defaultBlocks);
+  const allowedBlocks=defaultBlocks.filter((block)=>block.type==="ratings" ? settings.show_ratings!==false : block.type==="achievements" ? settings.show_achievements!==false : block.type==="activity" ? settings.show_activity!==false : true);
+  const blocks = planProfileBlocks("info", profile.profileLayout, allowedBlocks, profile);
   return (
     <div className="nt-stack">
       {blocks.map((b) => <React.Fragment key={b.type}>{b.node}</React.Fragment>)}
@@ -1605,12 +1645,17 @@ function ReferralPanel({ referral }) {
     </Panel>
   );
 }
+function PavilionPanel() {
+  const [data,setData]=useState(null);const [error,setError]=useState("");const [pavilionToken,setPavilionToken]=useState("");const profileToken=new URLSearchParams(window.location.search).get("token") || "";
+  const load=async()=>{try{let token=pavilionToken;if(!token){const linkResponse=await fetch(`/api/profile/${encodeURIComponent(profileToken)}/pavilion-link`);const linkBody=await linkResponse.json();if(!linkResponse.ok)throw new Error(linkBody.detail || "Павильон недоступен.");token=new URL(linkBody.url,window.location.origin).searchParams.get("token") || "";setPavilionToken(token);}const response=await fetch(`/api/pavilion?token=${encodeURIComponent(token)}`);const body=await response.json();if(!response.ok)throw new Error(body.detail || "Павильон недоступен.");setData(body);}catch(e){setError(e.message)}};
+  useEffect(()=>{load()},[]);
+  const rent=async()=>{try{const response=await fetch(`/api/pavilion/rent?token=${encodeURIComponent(pavilionToken)}`,{method:"POST"});const body=await response.json();if(!response.ok)throw new Error(body.detail || "Не удалось арендовать павильон.");await load();}catch(e){setError(e.message)}};
+  return <Panel title="Торговый павильон">{error?<p className="nt-courier-feedback error">{error}</p>:null}{!data?<p>Загрузка павильона…</p>:<><p>{data.accessActive?"Павильон активен.":"Павильон пока не активирован."}</p>{!data.accessActive?<button type="button" className="nt-courier-btn primary" onClick={rent}>Арендовать павильон</button>:null}<div className="nt-card-list">{(data.items || []).slice(0,20).map(row=><div className="nt-mini-card" key={row.id || row.listing_id}><CardRow label={row.item_name || row.item_id || "Товар"} value={`${row.price || 0} меди`} /></div>)}</div></>}</Panel>;
+}
 
 function ServicesTab({ profile, onSearchRecipients, onSendTransfer, onRedeemPromo }) {
-  // Бэкенд диктует список и порядок сервисов; запасной вариант — только Передача.
-  const services = (profile.services && profile.services.length)
-    ? profile.services
-    : [{ id: "transfer", label: "Передача" }];
+  const settings=profile.profileLayout?.settings || {};
+  const services = (profile.services || []).filter((service) => service.id === "transfer" ? settings.transfer_enabled !== false && settings.allow_transfer !== false : service.id === "promo" ? settings.promo_enabled !== false : service.id === "pavilion" ? settings.pavilion_enabled !== false : true);
   const [active, setActive] = useState(services[0]?.id || "transfer");
   // Если набор сервисов изменился и текущий пропал — откатываемся на первый.
   useEffect(() => {
@@ -1635,6 +1680,7 @@ function ServicesTab({ profile, onSearchRecipients, onSendTransfer, onRedeemProm
       ) : null}
       {active === "transfer" ? <CourierTab profile={profile} onSearchRecipients={onSearchRecipients} onSendTransfer={onSendTransfer} /> : null}
       {active === "promo" ? <PromoForm onRedeemPromo={onRedeemPromo} /> : null}
+      {active === "pavilion" ? <PavilionPanel /> : null}
       <ReferralPanel referral={profile.referral} />
     </div>
   );
@@ -1721,85 +1767,90 @@ function ProfileWarnings({ warnings = [] }) {
 }
 
 
-export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onEditProfileField, onSearchCourierRecipients, onSendCourierTransfer, onRedeemPromo, onAdminRemoveItem }) {
+export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoints, onConfirmAttributePoints, onSpendSkillPoints, onEquipItem, onUnequipItem, onUseItem, onRepairItem, onProfileItemAction, onCraftOperation, onClaimCraftDelivery, onDropItem, onSellItem, onEquipSkill, onUnequipSkill, onUseSkillOutside, onEditProfileField, onSearchCourierRecipients, onSendCourierTransfer, onRedeemPromo, onAdminRemoveItem }) {
   const data = profileOrMock(profile);
+  const profileSettings = data.profileLayout?.settings || {};
   const [tab, setTab] = useState("character");
   const [modal, setModal] = useState(null);
   const [slotModal, setSlotModal] = useState(null);
   const [dropModal, setDropModal] = useState(null);
   const [sellModal, setSellModal] = useState(null);
   const adminEdit = Boolean(data.adminEdit);
-  const effectiveReadOnly = Boolean(readOnly || data.readOnly || (data.adminView && !adminEdit));
+  const effectiveReadOnly = Boolean(readOnly || data.readOnly || profileSettings.allow_profile_edit === false || (data.adminView && !adminEdit));
+  const inventoryReadOnly = effectiveReadOnly || profileSettings.allow_inventory_actions === false;
+  const skillsReadOnly = effectiveReadOnly || profileSettings.allow_skill_actions === false;
+  const hasAvailableServices=(data.services || []).some((service)=>service.id==="transfer" ? profileSettings.transfer_enabled!==false && profileSettings.allow_transfer!==false : service.id==="promo" ? profileSettings.promo_enabled!==false : service.id==="pavilion" ? profileSettings.pavilion_enabled!==false : true);
   // Сервисы (Передача/Промокод) недоступны в админ-просмотре/редактировании
   // чужого профиля — это личные действия игрока от своего лица.
-  // Вкладка «Гильдия» появляется только при наличии блока guild.
+  // «Гильдии» зарезервированы на будущее и пока скрыты.
   const baseTabs = [
     ...TABS,
-    ...(data.guild ? [GUILD_TAB] : []),
-    ...((effectiveReadOnly || adminEdit) ? [] : [SERVICES_TAB]),
+    ...((effectiveReadOnly || adminEdit || profileSettings.services_enabled === false || !hasAvailableServices) ? [] : [SERVICES_TAB]),
   ];
   // Опубликованная раскладка профиля (ТЗ §3, рантайм) аддитивно переопределяет
   // порядок/подпись/иконку/видимость ИЗВЕСТНЫХ вкладок. Контент рендерится по id,
   // поэтому показываем только вкладки с готовым рендером; неизвестные ключи из
   // конструктора игнорируются. Нет опубликованной раскладки → дефолт без изменений.
-  const visibleTabs = applyProfileLayoutTabs(baseTabs, data.profileLayout);
+  const visibleTabs = applyProfileLayoutTabs(baseTabs, data.profileLayout, data);
   const layoutTheme = data.profileLayout?.theme || null;
   // Защита: если текущая вкладка недоступна (напр. старое состояние «overview»),
   // показываем первую доступную, чтобы профиль не оставался пустым (ТЗ §1).
-  const activeTab = visibleTabs.some((t) => t.id === tab) ? tab : (visibleTabs[0]?.id || "character");
+  const configuredDefault = String(profileSettings.default_tab || "").trim();
+  const fallbackTab = visibleTabs.some((t) => t.id === configuredDefault) ? configuredDefault : (visibleTabs[0]?.id || "character");
+  const activeTab = visibleTabs.some((t) => t.id === tab) ? tab : fallbackTab;
   const background = data.assets?.background || "/assets/profile/backgrounds/1.png";
 
   const equipmentBySlot = data.equipment || {};
   const inventory = data.inventory || [];
 
   function openItem(item, slotKey = null, event = null) {
-    setModal({ item, slotKey, position: getFloatingPosition(event, 500, 520) });
+    setModal({ item, slotKey });
   }
 
   function openSlot(slot, event = null) {
-    if (effectiveReadOnly || slot?.blocked) return;
+    if (inventoryReadOnly || slot?.blocked) return;
     const items = inventory.filter((item) => {
       const target = itemSlot(item);
       if (target === slot.key) return true;
       if ((slot.key === "ring1" || slot.key === "ring2") && (target === "ring" || item.type === "Кольцо" || item.type === "ring")) return true;
       return false;
     });
-    setSlotModal({ slot, items, selectedItem: items[0] || null, position: getFloatingPosition(event, 520, 540) });
+    setSlotModal({ slot, items, selectedItem: items[0] || null });
   }
 
   async function equipFromSlot(item) {
-    if (effectiveReadOnly) return;
+    if (inventoryReadOnly) return;
     await onEquipItem?.(item, slotModal?.slot?.key || null);
     setSlotModal(null);
   }
 
   async function equipAndClose(item) {
-    if (effectiveReadOnly) return;
+    if (inventoryReadOnly) return;
     await onEquipItem?.(item);
     setModal(null);
   }
 
   async function unequipAndClose(slotKey, item) {
-    if (effectiveReadOnly) return;
+    if (inventoryReadOnly) return;
     await onUnequipItem?.(slotKey || itemSlot(item), item);
     setModal(null);
   }
 
   async function useAndClose(item) {
-    if (effectiveReadOnly) return;
+    if (inventoryReadOnly) return;
     await onUseItem?.(item);
     setModal(null);
   }
 
   async function dropAndClose(item, amount) {
-    if (effectiveReadOnly) return;
+    if (inventoryReadOnly) return;
     await onDropItem?.(item, amount);
     setDropModal(null);
     setModal(null);
   }
 
   async function sellAndClose(item, amount) {
-    if (effectiveReadOnly) return;
+    if (inventoryReadOnly) return;
     await onSellItem?.(item, amount);
     setSellModal(null);
     setModal(null);
@@ -1812,7 +1863,7 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
   }
 
   function requestDrop(item) {
-    if (effectiveReadOnly) return;
+    if (inventoryReadOnly) return;
     setDropModal({ item, position: modal?.position || null });
   }
 
@@ -1825,25 +1876,25 @@ export function PlayerProfile({ profile, readOnly = false, onSpendAttributePoint
     <main className={`nt-profile ${effectiveReadOnly ? "nt-profile-readonly" : ""}`.trim()} style={{ backgroundImage: `linear-gradient(rgba(5, 7, 7, .32), rgba(4, 4, 4, .50)), url(${layoutTheme?.profile_background || background})`, ...profileThemeStyle(layoutTheme) }}>
       <div className="nt-shell">
         <header className="nt-top">
-          <div className="nt-title-block"><h1>Профиль персонажа</h1>{effectiveReadOnly ? <p className="nt-readonly-banner">Админский режим: только просмотр, изменения отключены.</p> : null}</div>
-          <div className="nt-id">{data.player?.userGlobalId || data.player?.publicId || "NT-UNKNOWN"}</div>
+          <div className="nt-title-block"><h1>{profileSettings.profile_title || "Профиль персонажа"}</h1>{effectiveReadOnly ? <p className="nt-readonly-banner">{profileSettings.readonly_text || "Админский режим: только просмотр, изменения отключены."}</p> : null}</div>
+          {profileSettings.show_public_id !== false ? <div className="nt-id">{data.player?.userGlobalId || data.player?.publicId || "NT-UNKNOWN"}</div> : null}
         </header>
         <nav className="nt-tabs" aria-label="Разделы профиля">
           {visibleTabs.map(({ id, label, icon, emoji }) => <button key={id} className={activeTab === id ? "active" : ""} type="button" onClick={() => setTab(id)} title={label} aria-label={label}><span className="nt-tab-icon">{emoji ? <span className="nt-tab-emoji">{emoji}</span> : <TabIcon type={icon} />}</span><span className="nt-tab-text">{label}</span></button>)}
         </nav>
         <section className="nt-content">
           {activeTab === "character" ? <CharacterTab profile={{ ...data, equipment: equipmentBySlot }} readOnly={effectiveReadOnly} onOpenItem={openItem} onOpenSlot={openSlot} onSpendAttributePoints={onSpendAttributePoints} onConfirmAttributePoints={onConfirmAttributePoints} onEditProfileField={onEditProfileField} /> : null}
-          {activeTab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} /> : null}
-          {activeTab === "skills" ? <SkillsTab profile={data} readOnly={effectiveReadOnly} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} /> : null}
+          {activeTab === "inventory" ? <InventoryTab profile={data} onOpenItem={openItem} readOnly={inventoryReadOnly} onClaimCraftDelivery={onClaimCraftDelivery} onProfileItemAction={onProfileItemAction} /> : null}
+          {activeTab === "skills" ? <SkillsTab profile={data} readOnly={skillsReadOnly} onSpendSkillPoints={onSpendSkillPoints} onEquipSkill={onEquipSkill} onUnequipSkill={onUnequipSkill} onUseSkillOutside={onUseSkillOutside} /> : null}
           {activeTab === "info" ? <InfoTab profile={data} /> : null}
           {activeTab === "guild" ? <GuildTab guild={data.guild} /> : null}
           {activeTab === "services" ? <ServicesTab profile={data} onSearchRecipients={onSearchCourierRecipients} onSendTransfer={onSendCourierTransfer} onRedeemPromo={onRedeemPromo} /> : null}
         </section>
       </div>
-      <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} readOnly={effectiveReadOnly} adminEdit={adminEdit} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRequestDrop={requestDrop} onRequestSell={requestSell} onAdminRemoveItem={adminRemoveAndClose} />
-      {!effectiveReadOnly ? <DropItemModal item={dropModal?.item} position={dropModal?.position} onClose={() => setDropModal(null)} onConfirm={dropAndClose} /> : null}
-      {!effectiveReadOnly ? <SellItemModal item={sellModal?.item} position={sellModal?.position} onClose={() => setSellModal(null)} onConfirm={sellAndClose} /> : null}
-      <SlotItemsModal slot={slotModal?.slot} items={slotModal?.items || []} selectedItem={slotModal?.selectedItem} position={slotModal?.position} onSelectItem={(item) => setSlotModal((current) => ({ ...current, selectedItem: item }))} onClose={() => setSlotModal(null)} readOnly={effectiveReadOnly} onEquipItem={equipFromSlot} />
+      <ItemModal item={modal?.item} slotKey={modal?.slotKey} position={modal?.position} readOnly={inventoryReadOnly} adminEdit={adminEdit} actionPermissions={profileSettings} onClose={() => setModal(null)} onEquipItem={equipAndClose} onUnequipItem={unequipAndClose} onUseItem={useAndClose} onRepairItem={async (item) => { await onRepairItem?.(item); setModal(null); }} onProfileItemAction={async (item, action) => { await onProfileItemAction?.(item, action); setModal(null); }} onOpenTransfer={() => { setModal(null); setTab("services"); }} onCraftOperation={async (item, rule) => { await onCraftOperation?.(item, rule); setModal(null); }} onRequestDrop={requestDrop} onRequestSell={requestSell} onAdminRemoveItem={adminRemoveAndClose} />
+      {!inventoryReadOnly ? <DropItemModal item={dropModal?.item} position={dropModal?.position} onClose={() => setDropModal(null)} onConfirm={dropAndClose} /> : null}
+      {!inventoryReadOnly ? <SellItemModal item={sellModal?.item} position={sellModal?.position} onClose={() => setSellModal(null)} onConfirm={sellAndClose} /> : null}
+      <SlotItemsModal slot={slotModal?.slot} items={slotModal?.items || []} selectedItem={slotModal?.selectedItem} position={slotModal?.position} onSelectItem={(item) => setSlotModal((current) => ({ ...current, selectedItem: item }))} onClose={() => setSlotModal(null)} readOnly={inventoryReadOnly} onEquipItem={equipFromSlot} />
     </main>
   );
 }

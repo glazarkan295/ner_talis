@@ -94,6 +94,19 @@ class PublicSiteTest(unittest.TestCase):
         self.assertEqual(self.client.get("/api/public/site/lore").json()["lore"][0]["id"], "l1")
         self.assertEqual(self.client.get("/api/public/site/ratings").json()["ratings"][0]["id"], "r1")
 
+    def test_settings_resolve_published_maintenance_and_error_pages(self):
+        self._publish("page", "maintenance", {"title": "Обновляем мир", "body": "Скоро вернёмся"})
+        self._publish("page", "site_error", {"title": "Что-то пошло не так", "body": "Попробуйте позже"})
+        self._publish("site_settings", "production", {
+            "title": "Боевой сайт", "active_url": "https://game.example",
+            "maintenance_enabled": True, "maintenance_page_id": "maintenance",
+            "error_page_id": "site_error",
+        })
+        settings = self.client.get("/api/public/site/settings").json()["settings"]
+        self.assertEqual(settings["maintenance_page"]["id"], "maintenance")
+        self.assertEqual(settings["error_page"]["id"], "site_error")
+        self.assertNotIn("active_url", settings)
+
 
 if __name__ == "__main__":
     unittest.main()

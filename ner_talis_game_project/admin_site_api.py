@@ -61,6 +61,7 @@ _KIND_CONFIG = {
     site.KIND_PAGE_BLOCK: {"family": "site", "view": PERM_SITE_VIEW, "create": PERM_SITE_HOMEPAGE_EDIT, "edit": PERM_SITE_HOMEPAGE_EDIT, "publish": PERM_SITE_HOMEPAGE_EDIT, "archive": PERM_SITE_HOMEPAGE_EDIT},
     site.KIND_MENU_ITEM: {"family": "site", "view": PERM_SITE_VIEW, "create": PERM_SITE_MENU_EDIT, "edit": PERM_SITE_MENU_EDIT, "publish": PERM_SITE_MENU_EDIT, "archive": PERM_SITE_MENU_EDIT},
     site.KIND_THEME: {"family": "site", "view": PERM_SITE_VIEW, "create": PERM_SITE_SETTINGS_EDIT, "edit": PERM_SITE_SETTINGS_EDIT, "publish": PERM_SITE_SETTINGS_EDIT, "archive": PERM_SITE_SETTINGS_EDIT},
+    site.KIND_SETTINGS: {"family": "site", "view": PERM_SITE_VIEW, "create": PERM_SITE_SETTINGS_EDIT, "edit": PERM_SITE_SETTINGS_EDIT, "publish": PERM_SITE_SETTINGS_EDIT, "archive": PERM_SITE_SETTINGS_EDIT},
     site.KIND_POST: {"family": "news", "view": PERM_NEWS_VIEW, "create": PERM_NEWS_CREATE, "edit": PERM_NEWS_EDIT, "publish": PERM_NEWS_PUBLISH, "archive": PERM_NEWS_ARCHIVE},
     site.KIND_RATING: {"family": "ratings", "view": PERM_RATINGS_VIEW, "create": PERM_RATINGS_CREATE, "edit": PERM_RATINGS_EDIT, "publish": PERM_RATINGS_PUBLISH, "archive": PERM_RATINGS_PUBLISH},
     site.KIND_LORE: {"family": "guides", "view": PERM_GUIDES_VIEW, "create": PERM_GUIDES_CREATE, "edit": PERM_GUIDES_EDIT, "publish": PERM_GUIDES_PUBLISH, "archive": PERM_GUIDES_ARCHIVE},
@@ -84,6 +85,11 @@ class DataRequest(BaseModel):
 class ActionRequest(BaseModel):
     token: str | None = Field(default=None, min_length=16)
     reason: str = ""
+
+
+class SiteLinkCheckRequest(BaseModel):
+    token: str | None = Field(default=None, min_length=16)
+    url: str = Field(min_length=8, max_length=2048)
 
 
 def _bearer_token(request: Request | None) -> str:
@@ -149,6 +155,18 @@ def _get_checked(content_id: str, kind: str) -> dict[str, Any]:
 
 def create_admin_site_router(get_storage) -> APIRouter:
     router = APIRouter(prefix="/api/admin/v2/site", tags=["admin-site"])
+
+    @router.post("/site-link/check")
+    def check_site_link(payload: SiteLinkCheckRequest, request: Request) -> dict[str, Any]:
+        session = _session(get_storage(), request, payload.token)
+        _require(session, PERM_SITE_SETTINGS_EDIT)
+        try:
+            result = site.check_public_https_url(payload.url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        record_admin_operation(session=session, action="site.link_check", target_type="site_settings",
+                               target_id=payload.url, after=result, reason="Проверка активной ссылки")
+        return {"ok": True, "result": result}
 
     @router.get("/meta")
     def meta(request: Request, token: str | None = Query(default=None, min_length=16)) -> dict[str, Any]:

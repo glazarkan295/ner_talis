@@ -677,10 +677,15 @@ def _apply_rewards_to_player(player: dict[str, Any], rewards: list[dict[str, Any
         if kind == "money":
             per_unit = _safe_int(SYNTHETIC_REWARD_IDS.get(item_id, {}).get("copper_per_unit"), 1) or 1
             delta = amount * per_unit
-            old_money = _safe_int(player.get("money_copper", player.get("money", 0)), 0)
-            new_money = max(0, old_money + delta)
-            player["money_copper"] = new_money
-            player["money"] = new_money
+            try:
+                from services.economy_runtime import change, reward_amount
+                delta = reward_amount("admin", delta, {"player_level": player.get("level", 1), "source": source})
+                change(player, "copper", delta, operation=f"{source}_reward", source=source)
+            except (ImportError, ValueError, OSError):
+                old_money = _safe_int(player.get("money_copper", player.get("money", 0)), 0)
+                new_money = max(0, old_money + delta)
+                player["money_copper"] = new_money
+                player["money"] = new_money
             coin_name = SYNTHETIC_REWARD_IDS.get(item_id, {}).get("name", "Медные монеты")
             lines.append(f"{coin_name} ×{amount}")
         elif kind == "skill_points":
@@ -738,6 +743,7 @@ def deliver_rewards_to_player(storage: Any, *, target_game_id: str, rewards: lis
         status = notify_player(
             storage, game_id, text, type="admin_gift", priority="high",
             source="admin_panel", fallback_message=gift_message,
+            text_key="delivery.admin_gift", text_variables={"items": "\n".join(f"• {line}" for line in lines)},
         )
         if status == "skipped":  # хранилище без outbox — крайний запасной путь
             player.setdefault("pending_bot_messages", []).append(gift_message)
@@ -814,10 +820,15 @@ def duration_to_expires_at(duration: str | None) -> str | None:
     return (_now() + delta).isoformat()
 
 
-def create_admin_promo(storage: Any, *, code: str, uses_left: int, duration: str | None, rewards: list[dict[str, Any]], admin_session: dict[str, Any]) -> dict[str, Any]:
-    reward_payload = rewards_to_promo_payload(rewards)
-    expires_at = duration_to_expires_at(duration)
-    promo = add_promo_code(code=code, uses_left=int(uses_left), reward=reward_payload, expires_at=expires_at, storage=storage)
+def create_admin_promo(storage: Any, *, code: str, uses_left: int, duration: str | None, rewards: list[dict[str, Any]], admin_session: dict[str, Any],config:dict[str,Any]|None=None) -> dict[str, Any]:
+    legacy=[row for row in rewards if not row.get("type")];generic=[row for row in rewards if row.get("type")]
+    reward_payload = rewards_to_promo_payload(legacy) if legacy else {}
+    if generic:reward_payload["rewards"]=generic
+    expires_at = str((config or {}).get("expires_at") or "") or duration_to_expires_at(duration)
+    from services.promo_service import validate_promo
+    validation=validate_promo(code,int(uses_left),reward_payload,{**(config or {}),"expires_at":expires_at},storage)
+    if not validation["ok"]:raise ValueError("Проверка не пройдена: "+"; ".join(validation["errors"]))
+    promo = add_promo_code(code=code, uses_left=int(uses_left), reward=reward_payload, expires_at=expires_at or None, one_use_per_player=bool((config or {}).get("one_use_per_player",True)),note=str((config or {}).get("technical_description") or ""),storage=storage,config={**(config or {}),"validation_warnings":validation["warnings"]})
     record_admin_operation(
         session=admin_session,
         action="promo.create",
@@ -858,6 +869,7 @@ def promo_list_payload(storage: Any) -> list[dict[str, Any]]:
         uses_left = _safe_int(promo.get("uses_left"), 0)
         used_count = len(promo.get("used_by") or []) if isinstance(promo.get("used_by"), list) else 0
         result.append({
+            **promo,
             "code": promo.get("code"),
             "active": bool(promo.get("active")),
             "created_at": promo.get("created_at"),
@@ -871,7 +883,7 @@ def promo_list_payload(storage: Any) -> list[dict[str, Any]]:
     return result
 
 
-def create_admin_player_view_token(storage: Any, *, target_game_id: str, admin_session: dict[str, Any]) -> str:
+def create_admin_player_view_token(storage: Any, *, target_game_id: str, admin_session: dict[str, Any], editable: bool = True) -> str:
     game_id = normalize_game_id(target_game_id)
     if not hasattr(storage, "get_player_by_game_id") or storage.get_player_by_game_id(game_id) is None:
         raise ValueError(f"Игрок {game_id} не найден.")
@@ -884,6 +896,7 @@ def create_admin_player_view_token(storage: Any, *, target_game_id: str, admin_s
         "admin_user_id": str(admin_session.get("admin_user_id") or "unknown"),
         "admin_key": str(admin_session.get("admin_key") or ""),
         "target_game_id": game_id,
+        "editable": bool(editable),
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(minutes=ADMIN_PLAYER_VIEW_TTL_MINUTES)).isoformat(),
     }
@@ -940,7 +953,8 @@ def get_admin_player_view_profile(storage: Any, token: str) -> dict[str, Any] | 
     # профильный веб-токен этого игрока — все существующие профильные эндпоинты
     # работают без дублирования логики.
     profile["adminView"] = True
-    profile["adminEdit"] = True
+    profile["adminEdit"] = bool(session.get("editable", True))
+    profile["readOnly"] = not profile["adminEdit"]
     edit_token = ""
     try:
         from services.web_profile import ADMIN_PROFILE_EDIT_SCOPE
@@ -948,7 +962,7 @@ def get_admin_player_view_profile(storage: Any, token: str) -> dict[str, Any] | 
         # игрока (его PROFILE-сессия не трогается) и не оставляет долгоживущего
         # доступа после закрытия окна просмотра.
         platform = str(session.get("platform") or "admin_panel")
-        if hasattr(storage, "create_web_session"):
+        if profile["adminEdit"] and hasattr(storage, "create_web_session"):
             edit_token = storage.create_web_session(
                 game_id=target_game_id,
                 scope=ADMIN_PROFILE_EDIT_SCOPE,
@@ -1032,6 +1046,26 @@ def _runtime_upload_target(relative_public_path: str) -> Path:
     return resolve_project_path(_uploads_base_dir()) / relative_under_assets
 
 
+def _uploaded_image_variants(blob: bytes, *, content_type: str) -> dict[str, bytes]:
+    """Create proportional, non-upscaled preview variants from normalized bytes."""
+    variants: dict[str, bytes] = {}
+    with Image.open(io.BytesIO(blob)) as source:
+        for edge in (256, 512, 1024):
+            if max(source.size) <= edge:
+                continue
+            image = source.copy()
+            image.thumbnail((edge, edge), Image.Resampling.LANCZOS)
+            output = io.BytesIO()
+            if content_type == "image/jpeg":
+                image.convert("RGB").save(output, format="JPEG", quality=90, optimize=True)
+            elif content_type == "image/webp":
+                image.convert("RGBA").save(output, format="WEBP", quality=90, method=6)
+            else:
+                image.convert("RGBA").save(output, format="PNG", optimize=True)
+            variants[str(edge)] = output.getvalue()
+    return variants
+
+
 def save_uploaded_image(*, category: str, key: str, content_base64: str) -> dict[str, Any]:
     """Сохранить загруженное изображение как файл проекта и вернуть путь.
 
@@ -1053,11 +1087,25 @@ def save_uploaded_image(*, category: str, key: str, content_base64: str) -> dict
     if not blob or len(blob) > 8 * 1024 * 1024:
         raise ValueError("Файл пустой или больше 8 МБ.")
     normalized_blob, suffix, content_type = _normalize_uploaded_image(blob)
+    with Image.open(io.BytesIO(normalized_blob)) as normalized_image:
+        width, height = normalized_image.size
     rel_public = f"/assets/admin_uploads/{safe_category}/{safe_key}{suffix}"
     target_path = _runtime_upload_target(rel_public)
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_bytes(normalized_blob)
-    return {"path": rel_public, "content_type": content_type}
+    variants: dict[str, str] = {}
+    for edge, variant_blob in _uploaded_image_variants(normalized_blob, content_type=content_type).items():
+        variant_public = f"/assets/admin_uploads/{safe_category}/{safe_key}_{edge}{suffix}"
+        _runtime_upload_target(variant_public).write_bytes(variant_blob)
+        variants[edge] = variant_public
+    return {
+        "path": rel_public,
+        "content_type": content_type,
+        "width": width,
+        "height": height,
+        "bytes": len(normalized_blob),
+        "variants": variants,
+    }
 
 
 def update_item_image_from_base64(storage: Any, *, item_id: str, filename: str, content_base64: str, content_type: str | None, admin_session: dict[str, Any]) -> dict[str, Any]:

@@ -76,6 +76,7 @@ export function openPlayerView(gameId) {
     body: JSON.stringify({}),
   });
 }
+export function openPlayerReadonlyView(gameId) { return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/readonly-view-token`, { method: "POST", body: JSON.stringify({}) }); }
 
 export function grantRewards(gameId, rewards, reason) {
   return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/rewards`, {
@@ -111,6 +112,8 @@ export function repairFines(gameId, reason) {
     body: JSON.stringify({ reason }),
   });
 }
+export function removeFine(gameId, fineId, reason) { return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/fines/${encodeURIComponent(fineId)}/remove`, { method: "POST", body: JSON.stringify({ reason }) }); }
+export function deleteBrokenFine(gameId, fineId, reason) { return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/fines/${encodeURIComponent(fineId)}`, { method: "DELETE", body: JSON.stringify({ reason }) }); }
 
 export function resetPlayer(gameId, reason) {
   return requestAdminJson(`/api/admin/v2/players/${encodeURIComponent(gameId)}/reset`, {

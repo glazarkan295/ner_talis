@@ -315,6 +315,18 @@ class AdminPanelV2Test(unittest.TestCase):
         card2 = self.client.get(f"/api/admin/v2/players/{gid}", headers=self._auth(token)).json()["player"]
         self.assertEqual(card2["fines"], [])
 
+    def test_readonly_profile_token_has_no_edit_session(self):
+        from services.admin_panel_service import get_admin_player_view_profile
+        gid=self._make_player();token=self._session_token("999");response=self.client.post(f"/api/admin/v2/players/{gid}/readonly-view-token",headers=self._auth(token),json={});self.assertEqual(response.status_code,200,response.text)
+        payload=get_admin_player_view_profile(self.storage,response.json()["token"]);self.assertTrue(payload["profile"]["adminView"]);self.assertTrue(payload["profile"]["readOnly"]);self.assertFalse(payload["profile"]["adminEdit"]);self.assertEqual(payload["editToken"],"")
+
+    def test_remove_and_force_delete_specific_fines_are_audited(self):
+        gid=self._make_player();player=self.storage.get_player_by_game_id(gid);player["active_fines"]=[{"id":"good","status":"voluntary","source":"black_market","current_amount":10},{"id":"broken","status":"voluntary","source_name":"???","current_amount":0}];self.storage.update_player(player);token=self._session_token("999")
+        removed=self.client.post(f"/api/admin/v2/players/{gid}/fines/good/remove",headers=self._auth(token),json={"reason":"appeal"});self.assertEqual(removed.status_code,200,removed.text)
+        deleted=self.client.request("DELETE",f"/api/admin/v2/players/{gid}/fines/broken",headers=self._auth(token),json={"reason":"invalid"});self.assertEqual(deleted.status_code,200,deleted.text)
+        card=self.client.get(f"/api/admin/v2/players/{gid}",headers=self._auth(token)).json()["player"];self.assertEqual(card["fines"],[]);self.assertTrue(card["fineHistory"])
+        actions={row["action"] for row in self.client.get("/api/admin/v2/audit",headers=self._auth(token)).json()["records"]};self.assertIn("fines.remove",actions);self.assertIn("fines.delete",actions)
+
     def test_support_can_unstuck_but_not_reset_or_delete(self):
         gid = self._make_player()
         rbac.set_role_override("telegram", "999", rbac.SUPPORT)

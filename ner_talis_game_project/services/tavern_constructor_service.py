@@ -22,6 +22,9 @@ _HTML_RE = re.compile(r"<[^>]+>")
 TAVERN_TYPES = (
     "city_tavern", "fortress_tavern", "road_tavern", "port_tavern",
     "guild_tavern", "hidden_tavern", "event_tavern", "temporary_tavern",
+    "regular_tavern", "camp_tavern", "seekers_tavern", "criminal_tavern",
+    "underground_tavern", "quest_tavern", "room_tavern", "gambling_tavern",
+    "seasonal_tavern", "service_tavern",
 )
 TAVERN_TYPE_LABELS = {
     "city_tavern": "Городская", "fortress_tavern": "Крепости", "road_tavern": "Дорожная",
@@ -29,7 +32,7 @@ TAVERN_TYPE_LABELS = {
     "event_tavern": "Событийная", "temporary_tavern": "Временная",
 }
 TAVERN_MODES = ("active", "hidden", "disabled", "event_only", "admin_only")
-SERVICE_TYPES = ("food", "drink", "rest", "room", "rumor", "quest", "hire", "npc", "event", "hidden", "custom")
+SERVICE_TYPES = ("food", "drink", "rest", "room", "rumor", "quest", "hire", "npc", "event", "hidden", "guide", "buff", "cleanse", "information", "open_sublocation", "casino", "transfer_item", "courier", "quest_board", "custom")
 MENU_CATEGORIES = ("food", "drink", "special", "seasonal", "hidden")
 RUMOR_TYPES = (
     "common", "location", "resource", "mob", "boss", "quest", "npc", "market",
@@ -108,8 +111,8 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
     mode = _str(data, "tavern_mode")
     if mode and mode not in TAVERN_MODES:
         errors.append(f"Неизвестный статус таверны: {mode}.")
-    if not _str(data, "location_id") and not _str(data, "city_id"):
-        warnings.append("Таверна не привязана к локации или городу (ТЗ §22).")
+    if not any(_str(data,key) for key in ("location_id","city_id","fortress_id","sublocation_id","camp_id")):
+        warnings.append("Таверна не привязана к городу, крепости, локации, подлокации или лагерю.")
     if not _str(data, "player_entry_text"):
         warnings.append("Не задан текст входа в таверну (ТЗ §22).")
 
@@ -206,9 +209,14 @@ def validate(envelope: dict[str, Any]) -> dict[str, Any]:
             for fkey, flabel in (("rest_seconds", "время отдыха"), ("price", "стоимость")):
                 if rest.get(fkey) not in (None, "") and (_num(rest.get(fkey)) is None or _num(rest.get(fkey)) < 0):
                     errors.append(f"Отдых #{i}: {flabel} — неотрицательное число.")
+    for collection,label in (("drinks","Напиток"),("rooms","Комната")):
+        for i,row in enumerate(data.get(collection) or [],1):
+            if not isinstance(row,dict):continue
+            if not str(row.get("name") or "").strip():errors.append(f"{label} #{i}: не заполнено название.")
+            _check_price(row,f"{label} #{i}")
 
-    for key in ("name", "short_name", "description", "short_description",
-                "player_entry_text", "admin_description"):
+    for key in ("name", "short_name", "description", "short_description", "full_description", "lore_description", "technical_description", "hidden_description",
+                "player_entry_text", "admin_description", "main_menu_text", "tavern_description_text", "innkeeper_text", "food_list_text", "food_purchase_text", "drink_list_text", "drink_purchase_text", "rest_text", "room_text", "rumor_text", "quests_text", "brawl_text", "theft_text", "access_denied_text", "not_enough_money_text", "closed_text", "exit_text"):
         value = _str(data, key)
         if value and (_HTML_RE.search(value) or "<script" in value.lower()):
             errors.append(f"В поле «{key}» недопустим HTML.")

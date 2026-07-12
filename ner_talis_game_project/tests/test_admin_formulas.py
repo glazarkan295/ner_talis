@@ -95,6 +95,38 @@ class TestFormulaTest(unittest.TestCase):
         self.assertEqual(res["result"], 12)
 
 
+class FormulaRuntimeTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self._old = os.environ.get("FORMULA_CONSTRUCTOR_PATH")
+        os.environ["FORMULA_CONSTRUCTOR_PATH"] = str(Path(self._tmp.name) / "formulas.json")
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        if self._old is None:
+            os.environ.pop("FORMULA_CONSTRUCTOR_PATH", None)
+        else:
+            os.environ["FORMULA_CONSTRUCTOR_PATH"] = self._old
+
+    def test_only_published_formula_is_live_and_constraints_apply(self):
+        from services.formula_runtime import evaluate
+        fx.store().create("live", {"name": "Live", "expression": "base_amount * multiplier",
+                                     "rounding": "floor", "max_result": 20,
+                                     "variables": [{"key": "base_amount", "default": 3},
+                                                   {"key": "multiplier", "default": 2}]})
+        self.assertEqual(evaluate("live", {"base_amount": 8}, default=99), 99)
+        fx.store().set_status("live", fx.STATUS_PUBLISHED, force=True)
+        self.assertEqual(evaluate("live", {"base_amount": 8, "multiplier": 2.9}), 20)
+
+    def test_missing_variable_or_formula_falls_back(self):
+        from services.formula_runtime import evaluate
+        fx.store().create("bad", {"name": "Bad", "expression": "base_amount + player_level"})
+        fx.store().set_status("bad", fx.STATUS_PUBLISHED, force=True)
+        self.assertEqual(evaluate("bad", {"base_amount": 5}, default=7), 7)
+        self.assertEqual(evaluate("absent", {}, default=11), 11)
+
+
 class FormulaBindingTest(unittest.TestCase):
     """Привязка формул к механикам (ТЗ 13 §2.8): where_used + ребро в графе."""
 
